@@ -1,4 +1,5 @@
 import logging
+from random import choices
 
 from discord import Interaction, app_commands
 from discord.ext import commands
@@ -12,7 +13,7 @@ class QuestionCog(commands.Cog):
         # predictions
         self.bot = bot
         self.logger = logging.getLogger("QuestionCog")
-
+        self.answers = choices(CAPABILITIES, k=8)
         self.logger.info("Next %sq answers: %s", self.bot.command_prefix, self.answers)
 
     @app_commands.command(
