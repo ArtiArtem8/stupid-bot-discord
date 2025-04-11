@@ -31,9 +31,11 @@ class StupidBot(commands.Bot):
             if filename.endswith(".py"):
                 try:
                     await self.load_extension(f"cogs.{filename.removesuffix('.py')}")
-                    logger.info(f"Loaded cog: {filename}")
+                    logger.info("Loaded cog: %s", filename)
                 except Exception as e:
-                    logger.error(f"Failed to load cog {filename}: {e}")
+                    logger.error(
+                        "Failed to load cog %s: %s", filename, e, exc_info=True
+                    )
         await self.tree.sync()  # for slash apps
         logger.info("Application commands synced")
 
@@ -44,7 +46,7 @@ bot = StupidBot()
 @bot.event
 async def on_ready():
     logger.info("Program started ----------------------")
-    logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
     timer.start()
 
 
@@ -65,4 +67,5 @@ if __name__ == "__main__":
         async with bot:
             await bot.start(TOKEN)
 
+    logger.info("Starting bot...")
     asyncio.run(main())

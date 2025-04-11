@@ -1,0 +1,64 @@
+import logging
+
+from discord import Interaction, app_commands
+from discord.ext import commands
+
+from config import ANSWER_FILE, CAPABILITIES
+from utils import get_json, random_answer, save_json, str_local
+
+
+class QuestionCog(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        # predictions
+        self.bot = bot
+        self.logger = logging.getLogger("QuestionCog")
+
+        self.logger.info("Next %sq answers: %s", self.bot.command_prefix, self.answers)
+
+    @app_commands.command(
+        name="q",
+        description="Ask a question",
+    )
+    async def q(self, interaction: Interaction, *, text: str):
+        self.logger.info(
+            "User %s(%s) asked: %s", interaction.user.id, interaction.user.name, text
+        )
+        prev_message = self._add_to_global_answer(
+            str(interaction.user.id), text, self.answers[0]
+        )
+        if prev_message:
+            self.logger.info("User already asked: %s -> %s", text, prev_message)
+            await interaction.response.send_message(prev_message)
+            return
+
+        self.answers.append(random_answer(text, answers=CAPABILITIES))
+        gock = self.answers.pop(0)
+        # logger.info(f"{gock} -> {self.answers}")
+        await interaction.response.send_message(gock)
+
+    def _add_to_global_answer(
+        self, user_id: str, question: str, answer: str
+    ) -> str | None:
+        """Add a question to the global answers.
+
+        Args:
+            user_id: The ID of the user who asked the question.
+            question: The question asked.
+            answer: The answer to the question.
+
+        Returns:
+            The existing answer if the user already asked the question, None otherwise.
+        """
+        data = get_json(ANSWER_FILE)
+        filtered_text = str_local(question)
+
+        if existing := data.get(user_id, {}).get(filtered_text, None):
+            return existing
+
+        data.setdefault(user_id, {})[filtered_text] = answer
+        save_json(ANSWER_FILE, data, backup_amount=2)
+        return None
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(QuestionCog(bot))
