@@ -22,7 +22,7 @@ class QuestionCog(commands.Cog):
     )
     async def q(self, interaction: Interaction, *, text: str):
         self.logger.info(
-            "User %s(%s) asked: %s", interaction.user.id, interaction.user.name, text
+            "User %s(%s) asked: %s", interaction.user, interaction.user.id, text
         )
         prev_message = self._add_to_global_answer(
             str(interaction.user.id), text, self.answers[0]
@@ -34,7 +34,8 @@ class QuestionCog(commands.Cog):
 
         self.answers.append(random_answer(text, answers=CAPABILITIES))
         gock = self.answers.pop(0)
-        # logger.info(f"{gock} -> {self.answers}")
+        self.logger.info(f"{gock} -> {self.answers[:2]}...{self.answers[-2:]}")
+
         await interaction.response.send_message(gock)
 
     def _add_to_global_answer(
@@ -52,7 +53,8 @@ class QuestionCog(commands.Cog):
         """
         data = get_json(ANSWER_FILE)
         filtered_text = str_local(question)
-
+        if data is None:
+            data = {}
         if existing := data.get(user_id, {}).get(filtered_text, None):
             return existing
 
