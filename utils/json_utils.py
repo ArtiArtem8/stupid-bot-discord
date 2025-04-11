@@ -13,7 +13,6 @@ def _generate_backup_filename(filename: Path) -> str:
     `<filename>_<random_letters><timestamp>.<filename_extension>`"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     rand_suffix = "".join(choices(ascii_letters + digits, k=4))  # 4 random characters
-    a = filename.with_stem(f"{filename.stem}_{timestamp}{rand_suffix}")
     return filename.with_stem(f"{filename.stem}_{timestamp}{rand_suffix}")
 
 
@@ -52,6 +51,9 @@ def save_json(filename: str | Path, data: dict, backup_amount: int = 3) -> None:
     Creates a backup of the file if it already exists and backup_amount > 0.
     """
     filename = Path(filename)
+
+    filename.parent.mkdir(parents=True, exist_ok=True)  # creating parent directory
+
     if filename.exists() and backup_amount > 0:
         _create_backup(filename)
     temp_filename = filename.with_stem(f"{filename.stem}_temp")
