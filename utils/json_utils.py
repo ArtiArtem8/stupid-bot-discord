@@ -13,7 +13,7 @@ def _generate_backup_filename(filename: Path) -> str:
     `<filename>_<random_letters><timestamp>.<filename_extension>`"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     rand_suffix = "".join(choices(ascii_letters + digits, k=4))  # 4 random characters
-    return filename.with_stem(f"{filename.stem}_{timestamp}{rand_suffix}")
+    return f"{filename.stem}_{timestamp}{rand_suffix}{filename.suffix}"
 
 
 def _create_backup(filename: str | Path, max_backups: int = 3) -> None:
