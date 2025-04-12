@@ -13,6 +13,10 @@ BOT_ICON = "https://icon-library.com/images/icon-for-discord/icon-for-discord-17
 
 BACKUP_DIR = Path(__file__).parent / "backups"
 DATA_DIR = Path(__file__).parent / "data"
+LAST_RUN_FILE = (DATA_DIR / "last_run").with_suffix(".json")
+AUTOSAVE_LAST_RUN_FILE_INTERVAL = 1800  # 30 mins
+DISCONNECT_TIMER_THRESHOLD = 3600  # 1 hour
+
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -73,7 +77,6 @@ MORNING_QUEST = [
     "утро доброе",
     "доброе утро",
 ]
-
 MORNING_ANSWERS = [
     "Желаю доброго, бодрого, позитивного, солнечного, восхитительного, радостного и счастливого утра!",
     "Доброго утра! Желаю хорошего настроения, бодрости и выполнения всех планов.",
@@ -87,7 +90,6 @@ MORNING_ANSWERS = [
     "https://tenor.com/view/little-witch-academia-witch-good-morning-yawn-stretching-gif-16843917",
     "https://tenor.com/view/shrek-donkey-good-morning-good-morning-good-morning-morning-gif-18326987",
 ]
-
 EVENING_QUEST = [
     "доброй ночи",
     "сон",

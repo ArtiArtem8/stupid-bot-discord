@@ -7,8 +7,15 @@ import discord
 from discord import Intents
 from discord.ext import commands, tasks
 
-from config import BOT_PREFIX, LOGGING_CONFIG, TOKEN
-from utils import format_time_russian
+from config import (
+    AUTOSAVE_LAST_RUN_FILE_INTERVAL,
+    BOT_PREFIX,
+    DISCONNECT_TIMER_THRESHOLD,
+    LAST_RUN_FILE,
+    LOGGING_CONFIG,
+    TOKEN,
+)
+from utils import format_time_russian, get_json, save_json
 
 logging.config.dictConfig(LOGGING_CONFIG)
 
@@ -25,6 +32,26 @@ class StupidBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix=BOT_PREFIX, intents=intents)
         self.start_time = time.time()
+        self._load_previous_uptime()
+
+    def _load_previous_uptime(self):
+        last_run = load_last_run()
+        if last_run is None:
+            return
+        last_shutdown = last_run.get("last_shutdown", 0)
+        accumulated = last_run.get("accumulated_uptime", 0)
+        disconnect_time = time.time() - last_shutdown
+        if disconnect_time < DISCONNECT_TIMER_THRESHOLD:
+            self.start_time = time.time() - accumulated
+            logger.info(
+                "Resuming uptime (bot was offline for %.0f seconds)",
+                disconnect_time,
+            )
+        else:
+            logger.info(
+                "Offline time (%.0f seconds) exceeded threshold; starting fresh.",
+                disconnect_time,
+            )
 
     async def setup_hook(self) -> None:
         for filename in os.listdir("./cogs"):
@@ -69,6 +96,36 @@ class StupidBot(commands.Bot):
                 print(f"Failed to load {file}: {e}")
 
 
+def load_last_run() -> dict | None:
+    """Load the last run info if available."""
+    data = get_json(LAST_RUN_FILE)
+
+    if data is not None and not isinstance(data, dict):
+        logger.error("Invalid data format in last run file")
+        return None
+
+    if data is None and os.path.exists(LAST_RUN_FILE):
+        logger.error("Failed to load last run data (file exists but is invalid)")
+
+    return data
+
+
+def save_last_run(accumulated_uptime: float) -> None:
+    """Save the current shutdown time and accumulated uptime."""
+    data = {
+        "last_shutdown": time.time(),
+        "accumulated_uptime": accumulated_uptime,
+    }
+    try:
+        save_json(
+            filename=LAST_RUN_FILE,
+            data=data,
+            backup_amount=0,
+        )
+    except Exception as e:
+        logger.error("Failed to save last run data: %s", e)
+
+
 bot = StupidBot()
 
 
@@ -77,6 +134,7 @@ async def on_ready():
     logger.info("Program started ----------------------")
     logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
     timer.start()
+    autosave.start()  # Start the autosave task
 
 
 @tasks.loop(seconds=11)
@@ -89,6 +147,14 @@ async def timer():
     await bot.change_presence(activity=activity)
 
 
+@tasks.loop(seconds=AUTOSAVE_LAST_RUN_FILE_INTERVAL)
+async def autosave():
+    """Periodically save the current uptime in case of an emergency shutdown."""
+    uptime = time.time() - bot.start_time
+    save_last_run(uptime)
+    logger.info("Autosaved uptime: %.0f seconds", uptime)
+
+
 # Run the bot
 if __name__ == "__main__":
 
@@ -97,4 +163,9 @@ if __name__ == "__main__":
             await bot.start(TOKEN)
 
     logger.info("Starting bot...")
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        uptime = time.time() - bot.start_time
+        save_last_run(uptime)
+        logger.info("Program stopped. Uptime saved: %.0f seconds", uptime)
