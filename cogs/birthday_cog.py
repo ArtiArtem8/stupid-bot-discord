@@ -220,7 +220,7 @@ class BirthdayCog(commands.Cog):
 
     @app_commands.command(
         name="setbirthday",
-        description="📅 Установить свой день рождения (формат: ДД-ММ-ГГГГ или ГГГГ-ММ-ДД)",
+        description="Установить свой день рождения (формат: ДД-ММ-ГГГГ или ГГГГ-ММ-ДД)",
     )
     @app_commands.describe(
         date_input="Дата рождения (например: 15-05-2000 или 2000-05-15)"
@@ -239,7 +239,7 @@ class BirthdayCog(commands.Cog):
             normalized_date = parse_birthday(date_input)
         except ValueError:
             return await interaction.response.send_message(
-                "❌ Неверный формат даты. Используйте ДД-ММ-ГГГГ или ГГГГ-ММ-ДД",
+                "Неверный формат даты. Используйте ДД-ММ-ГГГГ или ГГГГ-ММ-ДД",
                 ephemeral=True,
             )
 
@@ -281,56 +281,9 @@ class BirthdayCog(commands.Cog):
                 "Ошибка записи файла.", ephemeral=True
             )
 
-    #     """
-    #     Clears your birthday record.
-
-    #     **Confirmation:**
-    #     Enter '+' to confirm deletion.
-
-    #     **Example:**
-    #     `/clearbirthday confirmation:+`
-    #     """
-    #     if confirmation != "+":
-    #         await interaction.response.send_message(
-    #             "Подтвердите удаление, введя '+'.", ephemeral=True
-    #         )
-    #         return
-    #     try:
-    #         data: dict = get_json(BIRTHDAY_FILE)
-    #     except Exception as e:
-    #         self.logger.error("Error loading birthday file: %s", e)
-    #         await interaction.response.send_message(
-    #             "Ошибка чтения данных.", ephemeral=True
-    #         )
-    #         return
-
-    #     author_id = str(interaction.user.id)
-    #     guild = interaction.guild
-    #     if guild is None:
-    #         await interaction.response.send_message(
-    #             "Эта команда работает только на сервере.", ephemeral=True
-    #         )
-    #         return
-    #     server_id = str(guild.id)
-    #     if server_id not in data:
-    #         ans = "Нет записей на этом сервере."
-    #     elif author_id not in data[server_id]["Users"]:
-    #         ans = "Нет записей с вашим именем."
-    #     elif data[server_id]["Users"][author_id].get("birthday"):
-    #         data[server_id]["Users"].pop(author_id)
-    #         ans = "Ваша запись была удалена."
-    #     else:
-    #         ans = "Что-то пошло не так."
-    #     try:
-    #         save_json(BIRTHDAY_FILE, data)
-    #     except Exception as e:
-    #         self.logger.error("Error saving birthday file: %s", e)
-    #         ans = "Ошибка записи."
-    #     await interaction.response.send_message(ans, ephemeral=True)
-
     @app_commands.command(
         name="setup-birthdays",
-        description="⚙️ Настроить систему дней рождений для сервера",
+        description="Настроить систему дней рождений для сервера",
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(
@@ -372,7 +325,7 @@ class BirthdayCog(commands.Cog):
             )
 
     @app_commands.command(
-        name="remove-birthday", description="❌ Удалить свой день рождения из системы"
+        name="remove-birthday", description="Удалить свой день рождения из системы"
     )
     async def remove_birthday(self, interaction: discord.Interaction):
         """Remove your birthday from the system"""

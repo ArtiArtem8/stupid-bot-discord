@@ -17,8 +17,8 @@ class QuestionCog(commands.Cog):
         self.logger.info("Next %sq answers: %s", self.bot.command_prefix, self.answers)
 
     @app_commands.command(
-        name="q",
-        description="Ask a question",
+        name="ask",
+        description="Магический шар, задай любой вопрос",
     )
     async def q(self, interaction: Interaction, *, text: str):
         self.logger.info(

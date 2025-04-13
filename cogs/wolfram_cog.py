@@ -131,8 +131,8 @@ class WolframCog(commands.Cog):
     async def cog_unload(self) -> None:
         self.bot.tree.remove_command(self.ctx_menu.name, type=self.ctx_menu.type)
 
-    @app_commands.command(name="solve", description="🔢 Solve a mathematical problem ")
-    @app_commands.describe(problem="The mathematical problem to solve")
+    @app_commands.command(name="solve", description="Решить математическую проблему")
+    @app_commands.describe(problem="Математическая проблема для решения")
     async def wolfram_solve(self, interaction: discord.Interaction, problem: str):
         """Solve complex mathematical problems using Wolfram Alpha engine"""
         await interaction.response.defer(ephemeral=True)
@@ -142,13 +142,13 @@ class WolframCog(commands.Cog):
             await self.process_wolfram_response(interaction, res, problem)
         except Exception as e:
             self.logger.error(f"Wolfram API error: {str(e)}")
-            await interaction.followup.send("❌ Error", ephemeral=True)
+            await interaction.followup.send("❌ Ошибка")
 
     @app_commands.command(
-        name="plot", description="📈 Generate a plot for a mathematical function"
+        name="plot", description="Построить график математической функции"
     )
     @app_commands.describe(
-        function="The function to plot (e.g., 'sin(x)', 'x^2 + 2x + 1')"
+        function="Функции к отрисовке (например, 'sin(x)', 'x^2 + 2x + 1')"
     )
     async def wolfram_plot(self, interaction: discord.Interaction, function: str):
         """Generate mathematical plots using Wolfram Alpha"""
@@ -161,17 +161,17 @@ class WolframCog(commands.Cog):
             await self.process_plot_response(interaction, res, function)
         except Exception as e:
             self.logger.error(f"Plot generation error: {str(e)}")
-            await interaction.followup.send("❌ Error generating plot")
+            await interaction.followup.send("❌ Ошибка генерации графика")
 
     async def wolfram_context_menu(
         self, interaction: discord.Interaction, message: discord.Message
     ):
         """Context menu handler for solving selected text"""
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
         if len(message.content) > 200:
             await interaction.followup.send(
-                "❌ Query too long (max 200 characters)", ephemeral=True
+                "❌ Слишком длинный запрос (максимум 200 символов)"
             )
             return
 
@@ -180,9 +180,7 @@ class WolframCog(commands.Cog):
             await self.process_wolfram_response(interaction, res, message.content)
         except Exception as e:
             self.logger.error(f"Context menu error: {str(e)}")
-            await interaction.followup.send(
-                "❌ Error processing request", ephemeral=True
-            )
+            await interaction.followup.send("❌ Ошибка при обработке запроса")
 
     async def process_wolfram_response(
         self, interaction: discord.Interaction, res, original_query
@@ -190,18 +188,17 @@ class WolframCog(commands.Cog):
         """Process Wolfram Alpha response and create embed"""
         try:
             if res["@success"] == "false":
-                return await interaction.followup.send(
-                    "❌ No results found", ephemeral=True
-                )
-
+                return await interaction.followup.send("❌ Результатов не найдено")
             answer_data = self.parse_wolfram_response(res)
             embed = self.create_result_embed(original_query, answer_data)
-            await interaction.followup.send(embed=embed)
+            public_message = await interaction.channel.send(embed=embed)
+
+            await interaction.followup.send(
+                f"✅ Результаты для `{original_query}`:\n{public_message.jump_url}",
+            )
         except Exception as e:
             self.logger.error(f"Response processing error: {str(e)}")
-            await interaction.followup.send(
-                "❌ Error processing results", ephemeral=True
-            )
+            await interaction.followup.send("❌ Ошибка обработки результатов")
 
     def parse_wolfram_response(self, res):
         """Parse Wolfram Alpha response with enhanced filtering"""
@@ -239,7 +236,7 @@ class WolframCog(commands.Cog):
         )
 
         embed = discord.Embed(
-            title="Input:",
+            title="Выражение:",
             description=f"`{cleaned_input}`",
             color=0xFFAE00,
         )
@@ -264,12 +261,10 @@ class WolframCog(commands.Cog):
         """Process and send plot response using image utils"""
         try:
             if res["@success"] == "false":
-                return await interaction.followup.send("❌ Could not generate plot")
-
+                return await interaction.followup.send("❌ Не удалось построить график")
             plot_url = self.find_plot_url(res)
             if not plot_url:
-                return await interaction.followup.send("❌ No plot found in response")
-
+                return await interaction.followup.send("❌ В ответе не найден график")
             try:
                 # Save and optimize plot image
                 image_path = save_image(
@@ -289,16 +284,17 @@ class WolframCog(commands.Cog):
                     ),
                 )
                 await interaction.followup.send(
-                    f"✅ [Plot sent]({public_message.jump_url})"
+                    f"✅ [График отправлен]({public_message.jump_url})"
                 )
 
             except Exception as e:
                 self.logger.error(f"Image processing error: {str(e)}", exc_info=True)
-                await interaction.followup.send("❌ Failed to process plot image")
-
+                await interaction.followup.send(
+                    "❌ Не удалось обработать изображение графика"
+                )
         except Exception as e:
             self.logger.error(f"Plot processing error: {str(e)}")
-            await interaction.followup.send("❌ Error processing plot request")
+            await interaction.followup.send("❌ Ошибка обработки запроса графика")
 
     def find_plot_url(self, res):
         """Find plot URL in Wolfram response"""
