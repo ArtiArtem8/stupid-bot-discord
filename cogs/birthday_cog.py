@@ -79,7 +79,6 @@ class BirthdayCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.logger = logging.getLogger("BirthdayCog")
-        self.birthday_data = get_json(BIRTHDAY_FILE) or {}
         self.birthday_timer.start()
 
     def cog_unload(self):
@@ -282,11 +281,6 @@ class BirthdayCog(commands.Cog):
                 "Ошибка записи файла.", ephemeral=True
             )
 
-    # @app_commands.command(
-    #     name="clearbirthday",
-    #     description="Clear your birthday record. Confirm deletion with '+'",
-    # )
-    # async def clear_birthday(self, interaction: discord.Interaction, confirmation: str):
     #     """
     #     Clears your birthday record.
 
@@ -347,29 +341,35 @@ class BirthdayCog(commands.Cog):
         interaction: discord.Interaction,
         channel: discord.TextChannel,
         role: discord.Role = None,
-    ):
+    ) -> None:
         """Configure birthday system for the server"""
-        server_id = str(interaction.guild.id)
-        self.birthday_data.setdefault(
+        server_id: str = str(interaction.guild.id)
+
+        data: dict = get_json(BIRTHDAY_FILE) or {}
+        data.setdefault(
             server_id,
             {
                 "Server_name": interaction.guild.name,
                 "Users": {},
             },
         )
-
-        self.birthday_data[server_id].update(
+        data[server_id].update(
             {
                 "Channel_id": str(channel.id),
                 "Birthday_role": str(role.id) if role else None,
             }
         )
-
-        save_json(BIRTHDAY_FILE, self.birthday_data)
-        response = f"✅ Настройки обновлены:\n- Канал: {channel.mention}"
-        if role:
-            response += f"\n- Роль: {role.mention}"
-        await interaction.response.send_message(response, ephemeral=True)
+        try:
+            save_json(BIRTHDAY_FILE, data)
+            response: str = f"✅ Настройки обновлены:\n- Канал: {channel.mention}"
+            if role:
+                response += f"\n- Роль: {role.mention}"
+            await interaction.response.send_message(response, ephemeral=True)
+        except Exception as e:
+            self.logger.error("Error saving birthday configuration: %s", e)
+            await interaction.response.send_message(
+                "❌ Ошибка сохранения настроек.", ephemeral=True
+            )
 
     @app_commands.command(
         name="remove-birthday", description="❌ Удалить свой день рождения из системы"
