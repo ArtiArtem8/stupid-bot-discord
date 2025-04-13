@@ -7,7 +7,7 @@ load_dotenv()
 
 ENCODING = "utf-8"
 
-TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 BOT_PREFIX = "s!"
 BOT_ICON = "https://icon-library.com/images/icon-for-discord/icon-for-discord-17.jpg"
 
@@ -16,11 +16,11 @@ DATA_DIR = Path(__file__).parent / "data"
 AUTOSAVE_LAST_RUN_FILE_INTERVAL = 1800  # 30 mins
 DISCONNECT_TIMER_THRESHOLD = 3600  # 1 hour
 
+# https://developer.wolframalpha.com/access
+WOLFRAM_APP_ID = os.environ.get("WOLFRAM_APP_ID")
+
 LAST_RUN_FILE = (DATA_DIR / "last_run").with_suffix(".json")
 
-ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(".json")
-
-BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(".json")
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -50,6 +50,12 @@ LOGGING_CONFIG = {
     },
 }
 
+# Question cog data
+ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(".json")
+# Birthday cog data
+BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(".json")
+
+# Question cog
 CAPABILITIES = [
     "Вероятно нет",
     "Не хочу отвечать",
@@ -70,7 +76,7 @@ CAPABILITIES = [
     "Безумие — это точное повторение одного и того же действия. Раз за разом, в надежде на изменение. Это есть безумие.",
 ]
 
-
+# OnMessageCog
 MORNING_QUEST = [
     "дзень добры",
     "Утречко доброе",

@@ -11,9 +11,9 @@ from config import (
     AUTOSAVE_LAST_RUN_FILE_INTERVAL,
     BOT_PREFIX,
     DISCONNECT_TIMER_THRESHOLD,
+    DISCORD_BOT_TOKEN,
     LAST_RUN_FILE,
     LOGGING_CONFIG,
-    TOKEN,
 )
 from utils import format_time_russian, get_json, save_json
 
@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
     async def main():
         async with bot:
-            await bot.start(TOKEN)
+            await bot.start(DISCORD_BOT_TOKEN)
 
     logger.info("Starting bot...")
     try:
