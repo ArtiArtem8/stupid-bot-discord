@@ -54,6 +54,8 @@ LOGGING_CONFIG = {
 ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(".json")
 # Birthday cog data
 BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(".json")
+# Music cog data
+MUSIC_DEFAULT_VOLUME = 10  # 0 - 1000%
 
 # Question cog
 CAPABILITIES = [
