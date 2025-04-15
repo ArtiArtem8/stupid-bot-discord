@@ -118,7 +118,10 @@ class MusicCog(commands.Cog):
             await interaction.followup.send(error_message, ephemeral=True)
             logger.exception("Unexpected error in join command: %s", e)
 
-    @app_commands.command(name="play", description="Воспроизведение музыки с YouTube")
+    @app_commands.command(
+        name="play",
+        description="Воспроизведение музыки с YouTube, SoundCloud и Yandex Music",
+    )
     @app_commands.describe(query="Название трека или URL")
     async def play(
         self,
