@@ -1,6 +1,6 @@
 # StupidBot
 
-StupidBot is a modern Discord bot built with [discord.py](https://github.com/Rapptz/discord.py) v2.x. This project is a rewritten version of an older bot (based on discord.py v1.7) that now utilizes modern patterns including slash commands and cogs. It integrates several features such as birthday management, WolframAlpha integration, message processing, and image utilities.
+StupidBot is a Discord bot built with [discord.py](https://github.com/Rapptz/discord.py) v2.x. This project is a rewritten version of an older bot (based on discord.py v1.7) that now utilizes modern patterns including slash commands and cogs. It integrates several features such as birthday management, WolframAlpha integration, message processing, and image utilities.
 
 ## Features
 
@@ -14,6 +14,13 @@ StupidBot is a modern Discord bot built with [discord.py](https://github.com/Rap
 - **Message Processing:**  
   - Fuzzy matching for morning and evening greetings.
   - Randomized answer generation for questions.
+- **Music Commands:**  
+  - Lavalink integration for high-quality audio playback
+  - Play tracks/playlists from YouTube
+  - Queue management with rich embeds
+  - Volume control (0-200%)
+  - Playback controls (pause/resume/skip/stop)
+  - Voice channel management (join/leave)
 - **Image Utilities:**  
   - Save and optimize images with resizing and quality options.
 - **Robust Uptime Tracking:**  
@@ -30,12 +37,15 @@ StupidBot is a modern Discord bot built with [discord.py](https://github.com/Rap
    cd stupidbot
    ```
 
-2. **Create and Activate a Virtual Environment:**
-
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-   ```
+2. **Set Up Lavalink:**
+   - Requires running Lavalink server (Java 11+ required)
+   - Official repo: [lavalink](https://github.com/lavalink-devs/Lavalink)
+   - Create `.env` file with Lavalink credentials:
+     ```bash
+     LAVALINK_HOST=localhost
+     LAVALINK_PORT=2333
+     LAVALINK_PASSWORD=youshallnotpass
+     ```
 
 3. **Install Dependencies:**
 
@@ -61,6 +71,8 @@ All global configuration is stored in [`config.py`](config.py). You can update s
 - Birthday wishes, questions, and answer lists.
 
 ## Running the Bot
+> [!WARNING]  
+> Lavalink server must be running before running the bot. Do it by yourself
 
 After installing dependencies and setting up your environment variables, run:
 
