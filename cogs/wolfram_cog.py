@@ -157,7 +157,6 @@ class WolframCog(commands.Cog):
         try:
             res = self.client.query(f"plot {function}")
             self.logger.debug(res)
-            print(res)
             await self.process_plot_response(interaction, res, function)
         except Exception as e:
             self.logger.error(f"Plot generation error: {str(e)}")
