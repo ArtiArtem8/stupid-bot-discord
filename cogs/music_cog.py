@@ -354,12 +354,11 @@ class MusicCog(commands.Cog):
             if player.is_playing:
                 embed.add_field(
                     name="Сейчас играет",
-                    value=f"[{player.queue[0]}]({player.queue[0].artworkUrl})",
+                    value=f"[{player.queue[0]}]({player.queue[0].uri})",
                     inline=False,
                 )
-
             queue_text = "\n".join(
-                f"{idx + 1}. [{track.title}]({track.artworkUrl})"
+                f"{idx + 1}. [{track.title}]({track.uri})"
                 for idx, track in enumerate(player.queue[1:10])
             )
             if len(player.queue) > 10:
