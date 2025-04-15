@@ -84,17 +84,6 @@ class StupidBot(commands.Bot):
             last = time.time()
             await asyncio.sleep(1)
 
-    async def _load_extensions(self):
-        print("Loading extensions...")
-        for file in self.ext_dir.rglob("*.py"):
-            if file.stem.startswith("_"):
-                continue
-            try:
-                await self.load_extension(".".join(file.with_suffix("").parts))
-                print(f"Loaded {file}")
-            except commands.ExtensionError as e:
-                print(f"Failed to load {file}: {e}")
-
 
 def load_last_run() -> dict | None:
     """Load the last run info if available."""
