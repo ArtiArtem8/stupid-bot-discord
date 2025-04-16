@@ -8,7 +8,7 @@ from discord import Button, app_commands
 from discord.ext import commands, tasks
 
 # Global config values (assumed to be defined in your config.py)
-from config import BIRTHDAY_FILE, BIRTHDAY_WISHES, BOT_ICON
+from config import BIRTHDAY_CHECK_INTERVAL, BIRTHDAY_FILE, BIRTHDAY_WISHES, BOT_ICON
 
 # Import JSON helpers from your utils (or directly use json_utils functions)
 from utils.json_utils import get_json, save_json
@@ -84,7 +84,7 @@ class BirthdayCog(commands.Cog):
     def cog_unload(self):
         self.birthday_timer.cancel()
 
-    @tasks.loop(seconds=5)
+    @tasks.loop(seconds=BIRTHDAY_CHECK_INTERVAL)
     async def birthday_timer(self):
         """Main timer loop for birthday checks."""
         try:

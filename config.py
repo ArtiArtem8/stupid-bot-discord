@@ -8,7 +8,7 @@ load_dotenv()
 ENCODING = "utf-8"
 
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
-BOT_PREFIX = "s!"
+BOT_PREFIX = "s!"  # Prefix for commands (redundant with slash commands)
 BOT_ICON = "https://icon-library.com/images/icon-for-discord/icon-for-discord-17.jpg"
 
 BACKUP_DIR = Path(__file__).parent / "backups"
@@ -54,6 +54,7 @@ LOGGING_CONFIG = {
 ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(".json")
 # Birthday cog data
 BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(".json")
+BIRTHDAY_CHECK_INTERVAL = 60  # seconds
 # Music cog data
 MUSIC_DEFAULT_VOLUME = 10  # 0 - 1000%
 
@@ -121,6 +122,7 @@ EVENING_ANSWERS = [
     "https://tenor.com/view/animu-anime-good-night-good-night-peeps-gif-14037283",
     "https://tenor.com/view/anime-night-gif-13617044",
 ]
+# Birthday cog
 BIRTHDAY_WISHES = [
     "С днем рождения! Желаю жить всегда в радости, в окружении спокойствия и постоянного счастья, желаю вам всего и понемногу, и пусть самые простые дни иногда наполняются сказочными событиями.",
     "Поздравляю с днём рождения тебя! Желаю прекрасной и удивительной жизни, океан безумной любви, бесконечно счастливого времени, только крепкого здоровья и отличного настроения!",
