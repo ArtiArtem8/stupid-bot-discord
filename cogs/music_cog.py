@@ -129,9 +129,12 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(
         name="play",
-        description="Воспроизведение музыки с YouTube, SoundCloud и Yandex Music",
+        description="Воспроизведение музыки с YouTube, SoundCloud и Yandex Music (ephemeral скрывает сообщение)",
     )
-    @app_commands.describe(query="Название трека или URL")
+    @app_commands.describe(
+        query="Название трека или URL",
+        ephemeral="Скрывает ваше сообщение от всех (если True)",
+    )
     async def play(
         self,
         interaction: Interaction,
@@ -343,7 +346,11 @@ class MusicCog(commands.Cog):
                 "❌ Произошла ошибка при возобновлении воспроизведения", ephemeral=True
             )
 
-    @app_commands.command(name="queue", description="Показать текущую очередь")
+    @app_commands.command(
+        name="queue",
+        description="Показать текущую очередь (ephemeral скрывает сообщение)",
+    )
+    @app_commands.describe(ephemeral="Скрывает ваше сообщение от всех (если True)")
     async def queue(
         self,
         interaction: Interaction,
