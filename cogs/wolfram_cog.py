@@ -295,9 +295,9 @@ class WolframCog(commands.Cog):
             self.logger.error(f"Plot processing error: {str(e)}")
             await interaction.followup.send("❌ Ошибка обработки запроса графика")
 
-    def find_plot_url(self, res):
+    def find_plot_url(self, res: wolframalpha.Result):
         """Find plot URL in Wolfram response"""
-        for pod in res.pod:
+        for pod in res.pods:
             if pod.get("@id", "").lower() in ["plot", "3dplot"]:
                 subpod = pod["subpod"]
                 if isinstance(subpod, dict):
