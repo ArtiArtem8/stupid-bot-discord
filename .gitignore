@@ -176,3 +176,6 @@ cython_debug/
 backups/*
 data/*
 temp/*
+client_secrets.json
+test.py
+token.json
