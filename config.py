@@ -54,8 +54,9 @@ LOGGING_CONFIG = {
 ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(".json")
 # Birthday cog data
 BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(".json")
-BIRTHDAY_CHECK_INTERVAL = 60  # seconds
+BIRTHDAY_CHECK_INTERVAL = 300  # seconds
 # Music cog data
+MUSIC_VOLUME_FILE = (DATA_DIR / "music_volumes").with_suffix(".json")
 MUSIC_DEFAULT_VOLUME = 10  # 0 - 1000%
 
 # Question cog

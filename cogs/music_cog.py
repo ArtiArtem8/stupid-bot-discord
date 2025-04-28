@@ -9,7 +9,8 @@ import lavaplay.player
 from discord import Interaction, app_commands
 from discord.ext import commands
 
-from config import MUSIC_DEFAULT_VOLUME
+from config import MUSIC_DEFAULT_VOLUME, MUSIC_VOLUME_FILE
+from utils import get_json, save_json
 
 # Load environment variables
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
@@ -22,7 +23,6 @@ logger = logging.getLogger("MusicCog")
 class MusicCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self._current_volume = MUSIC_DEFAULT_VOLUME
         self.lavalink = lavaplay.Lavalink()
         self.node = None
 
@@ -91,14 +91,23 @@ class MusicCog(commands.Cog):
         while not self.node.is_connect:
             await asyncio.sleep(0.1)
 
+    async def _get_volume(self, guild_id: int) -> int:
+        """Get volume for specific guild"""
+        volume_data = get_json(MUSIC_VOLUME_FILE) or {}
+        return volume_data.get(str(guild_id), MUSIC_DEFAULT_VOLUME)
+
+    async def _set_volume(self, guild_id: int, volume: int):
+        """Save volume for specific guild"""
+        volume_data = get_json(MUSIC_VOLUME_FILE) or {}
+        volume_data[str(guild_id)] = volume
+        save_json(MUSIC_VOLUME_FILE, volume_data)
+
     @app_commands.command(name="join", description="Присоединиться к голосовому каналу")
-    async def join(
-        self, interaction: Interaction, *, channel: discord.VoiceChannel = None
-    ):
+    async def join(self, interaction: Interaction):
         """Join your current voice channel"""
         await interaction.response.defer(ephemeral=True)
         try:
-            if not await self._ensure_voice(interaction, None):
+            if not await self._ensure_voice(interaction):
                 return
 
             success_message = (
@@ -128,14 +137,12 @@ class MusicCog(commands.Cog):
         interaction: Interaction,
         *,
         query: str,
-        channel: discord.VoiceChannel = None,
         ephemeral: bool = False,
     ):
         """Play a song from various supported platforms"""
-        # TODO: проверит доступ к каналу по пользователю
         try:
             await interaction.response.defer(ephemeral=ephemeral)
-            if not await self._ensure_voice(interaction, None):
+            if not await self._ensure_voice(interaction):
                 return
 
             if not await self._check_and_reconnect_node():
@@ -144,7 +151,8 @@ class MusicCog(commands.Cog):
                 )
 
             player = await self._get_player(interaction.guild_id)
-            await player.volume(self._current_volume)
+            volume = await self._get_volume(interaction.guild_id)
+            await player.volume(volume)
             tracks = await self.node.auto_search_tracks(query)
 
             if isinstance(tracks, lavaplay.PlayList):
@@ -391,7 +399,7 @@ class MusicCog(commands.Cog):
             player = self.node.get_player(interaction.guild_id)
             if player:
                 await player.volume(volume)
-            self._current_volume = volume
+            await self._set_volume(interaction.guild_id, volume)
             await interaction.response.send_message(
                 f"🔊 Громкость установлена на {volume}%", ephemeral=True, silent=True
             )
