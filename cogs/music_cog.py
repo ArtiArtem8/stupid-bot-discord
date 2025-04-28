@@ -98,7 +98,7 @@ class MusicCog(commands.Cog):
         """Join your current voice channel"""
         await interaction.response.defer(ephemeral=True)
         try:
-            if not await self._ensure_voice(interaction, channel):
+            if not await self._ensure_voice(interaction, None):
                 return
 
             success_message = (
@@ -132,9 +132,10 @@ class MusicCog(commands.Cog):
         ephemeral: bool = False,
     ):
         """Play a song from various supported platforms"""
+        # TODO: проверит доступ к каналу по пользователю
         try:
             await interaction.response.defer(ephemeral=ephemeral)
-            if not await self._ensure_voice(interaction, channel):
+            if not await self._ensure_voice(interaction, None):
                 return
 
             if not await self._check_and_reconnect_node():
@@ -157,9 +158,7 @@ class MusicCog(commands.Cog):
                 await interaction.followup.send("❌ Результаты не найдены")
         except Exception as e:
             logger.exception("Unexpected error in play command: %s", e)
-            await interaction.followup.send(
-                "❌ Произошла ошибка при выполнении команды play"
-            )
+            await interaction.followup.send("❌ Ёбаный ютуб опять сломался.")
 
     async def _handle_track(
         self,
@@ -425,6 +424,42 @@ class MusicCog(commands.Cog):
             logger.exception("Unexpected error in leave command: %s", e)
             await interaction.response.send_message(
                 "❌ Произошла ошибка при выходе из голосового канала", ephemeral=True
+            )
+
+    @app_commands.command(
+        name="rotate-queue",
+        description="Пропускает текущий трек и добавляет его в конец.",
+    )
+    async def rotate(self, interaction: Interaction):
+        try:
+            logger.debug("Rotate command invoked")
+            player = self.node.get_player(interaction.guild_id)
+            if not player:
+                logger.debug("Player not found in skip command")
+                return await interaction.response.send_message(
+                    "❌ Не удалось пропустить трек", ephemeral=True
+                )
+            current_track = player.queue[0] if player.queue else None
+            if current_track is None:
+                return await interaction.response.send_message(
+                    "❌ Очередь пуста", ephemeral=True
+                )
+            await player.play(current_track, requester=current_track.requester)
+            await player.skip()
+            await interaction.response.send_message(
+                "⏭️ Текущий трек пропущен и перемещён в конец",
+                delete_after=15,
+                silent=True,
+            )
+            logger.info(
+                "Track rotated %s: %s",
+                current_track.uri,
+                " | ".join(list(t.uri for t in player.queue)),
+            )
+        except Exception as e:
+            logger.exception("Unexpected error in skip command: %s", e)
+            await interaction.response.send_message(
+                "❌ Произошла ошибка при ротации трека", ephemeral=True
             )
 
 
