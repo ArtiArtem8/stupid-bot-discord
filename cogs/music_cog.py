@@ -26,6 +26,15 @@ class MusicCog(commands.Cog):
         self.lavalink = lavaplay.Lavalink()
         self.node = None
 
+    # makes all comands within the cog to guild only
+    async def interaction_check(self, interaction: Interaction):
+        check = super().interaction_check(interaction) and interaction.guild is not None
+        if not check:
+            await interaction.response.send_message(
+                "Вы должны быть на сервере.", ephemeral=True, silent=True
+            )
+        return check
+
     async def cog_unload(self) -> None:
         await self.node.close()
         for i in self.lavalink.nodes:

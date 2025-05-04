@@ -225,6 +225,7 @@ class BirthdayCog(commands.Cog):
     @app_commands.describe(
         date_input="Дата рождения (например: 15-05-2000 или 2000-05-15)"
     )
+    @app_commands.guild_only()
     async def set_birthday(self, interaction: discord.Interaction, date_input: str):
         """
         Set your birthday.
@@ -286,6 +287,7 @@ class BirthdayCog(commands.Cog):
         description="Настроить систему дней рождений для сервера",
     )
     @app_commands.default_permissions(administrator=True)
+    @app_commands.guild_only()
     @app_commands.describe(
         channel="Канал для поздравлений", role="Роль для именинников (опционально)"
     )
@@ -327,6 +329,7 @@ class BirthdayCog(commands.Cog):
     @app_commands.command(
         name="remove-birthday", description="Удалить свой день рождения из системы"
     )
+    @app_commands.guild_only()
     async def remove_birthday(self, interaction: discord.Interaction):
         """Remove your birthday from the system"""
         server_id = str(interaction.guild.id)
