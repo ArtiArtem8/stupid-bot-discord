@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging.config
 import os
@@ -32,6 +33,7 @@ class StupidBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix=BOT_PREFIX, intents=intents)
         self.start_time = time.time()
+        self.enable_watch = False
         self._load_previous_uptime()
 
     def _load_previous_uptime(self):
@@ -65,7 +67,9 @@ class StupidBot(commands.Bot):
                     )
         await self.tree.sync()  # for slash apps
         logger.info("Application commands synced")
-        self._watcher = self.loop.create_task(self._cog_watcher())
+        if self.enable_watch:
+            self._watcher = self.loop.create_task(self._cog_watcher())
+            logger.info("Cog watcher enabled (argument provided).")
 
     async def _cog_watcher(self):
         print("Watching for changes...")
@@ -146,6 +150,16 @@ async def autosave():
 
 # Run the bot
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the Discord bot.")
+    parser.add_argument(
+        "-w",
+        "--watch-cogs",
+        action="store_true",
+        help="Enables watcher that will reload cogs on code changes.",
+    )
+    args = parser.parse_args()
+
+    bot.enable_watch = args.watch_cogs
 
     async def main():
         async with bot:
