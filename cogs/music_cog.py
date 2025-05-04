@@ -10,7 +10,7 @@ from discord import Interaction, app_commands
 from discord.ext import commands
 
 from config import MUSIC_DEFAULT_VOLUME, MUSIC_VOLUME_FILE
-from utils import get_json, save_json
+from utils import BlockManager, get_json, save_json
 
 # Load environment variables
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
@@ -29,6 +29,15 @@ class MusicCog(commands.Cog):
     # makes all comands within the cog to guild only
     async def interaction_check(self, interaction: Interaction):
         check = super().interaction_check(interaction) and interaction.guild is not None
+        if interaction.guild and BlockManager.is_user_blocked(
+            interaction.guild.id, interaction.user.id
+        ):
+            await interaction.response.send_message(
+                "⛔ Доступ к командам запрещён.", ephemeral=True
+            )
+            logger.info(f"User {interaction.user} is blocked.")
+            return False
+
         if not check:
             await interaction.response.send_message(
                 "Вы должны быть на сервере.", ephemeral=True, silent=True
@@ -112,6 +121,7 @@ class MusicCog(commands.Cog):
         save_json(MUSIC_VOLUME_FILE, volume_data)
 
     @app_commands.command(name="join", description="Присоединиться к голосовому каналу")
+    @app_commands.guild_only()
     async def join(self, interaction: Interaction):
         """Join your current voice channel"""
         await interaction.response.defer(ephemeral=True)
@@ -144,6 +154,7 @@ class MusicCog(commands.Cog):
         query="Название трека или URL",
         ephemeral="Скрывает ваше сообщение от всех (если True)",
     )
+    @app_commands.guild_only()
     async def play(
         self,
         interaction: Interaction,
@@ -263,6 +274,7 @@ class MusicCog(commands.Cog):
     @app_commands.command(
         name="stop", description="Остановить воспроизведение и очистить очередь"
     )
+    @app_commands.guild_only()
     async def stop(self, interaction: Interaction):
         """Stop the player and clear queue"""
         try:
@@ -288,6 +300,7 @@ class MusicCog(commands.Cog):
             )
 
     @app_commands.command(name="skip", description="Пропустить текущий трек")
+    @app_commands.guild_only()
     async def skip(self, interaction: Interaction):
         """Skip to the next track in queue"""
         try:
@@ -312,6 +325,7 @@ class MusicCog(commands.Cog):
     @app_commands.command(
         name="pause", description="Поставить воспроизведение на паузу"
     )
+    @app_commands.guild_only()
     async def pause(self, interaction: Interaction):
         """Pause the current track"""
         try:
@@ -334,6 +348,7 @@ class MusicCog(commands.Cog):
             )
 
     @app_commands.command(name="resume", description="Возобновить воспроизведение")
+    @app_commands.guild_only()
     async def resume(self, interaction: Interaction):
         """Resume paused playback"""
         try:
@@ -360,6 +375,7 @@ class MusicCog(commands.Cog):
         description="Показать текущую очередь (ephemeral скрывает сообщение)",
     )
     @app_commands.describe(ephemeral="Скрывает ваше сообщение от всех (если True)")
+    @app_commands.guild_only()
     async def queue(
         self,
         interaction: Interaction,
@@ -406,6 +422,7 @@ class MusicCog(commands.Cog):
         name="volume", description="Установить громкость воспроизведения (0-200)"
     )
     @app_commands.describe(volume="Уровень громкости (0-200)")
+    @app_commands.guild_only()
     async def volume(
         self, interaction: Interaction, volume: app_commands.Range[int, 0, 200]
     ):
@@ -427,6 +444,7 @@ class MusicCog(commands.Cog):
             )
 
     @app_commands.command(name="leave", description="Покинуть голосовой канал")
+    @app_commands.guild_only()
     async def leave(self, interaction: Interaction):
         """Disconnect from voice channel"""
         try:
@@ -454,6 +472,7 @@ class MusicCog(commands.Cog):
         name="rotate-queue",
         description="Пропускает текущий трек и добавляет его в конец.",
     )
+    @app_commands.guild_only()
     async def rotate(self, interaction: Interaction):
         try:
             logger.debug("Rotate command invoked")

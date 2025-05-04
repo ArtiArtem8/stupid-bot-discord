@@ -6,6 +6,7 @@ from discord.ext import commands
 from fuzzywuzzy.process import extract
 
 from config import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
+from utils import BlockManager
 
 
 class OnMessageCog(commands.Cog):
@@ -19,6 +20,10 @@ class OnMessageCog(commands.Cog):
         if message.author.bot:
             return
         if message.content.startswith(self.bot.command_prefix):
+            return
+        if message.guild and BlockManager.is_user_blocked(
+            message.guild.id, message.author.id
+        ):
             return
         try:
             await self.quest_process_message(message)

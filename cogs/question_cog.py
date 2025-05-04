@@ -5,7 +5,7 @@ from discord import Interaction, app_commands
 from discord.ext import commands
 
 from config import ANSWER_FILE, CAPABILITIES
-from utils import get_json, random_answer, save_json, str_local
+from utils import BlockManager, get_json, random_answer, save_json, str_local
 
 
 class QuestionCog(commands.Cog):
@@ -15,6 +15,19 @@ class QuestionCog(commands.Cog):
         self.logger = logging.getLogger("QuestionCog")
         self.answers = choices(CAPABILITIES, k=8)
         self.logger.info("Next %sq answers: %s", self.bot.command_prefix, self.answers)
+
+    async def interaction_check(self, interaction: Interaction):
+        check = super().interaction_check(interaction)
+        if interaction.guild and BlockManager.is_user_blocked(
+            interaction.guild.id, interaction.user.id
+        ):
+            await interaction.response.send_message(
+                "⛔ Доступ к командам запрещён.", ephemeral=True
+            )
+            self.logger.info(f"User {interaction.user} is blocked.")
+            return False
+
+        return check
 
     @app_commands.command(
         name="ask",

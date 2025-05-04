@@ -4,13 +4,14 @@ from copy import deepcopy
 from datetime import date, datetime
 
 import discord
-from discord import Button, app_commands
+from discord import Button, Interaction, app_commands
 from discord.ext import commands, tasks
 
 # Global config values (assumed to be defined in your config.py)
 from config import BIRTHDAY_CHECK_INTERVAL, BIRTHDAY_FILE, BIRTHDAY_WISHES, BOT_ICON
 
 # Import JSON helpers from your utils (or directly use json_utils functions)
+from utils.block_manager import BlockManager
 from utils.json_utils import get_json, save_json
 
 DATE_FORMAT = "%d-%m-%Y"  # canonical format: DD-MM-YYYY
@@ -37,7 +38,7 @@ class ConfirmDeleteView(discord.ui.View):
         self.server_id: str = server_id
 
     @discord.ui.button(label="Да", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, button: Button) -> None:
+    async def confirm(self, interaction: Interaction, button: Button) -> None:
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message(
                 "Вы не можете выполнить это действие.", ephemeral=True
@@ -66,7 +67,7 @@ class ConfirmDeleteView(discord.ui.View):
             )
 
     @discord.ui.button(label="Нет", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: discord.Interaction, button: Button) -> None:
+    async def cancel(self, interaction: Interaction, button: Button) -> None:
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message(
                 "Вы не можете выполнить это действие.", ephemeral=True
@@ -83,6 +84,23 @@ class BirthdayCog(commands.Cog):
 
     def cog_unload(self):
         self.birthday_timer.cancel()
+
+    async def interaction_check(self, interaction: Interaction):
+        check = super().interaction_check(interaction) and interaction.guild is not None
+        if interaction.guild and BlockManager.is_user_blocked(
+            interaction.guild.id, interaction.user.id
+        ):
+            await interaction.response.send_message(
+                "⛔ Доступ к командам запрещён.", ephemeral=True
+            )
+            self.logger.info(f"User {interaction.user} is blocked.")
+            return False
+
+        if not check:
+            await interaction.response.send_message(
+                "Вы должны быть на сервере.", ephemeral=True, silent=True
+            )
+        return check
 
     @tasks.loop(seconds=BIRTHDAY_CHECK_INTERVAL)
     async def birthday_timer(self):
@@ -226,7 +244,7 @@ class BirthdayCog(commands.Cog):
         date_input="Дата рождения (например: 15-05-2000 или 2000-05-15)"
     )
     @app_commands.guild_only()
-    async def set_birthday(self, interaction: discord.Interaction, date_input: str):
+    async def set_birthday(self, interaction: Interaction, date_input: str):
         """
         Set your birthday.
 
@@ -293,7 +311,7 @@ class BirthdayCog(commands.Cog):
     )
     async def setup_birthdays(
         self,
-        interaction: discord.Interaction,
+        interaction: Interaction,
         channel: discord.TextChannel,
         role: discord.Role = None,
     ) -> None:
@@ -330,7 +348,7 @@ class BirthdayCog(commands.Cog):
         name="remove-birthday", description="Удалить свой день рождения из системы"
     )
     @app_commands.guild_only()
-    async def remove_birthday(self, interaction: discord.Interaction):
+    async def remove_birthday(self, interaction: Interaction):
         """Remove your birthday from the system"""
         server_id = str(interaction.guild.id)
         user_id = str(interaction.user.id)

@@ -4,11 +4,11 @@ from pathlib import Path
 
 import discord
 import wolframalpha
-from discord import File, app_commands
+from discord import File, app_commands, Interaction
 from discord.ext import commands
 
 from config import BOT_ICON, WOLFRAM_APP_ID
-from utils.image_utils import optimize_image, save_image
+from utils import BlockManager, optimize_image, save_image
 
 
 class WolframCog(commands.Cog):
@@ -118,6 +118,19 @@ class WolframCog(commands.Cog):
         )
         self.bot.tree.add_command(self.ctx_menu)
 
+    async def interaction_check(self, interaction: Interaction):
+        check = super().interaction_check(interaction)
+        if interaction.guild and BlockManager.is_user_blocked(
+            interaction.guild.id, interaction.user.id
+        ):
+            await interaction.response.send_message(
+                "⛔ Доступ к командам запрещён.", ephemeral=True
+            )
+            self.logger.info(f"User {interaction.user} is blocked.")
+            return False
+
+        return check
+
     def _should_skip_pod(self, pod_title: str) -> bool:
         """Determine if a pod should be skipped based on title"""
         if pod_title in self.BLACK_LIST:
@@ -133,7 +146,7 @@ class WolframCog(commands.Cog):
 
     @app_commands.command(name="solve", description="Решить математическую проблему")
     @app_commands.describe(problem="Математическая проблема для решения")
-    async def wolfram_solve(self, interaction: discord.Interaction, problem: str):
+    async def wolfram_solve(self, interaction: Interaction, problem: str):
         """Solve complex mathematical problems using Wolfram Alpha engine"""
         await interaction.response.defer(ephemeral=True)
 
@@ -150,7 +163,7 @@ class WolframCog(commands.Cog):
     @app_commands.describe(
         function="Функции к отрисовке (например, 'sin(x)', 'x^2 + 2x + 1')"
     )
-    async def wolfram_plot(self, interaction: discord.Interaction, function: str):
+    async def wolfram_plot(self, interaction: Interaction, function: str):
         """Generate mathematical plots using Wolfram Alpha"""
         await interaction.response.defer(ephemeral=True)
 
@@ -163,7 +176,7 @@ class WolframCog(commands.Cog):
             await interaction.followup.send("❌ Ошибка генерации графика")
 
     async def wolfram_context_menu(
-        self, interaction: discord.Interaction, message: discord.Message
+        self, interaction: Interaction, message: discord.Message
     ):
         """Context menu handler for solving selected text"""
         await interaction.response.defer(ephemeral=True)
@@ -182,7 +195,7 @@ class WolframCog(commands.Cog):
             await interaction.followup.send("❌ Ошибка при обработке запроса")
 
     async def process_wolfram_response(
-        self, interaction: discord.Interaction, res, original_query
+        self, interaction: Interaction, res, original_query
     ):
         """Process Wolfram Alpha response and create embed"""
         try:
@@ -254,9 +267,7 @@ class WolframCog(commands.Cog):
             )
         return embed
 
-    async def process_plot_response(
-        self, interaction: discord.Interaction, res, function
-    ):
+    async def process_plot_response(self, interaction: Interaction, res, function):
         """Process and send plot response using image utils"""
         try:
             if res["@success"] == "false":
