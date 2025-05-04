@@ -4,7 +4,7 @@ from pathlib import Path
 
 import discord
 import wolframalpha
-from discord import File, app_commands, Interaction
+from discord import File, Interaction, app_commands
 from discord.ext import commands
 
 from config import BOT_ICON, WOLFRAM_APP_ID
