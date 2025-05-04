@@ -1,3 +1,9 @@
+from .block_manager import (
+    BlockedUser,
+    BlockHistoryEntry,
+    BlockManager,
+    NameHistoryEntry,
+)
 from .image_utils import convert_image, optimize_image, save_image
 from .json_utils import clear_json, get_json, save_json
 from .russian_time_utils import format_time_russian
@@ -15,4 +21,8 @@ __all__ = [
     "random_answer",
     "reverse_date",
     "str_local",
+    "BlockedUser",
+    "BlockHistoryEntry",
+    "BlockManager",
+    "NameHistoryEntry",
 ]

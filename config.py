@@ -58,6 +58,8 @@ BIRTHDAY_CHECK_INTERVAL = 300  # seconds
 # Music cog data
 MUSIC_VOLUME_FILE = (DATA_DIR / "music_volumes").with_suffix(".json")
 MUSIC_DEFAULT_VOLUME = 10  # 0 - 1000%
+# Admin cog data
+BLOCKED_USERS_FILE = (DATA_DIR / "blocked_users").with_suffix(".json")
 
 # Question cog
 CAPABILITIES = [
