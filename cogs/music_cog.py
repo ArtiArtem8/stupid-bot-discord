@@ -4,9 +4,16 @@ import logging
 import os
 
 import discord
-import lavaplay
-import lavaplay.player
-from discord import Interaction, app_commands
+import lavaplay  # type: ignore
+import lavaplay.player  # type: ignore
+from discord import (
+    Interaction,
+    Member,
+    StageChannel,
+    VoiceChannel,
+    VoiceState,
+    app_commands,
+)
 from discord.ext import commands
 
 from config import MUSIC_DEFAULT_VOLUME, MUSIC_VOLUME_FILE
@@ -24,10 +31,10 @@ class MusicCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.lavalink = lavaplay.Lavalink()
-        self.node = None
+        self.node: lavaplay.Node | None = None
 
     # makes all comands within the cog to guild only
-    async def interaction_check(self, interaction: Interaction):
+    async def interaction_check(self, interaction: Interaction):  # type: ignore
         check = super().interaction_check(interaction) and interaction.guild is not None
         if interaction.guild and BlockManager.is_user_blocked(
             interaction.guild.id, interaction.user.id
@@ -45,10 +52,10 @@ class MusicCog(commands.Cog):
         return check
 
     async def cog_unload(self) -> None:
-        await self.node.close()
-        for i in self.lavalink.nodes:
-            await i.close()
-        self.lavalink.nodes = list()
+        if self.node is not None:
+            await self.node.close()
+        for node in self.lavalink.nodes:
+            self.lavalink.destroy_node(node)
 
     async def cog_load(self):
         if self.bot.is_ready():
@@ -59,21 +66,23 @@ class MusicCog(commands.Cog):
         await self.initialize_node()
 
     async def initialize_node(self):
-        """Safely initialize Lavalink node"""
+        """Safely initialize Lavalink node."""
         if self.node and self.node.is_connect:
             return
         await self._connect_node()
 
     async def _get_player(self, guild_id: int) -> lavaplay.player.Player:
-        """Get existing player or create new one with proper voice data"""
+        """Get existing player or create new one with proper voice data."""
         await self.initialize_node()  # Ensure node is connected
+        if self.node is None:
+            self.node = self.lavalink.default_node
         player = self.node.get_player(guild_id)
         if not player:
             player = self.node.create_player(guild_id)
         return player
 
     async def _connect_node(self):
-        """Full node connection sequence"""
+        """Full node connection sequence."""
         try:
             if self.lavalink.nodes:
                 self.node = self.lavalink.default_node
@@ -82,7 +91,7 @@ class MusicCog(commands.Cog):
                     host=LAVALINK_HOST,
                     port=LAVALINK_PORT,
                     password=LAVALINK_PASSWORD,
-                    user_id=self.bot.user.id,
+                    user_id=self.bot.user.id if self.bot.user else 0,
                 )
             self.node.set_event_loop(self.bot.loop)
             self.node.connect()
@@ -93,8 +102,8 @@ class MusicCog(commands.Cog):
             raise
 
     async def _check_and_reconnect_node(self) -> bool:
-        """Verify Lavalink node connection"""
-        if not self.node.is_connect:
+        """Verify Lavalink node connection."""
+        if not self.node or not self.node.is_connect:
             logger.warning("Lavalink node not connected")
             try:
                 await self._connect_node()
@@ -105,17 +114,17 @@ class MusicCog(commands.Cog):
         return True
 
     async def _wait_for_connection(self):
-        """Wait until node is fully connected"""
-        while not self.node.is_connect:
+        """Wait until node is fully connected."""
+        while not self.node or not self.node.is_connect:
             await asyncio.sleep(0.1)
 
     async def _get_volume(self, guild_id: int) -> int:
-        """Get volume for specific guild"""
+        """Get volume for specific guild."""
         volume_data = get_json(MUSIC_VOLUME_FILE) or {}
         return volume_data.get(str(guild_id), MUSIC_DEFAULT_VOLUME)
 
     async def _set_volume(self, guild_id: int, volume: int):
-        """Save volume for specific guild"""
+        """Save volume for specific guild."""
         volume_data = get_json(MUSIC_VOLUME_FILE) or {}
         volume_data[str(guild_id)] = volume
         save_json(MUSIC_VOLUME_FILE, volume_data)
@@ -123,15 +132,29 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="join", description="Присоединиться к голосовому каналу")
     @app_commands.guild_only()
     async def join(self, interaction: Interaction):
-        """Join your current voice channel"""
+        """Join your current voice channel."""
         await interaction.response.defer(ephemeral=True)
         try:
             if not await self._ensure_voice(interaction):
                 return
-
-            success_message = (
-                f"✅ Присоединился к {interaction.user.voice.channel.mention}"
-            )
+            member = interaction.user
+            if not isinstance(member, Member):
+                raise TypeError(
+                    "Expected discord.Member but received %s" % type(member).__name__
+                )
+            voice_state = member.voice
+            if not isinstance(voice_state, VoiceState):
+                raise TypeError(
+                    "Expected discord.VoiceState but received %s"
+                    % type(voice_state).__name__
+                )
+            voice_channel = voice_state.channel
+            if not isinstance(voice_channel, (VoiceChannel, StageChannel)):
+                raise TypeError(
+                    "Expected discord.VoiceChannel but received %s"
+                    % type(voice_state).__name__
+                )
+            success_message = f"✅ Присоединился к {voice_channel.mention}"
             logger.info(success_message)
             await interaction.followup.send(
                 success_message, ephemeral=True, silent=True
@@ -148,7 +171,8 @@ class MusicCog(commands.Cog):
 
     @app_commands.command(
         name="play",
-        description="Воспроизведение музыки с YouTube, SoundCloud и Yandex Music (ephemeral скрывает сообщение)",
+        description="Воспроизведение музыки с YT, SoundCloud "
+        ", YaMusic и VK (ephemeral скрывает сообщение)",
     )
     @app_commands.describe(
         query="Название трека или URL",
@@ -162,7 +186,7 @@ class MusicCog(commands.Cog):
         query: str,
         ephemeral: bool = False,
     ):
-        """Play a song from various supported platforms"""
+        """Play a song from various supported platforms."""
         try:
             await interaction.response.defer(ephemeral=ephemeral)
             if not await self._ensure_voice(interaction):
@@ -172,10 +196,14 @@ class MusicCog(commands.Cog):
                 await interaction.followup.send(
                     "❌ Audio service unavailable, reconnecting..."
                 )
-
-            player = await self._get_player(interaction.guild_id)
-            volume = await self._get_volume(interaction.guild_id)
+            guild_id = interaction.guild_id
+            if guild_id is None:
+                raise TypeError("Guild ID is None")
+            player = await self._get_player(guild_id)
+            volume = await self._get_volume(guild_id)
             await player.volume(volume)
+            if self.node is None:
+                self.node = self.lavalink.default_node
             tracks = await self.node.auto_search_tracks(query)
 
             if isinstance(tracks, lavaplay.PlayList):
@@ -216,7 +244,7 @@ class MusicCog(commands.Cog):
             await interaction.followup.send(embed=embed, silent=True)
         except lavaplay.TrackLoadFailed as e:
             logger.error("Track load error: %s", e)
-            await interaction.followup.send("❌ Ошибка загрузки трека: %s", e)
+            await interaction.followup.send(f"❌ Ошибка загрузки трека: {e}")
         except Exception as e:
             logger.exception("Unexpected error in _handle_track: %s", e)
             await interaction.followup.send(
@@ -232,7 +260,8 @@ class MusicCog(commands.Cog):
         try:
             await player.play_playlist(playlist)
             await interaction.followup.send(
-                f"🎶 Плейлист **{playlist.name}** с {len(playlist.tracks)} треками добавлен в очередь",
+                f"🎶 Плейлист **{playlist.name}** с {len(playlist.tracks)} "
+                "треками добавлен в очередь",
                 silent=True,
             )
         except Exception as e:
@@ -242,25 +271,38 @@ class MusicCog(commands.Cog):
             )
 
     async def _ensure_voice(
-        self, interaction: Interaction, channel: discord.VoiceChannel = None
+        self, interaction: Interaction, channel: discord.VoiceChannel | None = None
     ) -> bool:
-        """Ensure bot is connected to voice channel"""
-        if channel is None and not interaction.user.voice:
+        """Ensure bot is connected to voice channel."""
+        member = interaction.user
+        if not isinstance(member, Member):
+            return False
+        if channel is None and not member.voice:
             await interaction.followup.send(
                 "❌ Вы должны быть в голосовом канале!", ephemeral=True
             )
             return False
-        channel = channel or interaction.user.voice.channel
+        if channel:
+            voice_channel = channel
+        else:
+            voice_state = member.voice
+            if not isinstance(voice_state, VoiceState):
+                return False
+            voice_channel = voice_state.channel
+            if not isinstance(voice_channel, (VoiceChannel, StageChannel)):
+                return False
 
-        if not interaction.guild.voice_client:
+        if not interaction.guild or not interaction.guild.voice_client:
             try:
-                if not any(channel.members):
+                if not any(voice_channel.members):
                     await interaction.followup.send(
                         "❌ Голосовой канал пуст!", ephemeral=True
                     )
                     return False
-                await channel.connect(cls=LavalinkVoiceClient, self_deaf=True)
-                self.node.create_player(interaction.guild_id)
+                await voice_channel.connect(cls=LavalinkVoiceClient, self_deaf=True)
+                if self.node is None:
+                    self.node = self.lavalink.default_node
+                self.node.create_player(interaction.guild_id)  # type: ignore
             except Exception as e:
                 logger.exception(
                     "Error connecting bot to voice channel in _ensure_voice: %s", e
@@ -276,9 +318,17 @@ class MusicCog(commands.Cog):
     )
     @app_commands.guild_only()
     async def stop(self, interaction: Interaction):
-        """Stop the player and clear queue"""
+        """Stop the player and clear queue."""
         try:
             logger.debug("Stop command invoked")
+            if self.node is None:
+                self.node = self.lavalink.default_node
+            if not interaction.guild_id:
+                logger.exception("Guild ID is None in stop command")
+                return await interaction.response.send_message(
+                    "❌ Не удалось остановить воспроизведение, Guild ID is None",
+                    ephemeral=True,
+                )
             player = self.node.get_player(interaction.guild_id)
             if not player:
                 logger.debug("Player not found in stop command")
@@ -302,9 +352,17 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="skip", description="Пропустить текущий трек")
     @app_commands.guild_only()
     async def skip(self, interaction: Interaction):
-        """Skip to the next track in queue"""
+        """Skip to the next track in queue."""
         try:
             logger.debug("Skip command invoked")
+            if self.node is None:
+                self.node = self.lavalink.default_node
+            if not interaction.guild_id:
+                logger.exception("Guild ID is None in skip command")
+                return await interaction.response.send_message(
+                    "❌ Не удалось пропустить трек, Guild ID is None",
+                    ephemeral=True,
+                )
             player = self.node.get_player(interaction.guild_id)
             if not player:
                 logger.debug("Player not found in skip command")
@@ -327,9 +385,17 @@ class MusicCog(commands.Cog):
     )
     @app_commands.guild_only()
     async def pause(self, interaction: Interaction):
-        """Pause the current track"""
+        """Pause the current track."""
         try:
             logger.debug("Pause command invoked")
+            if self.node is None:
+                self.node = self.lavalink.default_node
+            if not interaction.guild_id:
+                logger.exception("Guild ID is None in pause command")
+                return await interaction.response.send_message(
+                    "❌ Не удалось приостановить трек, Guild ID is None",
+                    ephemeral=True,
+                )
             player = self.node.get_player(interaction.guild_id)
             if not player:
                 logger.debug("Player not found in pause command")
@@ -350,9 +416,17 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="resume", description="Возобновить воспроизведение")
     @app_commands.guild_only()
     async def resume(self, interaction: Interaction):
-        """Resume paused playback"""
+        """Resume paused playback."""
         try:
             logger.debug("Resume command invoked")
+            if self.node is None:
+                self.node = self.lavalink.default_node
+            if not interaction.guild_id:
+                logger.exception("Guild ID is None in resume command")
+                return await interaction.response.send_message(
+                    "❌ Не удалось возобновить трек, Guild ID is None",
+                    ephemeral=True,
+                )
             player = self.node.get_player(interaction.guild_id)
             if not player:
                 logger.debug("Player not found in resume command")
@@ -382,10 +456,18 @@ class MusicCog(commands.Cog):
         *,
         ephemeral: bool = False,
     ):
-        """Display the current playback queue"""
+        """Display the current playback queue."""
         try:
             logger.debug("Queue command invoked")
             await self._check_and_reconnect_node()
+            if self.node is None:
+                self.node = self.lavalink.default_node
+            if not interaction.guild_id:
+                logger.exception("Guild ID is None in queue command")
+                return await interaction.response.send_message(
+                    "❌ Не удалось получить очередь, Guild ID is None",
+                    ephemeral=True,
+                )
             player = await self._get_player(interaction.guild_id)
             if not player or not player.queue:
                 logger.debug("Queue is empty")
@@ -426,9 +508,17 @@ class MusicCog(commands.Cog):
     async def volume(
         self, interaction: Interaction, volume: app_commands.Range[int, 0, 200]
     ):
-        """Adjust playback volume"""
+        """Adjust playback volume."""
         try:
             logger.debug("Volume command invoked with volume: %d", volume)
+            if self.node is None:
+                self.node = self.lavalink.default_node
+            if not interaction.guild_id:
+                logger.exception("Guild ID is None in volume command")
+                return await interaction.response.send_message(
+                    "❌ Не удалось выстовить громкость, Guild ID is None",
+                    ephemeral=True,
+                )
             player = self.node.get_player(interaction.guild_id)
             if player:
                 await player.volume(volume)
@@ -446,13 +536,21 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="leave", description="Покинуть голосовой канал")
     @app_commands.guild_only()
     async def leave(self, interaction: Interaction):
-        """Disconnect from voice channel"""
+        """Disconnect from voice channel."""
         try:
             logger.debug("Leave command invoked")
+            if self.node is None:
+                self.node = self.lavalink.default_node
+            if not interaction.guild_id:
+                logger.exception("Guild ID is None in leave command")
+                return await interaction.response.send_message(
+                    "❌ Не удалось выйти, Guild ID is None",
+                    ephemeral=True,
+                )
             player = self.node.get_player(interaction.guild_id)
             if player and player.is_connected:
                 await player.destroy()
-            if not interaction.guild.voice_client:
+            if not interaction.guild or not interaction.guild.voice_client:
                 logger.debug("Bot is not connected to a voice channel during leave")
                 return await interaction.response.send_message(
                     "Не в голосовом канале", ephemeral=True, silent=True
@@ -476,18 +574,31 @@ class MusicCog(commands.Cog):
     async def rotate(self, interaction: Interaction):
         try:
             logger.debug("Rotate command invoked")
+            if self.node is None:
+                self.node = self.lavalink.default_node
+            if not interaction.guild_id:
+                logger.exception("Guild ID is None in rotate command")
+                return await interaction.response.send_message(
+                    "❌ Не удалось провернуть очередь, Guild ID is None",
+                    ephemeral=True,
+                )
             player = self.node.get_player(interaction.guild_id)
             if not player:
-                logger.debug("Player not found in skip command")
+                logger.debug("Player not found in rotate command")
                 return await interaction.response.send_message(
-                    "❌ Не удалось пропустить трек", ephemeral=True
+                    "❌ Не удалось провернуть очередь", ephemeral=True
                 )
             current_track = player.queue[0] if player.queue else None
             if current_track is None:
                 return await interaction.response.send_message(
                     "❌ Очередь пуста", ephemeral=True
                 )
-            await player.play(current_track, requester=current_track.requester)
+            requester = current_track.requester
+            try:
+                requester = int(requester if requester else "0")
+            except ValueError:
+                requester = 0
+            await player.play(current_track, requester=requester)
             await player.skip()
             await interaction.response.send_message(
                 "⏭️ Текущий трек пропущен и перемещён в конец",
@@ -497,7 +608,7 @@ class MusicCog(commands.Cog):
             logger.info(
                 "Track rotated %s: %s",
                 current_track.uri,
-                " | ".join(list(t.uri for t in player.queue)),
+                " | ".join([t.uri for t in player.queue]),
             )
         except Exception as e:
             logger.exception("Unexpected error in skip command: %s", e)
@@ -507,18 +618,17 @@ class MusicCog(commands.Cog):
 
 
 class LavalinkVoiceClient(discord.VoiceClient):
-    """
-    A voice client for Lavalink.
-    https://discordpy.readthedocs.io/en/latest/api.html#voiceprotocol
+    """A voice client for Lavalink.
+    https://discordpy.readthedocs.io/en/latest/api.html#voiceprotocol.
     """
 
     def __init__(self, client: discord.Client, channel: discord.abc.Connectable):
         logger.debug("[INIT] Creating voice client...")
         try:
             self.client = client
-            self.channel = channel
-            music_cog: MusicCog = self.client.get_cog("MusicCog")
-            if not music_cog:
+            self.channel = channel  # type: ignore
+            music_cog: MusicCog = self.client.get_cog("MusicCog")  # type: ignore
+            if not isinstance(music_cog, MusicCog):
                 raise RuntimeError("MusicCog not loaded!")
 
             self.lavalink = music_cog.node  # Access node directly from cog
@@ -526,13 +636,21 @@ class LavalinkVoiceClient(discord.VoiceClient):
         except Exception as e:
             logger.exception("Unexpected error in voice client init: %s", e)
 
-    async def on_voice_server_update(self, data):
+    async def on_voice_server_update(self, data: dict[str, str]):  # type: ignore
         logger.debug("[VOICE SERVER UPDATE] Received data: %s", data)
+        if self.lavalink is None:
+            logger.exception("Voice error occurred: lavalink is None", exc_info=True)
+            return
         player = self.lavalink.get_player(self.channel.guild.id)
-        await player.raw_voice_server_update(data.get("endpoint"), data.get("token"))
+        await player.raw_voice_server_update(
+            data.get("endpoint", "missing"), data.get("token", "missing")
+        )
 
-    async def on_voice_state_update(self, data):
+    async def on_voice_state_update(self, data: dict[str, str]):  # type: ignore
         logger.debug("[VOICE STATE UPDATE] Received data: %s", data)
+        if self.lavalink is None:
+            logger.exception("Voice error occurred: lavalink is None", exc_info=True)
+            return
         player = self.lavalink.get_player(self.channel.guild.id)
         await player.raw_voice_state_update(
             int(data["user_id"]), data["session_id"], int(data["channel_id"])
@@ -558,5 +676,5 @@ class LavalinkVoiceClient(discord.VoiceClient):
         self.cleanup()
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot):  # noqa: D103
     await bot.add_cog(MusicCog(bot))

@@ -3,14 +3,14 @@ from random import choice
 
 from discord import Message
 from discord.ext import commands
-from fuzzywuzzy.process import extract
+from fuzzywuzzy.process import extract  # type: ignore
 
 from config import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
 from utils import BlockManager
 
 
 class OnMessageCog(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.logger = logging.getLogger("OnMessageCog")
 
@@ -19,7 +19,7 @@ class OnMessageCog(commands.Cog):
         self.log_message(message)
         if message.author.bot:
             return
-        if message.content.startswith(self.bot.command_prefix):
+        if message.content.startswith(self.bot.command_prefix):  # type: ignore
             return
         if message.guild and BlockManager.is_user_blocked(
             message.guild.id, message.author.id
@@ -47,8 +47,7 @@ class OnMessageCog(commands.Cog):
         answers: list[str],
         threshold: int = 95,
     ) -> str | None:
-        """
-        Process a message to check if it matches one of the given "quests" and
+        """Process a message to check if it matches one of the given "quests" and
         return a random answer if it does.
 
         Args:
@@ -59,8 +58,11 @@ class OnMessageCog(commands.Cog):
 
         Returns:
             A random answer if the message matches, None otherwise.
+
         """
-        fuzzy_results = extract(message.content, quests, limit=10)
+        fuzzy_results: list[tuple[str, int]] = extract(
+            message.content, quests, limit=10
+        )  # type: ignore
         _, best_score = max(fuzzy_results, key=lambda x: x[1])
 
         if best_score >= threshold:
@@ -80,11 +82,11 @@ class OnMessageCog(commands.Cog):
             '%s sended - "%s" in %s', message.author, message.content, message.channel
         )
         attachments = tuple(
-            map(lambda x: (x.url, x.content_type, x.filename), message.attachments)
+            ((x.url, x.content_type, x.filename) for x in message.attachments)
         )
         if attachments:
             self.logger.info("Attachments: %s", attachments)
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(OnMessageCog(bot))

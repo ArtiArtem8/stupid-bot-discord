@@ -1,0 +1,65 @@
+{
+    "files.encoding": "utf8",
+    "workbench.colorCustomizations": {
+        "titleBar.activeBackground": "#FFAE00"
+    },
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.useLibraryCodeForTypes": true,
+    "python.analysis.typeCheckingMode": "strict",
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportUnknownMemberType": "none",
+    },
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.exclude": [
+        "**/.venv/**",
+        "**/venv/**",
+        "./utils/async_json_utils.py",
+        "**/Lib/**",
+        "**/site-packages/**"
+    ],
+    "ruff.exclude": [
+        "**/.venv/**",
+        "**/venv/**",
+        "**/Lib/**",
+        "**/site-packages/**"
+    ],
+    "python.autoComplete.extraPaths": [
+        "./cogs",
+        "./utils"
+    ],
+    "python.analysis.ignore": [
+        ".venv",
+        "**/Lib/**",
+    ],
+    "python.analysis.extraPaths": [
+        "./cogs",
+        "./utils"
+    ],
+    "launch": {
+        "configurations": [
+            {
+                "name": "Run StupidBot",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "main.py",
+                "args": [
+                    "${input:watchCogs}"
+                ],
+                "justMyCode": false,
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}"
+                },
+                "envFile": "${workspaceFolder}/.env",
+                "console": "integratedTerminal"
+            }
+        ],
+        "inputs": [
+            {
+                "id": "watchCogs",
+                "type": "promptString",
+                "description": "Enable cog watcher? (Add -w to enable)",
+                "default": ""
+            }
+        ]
+    }
+}

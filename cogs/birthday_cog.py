@@ -2,6 +2,7 @@ import logging
 import random
 from copy import deepcopy
 from datetime import date, datetime
+from typing import Any
 
 import discord
 from discord import Button, Interaction, app_commands
@@ -18,8 +19,7 @@ DATE_FORMAT = "%d-%m-%Y"  # canonical format: DD-MM-YYYY
 
 
 def parse_birthday(date_str: str) -> str:
-    """
-    Attempt to parse a birthday string provided in DD-MM-YYYY or YYYY-MM-DD format,
+    """Attempt to parse a birthday string provided in DD-MM-YYYY or YYYY-MM-DD format,
     and return it as a string in DD-MM-YYYY format.
     """
     for fmt in (DATE_FORMAT, "%Y-%m-%d"):
@@ -37,7 +37,7 @@ class ConfirmDeleteView(discord.ui.View):
         self.user_id: str = user_id
         self.server_id: str = server_id
 
-    @discord.ui.button(label="Да", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Да", style=discord.ButtonStyle.green)  # type: ignore
     async def confirm(self, interaction: Interaction, button: Button) -> None:
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message(
@@ -66,7 +66,7 @@ class ConfirmDeleteView(discord.ui.View):
                 content="❌ У вас нет сохранённого дня рождения.", view=None
             )
 
-    @discord.ui.button(label="Нет", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="Нет", style=discord.ButtonStyle.red)  # type: ignore
     async def cancel(self, interaction: Interaction, button: Button) -> None:
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message(
@@ -82,10 +82,10 @@ class BirthdayCog(commands.Cog):
         self.logger = logging.getLogger("BirthdayCog")
         self.birthday_timer.start()
 
-    def cog_unload(self):
+    async def cog_unload(self):
         self.birthday_timer.cancel()
 
-    async def interaction_check(self, interaction: Interaction):
+    async def interaction_check(self, interaction: Interaction):  # type: ignore
         check = super().interaction_check(interaction) and interaction.guild is not None
         if interaction.guild and BlockManager.is_user_blocked(
             interaction.guild.id, interaction.user.id
@@ -106,7 +106,7 @@ class BirthdayCog(commands.Cog):
     async def birthday_timer(self):
         """Main timer loop for birthday checks."""
         try:
-            data: dict = get_json(BIRTHDAY_FILE) or {}
+            data = get_json(BIRTHDAY_FILE) or {}
             data_copy = deepcopy(data)
         except Exception as e:
             self.logger.error("Failed to load birthday data: %s", e)
@@ -128,11 +128,16 @@ class BirthdayCog(commands.Cog):
                 self.logger.error("Error saving birthday data: %s", e)
 
     async def _process_server(
-        self, server_id: str, server_data: dict, today_key: str, today_full: str
+        self,
+        server_id: str,
+        server_data: dict[str, Any],
+        today_key: str,
+        today_full: str,
     ):
         """Process a single server's birthday configuration."""
         guild = self.bot.get_guild(int(server_id))
         if not guild:
+            self.logger.error("Invalid guild - %s", server_id)
             return
 
         channel = self.bot.get_channel(int(server_data.get("Channel_id", 0)))
@@ -140,7 +145,15 @@ class BirthdayCog(commands.Cog):
         role = discord.utils.get(guild.roles, id=int(role_id)) if role_id else None
 
         if not channel:
-            self.logger.warning("Channel not configured for server %s", server_id)
+            self.logger.warning(
+                "Channel not configured for server %s", server_data.get("Channel_id", 0)
+            )
+            return
+
+        if not isinstance(channel, discord.channel.TextChannel):
+            self.logger.error(
+                "Invalid channel: channel is not a textChannel.", exc_info=True
+            )
             return
 
         # Process all users in the server
@@ -154,9 +167,9 @@ class BirthdayCog(commands.Cog):
         self,
         guild: discord.Guild,
         channel: discord.TextChannel,
-        role: discord.Role,
+        role: discord.Role | None,
         user_id: str,
-        user_data: dict,
+        user_data: dict[str, Any],
         today_key: str,
         today_full: str,
     ):
@@ -189,8 +202,8 @@ class BirthdayCog(commands.Cog):
         self,
         member: discord.Member,
         channel: discord.TextChannel,
-        role: discord.Role,
-        user_data: dict,
+        role: discord.Role | None,
+        user_data: dict[str, Any],
         user_id: str,
         today_full: str,
     ) -> None:
@@ -223,7 +236,9 @@ class BirthdayCog(commands.Cog):
         except Exception as e:
             self.logger.error("Failed to handle birthday for %s: %s", user_id, e)
 
-    async def _handle_regular_case(self, member, role):
+    async def _handle_regular_case(
+        self, member: discord.Member, role: discord.Role | None
+    ):
         """Remove birthday role if present on non-birthdays."""
         if role and role in member.roles:
             try:
@@ -245,8 +260,7 @@ class BirthdayCog(commands.Cog):
     )
     @app_commands.guild_only()
     async def set_birthday(self, interaction: Interaction, date_input: str):
-        """
-        Set your birthday.
+        """Set your birthday.
 
         **Input Format:**
         Provide a date string in either DD-MM-YYYY or YYYY-MM-DD.
@@ -263,7 +277,7 @@ class BirthdayCog(commands.Cog):
             )
 
         try:
-            data: dict = get_json(BIRTHDAY_FILE)
+            data = get_json(BIRTHDAY_FILE) or {}
         except Exception as e:
             self.logger.error("Error loading birthday file: %s", e)
             data = {}
@@ -272,16 +286,16 @@ class BirthdayCog(commands.Cog):
         guild = interaction.guild
 
         if guild is None:
-            await interaction.response.send_message(
+            return await interaction.response.send_message(
                 "Эта команда работает только на сервере.", ephemeral=True
             )
-            return
+
         server_id = str(guild.id)
         data.setdefault(
             server_id,
             {
                 "Server_name": guild.name,
-                "Channel_id": str(interaction.channel.id),
+                "Channel_id": str(interaction.channel.id if interaction.channel else 0),
                 "Users": {},
             },
         )
@@ -292,7 +306,10 @@ class BirthdayCog(commands.Cog):
         data[server_id]["Users"][author_id]["birthday"] = normalized_date
         try:
             save_json(BIRTHDAY_FILE, data)
-            msg = f"Ваш день рождения записан как: {normalized_date} под именем <@{author_id}>"
+            msg = (
+                "Ваш день рождения записан как: "
+                f"{normalized_date} под именем <@{author_id}>"
+            )
             await interaction.response.send_message(msg, ephemeral=True)
         except Exception as e:
             self.logger.error("Error saving birthday file: %s", e)
@@ -313,16 +330,22 @@ class BirthdayCog(commands.Cog):
         self,
         interaction: Interaction,
         channel: discord.TextChannel,
-        role: discord.Role = None,
-    ) -> None:
-        """Configure birthday system for the server"""
-        server_id: str = str(interaction.guild.id)
+        role: discord.Role | None = None,
+    ):
+        """Configure birthday system for the server."""
+        guild = interaction.guild
 
-        data: dict = get_json(BIRTHDAY_FILE) or {}
+        if guild is None:
+            return await interaction.response.send_message(
+                "Эта команда работает только на сервере.", ephemeral=True
+            )
+        server_id: str = str(guild.id)
+
+        data = get_json(BIRTHDAY_FILE) or {}
         data.setdefault(
             server_id,
             {
-                "Server_name": interaction.guild.name,
+                "Server_name": guild.name,
                 "Users": {},
             },
         )
@@ -349,8 +372,13 @@ class BirthdayCog(commands.Cog):
     )
     @app_commands.guild_only()
     async def remove_birthday(self, interaction: Interaction):
-        """Remove your birthday from the system"""
-        server_id = str(interaction.guild.id)
+        """Remove your birthday from the system."""
+        guild = interaction.guild
+        if guild is None:
+            return await interaction.response.send_message(
+                "Эта команда работает только на сервере.", ephemeral=True
+            )
+        server_id = str(guild.id)
         user_id = str(interaction.user.id)
         data = get_json(BIRTHDAY_FILE) or {}
         if server_id not in data:

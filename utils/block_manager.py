@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import List, Self, TypedDict
 
 import discord
 
@@ -8,13 +9,34 @@ from utils.json_utils import get_json, save_json
 
 
 def datetime_now_isoformat() -> str:
-    """Return current time in isoformat"""
+    """Return current time in isoformat."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def datetime_now() -> datetime:
-    """Return current time"""
+    """Return current time."""
     return datetime.now(timezone.utc)
+
+
+class BlockHistoryEntryDict(TypedDict):
+    admin_id: str
+    reason: str
+    timestamp: str
+
+
+class NameHistoryEntryDict(TypedDict):
+    username: str
+    timestamp: str
+
+
+class BlockedUserDict(TypedDict):
+    user_id: str
+    current_username: str
+    current_global_name: str | None
+    blocked: bool
+    block_history: List[BlockHistoryEntryDict]
+    unblock_history: List[BlockHistoryEntryDict]
+    name_history: List[NameHistoryEntryDict]
 
 
 @dataclass
@@ -23,18 +45,18 @@ class BlockHistoryEntry:
     reason: str | None
     timestamp: datetime
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> BlockHistoryEntryDict:
         return {
             "admin_id": str(self.admin_id),
             "reason": self.reason or "",
             "timestamp": self.timestamp.isoformat(),
         }
 
-    @staticmethod
-    def from_dict(data: dict) -> "BlockHistoryEntry":
-        return BlockHistoryEntry(
-            admin_id=int(data.get("admin_id", "0")),
-            reason=data.get("reason", ""),
+    @classmethod
+    def from_dict(cls, data: BlockHistoryEntryDict) -> Self:
+        return cls(
+            admin_id=int(data["admin_id"]),
+            reason=data["reason"],
             timestamp=datetime.fromisoformat(
                 data.get("timestamp", datetime_now_isoformat())
             ),
@@ -46,15 +68,15 @@ class NameHistoryEntry:
     username: str
     timestamp: datetime
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> NameHistoryEntryDict:
         return {
             "username": self.username,
             "timestamp": self.timestamp.isoformat(),
         }
 
-    @staticmethod
-    def from_dict(data: dict) -> "NameHistoryEntry":
-        return NameHistoryEntry(
+    @classmethod
+    def from_dict(cls, data: NameHistoryEntryDict) -> Self:
+        return cls(
             username=data.get("username", ""),
             timestamp=datetime.fromisoformat(
                 data.get("timestamp", datetime_now_isoformat())
@@ -109,7 +131,7 @@ class BlockedUser:
             return True
         return False
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> BlockedUserDict:
         return {
             "user_id": str(self.user_id),
             "current_username": self.current_username,
@@ -121,7 +143,7 @@ class BlockedUser:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "BlockedUser":
+    def from_dict(cls, data: BlockedUserDict) -> Self:
         return cls(
             user_id=int(data["user_id"]),
             current_username=data["current_username"],
@@ -142,7 +164,7 @@ class BlockedUser:
 class BlockManager:
     @staticmethod
     def is_user_blocked(guild_id: int, user_id: int) -> bool:
-        """Check if a user is currently blocked in a guild"""
+        """Check if a user is currently blocked in a guild."""
         guild_data = BlockManager.get_guild_data(guild_id)
         user_entry = guild_data.get(user_id)
         return user_entry.is_blocked if user_entry else False
@@ -161,10 +183,9 @@ class BlockManager:
     def save_guild_data(guild: discord.Guild, users: dict[int, BlockedUser]) -> None:
         guild_id = str(guild.id)
         raw_data = get_json(BLOCKED_USERS_FILE) or {}
-        raw_data[guild_id] = raw_data.get(guild_id, {})
-        raw_data[guild_id]["users"] = {
-            str(user.user_id): user.to_dict() for user in users.values()
+        raw_data[guild_id] = {
+            "member_count": guild.member_count,
+            "server": guild.name,
+            "users": {str(user.user_id): user.to_dict() for user in users.values()},
         }
-        raw_data[guild_id]["server"] = guild.name
-        raw_data[guild_id]["member_count"] = guild.member_count
         save_json(BLOCKED_USERS_FILE, raw_data)

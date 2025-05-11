@@ -90,13 +90,9 @@ class StupidBot(commands.Bot):
             await asyncio.sleep(1)
 
 
-def load_last_run() -> dict | None:
+def load_last_run() -> dict[str, int] | None:
     """Load the last run info if available."""
     data = get_json(LAST_RUN_FILE)
-
-    if data is not None and not isinstance(data, dict):
-        logger.error("Invalid data format in last run file")
-        return None
 
     if data is None and os.path.exists(LAST_RUN_FILE):
         logger.error("Failed to load last run data (file exists but is invalid)")
@@ -126,7 +122,11 @@ bot = StupidBot()
 @bot.event
 async def on_ready():
     logger.info("Program started ----------------------")
-    logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
+    logger.info(
+        "Logged in as %s (ID: %s)",
+        bot.user,
+        bot.user.id if bot.user else "Can't get id",
+    )
     timer.start()
     autosave.start()  # Start the autosave task
 
@@ -134,7 +134,7 @@ async def on_ready():
 @tasks.loop(seconds=11)
 async def timer():
     uptime = time.time() - bot.start_time
-    formatted_time = format_time_russian(uptime, depth=1)
+    formatted_time = format_time_russian(int(uptime), depth=1)
     activity = discord.Game(
         f"жизнь уже {formatted_time}."
     )  # Играет в жизнь уже %s сек.
@@ -164,7 +164,7 @@ if __name__ == "__main__":
 
     async def main():
         async with bot:
-            await bot.start(DISCORD_BOT_TOKEN)
+            await bot.start(DISCORD_BOT_TOKEN or "Token_is_missing")
 
     logger.info("Starting bot...")
     try:

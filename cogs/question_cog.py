@@ -14,9 +14,9 @@ class QuestionCog(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger("QuestionCog")
         self.answers = choices(CAPABILITIES, k=8)
-        self.logger.info("Next %sq answers: %s", self.bot.command_prefix, self.answers)
+        self.logger.info(f"Next {self.bot.command_prefix}q answers: %s", self.answers)
 
-    async def interaction_check(self, interaction: Interaction):
+    async def interaction_check(self, interaction: Interaction):  # type: ignore
         check = super().interaction_check(interaction)
         if interaction.guild and BlockManager.is_user_blocked(
             interaction.guild.id, interaction.user.id
@@ -63,6 +63,7 @@ class QuestionCog(commands.Cog):
 
         Returns:
             The existing answer if the user already asked the question, None otherwise.
+
         """
         data = get_json(ANSWER_FILE)
         filtered_text = str_local(question)

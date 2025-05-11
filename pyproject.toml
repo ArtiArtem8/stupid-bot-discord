@@ -1,0 +1,82 @@
+[project]
+name = "stupid-bot-discord"
+version = "2.0.0"
+description = "A feature-rich Discord bot built with discord.py"
+authors = [
+    { name = "ArtiArtem", email = "ArtiArtem8@users.noreply.github.com" },
+]
+requires-python = ">=3.12"
+dependencies = [
+    "discord.py>=2.5.2",
+    "python-dotenv>=1.1.0",
+    "requests>=2.32.3",
+    "fuzzywuzzy>=0.18.0",
+    "python-Levenshtein>=0.27.1",
+    "wolframalpha==4.3.1  ",
+    "pillow==11.2.1",
+    "lavaplay.py>=1.0.15a0",
+    "PyNaCl>=1.5.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+select = [
+    "F",   # Pyflakes
+    "E",   # Pycodestyle errors
+    "W",   # Pycodestyle warnings
+    "I",   # Isort
+    "C",   # flake8-comprehensions
+    "B",   # flake8-bugbear
+    "D",   # pydocstyle
+    "S",   # flake8-bandit
+    "RUF", # Ruff-specific rules
+]
+ignore = [
+    "D100",
+    "D101",
+    "D102",
+    "D104",
+    "D107", # Missing docstring in __init__
+    # "D203", # 1 blank line required before class docstring
+    "D205",
+    # "D212", # Multi-line docstring summary should start at the first line
+    "D401",
+    # "E501", # Line too long
+    "S311",
+    "RUF001",
+]
+exclude = [
+    ".venv",
+    "venv",
+    "temp",
+    "backups",
+    "data",
+    "**/__pycache__",
+    "**/.mypy_cache",
+    "**/.pytest_cache",
+]
+
+[tool.ruff.isort]
+known-first-party = ["cogs", "utils"]
+
+[tool.ruff.flake8-pytest-style]
+fixture-parentheses = false
+
+[tool.ruff.per-file-ignores]
+"main.py" = ["E402"] # Module level import not at top of file
+
+
+[tool.mypy]
+exclude = "^(\\.venv|venv|temp|backups|data)(/|$)"
+python_version = "3.12"
+warn_unused_configs = true
+show_error_codes = true
+ignore_missing_imports = true
+strict_equality = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_any_generics = true
+
+[dependency-groups]
+dev = ["monkeytype>=23.3.0", "mypy>=1.15.0"]

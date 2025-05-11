@@ -1,7 +1,7 @@
 import random
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 from PIL import Image, UnidentifiedImageError
@@ -10,12 +10,11 @@ from PIL import Image, UnidentifiedImageError
 def save_image(
     image_url: str,
     save_to: Path,
-    resize: tuple[int, int] = None,
+    resize: tuple[int, int | None] | None = None,
     quality: int = 95,
     format: str = "WEBP",
 ) -> Path:
-    """
-    Download and process an image from URL with various optimizations
+    """Download and process an image from URL with various optimizations.
 
     Args:
         image_url: URL of the source image
@@ -26,6 +25,7 @@ def save_image(
 
     Returns:
         Path to saved image file
+
     """
     try:
         response = requests.get(image_url, timeout=10)
@@ -36,16 +36,14 @@ def save_image(
             if format in ("JPEG", "WEBP") and img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
 
-            if resize[1] is None:
-                resize = (resize[0], img.size[1] * resize[0] // img.size[0])
-
             if resize:
-                img = img.resize(resize, Image.LANCZOS)
+                resize = (resize[0], img.size[1] * resize[0] // img.size[0])
+                img = img.resize(resize, Image.Resampling.LANCZOS)
 
             filename = generate_unique_filename(format.lower())
             output_path = save_to / filename
 
-            save_args = {
+            save_args: dict[str, Any] = {
                 "format": format,
                 "quality": quality,
                 "optimize": True,
@@ -60,11 +58,11 @@ def save_image(
             return output_path
 
     except Exception as e:
-        raise RuntimeError(f"Image processing failed: {str(e)}") from e
+        raise RuntimeError(f"Image processing failed: {e!s}") from e
 
 
 def generate_unique_filename(extension: str) -> Path:
-    """Generate unique random filename with given extension"""
+    """Generate unique random filename with given extension."""
     return Path(f"{random.randint(2**27, 2**28)}").with_suffix(f".{extension}")
 
 
@@ -72,10 +70,9 @@ def optimize_image(
     input_path: Path,
     output_path: Optional[Path] = None,
     quality: int = 85,
-    max_size: tuple[int, int] = None,
+    max_size: tuple[int, int] | None = None,
 ) -> Path:
-    """
-    Optimize existing image file for web use
+    """Optimize existing image file for web use.
 
     Args:
         input_path: Path to source image
@@ -85,15 +82,16 @@ def optimize_image(
 
     Returns:
         Path to optimized image
+
     """
     try:
         output_path = output_path or input_path
 
         with Image.open(input_path) as img:
             if max_size:
-                img.thumbnail(max_size, Image.LANCZOS)
+                img.thumbnail(max_size, Image.Resampling.LANCZOS)
 
-            save_args = {
+            save_args: dict[str, Any] = {
                 "quality": quality,
                 "optimize": True,
             }
@@ -106,20 +104,19 @@ def optimize_image(
             img.save(output_path, **save_args)
             return output_path
 
-    except UnidentifiedImageError:
-        raise ValueError("Unsupported image format")
+    except UnidentifiedImageError as e:
+        raise ValueError("Unsupported image format") from e
     except Exception as e:
-        raise RuntimeError(f"Image optimization failed: {str(e)}") from e
+        raise RuntimeError(f"Image optimization failed: {e!s}") from e
 
 
 def convert_image(
     input_path: Path,
     output_format: str,
-    output_path: Path = None,
+    output_path: Path | None = None,
     quality: int = 85,
 ) -> Path:
-    """
-    Convert image between formats with optional quality setting
+    """Convert image between formats with optional quality setting.
 
     Args:
         input_path: Path to source image
@@ -129,6 +126,7 @@ def convert_image(
 
     Returns:
         Path to converted image
+
     """
     valid_formats = ("WEBP", "JPEG", "PNG")
     if output_format.upper() not in valid_formats:
@@ -141,7 +139,7 @@ def convert_image(
             if output_format in ("JPEG", "WEBP") and img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
 
-            save_args = {
+            save_args: dict[str, Any] = {
                 "format": output_format,
                 "quality": quality,
                 "optimize": True,
@@ -150,7 +148,7 @@ def convert_image(
             img.save(output_path, **save_args)
             return output_path
 
-    except UnidentifiedImageError:
-        raise ValueError("Unsupported source image format")
+    except UnidentifiedImageError as e:
+        raise ValueError("Unsupported source image format") from e
     except Exception as e:
-        raise RuntimeError(f"Image conversion failed: {str(e)}") from e
+        raise RuntimeError(f"Image conversion failed: {e!s}") from e

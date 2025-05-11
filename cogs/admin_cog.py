@@ -8,7 +8,7 @@ from utils import BlockedUser, BlockManager
 
 
 class AdminCog(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.block_manager = BlockManager()
         self.logger = logging.getLogger("AdminCog")
@@ -53,24 +53,30 @@ class AdminCog(commands.Cog):
     async def block(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ):
+        guild = interaction.guild
+        if guild is None:
+            self.logger.warning("Received block command with no guild")
+            return await interaction.response.send_message(
+                "Команда может быть использована только на сервер", ephemeral=True
+            )
         self.logger.info(
-            f"Block command invoked by {interaction.user.id} in guild {interaction.guild.name} ({interaction.guild.id}) "
-            f"targeting user {user.id}. Reason: {reason}"
+            f"Block command invoked by {interaction.user.id} in guild "
+            f"{guild.name} ({guild.id}) targeting user {user.id}. Reason: {reason}"
         )
-        user_entry, guild_data = await self._get_or_create_user_entry(
-            interaction.guild.id, user
-        )
+
+        user_entry, guild_data = await self._get_or_create_user_entry(guild.id, user)
 
         if user_entry.is_blocked:
             self.logger.info(
-                f"Block attempt failed - user {user.id} already blocked in guild {interaction.guild.name} ({interaction.guild.id})"
+                f"Block attempt failed - user {user.id} already blocked in guild "
+                f"{guild.name} ({guild.id})"
             )
             return await interaction.response.send_message(
                 f"{user.mention} уже заблокирован.", ephemeral=True
             )
 
         user_entry.add_block_entry(interaction.user.id, reason)
-        self.block_manager.save_guild_data(interaction.guild, guild_data)
+        self.block_manager.save_guild_data(guild, guild_data)
 
         embed = discord.Embed(
             title="Блокировка",
@@ -80,7 +86,7 @@ class AdminCog(commands.Cog):
         if reason:
             embed.add_field(name="Причина", value=reason)
         self.logger.info(
-            f"Successfully blocked user {user.id} in guild {interaction.guild.name} ({interaction.guild.id})"
+            f"Successfully blocked user {user.id} in guild {guild.name} ({guild.id})"
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -97,24 +103,28 @@ class AdminCog(commands.Cog):
     async def unblock(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ):
+        guild = interaction.guild
+        if guild is None:
+            self.logger.warning("Received block command with no guild")
+            return await interaction.response.send_message(
+                "Команда может быть использована только на сервер", ephemeral=True
+            )
         self.logger.info(
-            f"Unblock command invoked by {interaction.user.id} in guild {interaction.guild.name} ({interaction.guild.id}) "
-            f"targeting user {user.id}. Reason: {reason}"
+            f"Unblock command invoked by {interaction.user.id} in guild {guild.name} "
+            f"({guild.id}) targeting user {user.id}. Reason: {reason}"
         )
-        user_entry, guild_data = await self._get_or_create_user_entry(
-            interaction.guild.id, user
-        )
+        user_entry, guild_data = await self._get_or_create_user_entry(guild.id, user)
 
         if not user_entry.is_blocked:
             self.logger.info(
-                f"Unblock attempt failed - user {user.id} not blocked in guild {interaction.guild.name} ({interaction.guild.id})"
+                f"Unblock attempt failed - user {user.id} not blocked in guild {guild.name} ({guild.id})"
             )
             return await interaction.response.send_message(
                 f"{user.mention} не заблокирован.", ephemeral=True
             )
 
         user_entry.add_unblock_entry(interaction.user.id, reason)
-        self.block_manager.save_guild_data(interaction.guild, guild_data)
+        self.block_manager.save_guild_data(guild, guild_data)
         embed = discord.Embed(
             title="Разблокировка",
             color=0xFFAE00,
@@ -123,7 +133,7 @@ class AdminCog(commands.Cog):
         if reason:
             embed.add_field(name="Причина", value=reason)
         self.logger.info(
-            f"Successfully unblocked user {user.id} in guild {interaction.guild.name} ({interaction.guild.id})"
+            f"Successfully unblocked user {user.id} in guild {guild.name} ({guild.id})"
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -143,15 +153,23 @@ class AdminCog(commands.Cog):
         user: discord.Member,
         ephemeral: bool = True,
     ):
+        guild = interaction.guild
+        if guild is None:
+            self.logger.warning("Received block command with no guild")
+            return await interaction.response.send_message(
+                "Команда может быть использована только на сервер", ephemeral=True
+            )
         self.logger.info(
-            f"Blockinfo requested by {interaction.user.id} for user {user.id} in guild {interaction.guild.name} ({interaction.guild.id})"
+            f"Blockinfo requested by {interaction.user.id} for user {user.id} "
+            f"in guild {guild.name} ({guild.id})"
         )
-        guild_data = self.block_manager.get_guild_data(interaction.guild.id)
+        guild_data = self.block_manager.get_guild_data(guild.id)
         user_entry = guild_data.get(user.id)
 
         if not user_entry or not user_entry.block_history:
             self.logger.info(
-                f"No block history found for user {user.id} in guild {interaction.guild.name} ({interaction.guild.id})"
+                f"No block history found for user {user.id} "
+                f"in guild {guild.name} ({guild.id})"
             )
             await interaction.response.send_message(
                 f"{user.mention} не имеет истории блокировок.", ephemeral=ephemeral
@@ -159,7 +177,8 @@ class AdminCog(commands.Cog):
             return
 
         self.logger.info(
-            f"Displaying block history for user {user.id} in guild {interaction.guild.name} ({interaction.guild.id})"
+            f"Displaying block history for user {user.id} "
+            f"in guild {guild.name} ({guild.id})"
         )
         embed = discord.Embed(title="📜 Полная история блокировок", color=0x2B2D31)
         embed.set_author(name=str(user), icon_url=user.display_avatar.url)
@@ -179,7 +198,7 @@ class AdminCog(commands.Cog):
 
         embed.add_field(name="Текущий статус", value=status_value, inline=False)
 
-        history = []
+        history: list[str] = []
         all_events = sorted(
             [(e.timestamp, "BLOCK", e) for e in user_entry.block_history]
             + [(e.timestamp, "UNBLOCK", e) for e in user_entry.unblock_history],
@@ -204,7 +223,7 @@ class AdminCog(commands.Cog):
 
         # Name History
         if user_entry.name_history:
-            name_changes = []
+            name_changes: list[str] = []
             for name_entry in sorted(
                 user_entry.name_history, key=lambda x: x.timestamp, reverse=True
             )[:3]:
@@ -218,16 +237,16 @@ class AdminCog(commands.Cog):
                 value="\n".join(name_changes)[:1024],
             )
 
+        timestamp = int(user_entry.block_history[0].timestamp.timestamp())
         stats = [
             f"• Всего блокировок: {len(user_entry.block_history)}",
             f"• Всего разблокировок: {len(user_entry.unblock_history)}",
-            f"• Первая блокировка: <t:{int(user_entry.block_history[0].timestamp.timestamp())}:D>",
+            f"• Первая блокировка: <t:{timestamp}:D>",
         ]
 
         if user_entry.unblock_history:
-            stats.append(
-                f"• Последняя разблокировка: <t:{int(user_entry.unblock_history[-1].timestamp.timestamp())}:D>"
-            )
+            timestamp = int(user_entry.unblock_history[-1].timestamp.timestamp())
+            stats.append(f"• Последняя разблокировка: <t:{timestamp}:D>")
 
         embed.add_field(name="📊 Статистика", value="\n".join(stats), inline=False)
 
@@ -263,34 +282,40 @@ class AdminCog(commands.Cog):
         show_details: bool = False,
         ephemeral: bool = True,
     ):
-        """Display all currently blocked users with basic information"""
+        """Display all currently blocked users with basic information."""
+        guild = interaction.guild
+        if guild is None:
+            self.logger.warning("Received block command with no guild")
+            return await interaction.response.send_message(
+                "Команда может быть использована только на сервер", ephemeral=True
+            )
         self.logger.info(
-            f"Listblocked command invoked by {interaction.user.id} in guild {interaction.guild.name} ({interaction.guild.id}) "
-            f"with details: {show_details}"
+            f"Listblocked command invoked by {interaction.user.id} "
+            f"in guild {guild.name} ({guild.id}) with details: {show_details}"
         )
-        blocked_users = self.block_manager.get_guild_data(interaction.guild.id)
+        blocked_users = self.block_manager.get_guild_data(guild.id)
         blocked_users = [user for user in blocked_users.values() if user.is_blocked]
 
         if not blocked_users:
-            self.logger.info(f"No blocked users found in guild {interaction.guild.id}")
+            self.logger.info(f"No blocked users found in guild {guild.id}")
             await interaction.response.send_message(
                 "🚫 Нет заблокированных пользователей на этом сервере.",
                 ephemeral=ephemeral,
             )
             return
         self.logger.info(
-            f"Found {len(blocked_users)} blocked users in guild {interaction.guild.id} "
+            f"Found {len(blocked_users)} blocked users in guild {guild.id} "
         )
         embed = discord.Embed(
             title=f"Заблокированные пользователи ({len(blocked_users)})", color=0x36393F
         )
 
         unresolved_count = 0
-        entries = []
+        entries: list[str] = []
 
         for user_entry in blocked_users:
             try:
-                user = await interaction.guild.fetch_member(user_entry.user_id)
+                user = await guild.fetch_member(user_entry.user_id)
                 user_info = f"{user.mention} `{user.id}`"
                 current_username = user.display_name
             except discord.NotFound:
@@ -302,10 +327,11 @@ class AdminCog(commands.Cog):
 
             if show_details:
                 last_block = user_entry.block_history[-1]
+                timestamp = int(last_block.timestamp.timestamp())
                 entry.extend(
                     [
                         f"• Текущее имя: {current_username}",
-                        f"• Последняя блокировка: <t:{int(last_block.timestamp.timestamp())}:R>",
+                        f"• Последняя блокировка: <t:{timestamp}:R>",
                         f"• Причина: {last_block.reason or 'Не указана'}",
                         f"• Администратор: <@{last_block.admin_id}>",
                     ]
@@ -313,15 +339,16 @@ class AdminCog(commands.Cog):
 
             entries.append("\n".join(entry))
 
+        timestamp = int(blocked_users[0].block_history[-1].timestamp.timestamp())
         embed.description = (
             f"**Статистика блокировок:**\n"
             f"• Всего заблокировано: {len(blocked_users)}\n"
             f"• Не на сервере: {unresolved_count}\n"
-            f"• Последняя блокировка: <t:{int(blocked_users[0].block_history[-1].timestamp.timestamp())}:R>"
+            f"• Последняя блокировка: <t:{timestamp}:R>"
         )
 
         MAX_FIELD_CHARS = 1000
-        current_field = []
+        current_field: list[str] = []
         current_length = 0
 
         for entry in entries:
@@ -353,5 +380,5 @@ class AdminCog(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(AdminCog(bot))

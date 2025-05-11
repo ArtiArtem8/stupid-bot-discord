@@ -1,10 +1,9 @@
-def get_russian_word(n, singular, few, many):
-    """
-    Returns the correct Russian word form based on the number n.
+def get_russian_word(n: int, singular: str, few: str, many: str) -> str:
+    """Returns the correct Russian word form based on the number n.
     Rules:
       - If the last digit is 1 and n is not 11 -> singular
       - If the last digit is 2-4 and n is not 12-14 -> few
-      - Else -> many
+      - Else -> many.
     """
     if n % 10 == 1 and n % 100 != 11:
         return singular
@@ -14,9 +13,8 @@ def get_russian_word(n, singular, few, many):
         return many
 
 
-def format_time_russian(total_seconds: int, depth: int = 2) -> str:
-    """
-    Format total seconds as a human-readable string in Russian (genitive case),
+def format_time_russian(total_seconds: int, depth: int | None = 2) -> str:
+    """Format total seconds as a human-readable string in Russian (genitive case),
     including years, days, hours, minutes, and seconds.
 
     Rounding thresholds:
@@ -26,11 +24,10 @@ def format_time_russian(total_seconds: int, depth: int = 2) -> str:
       - If days equal 365, increment years.
 
     The `depth` parameter specifies how many of the largest nonzero units to display.
-    For example, with depth=2, a total corresponding to 1 год, 135 дней, and smaller units will show
-    only "1 год и 135 дней". If depth is None, all nonzero units are shown.
+    For example, with depth=2, a total corresponding to 1 год, 135 дней, and smaller
+    units will show only "1 год и 135 дней". If depth is None, all nonzero units are
+    shown.
     """
-    total_seconds = int(total_seconds)
-
     SEC_PER_MIN = 60
     SEC_PER_HOUR = 3600
     SEC_PER_DAY = 86400
