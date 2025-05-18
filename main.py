@@ -34,6 +34,7 @@ class StupidBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix=BOT_PREFIX, intents=intents)
         self.start_time = time.time()
+        self.last_activity_str = "None"
         self.enable_watch = False
         self._load_previous_uptime()
 
@@ -135,10 +136,14 @@ async def on_ready():
 async def timer():
     uptime = time.time() - bot.start_time
     formatted_time = format_time_russian(int(uptime), depth=1)
-    activity = discord.Game(
-        f"жизнь уже {formatted_time}."
-    )  # Играет в жизнь уже %s сек.
-    await bot.change_presence(activity=activity)
+    activity_str = f"жизнь уже {formatted_time}."
+    if activity_str == bot.last_activity_str:
+        return
+    bot.last_activity_str = activity_str
+
+    game_act = discord.Game(name=activity_str)
+    game_act.platform = "IRL"
+    await bot.change_presence(activity=game_act)
 
 
 @tasks.loop(seconds=AUTOSAVE_LAST_RUN_FILE_INTERVAL)
