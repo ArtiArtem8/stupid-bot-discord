@@ -60,9 +60,9 @@ class OnMessageCog(commands.Cog):
             A random answer if the message matches, None otherwise.
 
         """
-        fuzzy_results: list[tuple[str, int]] = extract(
+        fuzzy_results: list[tuple[str, int]] = extract(  # type: ignore
             message.content, quests, limit=10
-        )  # type: ignore
+        )
         _, best_score = max(fuzzy_results, key=lambda x: x[1])
 
         if best_score >= threshold:
@@ -89,4 +89,8 @@ class OnMessageCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
+    """Setup.
+
+    :param commands.Bot bot: BOT ITSELF
+    """
     await bot.add_cog(OnMessageCog(bot))

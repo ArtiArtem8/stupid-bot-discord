@@ -89,9 +89,13 @@ class BlockedUser:
     user_id: int
     current_username: str
     current_global_name: str | None
-    block_history: list[BlockHistoryEntry] = field(default_factory=list)
-    unblock_history: list[BlockHistoryEntry] = field(default_factory=list)
-    name_history: list[NameHistoryEntry] = field(default_factory=list)
+    block_history: list[BlockHistoryEntry] = field(
+        default_factory=list[BlockHistoryEntry]
+    )
+    unblock_history: list[BlockHistoryEntry] = field(
+        default_factory=list[BlockHistoryEntry]
+    )
+    name_history: list[NameHistoryEntry] = field(default_factory=list[NameHistoryEntry])
     blocked: bool = False
 
     @property

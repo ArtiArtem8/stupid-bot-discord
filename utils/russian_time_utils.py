@@ -14,19 +14,28 @@ def get_russian_word(n: int, singular: str, few: str, many: str) -> str:
 
 
 def format_time_russian(total_seconds: int, depth: int | None = 2) -> str:
-    """Format total seconds as a human-readable string in Russian (genitive case),
-    including years, days, hours, minutes, and seconds.
+    """Formats a duration in seconds into a human-readable Russian string using
+    genitive case for time units (years, days, hours, minutes, seconds).
+    Provides approximate, reader-friendly durations by rounding values.
 
-    Rounding thresholds:
-      - If seconds are within 5 seconds of a full minute, round minutes up.
-      - If minutes equal 60, increment hours.
-      - If hours equal 24, increment days.
-      - If days equal 365, increment years.
+    Rounding rules (applied sequentially):
+      - Seconds ≥ 55: Round up minutes (set seconds = 0)
+      - Minutes ≥ 59: Round up hours (set minutes = 0)
+      - Hours ≥ 23: Round up days (set hours = 0)
+      - Days ≥ 364: Round up years (set days = 0)
+    Rounding cascades - a rounded unit may trigger rounding in the next higher unit.
 
-    The `depth` parameter specifies how many of the largest nonzero units to display.
-    For example, with depth=2, a total corresponding to 1 год, 135 дней, and smaller
-    units will show only "1 год и 135 дней". If depth is None, all nonzero units are
-    shown.
+    Output customization:
+      - `depth` controls how many time units to display (default=2):
+          • depth=2: Show max of 2 largest non-zero units (e.g. "2 часа и 45 минут")
+          • depth=None: Show all non-zero units
+      - Zero values are hidden except when duration is 0 ("0 секунд")
+      - Units always display from largest to smallest (years → seconds)
+
+    Designed for readability over precision. Examples:
+      3599 seconds → "1 час и 0 минут"  (minutes rounded to 60)
+      31535999 seconds → "1 год"         (days rounded to 365)
+      90 seconds → "1 минута и 30 секунд"
     """
     SEC_PER_MIN = 60
     SEC_PER_HOUR = 3600
@@ -91,3 +100,17 @@ def format_time_russian(total_seconds: int, depth: int | None = 2) -> str:
         if len(parts) > 1
         else " и ".join(parts)
     )
+
+
+if __name__ == "__main__":
+    print(format_time_russian(-864685))
+    print(format_time_russian(0, depth=None))
+    print(format_time_russian(1))
+    print(format_time_russian(60))
+    print(format_time_russian(3600))
+    print(format_time_russian(86400))
+    print(format_time_russian(31536000))
+    print(format_time_russian(31536000, None))
+    print(format_time_russian(3599, depth=10))
+    print(format_time_russian(31535999))
+    print(format_time_russian(31535999, None))

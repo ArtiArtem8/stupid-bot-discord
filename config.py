@@ -30,6 +30,10 @@ LOGGING_CONFIG: dict[str, Any] = {
             "format": "%(asctime)s %(levelname)s [%(name)s]: %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
+        "debug_detailed": {
+            "format": "%(asctime)s %(levelname)s [%(name)s:%(lineno)d]: %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
     },
     "handlers": {
         "file_handler": {
@@ -39,6 +43,13 @@ LOGGING_CONFIG: dict[str, Any] = {
             "formatter": "detailed",
             "level": "INFO",
         },
+        "debug_file_handler": {
+            "class": "logging.FileHandler",
+            "filename": "discord-bot-debug.log",
+            "encoding": ENCODING,
+            "formatter": "debug_detailed",
+            "level": "DEBUG",
+        },
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "detailed",
@@ -46,8 +57,15 @@ LOGGING_CONFIG: dict[str, Any] = {
         },
     },
     "root": {
-        "handlers": ["file_handler", "console"],
-        "level": "INFO",
+        "handlers": ["file_handler", "debug_file_handler", "console"],
+        "level": "DEBUG",
+    },
+    "loggers": {
+        "discord": {
+            "handlers": ["file_handler", "debug_file_handler", "console"],
+            "level": "INFO",  # Reduce discord library noise in debug log
+            "propagate": False,
+        },
     },
 }
 

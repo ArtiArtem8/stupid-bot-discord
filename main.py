@@ -32,6 +32,12 @@ intents.guilds = True
 
 class StupidBot(commands.Bot):
     def __init__(self):
+        """Initialize the StupidBot instance.
+
+        Sets up the command prefix, intents, and initializes various
+        attributes related to the bot's uptime and activity monitoring.
+        Calls the method to load previous uptime data.
+        """
         super().__init__(command_prefix=BOT_PREFIX, intents=intents)
         self.start_time = time.time()
         self.last_activity_str = "None"

@@ -151,7 +151,7 @@ class MusicCog(commands.Cog):
         self.lavalink = lavaplay.Lavalink()
         self.node: lavaplay.Node | None = None
 
-    # makes all comands within the cog to guild only
+    # makes all commands within the cog to guild only
     async def interaction_check(self, interaction: Interaction):  # type: ignore
         check = super().interaction_check(interaction) and interaction.guild is not None
         if interaction.guild and BlockManager.is_user_blocked(
