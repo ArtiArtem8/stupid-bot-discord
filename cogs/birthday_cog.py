@@ -62,11 +62,11 @@ async def safe_role_edit(
     """Safely add/remove roles with permission checks."""
     if not member.guild.me.guild_permissions.manage_roles:
         logger.warning("Bot lacks manage_roles permission")
-        return False  # Bot lacks permission:cite[1]:cite[3]
+        return False  # Bot lacks permission]
 
     if role >= member.guild.me.top_role:
         logger.debug("Role too high, %s >= %s", role, member.guild.me.top_role)
-        return False  # Role too high:cite[1]
+        return False  # Role too high
 
     if not role.is_assignable():
         logger.debug("Role is not assignable, %s", role)
@@ -82,7 +82,7 @@ async def safe_role_edit(
                 raise ValueError(f"Invalid operation: {operation}")  # !unreachable
         return True
     except Forbidden:
-        return False  # Missing permissions:cite[3]
+        return False  # Missing permissions
     except HTTPException as exc:
         if exc.status in (400, 403, 404):
             return False
