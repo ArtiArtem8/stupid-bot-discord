@@ -11,8 +11,7 @@ from discord.errors import Forbidden, HTTPException, NotFound
 from discord.ext import commands, tasks
 
 from config import BIRTHDAY_CHECK_INTERVAL, BIRTHDAY_FILE, BIRTHDAY_WISHES, BOT_ICON
-from utils.block_manager import BlockManager
-from utils.json_utils import get_json, save_json
+from utils import BlockedUserError, BlockManager, get_json, save_json
 
 DATE_FORMAT = "%d-%m-%Y"  # canonical format: DD-MM-YYYY
 
@@ -144,21 +143,12 @@ class BirthdayCog(commands.Cog):
         self.birthday_timer.cancel()
 
     async def interaction_check(self, interaction: Interaction):  # type: ignore
-        check = super().interaction_check(interaction) and interaction.guild is not None
         if interaction.guild and BlockManager.is_user_blocked(
             interaction.guild.id, interaction.user.id
         ):
-            await interaction.response.send_message(
-                "⛔ Доступ к командам запрещён.", ephemeral=True
-            )
-            self.logger.info(f"User {interaction.user} is blocked.")
-            return False
-
-        if not check:
-            await interaction.response.send_message(
-                "Вы должны быть на сервере.", ephemeral=True, silent=True
-            )
-        return check
+            self.logger.debug(f"User {interaction.user} is blocked.")
+            raise BlockedUserError()
+        return True
 
     @tasks.loop(seconds=BIRTHDAY_CHECK_INTERVAL)
     async def birthday_timer(self):
@@ -280,7 +270,7 @@ class BirthdayCog(commands.Cog):
             if role and role not in member.roles:
                 if not await safe_role_edit(member, role, "add", self.logger):
                     self.logger.warning(
-                        f"Failed to add birthday role to {member.id} in {member.guild.id}"
+                        f"Failed to add role to {member.id} in {member.guild.id}"
                     )
 
             wish = random.choice(seq=BIRTHDAY_WISHES or ["С днем рождения!"])
@@ -304,7 +294,7 @@ class BirthdayCog(commands.Cog):
         if role and role in member.roles:
             if not await safe_role_edit(member, role, "remove", self.logger):
                 self.logger.warning(
-                    f"Failed to remove birthday role from {member.id} in {member.guild.id}"
+                    f"Failed to remove role from {member.id} in {member.guild.id}"
                 )
 
     @birthday_timer.before_loop
@@ -602,4 +592,8 @@ class BirthdayCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
+    """Setup.
+
+    :param commands.Bot bot: BOT ITSELF
+    """
     await bot.add_cog(BirthdayCog(bot))

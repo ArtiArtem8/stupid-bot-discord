@@ -19,7 +19,7 @@ class OnMessageCog(commands.Cog):
         self.log_message(message)
         if message.author.bot:
             return
-        if message.content.startswith(self.bot.command_prefix):  # type: ignore
+        if message.content.startswith(tuple(await self.bot.get_prefix(message))):
             return
         if message.guild and BlockManager.is_user_blocked(
             message.guild.id, message.author.id

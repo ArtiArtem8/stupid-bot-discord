@@ -4,6 +4,7 @@ from .block_manager import (
     BlockManager,
     NameHistoryEntry,
 )
+from .exceptions import BlockedUserError
 from .image_utils import convert_image, optimize_image, save_image
 from .json_utils import clear_json, get_json, save_json
 from .russian_time_utils import format_time_russian
@@ -13,6 +14,7 @@ __all__ = [
     "BlockHistoryEntry",
     "BlockManager",
     "BlockedUser",
+    "BlockedUserError",
     "NameHistoryEntry",
     "clear_json",
     "convert_image",

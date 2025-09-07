@@ -6,11 +6,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ENCODING = "utf-8"
+# GENERAL
 
-DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
-BOT_PREFIX = "s!"  # Prefix for commands (redundant with slash commands)
 BOT_ICON = "https://icon-library.com/images/icon-for-discord/icon-for-discord-17.jpg"
+BOT_PREFIX = "s!"  # ? unused - all commands are slash commands currently
+DISCORD_BOT_OWNER_ID = os.environ.get("DISCORD_BOT_OWNER_ID")
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
+ENCODING = "utf-8"
 
 BACKUP_DIR = Path(__file__).parent / "backups"
 DATA_DIR = Path(__file__).parent / "data"
@@ -69,16 +71,18 @@ LOGGING_CONFIG: dict[str, Any] = {
     },
 }
 
-# Question cog data
-ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(".json")
-# Birthday cog data
-BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(".json")
-BIRTHDAY_CHECK_INTERVAL = 300  # seconds
-# Music cog data
-MUSIC_VOLUME_FILE = (DATA_DIR / "music_volumes").with_suffix(".json")
-MUSIC_DEFAULT_VOLUME = 10  # 0 - 1000%
 # Admin cog data
 BLOCKED_USERS_FILE = (DATA_DIR / "blocked_users").with_suffix(".json")
+# Birthday cog data
+BIRTHDAY_CHECK_INTERVAL = 300  # seconds
+BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(".json")
+# Music cog data
+MUSIC_DEFAULT_VOLUME = 10  # 0 - 1000%
+MUSIC_VOLUME_FILE = (DATA_DIR / "music_volumes").with_suffix(".json")
+# Report cog data
+REPORT_FILE = (DATA_DIR / "user_reports").with_suffix(".json")
+# Question cog data
+ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(".json")
 
 # Question cog
 CAPABILITIES = [

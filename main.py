@@ -5,18 +5,20 @@ import os
 import time
 
 import discord
-from discord import Intents
+from discord import Intents, Interaction
+from discord.app_commands import AppCommandError
 from discord.ext import commands, tasks
 
 from config import (
     AUTOSAVE_LAST_RUN_FILE_INTERVAL,
     BOT_PREFIX,
     DISCONNECT_TIMER_THRESHOLD,
+    DISCORD_BOT_OWNER_ID,
     DISCORD_BOT_TOKEN,
     LAST_RUN_FILE,
     LOGGING_CONFIG,
 )
-from utils import format_time_russian, get_json, save_json
+from utils import BlockedUserError, format_time_russian, get_json, save_json
 
 logging.config.dictConfig(LOGGING_CONFIG)
 
@@ -39,6 +41,8 @@ class StupidBot(commands.Bot):
         Calls the method to load previous uptime data.
         """
         super().__init__(command_prefix=BOT_PREFIX, intents=intents)
+        if DISCORD_BOT_OWNER_ID:
+            self.owner_id = int(DISCORD_BOT_OWNER_ID)
         self.start_time = time.time()
         self.last_activity_str = "None"
         self.enable_watch = False
@@ -67,6 +71,7 @@ class StupidBot(commands.Bot):
         for filename in os.listdir("./cogs"):
             if filename.endswith(".py"):
                 try:
+                    logger.debug("Loading cog: %s", filename)
                     await self.load_extension(f"cogs.{filename.removesuffix('.py')}")
                     logger.info("Loaded cog: %s", filename)
                 except Exception as e:
@@ -128,18 +133,47 @@ bot = StupidBot()
 
 @bot.event
 async def on_ready():
+    """Event handler for when the bot is ready.
+
+    Logs the bot's username and ID, and starts the timer and autosave tasks.
+    """
     logger.info("Program started ----------------------")
     logger.info(
         "Logged in as %s (ID: %s)",
         bot.user,
         bot.user.id if bot.user else "Can't get id",
     )
+    logger.debug(
+        "Bot owner: %s (%s)",
+        bot.owner_id,
+        bot.owner_ids if bot.owner_ids else "Not a group",
+    )
     timer.start()
     autosave.start()  # Start the autosave task
 
 
+@bot.tree.error
+async def on_app_command_error(interaction: Interaction, error: AppCommandError):
+    """Event handler for when an app command error occurs."""
+    print("error", error)
+    if isinstance(error, BlockedUserError):
+        await interaction.response.send_message(
+            "⛔ Доступ к командам запрещён.", ephemeral=True
+        )
+        return
+
+    # Log other errors
+    logger.error(f"Unhandled app command error: {error}", exc_info=error)
+
+
 @tasks.loop(seconds=11)
 async def timer():
+    """Task to periodically update the bot's activity with its uptime.
+
+    This task updates the bot's activity to reflect its current uptime.
+    The uptime is formatted using :func:`format_time_russian` and the
+    bot's activity is updated every 11 seconds.
+    """
     uptime = time.time() - bot.start_time
     formatted_time = format_time_russian(int(uptime), depth=1)
     activity_str = f"жизнь уже {formatted_time}."

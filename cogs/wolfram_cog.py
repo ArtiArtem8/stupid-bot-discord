@@ -9,7 +9,7 @@ from discord import File, Interaction, app_commands
 from discord.ext import commands
 
 from config import BOT_ICON, WOLFRAM_APP_ID
-from utils import BlockManager, optimize_image, save_image
+from utils import BlockedUserError, BlockManager, optimize_image, save_image
 
 
 class WolframCog(commands.Cog):
@@ -28,17 +28,12 @@ class WolframCog(commands.Cog):
         self.bot.tree.add_command(self.ctx_menu)
 
     async def interaction_check(self, interaction: Interaction):  # type: ignore
-        check = super().interaction_check(interaction)
         if interaction.guild and BlockManager.is_user_blocked(
             interaction.guild.id, interaction.user.id
         ):
-            await interaction.response.send_message(
-                "⛔ Доступ к командам запрещён.", ephemeral=True
-            )
-            self.logger.info(f"User {interaction.user} is blocked.")
-            return False
-
-        return check
+            self.logger.debug(f"User {interaction.user} is blocked.")
+            raise BlockedUserError()
+        return True
 
     def _should_skip_pod(self, pod_title: str) -> bool:
         """Determine if a pod should be skipped based on title."""
@@ -70,7 +65,7 @@ class WolframCog(commands.Cog):
         name="plot", description="Построить график математической функции"
     )
     @app_commands.describe(
-        function="Функции к отрисовке (например, 'sin(x)', 'x^2 + 2x + 1')"
+        function="Функции для отрисовки (например, 'sin(x)', 'x^2 + 2x + 1')"
     )
     async def wolfram_plot(self, interaction: Interaction, function: str):
         """Generate mathematical plots using Wolfram Alpha."""
@@ -223,6 +218,10 @@ class WolframCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
+    """Setup.
+
+    :param commands.Bot bot: BOT ITSELF
+    """
     await bot.add_cog(WolframCog(bot))
 
 

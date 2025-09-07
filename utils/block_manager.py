@@ -168,7 +168,7 @@ class BlockedUser:
 class BlockManager:
     @staticmethod
     def is_user_blocked(guild_id: int, user_id: int) -> bool:
-        """Check if a user is currently blocked in a guild."""
+        """Check if a user is currently blocked in the guild."""
         guild_data = BlockManager.get_guild_data(guild_id)
         user_entry = guild_data.get(user_id)
         return user_entry.is_blocked if user_entry else False

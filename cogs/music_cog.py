@@ -30,7 +30,7 @@ from discord import (
 from discord.ext import commands
 
 from config import MUSIC_DEFAULT_VOLUME, MUSIC_VOLUME_FILE
-from utils import BlockManager, get_json, save_json
+from utils import BlockedUserError, BlockManager, get_json, save_json
 
 # Load environment variables
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
@@ -151,23 +151,13 @@ class MusicCog(commands.Cog):
         self.lavalink = lavaplay.Lavalink()
         self.node: lavaplay.Node | None = None
 
-    # makes all commands within the cog to guild only
     async def interaction_check(self, interaction: Interaction):  # type: ignore
-        check = super().interaction_check(interaction) and interaction.guild is not None
         if interaction.guild and BlockManager.is_user_blocked(
             interaction.guild.id, interaction.user.id
         ):
-            await interaction.response.send_message(
-                "⛔ Доступ к командам запрещён.", ephemeral=True
-            )
-            logger.info(f"User {interaction.user} is blocked.")
-            return False
-
-        if not check:
-            await interaction.response.send_message(
-                "Вы должны быть на сервере.", ephemeral=True, silent=True
-            )
-        return check
+            logger.debug(f"User {interaction.user} is blocked.")
+            raise BlockedUserError()
+        return True
 
     async def cog_unload(self) -> None:
         if self.node is not None:
@@ -743,5 +733,9 @@ class LavalinkVoiceClient(discord.VoiceClient):
         self.cleanup()
 
 
-async def setup(bot: commands.Bot):  # noqa: D103
+async def setup(bot: commands.Bot):
+    """Setup.
+
+    :param commands.Bot bot: BOT ITSELF
+    """
     await bot.add_cog(MusicCog(bot))

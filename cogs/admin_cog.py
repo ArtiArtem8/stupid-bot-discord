@@ -268,7 +268,7 @@ class AdminCog(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
 
     @app_commands.command(
-        name="listblocked", description="Показать всех заблокированных пользователей"
+        name="list-blocked", description="Показать всех заблокированных пользователей"
     )
     @app_commands.describe(
         show_details="Показать дополнительную информацию",
@@ -381,4 +381,8 @@ class AdminCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
+    """Setup.
+
+    :param commands.Bot bot: BOT ITSELF
+    """
     await bot.add_cog(AdminCog(bot))
