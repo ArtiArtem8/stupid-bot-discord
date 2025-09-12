@@ -9,12 +9,12 @@ from discord import File, Interaction, app_commands
 from discord.ext import commands
 
 from config import BOT_ICON, WOLFRAM_APP_ID
-from utils import BlockedUserError, BlockManager, optimize_image, save_image
+from utils import BaseCog, optimize_image, save_image
 
 
-class WolframCog(commands.Cog):
+class WolframCog(BaseCog):
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
+        super().__init__(bot)
         self.client = wolframalpha.Client(app_id=WOLFRAM_APP_ID)
         self.temp_dir = Path("temp")
         self.logger = logging.getLogger("WolframCog")
@@ -26,14 +26,6 @@ class WolframCog(commands.Cog):
             callback=self.wolfram_context_menu,
         )
         self.bot.tree.add_command(self.ctx_menu)
-
-    async def interaction_check(self, interaction: Interaction):  # type: ignore
-        if interaction.guild and BlockManager.is_user_blocked(
-            interaction.guild.id, interaction.user.id
-        ):
-            self.logger.debug(f"User {interaction.user} is blocked.")
-            raise BlockedUserError()
-        return True
 
     def _should_skip_pod(self, pod_title: str) -> bool:
         """Determine if a pod should be skipped based on title."""

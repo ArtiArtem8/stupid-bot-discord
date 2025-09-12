@@ -1,5 +1,6 @@
 import json
 import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 from random import choices
@@ -14,7 +15,7 @@ def _generate_backup_filename(filename: Path) -> str:
     `<filename>_<random_letters><timestamp>.<filename_extension>`.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    rand_suffix = "".join(choices(ascii_letters + digits, k=4))  # 4 random characters
+    rand_suffix = "".join(choices(ascii_letters + digits, k=4))
     return f"{filename.stem}_{timestamp}{rand_suffix}{filename.suffix}"
 
 
@@ -25,11 +26,11 @@ def _create_backup(filename: str | Path, max_backups: int = 3) -> None:
     filename = Path(filename)
     backup_filename = _generate_backup_filename(filename)
     backups = BACKUP_DIR.glob(f"{filename.stem}_*{filename.suffix}")
-    # sorting by time
+
     sorted_backups = sorted(backups, reverse=True, key=lambda x: x.stat().st_mtime)
     for old in sorted_backups[max_backups:]:
         old.unlink()
-    shutil.copy(filename, BACKUP_DIR / backup_filename)  # creating and writing file
+    shutil.copy(filename, BACKUP_DIR / backup_filename)
 
 
 def get_json(filename: str | Path) -> dict[str, Any] | None:
@@ -55,16 +56,29 @@ def save_json(
     Creates a backup of the file if it already exists and backup_amount > 0.
     """
     filename = Path(filename)
-
-    filename.parent.mkdir(parents=True, exist_ok=True)  # creating parent directory
+    filename.parent.mkdir(parents=True, exist_ok=True)
 
     if filename.exists() and backup_amount > 0:
-        _create_backup(filename)
-    temp_filename = filename.with_stem(f"{filename.stem}_temp")
-    with open(temp_filename, "w", encoding=ENCODING) as outfile:
-        json.dump(data, outfile, sort_keys=True, indent=4, ensure_ascii=False)
+        _create_backup(filename, backup_amount)
 
-    temp_filename.replace(filename)
+    temp_filename = filename.with_stem(f"{filename.stem}_temp")
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with open(temp_filename, "w", encoding=ENCODING) as outfile:
+                json.dump(data, outfile, sort_keys=True, indent=4, ensure_ascii=False)
+            temp_filename.replace(filename)
+            break
+        except (PermissionError, OSError):
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(0.1 * (attempt + 1))
+            try:
+                if temp_filename.exists():
+                    temp_filename.unlink()
+            except (PermissionError, OSError):
+                pass
 
 
 def clear_json(

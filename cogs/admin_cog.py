@@ -1,22 +1,26 @@
 import logging
+from typing import override
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils import BlockedUser, BlockManager
+from utils import BaseCog, BlockedUser, block_manager
 
 
-class AdminCog(commands.Cog):
+class AdminCog(BaseCog):
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
-        self.block_manager = BlockManager()
+        super().__init__(bot)
         self.logger = logging.getLogger("AdminCog")
 
-    async def _get_or_create_user_entry(
+    @override
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return True
+
+    def _get_or_create_user_entry(
         self, guild_id: int, member: discord.Member
     ) -> tuple[BlockedUser, dict[int, BlockedUser]]:
-        guild_data = self.block_manager.get_guild_data(guild_id)
+        guild_data = block_manager.get_guild_data(guild_id)
         user_id = member.id
 
         if user_id in guild_data:
@@ -53,18 +57,13 @@ class AdminCog(commands.Cog):
     async def block(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ):
-        guild = interaction.guild
-        if guild is None:
-            self.logger.warning("Received block command with no guild")
-            return await interaction.response.send_message(
-                "Команда может быть использована только на сервер", ephemeral=True
-            )
+        guild = await self._require_guild(interaction)
         self.logger.info(
             f"Block command invoked by {interaction.user.id} in guild "
             f"{guild.name} ({guild.id}) targeting user {user.id}. Reason: {reason}"
         )
 
-        user_entry, guild_data = await self._get_or_create_user_entry(guild.id, user)
+        user_entry, guild_data = self._get_or_create_user_entry(guild.id, user)
 
         if user_entry.is_blocked:
             self.logger.info(
@@ -76,7 +75,7 @@ class AdminCog(commands.Cog):
             )
 
         user_entry.add_block_entry(interaction.user.id, reason)
-        self.block_manager.save_guild_data(guild, guild_data)
+        block_manager.save_guild_data(guild, guild_data)
 
         embed = discord.Embed(
             title="Блокировка",
@@ -103,17 +102,12 @@ class AdminCog(commands.Cog):
     async def unblock(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ):
-        guild = interaction.guild
-        if guild is None:
-            self.logger.warning("Received block command with no guild")
-            return await interaction.response.send_message(
-                "Команда может быть использована только на сервер", ephemeral=True
-            )
+        guild = await self._require_guild(interaction)
         self.logger.info(
             f"Unblock command invoked by {interaction.user.id} in guild {guild.name} "
             f"({guild.id}) targeting user {user.id}. Reason: {reason}"
         )
-        user_entry, guild_data = await self._get_or_create_user_entry(guild.id, user)
+        user_entry, guild_data = self._get_or_create_user_entry(guild.id, user)
 
         if not user_entry.is_blocked:
             self.logger.info(
@@ -124,7 +118,7 @@ class AdminCog(commands.Cog):
             )
 
         user_entry.add_unblock_entry(interaction.user.id, reason)
-        self.block_manager.save_guild_data(guild, guild_data)
+        block_manager.save_guild_data(guild, guild_data)
         embed = discord.Embed(
             title="Разблокировка",
             color=0xFFAE00,
@@ -153,17 +147,12 @@ class AdminCog(commands.Cog):
         user: discord.Member,
         ephemeral: bool = True,
     ):
-        guild = interaction.guild
-        if guild is None:
-            self.logger.warning("Received block command with no guild")
-            return await interaction.response.send_message(
-                "Команда может быть использована только на сервер", ephemeral=True
-            )
+        guild = await self._require_guild(interaction)
         self.logger.info(
             f"Blockinfo requested by {interaction.user.id} for user {user.id} "
             f"in guild {guild.name} ({guild.id})"
         )
-        guild_data = self.block_manager.get_guild_data(guild.id)
+        guild_data = block_manager.get_guild_data(guild.id)
         user_entry = guild_data.get(user.id)
 
         if not user_entry or not user_entry.block_history:
@@ -283,17 +272,12 @@ class AdminCog(commands.Cog):
         ephemeral: bool = True,
     ):
         """Display all currently blocked users with basic information."""
-        guild = interaction.guild
-        if guild is None:
-            self.logger.warning("Received block command with no guild")
-            return await interaction.response.send_message(
-                "Команда может быть использована только на сервер", ephemeral=True
-            )
+        guild = await self._require_guild(interaction)
         self.logger.info(
             f"Listblocked command invoked by {interaction.user.id} "
             f"in guild {guild.name} ({guild.id}) with details: {show_details}"
         )
-        blocked_users = self.block_manager.get_guild_data(guild.id)
+        blocked_users = block_manager.get_guild_data(guild.id)
         blocked_users = [user for user in blocked_users.values() if user.is_blocked]
 
         if not blocked_users:
@@ -314,14 +298,14 @@ class AdminCog(commands.Cog):
         entries: list[str] = []
 
         for user_entry in blocked_users:
-            try:
-                user = await guild.fetch_member(user_entry.user_id)
-                user_info = f"{user.mention} `{user.id}`"
-                current_username = user.display_name
-            except discord.NotFound:
+            user = guild.get_member(user_entry.user_id)
+            if user is None:
                 user_info = f"🚷 Пользователь покинул сервер `{user_entry.user_id}`"
                 current_username = user_entry.current_username
                 unresolved_count += 1
+            else:
+                user_info = f"{user.mention} `{user.id}`"
+                current_username = user.display_name
 
             entry = [f"**Пользователь:** {user_info}"]
 

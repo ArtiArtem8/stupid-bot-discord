@@ -1,35 +1,20 @@
 import logging
-from random import choices
+import secrets
 
 from discord import Interaction, app_commands
 from discord.ext import commands
 
 from config import ANSWER_FILE, CAPABILITIES
-from utils import (
-    BlockedUserError,
-    BlockManager,
-    get_json,
-    random_answer,
-    save_json,
-    str_local,
-)
+from utils import BaseCog, get_json, random_answer, save_json, str_local
 
 
-class QuestionCog(commands.Cog):
+class QuestionCog(BaseCog):
     def __init__(self, bot: commands.Bot):
         # predictions
-        self.bot = bot
+        super().__init__(bot)
         self.logger = logging.getLogger("QuestionCog")
-        self.answers = choices(CAPABILITIES, k=8)
+        self.answers = secrets.SystemRandom().sample(CAPABILITIES, 8)
         self.logger.info("Next /ask answers: %s", self.answers)
-
-    async def interaction_check(self, interaction: Interaction):  # type: ignore
-        if interaction.guild and BlockManager.is_user_blocked(
-            interaction.guild.id, interaction.user.id
-        ):
-            self.logger.debug(f"User {interaction.user} is blocked.")
-            raise BlockedUserError()
-        return True
 
     @app_commands.command(
         name="ask",

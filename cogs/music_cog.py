@@ -30,7 +30,7 @@ from discord import (
 from discord.ext import commands
 
 from config import MUSIC_DEFAULT_VOLUME, MUSIC_VOLUME_FILE
-from utils import BlockedUserError, BlockManager, get_json, save_json
+from utils import BaseCog, get_json, save_json
 
 # Load environment variables
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
@@ -145,19 +145,11 @@ def handle_errors() -> Callable[
     return decorator
 
 
-class MusicCog(commands.Cog):
+class MusicCog(BaseCog):
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
+        super().__init__(bot)
         self.lavalink = lavaplay.Lavalink()
         self.node: lavaplay.Node | None = None
-
-    async def interaction_check(self, interaction: Interaction):  # type: ignore
-        if interaction.guild and BlockManager.is_user_blocked(
-            interaction.guild.id, interaction.user.id
-        ):
-            logger.debug(f"User {interaction.user} is blocked.")
-            raise BlockedUserError()
-        return True
 
     async def cog_unload(self) -> None:
         if self.node is not None:

@@ -18,7 +18,13 @@ from config import (
     LAST_RUN_FILE,
     LOGGING_CONFIG,
 )
-from utils import BlockedUserError, format_time_russian, get_json, save_json
+from utils import (
+    BlockedUserError,
+    NoGuildError,
+    format_time_russian,
+    get_json,
+    save_json,
+)
 
 logging.config.dictConfig(LOGGING_CONFIG)
 
@@ -161,7 +167,13 @@ async def on_app_command_error(interaction: Interaction, error: AppCommandError)
             "⛔ Доступ к командам запрещён.", ephemeral=True
         )
         return
-
+    elif isinstance(error, NoGuildError):
+        await interaction.response.send_message(
+            "Команда может быть использована только на сервере",
+            ephemeral=True,
+            silent=True,
+        )
+        return
     # Log other errors
     logger.error(f"Unhandled app command error: {error}", exc_info=error)
 

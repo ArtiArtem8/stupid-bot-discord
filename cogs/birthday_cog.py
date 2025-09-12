@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import random
+import secrets
 from copy import deepcopy
 from datetime import date, datetime
 from typing import Any, Literal
@@ -11,7 +11,7 @@ from discord.errors import Forbidden, HTTPException, NotFound
 from discord.ext import commands, tasks
 
 from config import BIRTHDAY_CHECK_INTERVAL, BIRTHDAY_FILE, BIRTHDAY_WISHES, BOT_ICON
-from utils import BlockedUserError, BlockManager, get_json, save_json
+from utils import BaseCog, get_json, save_json
 
 DATE_FORMAT = "%d-%m-%Y"  # canonical format: DD-MM-YYYY
 
@@ -133,22 +133,14 @@ class ConfirmDeleteView(discord.ui.View):
         await interaction.response.edit_message(content="Отменено.", view=None)
 
 
-class BirthdayCog(commands.Cog):
+class BirthdayCog(BaseCog):
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
+        super().__init__(bot)
         self.logger = logging.getLogger("BirthdayCog")
         self.birthday_timer.start()
 
     async def cog_unload(self):
         self.birthday_timer.cancel()
-
-    async def interaction_check(self, interaction: Interaction):  # type: ignore
-        if interaction.guild and BlockManager.is_user_blocked(
-            interaction.guild.id, interaction.user.id
-        ):
-            self.logger.debug(f"User {interaction.user} is blocked.")
-            raise BlockedUserError()
-        return True
 
     @tasks.loop(seconds=BIRTHDAY_CHECK_INTERVAL)
     async def birthday_timer(self):
@@ -273,7 +265,7 @@ class BirthdayCog(commands.Cog):
                         f"Failed to add role to {member.id} in {member.guild.id}"
                     )
 
-            wish = random.choice(seq=BIRTHDAY_WISHES or ["С днем рождения!"])
+            wish = secrets.choice(seq=BIRTHDAY_WISHES or ["С днем рождения!"])
             embed = discord.Embed(
                 title=f"ПОЗДРАВЛЕНИЯ {user_data.get('name', 'Пользователь')}",
                 description=f"{wish} {member.mention}",
@@ -333,12 +325,7 @@ class BirthdayCog(commands.Cog):
             data = {}
 
         author_id = str(interaction.user.id)
-        guild = interaction.guild
-
-        if guild is None:
-            return await interaction.response.send_message(
-                "Эта команда работает только на сервере.", ephemeral=True
-            )
+        guild = await self._require_guild(interaction)
 
         server_id = str(guild.id)
         data.setdefault(
@@ -423,11 +410,7 @@ class BirthdayCog(commands.Cog):
     @app_commands.guild_only()
     async def remove_birthday(self, interaction: Interaction):
         """Remove your birthday from the system."""
-        guild = interaction.guild
-        if guild is None:
-            return await interaction.response.send_message(
-                "Эта команда работает только на сервере.", ephemeral=True
-            )
+        guild = await self._require_guild(interaction)
         server_id = str(guild.id)
         user_id = str(interaction.user.id)
         data = get_json(BIRTHDAY_FILE) or {}
@@ -461,11 +444,7 @@ class BirthdayCog(commands.Cog):
 
         TODO: Refactor: too complex
         """
-        guild = interaction.guild
-        if guild is None:
-            return await interaction.response.send_message(
-                "Эта команда работает только на сервере.", ephemeral=True
-            )
+        guild = await self._require_guild(interaction)
         try:
             data = get_json(BIRTHDAY_FILE)
             if not isinstance(data, dict):

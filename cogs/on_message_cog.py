@@ -1,12 +1,12 @@
 import logging
-from random import choice
+import secrets
 
-from discord import Message
+from discord import DMChannel, Message
 from discord.ext import commands
 from fuzzywuzzy.process import extract  # type: ignore
 
 from config import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
-from utils import BlockManager
+from utils import block_manager
 
 
 class OnMessageCog(commands.Cog):
@@ -21,7 +21,7 @@ class OnMessageCog(commands.Cog):
             return
         if message.content.startswith(tuple(await self.bot.get_prefix(message))):
             return
-        if message.guild and BlockManager.is_user_blocked(
+        if message.guild and block_manager.is_user_blocked(
             message.guild.id, message.author.id
         ):
             return
@@ -73,14 +73,13 @@ class OnMessageCog(commands.Cog):
                 message.channel,
                 message.author,
             )
-            return choice(answers)
+            return secrets.choice(answers or [None])
 
         return None
 
     def log_message(self, message: Message):
-        self.logger.info(
-            '%s sended - "%s" in %s', message.author, message.content, message.channel
-        )
+        msg = '%s sended - "%s" in %s'
+        self.logger.info(msg, message.author, message.content, message.channel)
         attachments = tuple(
             ((x.url, x.content_type, x.filename) for x in message.attachments)
         )

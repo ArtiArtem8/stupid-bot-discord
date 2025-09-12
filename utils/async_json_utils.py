@@ -2,12 +2,13 @@
 
 import asyncio
 import json
+import secrets
 import shutil
 from datetime import datetime
+from os import stat_result
 from pathlib import Path
-from random import choices
 from string import ascii_letters, digits
-from typing import Optional
+from typing import Any
 
 import aiofiles
 
@@ -16,7 +17,7 @@ from config import BACKUP_DIR, ENCODING
 
 def _generate_backup_filename(filename: Path) -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    rand_suffix = "".join(choices(ascii_letters + digits, k=4))
+    rand_suffix = "".join(secrets.choice(ascii_letters + digits) for _ in range(4))
     return f"{filename.stem}_{timestamp}{rand_suffix}{filename.suffix}"
 
 
@@ -29,21 +30,30 @@ async def _create_backup_async(filename: Path, max_backups: int = 3) -> None:
     backups = await asyncio.to_thread(
         lambda: list(BACKUP_DIR.glob(f"{filename.stem}_*{filename.suffix}"))
     )
+    existing_backups: list[tuple[Path, stat_result]] = []
+    for backup in backups:
+        if await asyncio.to_thread(backup.exists):
+            try:
+                stat_res = await asyncio.to_thread(backup.stat)
+                existing_backups.append((backup, stat_res))
+            except (FileNotFoundError, OSError):
+                continue
 
-    backup_stats = await asyncio.gather(*[asyncio.to_thread(b.stat) for b in backups])
-    sorted_backups = sorted(
-        zip(backups, backup_stats), key=lambda x: x[1].st_mtime, reverse=True
-    )
+    existing_backups.sort(key=lambda x: x[1].st_mtime, reverse=True)
 
-    for backup, _ in sorted_backups[max_backups:]:
-        await asyncio.to_thread(backup.unlink)
+    for backup, _ in existing_backups[max_backups:]:
+        try:
+            await asyncio.to_thread(backup.unlink)
+        except (FileNotFoundError, OSError):
+            continue
+    try:
+        await asyncio.to_thread(shutil.copy, filename, BACKUP_DIR / backup_filename)
+    except (FileNotFoundError, OSError) as e:
+        print(f"Warning: Could not create backup: {e}")
 
-    # Copy using thread pool (shutil is blocking)
-    await asyncio.to_thread(shutil.copy, filename, BACKUP_DIR / backup_filename)
 
-
-async def get_json_async(filename: str | Path) -> Optional[dict]:
-    """Async read JSON with validation"""
+async def get_json_async(filename: str | Path) -> dict[str, Any] | None:
+    """Async read JSON with validation."""
     path = Path(filename)
 
     if not await asyncio.to_thread(path.exists):
@@ -58,29 +68,48 @@ async def get_json_async(filename: str | Path) -> Optional[dict]:
 
 
 async def save_json_async(
-    filename: str | Path, data: dict, backup_amount: int = 3
+    filename: str | Path, data: dict[str, Any], backup_amount: int = 3
 ) -> None:
-    """Atomic async JSON save with backups"""
+    """Atomic async JSON save with backups."""
+    if not isinstance(data, dict):
+        raise TypeError("Data must be dict")
     path = Path(filename)
-
     await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
 
-    if await asyncio.to_thread(path.exists) and backup_amount > 0:
-        await _create_backup_async(path, backup_amount)
+    try:
+        if await asyncio.to_thread(path.exists) and backup_amount > 0:
+            await _create_backup_async(path, backup_amount)
+    except Exception as e:
+        print(f"Warning: Backup creation failed: {e}")
 
-    temp_path = path.with_stem(f"{path.stem}_temp")
+    temp_path = path.with_name(_generate_backup_filename(path))
+    temp_path = temp_path.with_stem(f"{temp_path.stem}_temp")
     json_data = json.dumps(data, indent=4, ensure_ascii=False, sort_keys=True)
 
-    async with aiofiles.open(temp_path, "w", encoding=ENCODING) as f:
-        await f.write(json_data)
-
-    await asyncio.to_thread(temp_path.replace, path)
+    try:
+        async with aiofiles.open(temp_path, "w", encoding=ENCODING) as f:
+            await f.write(json_data)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                await asyncio.to_thread(temp_path.replace, path)
+                break  # Success, exit the retry loop
+            except (PermissionError, OSError):
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(0.001 * (attempt + 1))
+    except Exception as e:
+        try:
+            await asyncio.to_thread(temp_path.unlink)
+        except (FileNotFoundError, OSError):
+            pass
+        raise e
 
 
 async def clear_json_async(
     filename: str | Path, default: str = "{}", backup_amount: int = 3
 ) -> None:
-    """Async clear JSON with validation"""
+    """Async clear JSON with validation."""
     path = Path(filename)
 
     if not await asyncio.to_thread(path.exists):
@@ -91,8 +120,14 @@ async def clear_json_async(
     except json.JSONDecodeError as e:
         raise ValueError("Invalid default JSON") from e
 
-    if backup_amount > 0:
-        await _create_backup_async(path, backup_amount)
+    try:
+        if backup_amount > 0:
+            await _create_backup_async(path, backup_amount)
+    except Exception as e:
+        print(f"Warning: Backup creation failed: {e}")
 
-    async with aiofiles.open(path, "w", encoding=ENCODING) as f:
-        await f.write(default)
+    try:
+        async with aiofiles.open(path, "w", encoding=ENCODING) as f:
+            await f.write(default)
+    except (FileNotFoundError, OSError) as e:
+        print(f"Warning: Could not clear file: {e}")

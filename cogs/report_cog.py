@@ -23,12 +23,7 @@ from discord.ext import commands
 
 import utils
 from config import REPORT_FILE
-from utils import BlockedUserError, BlockManager
-
-# command for setting up a report channel (dev only)
-# command for sending a report (everyone can use if not blocked)
-# save reports with all information in json file
-# send necessary message to a private channel
+from utils import BaseCog
 
 
 class UserInfo(TypedDict):
@@ -56,18 +51,10 @@ class ReportDict(TypedDict):
     report_id: str
 
 
-class ReportCog(commands.Cog):
+class ReportCog(BaseCog):
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
+        super().__init__(bot)
         self.logger = logging.getLogger("ReportCog")
-
-    async def interaction_check(self, interaction: Interaction):  # type: ignore
-        if interaction.guild and BlockManager.is_user_blocked(
-            interaction.guild.id, interaction.user.id
-        ):
-            self.logger.debug(f"User {interaction.user} is blocked.")
-            raise BlockedUserError()
-        return True
 
     def _log_report(self, report: ReportDict):
         report_file = utils.get_json(REPORT_FILE) or {}

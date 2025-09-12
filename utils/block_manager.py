@@ -149,10 +149,10 @@ class BlockedUser:
     @classmethod
     def from_dict(cls, data: BlockedUserDict) -> Self:
         return cls(
-            user_id=int(data["user_id"]),
-            current_username=data["current_username"],
-            current_global_name=data["current_global_name"],
-            blocked=data["blocked"],
+            user_id=int(data.get("user_id", 0)),
+            current_username=data.get("current_username", ""),
+            current_global_name=data.get("current_global_name"),
+            blocked=data.get("blocked", False),
             block_history=[
                 BlockHistoryEntry.from_dict(e) for e in data.get("block_history", [])
             ],
@@ -166,30 +166,43 @@ class BlockedUser:
 
 
 class BlockManager:
-    @staticmethod
-    def is_user_blocked(guild_id: int, user_id: int) -> bool:
+    """Manage blocked users across guilds."""
+
+    def __init__(self) -> None:
+        self._cache: dict[int, dict[int, BlockedUser]] = {}
+
+    def is_user_blocked(self, guild_id: int, user_id: int) -> bool:
         """Check if a user is currently blocked in the guild."""
-        guild_data = BlockManager.get_guild_data(guild_id)
+        guild_data = self.get_guild_data(guild_id)
         user_entry = guild_data.get(user_id)
         return user_entry.is_blocked if user_entry else False
 
-    @staticmethod
-    def get_guild_data(guild_id: int) -> dict[int, BlockedUser]:
+    def get_guild_data(self, guild_id: int) -> dict[int, BlockedUser]:
+        """Get the blocked users for a guild."""
+        if guild_id in self._cache:
+            return self._cache[guild_id]
         raw_data = get_json(BLOCKED_USERS_FILE) or {}
         guild_data = raw_data.get(str(guild_id), {})
         users = guild_data.get("users", {})
-        return {
-            int(user_id): BlockedUser.from_dict(user_data)
-            for user_id, user_data in users.items()
+        self._cache[guild_id] = {
+            int(uid): BlockedUser.from_dict(u) for uid, u in users.items()
         }
+        return self._cache[guild_id]
 
-    @staticmethod
-    def save_guild_data(guild: discord.Guild, users: dict[int, BlockedUser]) -> None:
+    def save_guild_data(
+        self, guild: discord.Guild, users: dict[int, BlockedUser]
+    ) -> None:
+        """Save the blocked users for a guild."""
         guild_id = str(guild.id)
         raw_data = get_json(BLOCKED_USERS_FILE) or {}
         raw_data[guild_id] = {
-            "member_count": guild.member_count,
+            "member_count": guild.member_count
+            or raw_data.get(guild_id, {}).get("member_count", 0),
             "server": guild.name,
             "users": {str(user.user_id): user.to_dict() for user in users.values()},
         }
         save_json(BLOCKED_USERS_FILE, raw_data)
+        self._cache[guild.id] = users
+
+
+block_manager = BlockManager()
