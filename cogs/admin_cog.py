@@ -111,7 +111,7 @@ class AdminCog(BaseCog):
 
         if not user_entry.is_blocked:
             self.logger.info(
-                f"Unblock attempt failed - user {user.id} not blocked in guild {guild.name} ({guild.id})"
+                f"Unblock failed - user {user.id} not blocked in guild {guild.name}"
             )
             return await interaction.response.send_message(
                 f"{user.mention} не заблокирован.", ephemeral=True

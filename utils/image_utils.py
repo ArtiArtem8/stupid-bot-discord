@@ -1,4 +1,4 @@
-import random
+import secrets
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Optional
@@ -63,7 +63,7 @@ def save_image(
 
 def generate_unique_filename(extension: str) -> Path:
     """Generate unique random filename with given extension."""
-    return Path(f"{random.randint(2**27, 2**28)}").with_suffix(f".{extension}")
+    return Path(f"{secrets.token_hex(8)}").with_suffix(f".{extension}")
 
 
 def optimize_image(

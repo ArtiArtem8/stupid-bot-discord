@@ -143,11 +143,13 @@ async def on_ready():
 
     Logs the bot's username and ID, and starts the timer and autosave tasks.
     """
+    discord_version = discord.__version__
     logger.info("Program started ----------------------")
     logger.info(
-        "Logged in as %s (ID: %s)",
+        "Logged in as %s (ID: %s) (API Version: %s)",
         bot.user,
         bot.user.id if bot.user else "Can't get id",
+        discord_version,
     )
     logger.debug(
         "Bot owner: %s (%s)",
@@ -220,6 +222,7 @@ if __name__ == "__main__":
     bot.enable_watch = args.watch_cogs
 
     async def main():
+        """Main entry point for the bot."""
         async with bot:
             await bot.start(DISCORD_BOT_TOKEN or "Token_is_missing")
 

@@ -1,7 +1,7 @@
 import logging
 import secrets
 
-from discord import DMChannel, Message
+from discord import Message
 from discord.ext import commands
 from fuzzywuzzy.process import extract  # type: ignore
 

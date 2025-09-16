@@ -1,9 +1,9 @@
 import json
+import secrets
 import shutil
 import time
 from datetime import datetime
 from pathlib import Path
-from random import choices
 from string import ascii_letters, digits
 from typing import Any
 
@@ -15,7 +15,7 @@ def _generate_backup_filename(filename: Path) -> str:
     `<filename>_<random_letters><timestamp>.<filename_extension>`.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    rand_suffix = "".join(choices(ascii_letters + digits, k=4))
+    rand_suffix = "".join(secrets.choice(ascii_letters + digits) for _ in range(4))
     return f"{filename.stem}_{timestamp}{rand_suffix}{filename.suffix}"
 
 

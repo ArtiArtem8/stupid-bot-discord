@@ -9,7 +9,7 @@ load_dotenv()
 # GENERAL
 
 BOT_ICON = "https://icon-library.com/images/icon-for-discord/icon-for-discord-17.jpg"
-BOT_PREFIX = "s!"  # ? unused - all commands are slash commands currently
+BOT_PREFIX = "s!"  # ? unused - all commands are slash (app) commands currently
 DISCORD_BOT_OWNER_ID = os.environ.get("DISCORD_BOT_OWNER_ID")
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 ENCODING = "utf-8"

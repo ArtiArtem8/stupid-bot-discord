@@ -1,6 +1,6 @@
 [project]
 name = "stupid-bot-discord"
-version = "2.1.0"
+version = "2.1.1"
 description = "A feature-rich Discord bot built with discord.py"
 authors = [
     { name = "ArtiArtem", email = "ArtiArtem8@users.noreply.github.com" },
@@ -22,7 +22,7 @@ dependencies = [
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-select = [
+lint.select = [
     "F",   # Pyflakes
     "E",   # Pycodestyle errors
     "W",   # Pycodestyle warnings
@@ -33,7 +33,7 @@ select = [
     "S",   # flake8-bandit
     "RUF", # Ruff-specific rules
 ]
-ignore = [
+lint.ignore = [
     "D100",
     "D101",
     "D102",
@@ -45,6 +45,7 @@ ignore = [
     "D401",
     # "E501", # Line too long
     # "S311",
+    "C901",
     "RUF001",
 ]
 exclude = [

@@ -23,14 +23,11 @@ cd /d "%~dp0"
 echo Activating Python virtual environment...
 call ".venv\Scripts\activate"
 
-:: Run your Python script in a new command shell.
-:: This ensures that Ctrl+C only stops the Python process,
-:: not the batch script itself.
 echo Running main.py...
 cmd /c ".venv\Scripts\python.exe main.py"
 set "EXIT_CODE=%ERRORLEVEL%"
 
-:: Check and log the exit code from the Python application
+
 if %EXIT_CODE% NEQ 0 (
     echo.
     echo Application exited with error code %EXIT_CODE%.

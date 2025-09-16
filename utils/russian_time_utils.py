@@ -28,7 +28,7 @@ def format_time_russian(total_seconds: int, depth: int | None = 2) -> str:
     Output customization:
       - `depth` controls how many time units to display (default=2):
           • depth=2: Show max of 2 largest non-zero units (e.g. "2 часа и 45 минут")
-          • depth=None: Show all non-zero units
+          • depth=None: Show all units
       - Zero values are hidden except when duration is 0 ("0 секунд")
       - Units always display from largest to smallest (years → seconds)
 
@@ -40,7 +40,7 @@ def format_time_russian(total_seconds: int, depth: int | None = 2) -> str:
     SEC_PER_MIN = 60
     SEC_PER_HOUR = 3600
     SEC_PER_DAY = 86400
-    SEC_PER_YEAR = 31536000  # 365 days
+    SEC_PER_YEAR = 31536000
 
     MINUTE_ROUND_THRESHOLD = 5
     HOUR_ROUND_THRESHOLD = 60
@@ -52,18 +52,40 @@ def format_time_russian(total_seconds: int, depth: int | None = 2) -> str:
     hours, remainder = divmod(remainder, SEC_PER_HOUR)
     minutes, seconds = divmod(remainder, SEC_PER_MIN)
 
-    if seconds >= SEC_PER_MIN - MINUTE_ROUND_THRESHOLD:
+    relative_depth = next(
+        (i for i, v in enumerate([years, days, hours, minutes, seconds]) if v > 0), 0
+    ) + (depth or 0)
+
+    if seconds >= SEC_PER_MIN - MINUTE_ROUND_THRESHOLD and relative_depth <= 4:
         minutes += 1
         seconds = 0
-    if minutes >= 60 - HOUR_ROUND_THRESHOLD / SEC_PER_MIN:
+    if minutes >= 60 - HOUR_ROUND_THRESHOLD / SEC_PER_MIN and relative_depth <= 3:
         hours += 1
         minutes = 0
-    if hours >= 24 - DAY_ROUND_THRESHOLD / SEC_PER_HOUR:
+    if hours >= 24 - DAY_ROUND_THRESHOLD / SEC_PER_HOUR and relative_depth <= 2:
         days += 1
         hours = 0
-    if days >= 365 - YEAR_ROUND_THRESHOLD / SEC_PER_DAY:
+    if days >= 365 - YEAR_ROUND_THRESHOLD / SEC_PER_DAY and relative_depth <= 1:
         years += 1
         days = 0
+
+    # check for overflows
+    def _balance():
+        nonlocal years, days, hours, minutes, seconds
+        if days >= 365:
+            years += 1
+            days = 0
+        if hours >= 24:
+            days += 1
+            hours = 0
+        if minutes >= 60:
+            hours += 1
+            minutes = 0
+        if seconds >= 60:
+            minutes += 1
+            seconds = 0
+
+    [_balance() for _ in range(3)]
 
     words_map = {
         "years": ("год", "года", "лет"),
@@ -113,4 +135,41 @@ if __name__ == "__main__":
     print(format_time_russian(31536000, None))
     print(format_time_russian(3599, depth=10))
     print(format_time_russian(31535999))
+    years, remainder = divmod(31535999, 31536000)
+    days, remainder = divmod(remainder, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    print(
+        f"{years} years, {days} days, {hours} hours, {minutes} minutes, {seconds} seconds"
+    )
+    print(format_time_russian(32877919 - 31536000, None))
+    print(format_time_russian(32877919 - 31536000, 1))
+    print(format_time_russian(32877919 - 31536000, 2))
+    print(format_time_russian(32877919 - 31536000, 3))
+    print(format_time_russian(32877919 - 31536000, 4))
+    print(format_time_russian(32877919 - 31536000, 5))
     print(format_time_russian(31535999, None))
+    print(format_time_russian(31535999, 1))
+    print(format_time_russian(31535999, 2))
+    print(format_time_russian(31535999, 3))
+    print(format_time_russian(31535999, 4))
+    print(format_time_russian(31535999, 5))
+    print(format_time_russian(31535999 + 2, 1))
+    print(format_time_russian(31535999 + 2, 2))
+    print(format_time_russian(31535999 + 2, 3))
+    print(format_time_russian(31535999 + 2, 4))
+    print(format_time_russian(31535999 + 2, 5))
+    print(format_time_russian(31535999 + 2, 1))
+    print(format_time_russian(31535999 + 2, 2))
+    print(format_time_russian(31535999 + 2, 3))
+    print(format_time_russian(31535999 + 2, 4))
+    print(format_time_russian(31535999 + 2, 5))
+    for i in range(10, 30):
+        print(format_time_russian(31535999 + 2**i, 1))
+    print(format_time_russian(2574475 + 3600 * 3 + 3200, 1))
+    print(format_time_russian(2574475 + 3600 * 3 + 3200, 2))
+    print(format_time_russian(2574475 + 3600 * 3 + 3200, 3))
+    print(format_time_russian(2574475 + 3600 * 3 + 3200, 4))
+    print(format_time_russian(2574475 + 3600 * 3 + 3200, 5))
+    print(format_time_russian(2574475 + 3600 * 3 + 3200, 6))
+    print(format_time_russian(2574475 + 3600 * 3 + 3200, None))
