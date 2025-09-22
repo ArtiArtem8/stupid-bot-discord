@@ -3,6 +3,7 @@ import asyncio
 import logging.config
 import os
 import time
+from pathlib import Path
 
 import discord
 from discord import Intents, Interaction
@@ -74,17 +75,19 @@ class StupidBot(commands.Bot):
             )
 
     async def setup_hook(self) -> None:
-        for filename in os.listdir("./cogs"):
-            if filename.endswith(".py"):
-                try:
-                    logger.debug("Loading cog: %s", filename)
-                    await self.load_extension(f"cogs.{filename.removesuffix('.py')}")
-                    logger.info("Loaded cog: %s", filename)
-                except Exception as e:
-                    logger.error(
-                        "Failed to load cog %s: %s", filename, e, exc_info=True
-                    )
-        await self.tree.sync()  # for slash apps
+        cogs_dir = Path.cwd() / "cogs"
+        for file_path in cogs_dir.rglob("*_cog.py"):
+            if file_path.name.startswith("_"):
+                continue
+            rel_path = file_path.relative_to(cogs_dir).with_suffix("")
+            dotted_path = ".".join(rel_path.parts)
+            try:
+                logger.debug("Loading cog: %s", file_path.relative_to(cogs_dir))
+                await self.load_extension(f"cogs.{dotted_path}")
+                logger.info("Loaded cog: %s", file_path.relative_to(cogs_dir))
+            except Exception as e:
+                logger.error("Failed to load cog %s: %s", file_path, e, exc_info=True)
+        await self.tree.sync()
         logger.info("Application commands synced")
         if self.enable_watch:
             self._watcher = self.loop.create_task(self._cog_watcher())
@@ -128,7 +131,7 @@ def save_last_run(accumulated_uptime: float) -> None:
         save_json(
             filename=LAST_RUN_FILE,
             data=data,
-            backup_amount=0,
+            backup_amount=1,
         )
     except Exception as e:
         logger.error("Failed to save last run data: %s", e)
@@ -157,7 +160,7 @@ async def on_ready():
         bot.owner_ids if bot.owner_ids else "Not a group",
     )
     timer.start()
-    autosave.start()  # Start the autosave task
+    autosave.start()
 
 
 @bot.tree.error
