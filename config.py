@@ -1,3 +1,17 @@
+"""Bot configuration and constants.
+
+This module centralizes all configuration values and provides
+type-safe access to environment variables.
+
+Environment Variables:
+    DISCORD_BOT_TOKEN: Bot authentication token (required)
+    DISCORD_BOT_OWNER_ID: Owner user ID for special permissions
+    WOLFRAM_APP_ID: Wolfram Alpha API key
+    LAVALINK_HOST: Lavalink server host
+    LAVALINK_PORT: Lavalink server port
+    LAVALINK_PASSWORD: Lavalink authentication password
+"""
+
 import os
 from pathlib import Path
 from typing import Any
@@ -161,3 +175,6 @@ BIRTHDAY_WISHES = [
     "С днем рождения! Хочется пожелать тебе в этом году побольше вдохновения и энергии. Пускай все, за что бы ты не взялся, имеет успешный финал. Здоровья побольше, ведь с ним ты сможешь все!",  # noqa: E501
     "Поздравляю с днем рождения! Желаю позитивного настроения, побольше радостных дней. Желаю Вам встречать каждое утро с улыбкой, верой в лучшее. Пусть у Вашей мечты будут крылья! Свершения Вам задуманных планов!",  # noqa: E501
 ]
+
+for directory in [DATA_DIR, BACKUP_DIR]:
+    directory.mkdir(parents=True, exist_ok=True)

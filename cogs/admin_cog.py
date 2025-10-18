@@ -1,5 +1,15 @@
+"""Administrative commands for user blocking and management.
+
+Provides:
+- Blocking/unblocking users from bot access
+- Viewing detailed block history
+- Listing all blocked users
+- Tracking name changes over time
+
+"""
+
 import logging
-from typing import override
+from typing import Literal, override
 
 import discord
 from discord import app_commands
@@ -7,19 +17,82 @@ from discord.ext import commands
 
 from utils import BaseCog, BlockedUser, block_manager
 
+MAX_FIELD_LENGTH = 1024
+"""Maximum characters per embed field to avoid Discord limits"""
+
+
+def create_block_embed(
+    user: discord.Member,
+    action: Literal["Блокировка", "Разблокировка"],
+    reason: str | None = None,
+) -> discord.Embed:
+    """Create standardized embed for block/unblock actions.
+
+    Args:
+        user: User being blocked/unblocked
+        action: "Блокировка" or "Разблокировка"
+        reason: Optional reason for action
+
+    Returns:
+        Formatted Discord embed
+
+    """
+    description = (
+        f"{user.mention} был {'за' if action == 'Блокировка' else 'раз'}блокирован"
+    )
+    embed = discord.Embed(
+        title=action,
+        description=description,
+        color=0xFFAE00,
+    )
+
+    if reason:
+        embed.add_field(name="Причина", value=reason)
+
+    return embed
+
+
+def format_danger_level(block_count: int) -> str:
+    """Determine danger level emoji based on block count.
+
+    Args:
+        block_count: Number of times user was blocked
+
+    Returns:
+        Emoji string representing danger level
+
+    """
+    if block_count <= 2:
+        return "🟢 Низкий"
+    if block_count <= 4:
+        return "🟠 Средний"
+    return "🔴 Высокий"
+
 
 class AdminCog(BaseCog):
+    """Administrative commands for server management.
+
+    Requires administrator permissions for all commands.
+    """
+
     def __init__(self, bot: commands.Bot):
         super().__init__(bot)
         self.logger = logging.getLogger("AdminCog")
 
     @override
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Allow admin commands to bypass block checks."""
         return True
 
     def _get_or_create_user_entry(
         self, guild_id: int, member: discord.Member
     ) -> tuple[BlockedUser, dict[int, BlockedUser]]:
+        """Get or create user entry with name tracking.
+
+        Returns:
+            Tuple of (user_entry, guild_data)
+
+        """
         guild_data = block_manager.get_guild_data(guild_id)
         user_id = member.id
 
@@ -28,7 +101,7 @@ class AdminCog(BaseCog):
             if user_entry.update_name_history(member.display_name, member.name):
                 self.logger.info(
                     f"Updated name history for user {user_id} in guild {guild_id}. "
-                    f"New name: {member.display_name}, global: {member.name}"
+                    f"New name: {member.display_name=}, global: {member.name=}"
                 )
         else:
             user_entry = BlockedUser(
@@ -57,6 +130,7 @@ class AdminCog(BaseCog):
     async def block(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ):
+        """Block a user from using the bot."""
         guild = await self._require_guild(interaction)
         self.logger.info(
             f"Block command invoked by {interaction.user.id} in guild "
@@ -77,13 +151,7 @@ class AdminCog(BaseCog):
         user_entry.add_block_entry(interaction.user.id, reason)
         block_manager.save_guild_data(guild, guild_data)
 
-        embed = discord.Embed(
-            title="Блокировка",
-            color=0xFFAE00,
-            description=f"{user.mention} был заблокирован.",
-        )
-        if reason:
-            embed.add_field(name="Причина", value=reason)
+        embed = create_block_embed(user, "Блокировка", reason)
         self.logger.info(
             f"Successfully blocked user {user.id} in guild {guild.name} ({guild.id})"
         )
@@ -102,6 +170,7 @@ class AdminCog(BaseCog):
     async def unblock(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ):
+        """Unblock a user from using the bot."""
         guild = await self._require_guild(interaction)
         self.logger.info(
             f"Unblock command invoked by {interaction.user.id} in guild {guild.name} "
@@ -119,13 +188,7 @@ class AdminCog(BaseCog):
 
         user_entry.add_unblock_entry(interaction.user.id, reason)
         block_manager.save_guild_data(guild, guild_data)
-        embed = discord.Embed(
-            title="Разблокировка",
-            color=0xFFAE00,
-            description=f"{user.mention} был разблокирован.",
-        )
-        if reason:
-            embed.add_field(name="Причина", value=reason)
+        embed = create_block_embed(user, "Разблокировка", reason)
         self.logger.info(
             f"Successfully unblocked user {user.id} in guild {guild.name} ({guild.id})"
         )
@@ -147,6 +210,7 @@ class AdminCog(BaseCog):
         user: discord.Member,
         ephemeral: bool = True,
     ):
+        """Display detailed block history for a user."""
         guild = await self._require_guild(interaction)
         self.logger.info(
             f"Blockinfo requested by {interaction.user.id} for user {user.id} "
@@ -169,25 +233,34 @@ class AdminCog(BaseCog):
             f"Displaying block history for user {user.id} "
             f"in guild {guild.name} ({guild.id})"
         )
-        embed = discord.Embed(title="📜 Полная история блокировок", color=0x2B2D31)
+        # Build detailed embed
+        embed = discord.Embed(
+            title="📜 Полная история блокировок",
+            color=0x2B2D31,
+        )
         embed.set_author(name=str(user), icon_url=user.display_avatar.url)
         embed.set_thumbnail(url=user.display_avatar.url)
 
-        # Current Status
+        # Current status
         if user_entry.is_blocked:
             last_block = user_entry.block_history[-1]
+            timestamp = int(last_block.timestamp.timestamp())
             status_value = (
                 f"🔴 **Заблокирован**\n"
                 f"• Администратор: <@{last_block.admin_id}>\n"
                 f"• Причина: {last_block.reason or 'Не указана'}\n"
-                f"• Дата: <t:{int(last_block.timestamp.timestamp())}:F>"
+                f"• Дата: <t:{timestamp}:F>"
             )
         else:
             status_value = "🟢 Не заблокирован"
 
-        embed.add_field(name="Текущий статус", value=status_value, inline=False)
+        embed.add_field(
+            name="Текущий статус",
+            value=status_value,
+            inline=False,
+        )
 
-        history: list[str] = []
+        # Recent events (merge and sort block/unblock history)
         all_events = sorted(
             [(e.timestamp, "BLOCK", e) for e in user_entry.block_history]
             + [(e.timestamp, "UNBLOCK", e) for e in user_entry.unblock_history],
@@ -195,66 +268,64 @@ class AdminCog(BaseCog):
             reverse=True,
         )[:5]
 
-        for timestamp, action, entry in all_events:
-            icon = ["🔓", "🔒"][action == "BLOCK"]
-            history.append(
-                f"{icon} **{action}** <t:{int(timestamp.timestamp())}:R>\n"
-                f"• Админ: <@{entry.admin_id}>\n"
-                f"• Причина: {entry.reason or 'Не указана'}\n"
-            )
+        if all_events:
+            history_lines: list[str] = []
+            for timestamp, action, entry in all_events:
+                icon = "🔒" if action == "BLOCK" else "🔓"
+                ts = int(timestamp.timestamp())
+                history_lines.append(
+                    f"{icon} **{action}** <t:{ts}:R>\n"
+                    f"• Админ: <@{entry.admin_id}>\n"
+                    f"• Причина: {entry.reason or 'Не указана'}\n"
+                )
 
-        if history:
             embed.add_field(
                 name="Последние события",
-                value="\n".join(history)[:1024],
+                value="\n".join(history_lines)[:1024],
                 inline=False,
             )
 
-        # Name History
+        # Name history
         if user_entry.name_history:
             name_changes: list[str] = []
             for name_entry in sorted(
-                user_entry.name_history, key=lambda x: x.timestamp, reverse=True
+                user_entry.name_history,
+                key=lambda x: x.timestamp,
+                reverse=True,
             )[:3]:
-                name_changes.append(
-                    f"<t:{int(name_entry.timestamp.timestamp())}:D>:\n"
-                    f"• Имя: {name_entry.username}\n"
-                )
+                ts = int(name_entry.timestamp.timestamp())
+                name_changes.append(f"<t:{ts}:D>:\n• Имя: {name_entry.username}\n")
 
             embed.add_field(
                 name="📝 История имён",
                 value="\n".join(name_changes)[:1024],
             )
 
-        timestamp = int(user_entry.block_history[0].timestamp.timestamp())
+        # Statistics
+        first_block_ts = int(user_entry.block_history[0].timestamp.timestamp())
         stats = [
             f"• Всего блокировок: {len(user_entry.block_history)}",
             f"• Всего разблокировок: {len(user_entry.unblock_history)}",
-            f"• Первая блокировка: <t:{timestamp}:D>",
+            f"• Первая блокировка: <t:{first_block_ts}:D>",
         ]
 
         if user_entry.unblock_history:
-            timestamp = int(user_entry.unblock_history[-1].timestamp.timestamp())
-            stats.append(f"• Последняя разблокировка: <t:{timestamp}:D>")
+            last_unblock_ts = int(user_entry.unblock_history[-1].timestamp.timestamp())
+            stats.append(f"• Последняя разблокировка: <t:{last_unblock_ts}:D>")
 
-        embed.add_field(name="📊 Статистика", value="\n".join(stats), inline=False)
+        embed.add_field(
+            name="📊 Статистика",
+            value="\n".join(stats),
+            inline=False,
+        )
 
-        notes = []
-        if user_entry.block_history:
-            first_block = user_entry.block_history[0]
-            notes.append(
-                f"Первая блокировка: <t:{int(first_block.timestamp.timestamp())}:D> "
-                f"(<@{first_block.admin_id}>)"
-            )
-
-        danger_level = "🟢 Низкий"
-        if len(user_entry.block_history) > 2:
-            danger_level = "🟠 Средний"
-        if len(user_entry.block_history) > 4:
-            danger_level = "🔴 Высокий"
-
+        # Footer with danger level
+        danger_level = format_danger_level(len(user_entry.block_history))
         embed.set_footer(text=f"Уровень проблемности: {danger_level}")
+
         await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
+
+        self.logger.info(f"Displayed blockinfo for user {user.id} in guild {guild.id}")
 
     @app_commands.command(
         name="list-blocked", description="Показать всех заблокированных пользователей"
@@ -283,7 +354,7 @@ class AdminCog(BaseCog):
         if not blocked_users:
             self.logger.info(f"No blocked users found in guild {guild.id}")
             await interaction.response.send_message(
-                "🚫 Нет заблокированных пользователей на этом сервере.",
+                "Нет заблокированных пользователей на этом сервере.",
                 ephemeral=ephemeral,
             )
             return
@@ -331,13 +402,12 @@ class AdminCog(BaseCog):
             f"• Последняя блокировка: <t:{timestamp}:R>"
         )
 
-        MAX_FIELD_CHARS = 1000
         current_field: list[str] = []
         current_length = 0
 
         for entry in entries:
-            entry_length = len(entry)
-            if current_length + entry_length > MAX_FIELD_CHARS:
+            entry_length = len(entry) + 2
+            if current_length + entry_length > MAX_FIELD_LENGTH:
                 embed.add_field(
                     name="Заблокированные пользователи",
                     value="\n\n".join(current_field),
@@ -367,6 +437,8 @@ class AdminCog(BaseCog):
 async def setup(bot: commands.Bot):
     """Setup.
 
-    :param commands.Bot bot: BOT ITSELF
+    Args:
+        bot: BOT ITSELF
+
     """
     await bot.add_cog(AdminCog(bot))

@@ -1,4 +1,18 @@
 # -*- coding: utf-8 -*-
+"""Music playback with Lavalink integration.
+
+Provides:
+- Playing music from various sources
+- Queue management
+- Playback control (pause, resume, skip, stop)
+- Volume control
+- Voice channel management
+
+Requirements:
+    - Lavalink server running
+    - Environment variables: LAVALINK_HOST, LAVALINK_PORT, LAVALINK_PASSWORD
+"""
+
 import asyncio
 import functools
 import logging
@@ -27,6 +41,7 @@ from discord import (
     VoiceChannel,
     app_commands,
 )
+from discord.abc import Snowflake
 from discord.ext import commands
 
 from config import MUSIC_DEFAULT_VOLUME, MUSIC_VOLUME_FILE
@@ -434,17 +449,24 @@ class MusicCog(BaseCog):
             logger.error("Guild context missing despite guild_only decorator.")
             return VoiceCheckResult.CONNECTION_FAILED, voice_channel
         voice_client = guild.voice_client
+        if not voice_client or not isinstance(voice_client, LavalinkVoiceClient):
+            logger.error("Voice client is not LavalinkVoiceClient")
+            return VoiceCheckResult.CONNECTION_FAILED, voice_channel
+
         if voice_client:
             if voice_client.channel == voice_channel:
+                try:
+                    await voice_channel.connect(cls=LavalinkVoiceClient, self_deaf=True)
+                except discord.ClientException:
+                    logger.debug("Voice client is already connected")
                 return VoiceCheckResult.ALREADY_CONNECTED, voice_channel
-            from_channel = cast(VocalGuildChannel, voice_client.channel)
+            from_channel = voice_client.channel
             try:
                 logger.info(
                     f"Moving from {from_channel.name} to "
                     f"{voice_channel.name} in guild {guild.id}"
                 )
-                await voice_client.disconnect(force=True)
-                await voice_channel.connect(cls=LavalinkVoiceClient, self_deaf=True)
+                await voice_client.move_to(voice_channel)
                 return VoiceCheckResult.MOVED_CHANNELS, (from_channel, voice_channel)
             except Exception as e:
                 logger.exception(
@@ -456,10 +478,10 @@ class MusicCog(BaseCog):
             if not any(m for m in voice_channel.members if not m.bot):
                 return VoiceCheckResult.CHANNEL_EMPTY, voice_channel
             logger.info(f"Connecting to {voice_channel.name} in guild {guild.id}")
-            await voice_channel.connect(cls=LavalinkVoiceClient, self_deaf=True)
             if self.node is None:
                 self.node = self.lavalink.default_node
             self.node.create_player(guild.id)
+            await voice_channel.connect(cls=LavalinkVoiceClient, self_deaf=True)
             return VoiceCheckResult.SUCCESS, voice_channel
         except discord.ClientException as e:
             logger.error(
@@ -672,6 +694,7 @@ class LavalinkVoiceClient(discord.VoiceClient):
     """
 
     def __init__(self, client: discord.Client, channel: discord.abc.Connectable):
+        # super().__init__(client, channel)
         logger.debug("[INIT] Creating voice client...")
         try:
             self.client = client
@@ -680,30 +703,75 @@ class LavalinkVoiceClient(discord.VoiceClient):
             if not isinstance(music_cog, MusicCog):
                 raise RuntimeError("MusicCog not loaded!")
 
-            self.lavalink = music_cog.node  # Access node directly from cog
+            self.lavalink = music_cog.node
             logger.debug("[INIT] Lavalink assigned; Lavalink: %s", self.lavalink)
         except Exception as e:
             logger.exception("Unexpected error in voice client init: %s", e)
 
-    async def on_voice_server_update(self, data: dict[str, str]):  # type: ignore
+    async def on_voice_server_update(self, data: dict[str, str]):  # pyright: ignore[reportIncompatibleMethodOverride]
         logger.debug("[VOICE SERVER UPDATE] Received data: %s", data)
         if self.lavalink is None:
             logger.exception("Voice error occurred: lavalink is None", exc_info=True)
             return
-        player = self.lavalink.get_player(self.channel.guild.id)
+        player = cast(
+            None | lavaplay.player.Player,
+            self.lavalink.get_player(self.channel.guild.id),
+        )
+        if player is None:
+            logger.exception("Voice error occurred: player is None", exc_info=True)
+            return
         await player.raw_voice_server_update(
             data.get("endpoint", "missing"), data.get("token", "missing")
         )
 
-    async def on_voice_state_update(self, data: dict[str, str]):  # type: ignore
+    async def on_voice_state_update(self, data: dict[str, str]):  # pyright: ignore[reportIncompatibleMethodOverride]
         logger.debug("[VOICE STATE UPDATE] Received data: %s", data)
         if self.lavalink is None:
             logger.exception("Voice error occurred: lavalink is None", exc_info=True)
             return
-        player = self.lavalink.get_player(self.channel.guild.id)
-        await player.raw_voice_state_update(
-            int(data["user_id"]), data["session_id"], int(data["channel_id"])
+
+        player = cast(
+            None | lavaplay.player.Player,
+            self.lavalink.get_player(self.channel.guild.id),
         )
+        channel_id = cast(
+            str | int | None,
+            data["channel_id"],  # channel_id might be None
+        )
+
+        if player is None:
+            logger.exception("Voice error occurred: player is None", exc_info=True)
+            return
+        if channel_id is None:
+            await self.disconnect(force=True)
+            await player.raw_voice_state_update(
+                int(data["user_id"]),
+                data["session_id"],
+                channel_id,
+            )
+            return
+        channel_id = int(channel_id)
+        if channel_id != self.channel.id:
+            channel = self.client.get_channel(channel_id)
+            if isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+                self.channel = channel
+            await self.connect(timeout=5.0, reconnect=True)
+        await player.raw_voice_state_update(
+            int(data["user_id"]),
+            data["session_id"],
+            channel_id,
+        )
+
+    async def move_to(
+        self, channel: Snowflake | None, *, timeout: float | None = 30
+    ) -> None:
+        if channel is None:
+            await self.disconnect(force=True)
+            return
+
+        if self.channel and channel.id == self.channel.id:
+            return
+        await self.channel.guild.change_voice_state(channel=channel)
 
     async def connect(
         self,
@@ -713,14 +781,13 @@ class LavalinkVoiceClient(discord.VoiceClient):
         self_deaf: bool = False,
         self_mute: bool = False,
     ) -> None:
-        logger.debug("[CONNECT] Attempting to connect voice client...")
+        logger.debug("[CONNECT] Attempting to connect to %s...", self.channel)
         await self.channel.guild.change_voice_state(
             channel=self.channel, self_mute=self_mute, self_deaf=self_deaf
         )
 
     async def disconnect(self, *, force: bool = False) -> None:
         logger.debug("[DISCONNECT] Attempting to disconnect voice client...")
-
         await self.channel.guild.change_voice_state(channel=None)
         self.cleanup()
 
@@ -728,6 +795,8 @@ class LavalinkVoiceClient(discord.VoiceClient):
 async def setup(bot: commands.Bot):
     """Setup.
 
-    :param commands.Bot bot: BOT ITSELF
+    Args:
+        bot: BOT ITSELF
+
     """
     await bot.add_cog(MusicCog(bot))

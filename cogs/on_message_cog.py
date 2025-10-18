@@ -1,3 +1,8 @@
+"""Automatic message responses based on fuzzy matching.
+
+Listens to messages and responds to greetings.
+"""
+
 import logging
 import secrets
 
@@ -8,15 +13,23 @@ from fuzzywuzzy.process import extract  # type: ignore
 from config import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
 from utils import block_manager
 
+DEFAULT_FUZZY_THRESHOLD = 95
+"""Minimum fuzzy match score (0-100) to trigger response"""
+
+FUZZY_MATCH_LIMIT = 10
+"""Maximum number of fuzzy matches to evaluate"""
+
 
 class OnMessageCog(commands.Cog):
+    """Log, auto-respond to greetings and common phrases."""
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.logger = logging.getLogger("OnMessageCog")
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):
-        self.log_message(message)
+        self._log_message(message)
         if message.author.bot:
             return
         if message.content.startswith(tuple(await self.bot.get_prefix(message))):
@@ -33,11 +46,11 @@ class OnMessageCog(commands.Cog):
     async def quest_process_message(self, message: Message):
         if len(message.content) >= 5:
             res = self.process_fuzzy_message(message, MORNING_QUEST, MORNING_ANSWERS)
-            if res is not None:
+            if res:
                 return await message.channel.send(res)
 
             res = self.process_fuzzy_message(message, EVENING_QUEST, EVENING_ANSWERS)
-            if res is not None:
+            if res:
                 return await message.channel.send(res)
 
     def process_fuzzy_message(
@@ -45,7 +58,7 @@ class OnMessageCog(commands.Cog):
         message: Message,
         quests: list[str],
         answers: list[str],
-        threshold: int = 95,
+        threshold: int = DEFAULT_FUZZY_THRESHOLD,
     ) -> str | None:
         """Process a message to check if it matches one of the given "quests" and
         return a random answer if it does.
@@ -61,7 +74,7 @@ class OnMessageCog(commands.Cog):
 
         """
         fuzzy_results: list[tuple[str, int]] = extract(  # type: ignore
-            message.content, quests, limit=10
+            message.content, quests, limit=FUZZY_MATCH_LIMIT
         )
         _, best_score = max(fuzzy_results, key=lambda x: x[1])
 
@@ -77,7 +90,7 @@ class OnMessageCog(commands.Cog):
 
         return None
 
-    def log_message(self, message: Message):
+    def _log_message(self, message: Message):
         msg = '%s sended - "%s" in %s'
         self.logger.info(msg, message.author, message.content, message.channel)
         attachments = tuple(
@@ -90,6 +103,8 @@ class OnMessageCog(commands.Cog):
 async def setup(bot: commands.Bot):
     """Setup.
 
-    :param commands.Bot bot: BOT ITSELF
+    Args:
+        bot: BOT ITSELF
+
     """
     await bot.add_cog(OnMessageCog(bot))

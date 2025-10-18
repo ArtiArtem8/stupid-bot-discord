@@ -1,4 +1,12 @@
 from .base_cog import BaseCog
+from .birthday_manager import (
+    BirthdayGuildConfig,
+    BirthdayUser,
+    birthday_manager,
+    create_birthday_list_embed,
+    parse_birthday,
+    safe_fetch_member,
+)
 from .block_manager import (
     BlockedUser,
     BlockHistoryEntry,
@@ -14,21 +22,27 @@ from .text_utils import format_list, random_answer, reverse_date, str_local
 
 __all__ = [
     "BaseCog",
+    "BirthdayGuildConfig",
+    "BirthdayUser",
     "BlockHistoryEntry",
     "BlockManager",
     "BlockedUser",
     "BlockedUserError",
     "NameHistoryEntry",
     "NoGuildError",
+    "birthday_manager",
     "block_manager",
     "clear_json",
     "convert_image",
+    "create_birthday_list_embed",
     "format_list",
     "format_time_russian",
     "get_json",
     "optimize_image",
+    "parse_birthday",
     "random_answer",
     "reverse_date",
+    "safe_fetch_member",
     "save_image",
     "save_json",
     "str_local",

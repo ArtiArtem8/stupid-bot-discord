@@ -1,3 +1,9 @@
+"""Magic 8-ball style question answering system.
+
+Provides a `/ask` command that gives random answers to user questions,
+with answer history tracking to prevent duplicate questions.
+"""
+
 import logging
 import secrets
 
@@ -7,14 +13,19 @@ from discord.ext import commands
 from config import ANSWER_FILE, CAPABILITIES
 from utils import BaseCog, get_json, random_answer, save_json, str_local
 
+MAX_SAMPLE_SIZE = 8
+"""Maximum number of answers to sample for rotation"""
+
 
 class QuestionCog(BaseCog):
     def __init__(self, bot: commands.Bot):
-        # predictions
         super().__init__(bot)
         self.logger = logging.getLogger("QuestionCog")
-        self.answers = secrets.SystemRandom().sample(CAPABILITIES, 8)
-        self.logger.info("Next /ask answers: %s", self.answers)
+        # predictions
+        self.answers = secrets.SystemRandom().sample(
+            CAPABILITIES, min(len(CAPABILITIES), MAX_SAMPLE_SIZE)
+        )
+        self.logger.info("Initial /ask answers: %s", self.answers)
 
     @app_commands.command(
         name="ask",
@@ -24,7 +35,7 @@ class QuestionCog(BaseCog):
         self.logger.info(
             "User %s(%s) asked: %s", interaction.user, interaction.user.id, text
         )
-        prev_message = self._add_to_global_answer(
+        prev_message = self._add_to_history(
             str(interaction.user.id), text, self.answers[0]
         )
         if prev_message:
@@ -33,14 +44,12 @@ class QuestionCog(BaseCog):
             return
 
         self.answers.append(random_answer(text, answers=CAPABILITIES))
-        gock = self.answers.pop(0)
-        self.logger.info(f"{gock} -> {self.answers[:2]}...{self.answers[-2:]}")
+        reply = self.answers.pop(0)
+        self.logger.info(f"{reply} -> {self.answers[:2]}...{self.answers[-2:]}")
 
-        await interaction.response.send_message(gock)
+        await interaction.response.send_message(reply)
 
-    def _add_to_global_answer(
-        self, user_id: str, question: str, answer: str
-    ) -> str | None:
+    def _add_to_history(self, user_id: str, question: str, answer: str) -> str | None:
         """Add a question to the global answers.
 
         Args:
@@ -52,10 +61,8 @@ class QuestionCog(BaseCog):
             The existing answer if the user already asked the question, None otherwise.
 
         """
-        data = get_json(ANSWER_FILE)
+        data = get_json(ANSWER_FILE) or {}
         filtered_text = str_local(question)
-        if data is None:
-            data = {}
         if existing := data.get(user_id, {}).get(filtered_text, None):
             return existing
 
@@ -67,6 +74,8 @@ class QuestionCog(BaseCog):
 async def setup(bot: commands.Bot):
     """Setup.
 
-    :param commands.Bot bot: BOT ITSELF
+    Args:
+        bot: BOT ITSELF
+
     """
     await bot.add_cog(QuestionCog(bot))

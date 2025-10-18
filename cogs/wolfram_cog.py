@@ -1,3 +1,13 @@
+"""Wolfram Alpha integration for mathematical problem solving.
+
+Provides:
+- Solving mathematical equations
+- Plotting functions
+
+Requirements:
+    WOLFRAM_APP_ID environment variable must be set
+"""
+
 import logging
 import re
 from pathlib import Path
@@ -12,26 +22,40 @@ from config import BOT_ICON, WOLFRAM_APP_ID
 from utils import BaseCog, optimize_image, save_image
 
 
+def should_skip_pod(pod_title: str) -> bool:
+    """Determine if a pod should be excluded from results."""
+    if pod_title in BLACK_LIST:
+        return True
+    return any(bad in pod_title for bad in BLACK_LIFE_PATTERNS)
+
+
+def format_mathematical_text(text: str) -> str:
+    """Format mathematical text with Unicode replacements.
+
+    Replace long pi approximations with symbol.
+    """
+    return re.sub(r"3\.14159\d+", "π", text)
+
+
 class WolframCog(BaseCog):
+    """Wolfram Alpha integration for solving math problems."""
+
     def __init__(self, bot: commands.Bot):
         super().__init__(bot)
+        if not WOLFRAM_APP_ID:
+            self.logger.error("WOLFRAM_APP_ID not configured")
+            raise ValueError("WOLFRAM_APP_ID environment variable required")
+
         self.client = wolframalpha.Client(app_id=WOLFRAM_APP_ID)
         self.temp_dir = Path("temp")
         self.logger = logging.getLogger("WolframCog")
         self._prepare_directories()
 
-        # Context menu for solving selected text
         self.ctx_menu = app_commands.ContextMenu(
             name="Solve with Wolfram",
             callback=self.wolfram_context_menu,
         )
         self.bot.tree.add_command(self.ctx_menu)
-
-    def _should_skip_pod(self, pod_title: str) -> bool:
-        """Determine if a pod should be skipped based on title."""
-        if pod_title in BLACK_LIST:
-            return True
-        return any(bad in pod_title for bad in BLACK_LIFE_PATTERNS)
 
     def _prepare_directories(self):
         """Ensure required directories exist."""
@@ -43,9 +67,14 @@ class WolframCog(BaseCog):
     @app_commands.command(name="solve", description="Решить математическую проблему")
     @app_commands.describe(problem="Математическая проблема для решения")
     async def wolfram_solve(self, interaction: Interaction, problem: str):
-        """Solve complex mathematical problems using Wolfram Alpha engine."""
-        await interaction.response.defer(ephemeral=True)
+        """Solve complex mathematical problems using Wolfram Alpha engine.
 
+        Examples:
+           /solve x^2 + 2x + 1 = 0
+
+        """
+        await interaction.response.defer(ephemeral=True)
+        self.logger.info("Solve request from {}: '{}'", interaction.user, problem)
         try:
             res = self.client.query(f"solve {problem}")
             await self.process_wolfram_response(interaction, res, problem)
@@ -60,12 +89,18 @@ class WolframCog(BaseCog):
         function="Функции для отрисовки (например, 'sin(x)', 'x^2 + 2x + 1')"
     )
     async def wolfram_plot(self, interaction: Interaction, function: str):
-        """Generate mathematical plots using Wolfram Alpha."""
-        await interaction.response.defer(ephemeral=True)
+        """Generate mathematical plots using Wolfram Alpha.
 
+        Examples:
+            /plot sin(x)
+            /plot x^2 + 2x + 1
+
+        """
+        await interaction.response.defer(ephemeral=True)
+        self.logger.info("Plot request from {}: '{}'", interaction.user, function)
         try:
             res = self.client.query(f"plot {function}")
-            self.logger.debug(res)
+            self.logger.debug("Processing plot response: %s", res)
             await self.process_plot_response(interaction, res, function)
         except Exception as e:
             self.logger.error(f"Plot generation error: {e!s}")
@@ -82,7 +117,11 @@ class WolframCog(BaseCog):
                 "❌ Слишком длинный запрос (максимум 200 символов)"
             )
             return
-
+        self.logger.info(
+            "Context menu solve from {}: '{}'...".format(
+                interaction.user, message.content[:50]
+            )
+        )
         try:
             res = self.client.query(f"solve {message.content}")
             await self.process_wolfram_response(interaction, res, message.content)
@@ -97,8 +136,18 @@ class WolframCog(BaseCog):
         try:
             if res["@success"] == "false":
                 return await interaction.followup.send("❌ Результатов не найдено")
-            answer_data = self.parse_wolfram_response(res)
-            embed = self.create_result_embed(original_query, answer_data)
+
+            self.logger.debug("Parsing Wolfram response: %s", res)
+            answer_data = self._parse_wolfram_response(res)
+            if not answer_data:
+                await interaction.followup.send(
+                    "❌ Не удалось извлечь результаты",
+                    ephemeral=True,
+                )
+                return
+            self.logger.debug("Parsed Wolfram response: %s", answer_data)
+
+            embed = self._create_result_embed(original_query, answer_data)
             public_message = await interaction.channel.send(embed=embed)  # type: ignore
 
             await interaction.followup.send(
@@ -108,13 +157,12 @@ class WolframCog(BaseCog):
             self.logger.error(f"Response processing error: {e!s}")
             await interaction.followup.send("❌ Ошибка обработки результатов")
 
-    def parse_wolfram_response(self, res: wolframalpha.Result) -> dict[str, list[str]]:
+    def _parse_wolfram_response(self, res: wolframalpha.Result) -> dict[str, list[str]]:
         """Parse Wolfram Alpha response with enhanced filtering."""
         answer_data: dict[str, list[str]] = {}
-
         for pod in res.pods:
             pod_title = cast(str, pod.get("@title", ""))
-            if self._should_skip_pod(pod_title):
+            if should_skip_pod(pod_title):
                 continue
 
             subpods = cast(Iterable[dict[str, Any]], pod.subpods)
@@ -132,7 +180,7 @@ class WolframCog(BaseCog):
 
         return answer_data
 
-    def create_result_embed(
+    def _create_result_embed(
         self, query: str, answer_data: dict[str, list[str]]
     ) -> discord.Embed:
         """Create Discord embed with original formatting style."""
@@ -151,7 +199,7 @@ class WolframCog(BaseCog):
                 continue
 
             formatted_values = "`, `".join(values)
-            formatted_values = re.sub(r"3\.14159\d+", "π", formatted_values)
+            formatted_values = format_mathematical_text(formatted_values)
 
             inline = title not in ("Result", "Solutions")
             embed.add_field(
@@ -166,15 +214,14 @@ class WolframCog(BaseCog):
         try:
             if res["@success"] == "false":
                 return await interaction.followup.send("❌ Не удалось построить график")
-            plot_url: str | None = self.find_plot_url(res)
+            plot_url: str | None = self._find_plot_url(res)
             if not plot_url:
                 return await interaction.followup.send("❌ В ответе не найден график")
             try:
-                # Save and optimize plot image
                 image_path = save_image(
                     image_url=plot_url,
                     save_to=self.temp_dir,
-                    resize=(800, None),  # Maintain aspect ratio
+                    resize=(800, None),
                     quality=90,
                     format="WEBP",
                 )
@@ -182,7 +229,7 @@ class WolframCog(BaseCog):
                 # Additional optimization pass
                 optimize_image(input_path=image_path, max_size=(1200, 1200), quality=85)
                 public_message = await interaction.channel.send(  # type: ignore
-                    f"{interaction.user.mention}\n**Plot of:** `{function}`",
+                    f"{interaction.user.mention}\n**График:** `{function}`",
                     file=File(
                         image_path.open("rb"), filename=f"plot_{image_path.name}"
                     ),
@@ -200,7 +247,7 @@ class WolframCog(BaseCog):
             self.logger.error(f"Plot processing error: {e!s}")
             await interaction.followup.send("❌ Ошибка обработки запроса графика")
 
-    def find_plot_url(self, res: wolframalpha.Result) -> str | None:
+    def _find_plot_url(self, res: wolframalpha.Result) -> str | None:
         """Find plot URL in Wolfram response."""
         for pod in res.pods:
             if "plot" in pod.get("@id", "").lower():
@@ -212,7 +259,9 @@ class WolframCog(BaseCog):
 async def setup(bot: commands.Bot):
     """Setup.
 
-    :param commands.Bot bot: BOT ITSELF
+    Args:
+        bot: BOT ITSELF
+
     """
     await bot.add_cog(WolframCog(bot))
 
@@ -289,6 +338,8 @@ BLACK_LIST = {
     "Sum of roots",
     "Product of roots",
 }
+"""Pod titles to skip in results"""
+
 BLACK_LIFE_PATTERNS = {
     "All 2nd roots of",
     "Alternate form assuming",
@@ -307,3 +358,4 @@ BLACK_LIFE_PATTERNS = {
     "Riemann",
     "Continued",
 }
+"""Patterns to skip in pod titles"""

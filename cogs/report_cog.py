@@ -20,68 +20,151 @@ import discord
 from discord import DMChannel, Interaction, app_commands
 from discord.abc import PrivateChannel
 from discord.ext import commands
+from discord.ui import Label, TextInput
 
-import utils
 from config import REPORT_FILE
-from utils import BaseCog
+from utils import BaseCog, get_json, save_json
 
 
-class UserInfo(TypedDict):
+class UserInfoDict(TypedDict):
+    """User information for report."""
+
     id: int
     name: str
     avatar: str | None
 
 
-class GuildInfo(TypedDict):
+class GuildInfoDict(TypedDict):
+    """Guild information for report."""
+
     id: int | None
     name: str | None
 
 
-class ChannelInfo(TypedDict):
+class ChannelInfoDict(TypedDict):
+    """Channel information for report."""
+
     id: int | None
     name: str | None
 
 
-class ReportDict(TypedDict):
-    user: UserInfo
-    guild: GuildInfo
-    channel: ChannelInfo
+class ReportDataDict(TypedDict):
+    """Complete report data structure."""
+
+    user: UserInfoDict
+    guild: GuildInfoDict
+    channel: ChannelInfoDict
     reason: str
     created_at: str
     report_id: str
 
 
+def get_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
+    """Generate cooldown key for rate limiting.
+
+    Args:
+        interaction: Command interaction
+
+    Returns:
+        Tuple of (guild_id, user_id) for cooldown tracking
+
+    """
+    return (
+        interaction.guild.id if interaction.guild else None,
+        interaction.user.id,
+    )
+
+
+class ReportModal(discord.ui.Modal, title="Отправить отчёт о баге"):
+    """Modal dialog for submitting bug reports.
+
+    Provides a text area for users to describe issues or bugs
+    they've encountered with the bot.
+    """
+
+    report: Label["ReportModal"] = Label(
+        text="Описание проблемы",
+        component=TextInput(
+            style=discord.TextStyle.paragraph,
+            custom_id="report_reason",
+            placeholder="Опишите, что случилось...",
+            required=True,
+            max_length=1024,
+            min_length=10,
+        ),
+    )
+
+    def __init__(self, report_cog: "ReportCog"):
+        super().__init__()
+        self.cog = report_cog
+
+    async def on_submit(self, interaction: Interaction):
+        # satisfy type checker
+        if not isinstance(self.report.component, discord.ui.TextInput):
+            return
+
+        message = self.report.component.value
+        report = self.cog.build_report_data(interaction, message)
+
+        await self.cog.send_report_to_devs(report)
+        await interaction.response.send_message(
+            "Ваш отчет отправлен. Спасибо!", ephemeral=True
+        )
+
+
 class ReportCog(BaseCog):
+    """Bug reporting system with developer notification.
+
+    Configuration:
+        Set report channel using /set-report-channel (owner only)
+    """
+
     def __init__(self, bot: commands.Bot):
         super().__init__(bot)
         self.logger = logging.getLogger("ReportCog")
 
-    def _log_report(self, report: ReportDict):
-        report_file = utils.get_json(REPORT_FILE) or {}
-        report_file["reports"] = [*report_file.get("reports", []), report]
-        utils.save_json(REPORT_FILE, report_file)
+    def _save_report_to_file(self, report: ReportDataDict):
+        """Persist report to JSON file."""
+        report_data = get_json(REPORT_FILE) or {}
+        report_data.setdefault("reports", [])
+        report_data["reports"].append(report)
+
+        save_json(REPORT_FILE, report_data)
+        self.logger.info(
+            "New report from %s - %s", report["user"]["name"], report["report_id"]
+        )
         self.logger.debug(f"Report saved: {report}")
 
-    def _build_report_message(
+    def build_report_data(
         self, interaction: Interaction, reason: str
-    ) -> ReportDict:
+    ) -> ReportDataDict:
+        """Build structured report data from interaction.
+
+        Args:
+            interaction: Command interaction
+            reason: User-provided report text
+
+        Returns:
+            Structured report dictionary
+
+        """
         create_date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
         if isinstance(interaction.channel, DMChannel):
             channel_name = f"DM with {interaction.channel.recipient}"
         else:
             channel_name = interaction.channel.name if interaction.channel else None
         report_id = str(uuid.uuid4())
+        user = interaction.user
+        guild = interaction.guild
         return {
             "user": {
-                "id": interaction.user.id,
-                "name": interaction.user.name,
-                "avatar": interaction.user.avatar.url
-                if interaction.user.avatar
-                else None,
+                "id": user.id,
+                "name": user.name,
+                "avatar": user.avatar.url if user.avatar else None,
             },
             "guild": {
-                "id": interaction.guild.id if interaction.guild else None,
-                "name": interaction.guild.name if interaction.guild else None,
+                "id": guild.id if guild else None,
+                "name": guild.name if guild else None,
             },
             "channel": {
                 "id": interaction.channel.id if interaction.channel else None,
@@ -92,9 +175,9 @@ class ReportCog(BaseCog):
             "report_id": report_id,
         }
 
-    async def _send_report_to_devs(self, report: ReportDict):
+    async def send_report_to_devs(self, report: ReportDataDict):
         """Send a formatted report to the developers channel."""
-        report_channel_id = (utils.get_json(REPORT_FILE) or {}).get("report_channel_id")
+        report_channel_id = (get_json(REPORT_FILE) or {}).get("report_channel_id")
         if not report_channel_id:
             self.logger.warning("Report channel ID not found.")
             return
@@ -107,64 +190,56 @@ class ReportCog(BaseCog):
             self.logger.error("Report channel not found or invalid.")
             return
 
+        embed = self._create_report_embed(report)
+
+        await report_channel.send(embed=embed)
+        self._save_report_to_file(report)
+
+    def _create_report_embed(self, report: ReportDataDict) -> discord.Embed:
+        """Create formatted embed for report display."""
         embed = discord.Embed(
-            title="Жалоба",
+            title="Отчёт",
             color=discord.Color.red(),
             timestamp=datetime.now(),
         )
         embed.add_field(
-            name="",
-            value=shorten(report["reason"], width=1024) or "Нет жалобы",
+            name="Описание",
+            value=shorten(report["reason"], width=1024) or "Нет описания",
             inline=False,
         )
         embed.add_field(
-            name="От:",
+            name="Отправитель",
             value=f"{report['user']['name']} (`{report['user']['id']}`)",
             inline=True,
         )
-
-        location: list[str] = []
-        if report["guild"] and report["guild"]["name"]:
-            location.append(
+        location_lines: list[str] = []
+        if report["guild"]["name"]:
+            location_lines.append(
                 f"**Сервер:** {report['guild']['name']} (`{report['guild']['id']}`)"
             )
-        if report["channel"]:
-            location.append(
+        if report["channel"]["name"]:
+            location_lines.append(
                 f"**Канал:** {report['channel']['name']} (`{report['channel']['id']}`)"
             )
 
-        if location:
-            embed.add_field(name="", value="\n".join(location), inline=False)
-
-        embed.set_footer(text=f"{report['report_id']} • {report['created_at']}")
-
-        # Set thumbnail to user avatar if available
+        if location_lines:
+            embed.add_field(
+                name="Локация",
+                value="\n".join(location_lines),
+                inline=False,
+            )
+        embed.set_footer(text=f"ID: {report['report_id']} • {report['created_at']}")
         if report["user"]["avatar"]:
             embed.set_thumbnail(url=report["user"]["avatar"])
 
-        await report_channel.send(embed=embed)
-
-        # Log the full report to a file or database
-        self._log_report(report)
-
-    @staticmethod
-    def _cooldown_id(interaction: Interaction):
-        return (
-            interaction.guild.id if interaction.guild else None,
-            interaction.user.id,
-        )
+        return embed
 
     @app_commands.command(
         name="report", description="Отправить отчет о баге или проблеме"
     )
-    @app_commands.describe(message="Сообщение о жалобе")
-    @app_commands.checks.cooldown(1, 60, key=_cooldown_id)
-    async def report(self, interaction: Interaction, message: str = ""):
-        report = self._build_report_message(interaction, message)
-        await self._send_report_to_devs(report)
-        await interaction.response.send_message(
-            "Жалоба отправлена. Спасибо!", ephemeral=True, silent=True
-        )
+    @app_commands.checks.cooldown(1, 60, key=get_cooldown_key)
+    async def report(self, interaction: Interaction):
+        await interaction.response.send_modal(ReportModal(self))
 
     @report.error
     async def report_error(
@@ -188,9 +263,9 @@ class ReportCog(BaseCog):
     async def set_report_channel(
         self, interaction: Interaction, channel: discord.TextChannel
     ):
-        report_file = utils.get_json(REPORT_FILE) or {}
-        report_file["report_channel_id"] = channel.id
-        utils.save_json(REPORT_FILE, report_file)
+        report_data = get_json(REPORT_FILE) or {}
+        report_data["report_channel_id"] = channel.id
+        save_json(REPORT_FILE, report_data)
         await interaction.response.send_message(
             f"Report channel set to {channel.mention}", ephemeral=True, silent=True
         )
@@ -199,6 +274,8 @@ class ReportCog(BaseCog):
 async def setup(bot: commands.Bot):
     """Setup.
 
-    :param commands.Bot bot: BOT ITSELF
+    Args:
+        bot: BOT ITSELF
+
     """
     await bot.add_cog(ReportCog(bot))
