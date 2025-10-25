@@ -449,11 +449,11 @@ class MusicCog(BaseCog):
             logger.error("Guild context missing despite guild_only decorator.")
             return VoiceCheckResult.CONNECTION_FAILED, voice_channel
         voice_client = guild.voice_client
-        if not voice_client or not isinstance(voice_client, LavalinkVoiceClient):
-            logger.error("Voice client is not LavalinkVoiceClient")
-            return VoiceCheckResult.CONNECTION_FAILED, voice_channel
 
         if voice_client:
+            if not voice_client or not isinstance(voice_client, LavalinkVoiceClient):
+                logger.error("Voice client is not LavalinkVoiceClient")
+                return VoiceCheckResult.CONNECTION_FAILED, voice_channel
             if voice_client.channel == voice_channel:
                 try:
                     await voice_channel.connect(cls=LavalinkVoiceClient, self_deaf=True)
@@ -499,7 +499,6 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def stop(self, interaction: Interaction):
         """Stop the player and clear queue."""
-        logger.debug("Stop command invoked")
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return
@@ -516,7 +515,6 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def skip(self, interaction: Interaction):
         """Skip to the next track in queue."""
-        logger.debug("Skip command invoked")
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return
@@ -536,7 +534,6 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def pause(self, interaction: Interaction):
         """Pause the current track."""
-        logger.debug("Pause command invoked")
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return
@@ -551,7 +548,6 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def resume(self, interaction: Interaction):
         """Resume paused playback."""
-        logger.debug("Resume command invoked")
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return
@@ -575,7 +571,6 @@ class MusicCog(BaseCog):
         ephemeral: bool = False,
     ):
         """Display the current playback queue."""
-        logger.debug("Queue command invoked")
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return
@@ -615,7 +610,6 @@ class MusicCog(BaseCog):
         self, interaction: Interaction, volume: app_commands.Range[int, 0, 200]
     ):
         """Adjust playback volume."""
-        logger.debug("Volume command invoked with volume: %d", volume)
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return
@@ -631,7 +625,6 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def leave(self, interaction: Interaction):
         """Disconnect from voice channel."""
-        logger.debug("Leave command invoked")
         player = await self._get_player_or_handle_error(interaction, needs_player=False)
         if player is None and (self.node is None or interaction.guild_id is None):
             return
@@ -657,7 +650,6 @@ class MusicCog(BaseCog):
     @app_commands.guild_only()
     @handle_errors()
     async def rotate(self, interaction: Interaction):
-        logger.debug("Rotate command invoked")
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return

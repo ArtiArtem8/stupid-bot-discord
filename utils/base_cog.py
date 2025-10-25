@@ -9,6 +9,7 @@ import logging
 
 import discord
 from discord.ext import commands
+from discord.utils import maybe_coroutine
 
 from .block_manager import block_manager
 from .exceptions import BlockedUserError, NoGuildError
@@ -43,22 +44,37 @@ class BaseCog(abc.ABC, commands.Cog, metaclass=CogABCMeta):
         self.bot = bot
         self.logger = logging.getLogger(self.__class__.__name__)
 
+    def should_bypass_block(self, interaction: discord.Interaction) -> bool:
+        """Return True to skip the blocked-user check for this interaction.
+
+        This function **can** be a coroutine
+        """
+        return False
+
     async def interaction_check(self, interaction: discord.Interaction) -> bool:  # pyright: ignore[reportIncompatibleMethodOverride]
         """Centralized check for blocked users.
 
         Runs before every app command interaction. If the user is blocked in the
-        guild, raises BlockedUserError (handled globally in main.py).
+        guild, raises :py:exc:`BlockedUserError` (handled globally in main.py).
+
+        Logs the command attempt before checking for blocked users.
+
+        Subclasses can override should_bypass_block to bypass block checks.
 
         Args:
             interaction: The Discord interaction.
 
         Returns:
-            True if the check passes.
+            `True` if the check passes.
 
         Raises:
             BlockedUserError: If the user is blocked.
 
         """
+        self._log_command(interaction)
+
+        if await maybe_coroutine(self.should_bypass_block, interaction):
+            return True
         if interaction.guild and block_manager.is_user_blocked(
             interaction.guild.id, interaction.user.id
         ):
@@ -91,3 +107,35 @@ class BaseCog(abc.ABC, commands.Cog, metaclass=CogABCMeta):
             )
             raise NoGuildError()
         return guild
+
+    def _log_command(self, interaction: discord.Interaction) -> None:
+        """Log command invocation details.
+
+        Currently logs the command name, user ID, and guild/channel context
+
+        Log level: `INFO`
+
+        Args:
+            interaction: The interaction context
+
+        """
+        user = interaction.user
+        user_display = user.global_name or user.name
+
+        command_name = interaction.command.name if interaction.command else "unknown"
+        if interaction.guild:
+            guild_name = interaction.guild.name
+            channel_name = (
+                interaction.channel.name
+                if not isinstance(interaction.channel, discord.DMChannel)
+                and interaction.channel
+                else "Unknown"
+            )
+            context = f"guild {guild_name} (ID: {interaction.guild.id}), {channel_name}"
+        else:
+            context = "DM"
+
+        self.logger.info(
+            f"Command '{command_name}' invoked by {user_display} "
+            f"(ID: {user.id}) in {context}"
+        )

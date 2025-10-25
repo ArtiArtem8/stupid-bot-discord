@@ -74,7 +74,7 @@ class WolframCog(BaseCog):
 
         """
         await interaction.response.defer(ephemeral=True)
-        self.logger.info("Solve request from {}: '{}'", interaction.user, problem)
+        self.logger.info("Solve request from %s: '%s'", interaction.user, problem)
         try:
             res = self.client.query(f"solve {problem}")
             await self.process_wolfram_response(interaction, res, problem)
@@ -97,7 +97,7 @@ class WolframCog(BaseCog):
 
         """
         await interaction.response.defer(ephemeral=True)
-        self.logger.info("Plot request from {}: '{}'", interaction.user, function)
+        self.logger.info("Plot request from %s: '%s'", interaction.user, function)
         try:
             res = self.client.query(f"plot {function}")
             self.logger.debug("Processing plot response: %s", res)
@@ -118,9 +118,9 @@ class WolframCog(BaseCog):
             )
             return
         self.logger.info(
-            "Context menu solve from {}: '{}'...".format(
-                interaction.user, message.content[:50]
-            )
+            "Context menu solve from %s: '%s'...",
+            interaction.user,
+            message.content[:50],
         )
         try:
             res = self.client.query(f"solve {message.content}")

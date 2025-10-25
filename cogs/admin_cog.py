@@ -9,7 +9,8 @@ Provides:
 """
 
 import logging
-from typing import Literal, override
+from enum import StrEnum
+from typing import Callable, override
 
 import discord
 from discord import app_commands
@@ -21,27 +22,42 @@ MAX_FIELD_LENGTH = 1024
 """Maximum characters per embed field to avoid Discord limits"""
 
 
+class BlockAction(StrEnum):
+    """Action types for block/unblock commands."""
+
+    BLOCK = "block"
+    UNBLOCK = "unblock"
+
+
+BLOCK = BlockAction.BLOCK
+UNBLOCK = BlockAction.UNBLOCK
+
+ACTION_TITLES: dict[BlockAction, str] = {
+    BLOCK: "Блокировка",
+    UNBLOCK: "Разблокировка",
+}
+
+
 def create_block_embed(
     user: discord.Member,
-    action: Literal["Блокировка", "Разблокировка"],
+    action: BlockAction,
     reason: str | None = None,
 ) -> discord.Embed:
     """Create standardized embed for block/unblock actions.
 
     Args:
         user: User being blocked/unblocked
-        action: "Блокировка" or "Разблокировка"
+        action: "block" or "unblock"
         reason: Optional reason for action
 
     Returns:
         Formatted Discord embed
 
     """
-    description = (
-        f"{user.mention} был {'за' if action == 'Блокировка' else 'раз'}блокирован"
-    )
+    description = f"{user.mention} был {'за' if action == BLOCK else 'раз'}блокирован"
+    title = ACTION_TITLES[action]
     embed = discord.Embed(
-        title=action,
+        title=title,
         description=description,
         color=0xFFAE00,
     )
@@ -80,7 +96,7 @@ class AdminCog(BaseCog):
         self.logger = logging.getLogger("AdminCog")
 
     @override
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    def should_bypass_block(self, interaction: discord.Interaction) -> bool:
         """Allow admin commands to bypass block checks."""
         return True
 
@@ -132,30 +148,7 @@ class AdminCog(BaseCog):
     ):
         """Block a user from using the bot."""
         guild = await self._require_guild(interaction)
-        self.logger.info(
-            f"Block command invoked by {interaction.user.id} in guild "
-            f"{guild.name} ({guild.id}) targeting user {user.id}. Reason: {reason}"
-        )
-
-        user_entry, guild_data = self._get_or_create_user_entry(guild.id, user)
-
-        if user_entry.is_blocked:
-            self.logger.info(
-                f"Block attempt failed - user {user.id} already blocked in guild "
-                f"{guild.name} ({guild.id})"
-            )
-            return await interaction.response.send_message(
-                f"{user.mention} уже заблокирован.", ephemeral=True
-            )
-
-        user_entry.add_block_entry(interaction.user.id, reason)
-        block_manager.save_guild_data(guild, guild_data)
-
-        embed = create_block_embed(user, "Блокировка", reason)
-        self.logger.info(
-            f"Successfully blocked user {user.id} in guild {guild.name} ({guild.id})"
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await self._apply_block_action(interaction, guild, user, BLOCK, reason)
 
     @app_commands.command(
         name="unblock",
@@ -172,25 +165,44 @@ class AdminCog(BaseCog):
     ):
         """Unblock a user from using the bot."""
         guild = await self._require_guild(interaction)
-        self.logger.info(
-            f"Unblock command invoked by {interaction.user.id} in guild {guild.name} "
-            f"({guild.id}) targeting user {user.id}. Reason: {reason}"
-        )
+        await self._apply_block_action(interaction, guild, user, UNBLOCK, reason)
+
+    async def _apply_block_action(
+        self,
+        interaction: discord.Interaction,
+        guild: discord.Guild,
+        user: discord.Member,
+        action: BlockAction,
+        reason: str,
+    ):
         user_entry, guild_data = self._get_or_create_user_entry(guild.id, user)
-
-        if not user_entry.is_blocked:
-            self.logger.info(
-                f"Unblock failed - user {user.id} not blocked in guild {guild.name}"
+        already_blocked = user_entry.is_blocked
+        if (already_blocked and action == BLOCK) or (
+            not already_blocked and action == UNBLOCK
+        ):
+            msg = (
+                f"{user.mention} уже заблокирован."
+                if action == BLOCK
+                else f"{user.mention} не заблокирован."
             )
-            return await interaction.response.send_message(
-                f"{user.mention} не заблокирован.", ephemeral=True
+            log_msg = (
+                f"{action.capitalize()} attempt failed - user {user.id} "
+                f"{already_blocked=} in {guild.name} ({guild.id})"
             )
+            self.logger.info(log_msg)
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
 
-        user_entry.add_unblock_entry(interaction.user.id, reason)
+        action_methods: dict[BlockAction, Callable[[int, str], None]] = {
+            BLOCK: user_entry.add_block_entry,
+            UNBLOCK: user_entry.add_unblock_entry,
+        }
+        action_methods[action](interaction.user.id, reason)
         block_manager.save_guild_data(guild, guild_data)
-        embed = create_block_embed(user, "Разблокировка", reason)
+
+        embed = create_block_embed(user, action, reason)
         self.logger.info(
-            f"Successfully unblocked user {user.id} in guild {guild.name} ({guild.id})"
+            f"Successfully {action}ed user {user.id} in guild {guild.name} ({guild.id})"
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -212,10 +224,6 @@ class AdminCog(BaseCog):
     ):
         """Display detailed block history for a user."""
         guild = await self._require_guild(interaction)
-        self.logger.info(
-            f"Blockinfo requested by {interaction.user.id} for user {user.id} "
-            f"in guild {guild.name} ({guild.id})"
-        )
         guild_data = block_manager.get_guild_data(guild.id)
         user_entry = guild_data.get(user.id)
 
@@ -344,10 +352,6 @@ class AdminCog(BaseCog):
     ):
         """Display all currently blocked users with basic information."""
         guild = await self._require_guild(interaction)
-        self.logger.info(
-            f"Listblocked command invoked by {interaction.user.id} "
-            f"in guild {guild.name} ({guild.id}) with details: {show_details}"
-        )
         blocked_users = block_manager.get_guild_data(guild.id)
         blocked_users = [user for user in blocked_users.values() if user.is_blocked]
 
