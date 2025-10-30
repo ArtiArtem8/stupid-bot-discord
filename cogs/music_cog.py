@@ -17,6 +17,7 @@ import asyncio
 import functools
 import logging
 import os
+import time
 from enum import Enum
 from typing import (
     Any,
@@ -45,7 +46,7 @@ from discord.abc import Snowflake
 from discord.ext import commands
 
 from config import MUSIC_DEFAULT_VOLUME, MUSIC_VOLUME_FILE
-from utils import BaseCog, get_json, save_json
+from utils import BaseCog, FailureUI, get_json, save_json
 
 # Load environment variables
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
@@ -66,7 +67,7 @@ MusicCommand = Callable[Concatenate[CogT, Interaction, P], Coroutine[Any, Any, T
 
 class VoiceCheckResult(Enum):
     ALREADY_CONNECTED = ("✅ Уже подключён к {0}", True)
-    CHANNEL_EMPTY = ("❌ Голосовой канал {0} пуст! Мне запрещено подключатся", False)
+    CHANNEL_EMPTY = ("❌ Голосовой канал {0} пуст!", False)
     CONNECTION_FAILED = ("❌ Ошибка подключения к {0}", False)
     INVALID_CHANNEL_TYPE = ("❌ Неверный тип голосового канала", False)
     MOVED_CHANNELS = ("✅ Переместился {0} -> {1}", True)
@@ -145,13 +146,19 @@ def handle_errors() -> Callable[
                 return await func(self, interaction, *args, **kwargs)
             except discord.DiscordException as e:
                 logger.exception(f"Discord error in {func.__name__}: {e!s}")
-                await self.send_response(
-                    interaction, f"❌ Discord error: {e}", ephemeral=True
+                await FailureUI.send_failure(
+                    interaction,
+                    title="Discord Ошибка",
+                    description=f"❌ {type(e).__name__}: {e}",
+                    ephemeral=True,
                 )
             except Exception as e:
                 logger.exception(f"Unexpected error in {func.__name__}: {e!s}")
-                await self.send_response(
-                    interaction, "❌ Произошла внутренняя ошибка", ephemeral=True
+                await FailureUI.send_failure(
+                    interaction,
+                    title="Внутренняя ошибка",
+                    description=f"❌ {type(e).__name__}: {e}",
+                    ephemeral=True,
                 )
             return None
 
@@ -249,19 +256,27 @@ class MusicCog(BaseCog):
         interaction: Interaction,
         content: str,
         *,
+        delete_after: float | None = None,
         ephemeral: bool = False,
+        silent: bool = True,
         embed: discord.Embed | None = None,
     ) -> None:
+        da = delete_after
+        timer = f"\n-# Удалится <t:{int(time.time() + da)}:R>" if da else ""
         kwargs: dict[str, Any] = {
-            "content": content,
+            "content": content + timer,
             "ephemeral": ephemeral,
             "embed": embed,
-            "silent": True,
+            "silent": silent,
         }
         if interaction.response.is_done():
+            if delete_after:
+                message = await interaction.followup.send(**kwargs, wait=True)
+                await message.delete(delay=delete_after)
+                return
             await interaction.followup.send(**kwargs)
         else:
-            await interaction.response.send_message(**kwargs)
+            await interaction.response.send_message(**kwargs, delete_after=delete_after)
 
     async def _get_player_or_handle_error(
         self, interaction: Interaction, *, needs_player: bool = True
@@ -285,17 +300,27 @@ class MusicCog(BaseCog):
             self.node = self.lavalink.default_node
             if not self.node.is_connect:
                 logger.error("Lavalink node is unavailable.")
-                error_msg = "❌ Музыкальный сервис временно недоступен."
-                await self.send_response(interaction, error_msg, ephemeral=True)
+                error_msg = "Музыкальный сервис недоступен."
+                await FailureUI.send_failure(
+                    interaction,
+                    title="Ошибка сервиса",
+                    description=error_msg,
+                    ephemeral=True,
+                )
                 return None
 
         if not interaction.guild_id:
             logger.error(
                 f"Guild ID is None in command triggered by user {interaction.user.id}"
             )
-            error_msg = "❌ Ошибка: Не удалось определить ID сервера."
+            error_msg = "Не удалось определить ID сервера."
             try:
-                await self.send_response(interaction, error_msg, ephemeral=True)
+                await FailureUI.send_failure(
+                    interaction,
+                    title="Ошибка",
+                    description=error_msg,
+                    ephemeral=True,
+                )
             except discord.HTTPException:
                 logger.warning("Could not send guild_id error response.")
             return None
@@ -307,8 +332,13 @@ class MusicCog(BaseCog):
                 f"Player not found for guild {interaction.guild_id} in command "
                 f"triggered by {interaction.user.id}"
             )
-            error_msg = "❌ Бот не играет музыку или не подключен к каналу."
-            await self.send_response(interaction, error_msg, ephemeral=True)
+            error_msg = "Бот не играет музыку или не подключен к каналу."
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка",
+                description=error_msg,
+                ephemeral=True,
+            )
             return None
 
         return player
@@ -347,27 +377,47 @@ class MusicCog(BaseCog):
         ephemeral: bool = False,
     ):
         """Play a song from various supported platforms."""
-        # try:
         await interaction.response.defer(ephemeral=ephemeral)
         result, data = await self._ensure_voice(interaction)
         if not result.is_success:
             error_message = _format_voice_result_message(result, data)
+            if result == VoiceCheckResult.USER_NOT_IN_VOICE:
+                await self.send_response(
+                    interaction,
+                    "Зайдите в голосовой канал.",
+                    delete_after=30,
+                )
+                return
             logger.warning(f"Play command failed for {interaction.user}: {result.name}")
-            await interaction.followup.send(error_message, ephemeral=True)
-            return  # Stop processing the command
-        if not await self._check_and_reconnect_node():
-            await interaction.followup.send(
-                "❌ Audio service unavailable, reconnecting..."
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка",
+                description="Код ошибки: " + error_message,
+                delete_after=30,
             )
-        guild_id = interaction.guild_id
-        if guild_id is None:
-            raise TypeError("Guild ID is None")  # impossible
+            return
+        if not await self._check_and_reconnect_node():
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка сервиса",
+                description="Музыкальный сервис недоступен. Попробуйте выйти и зайти.",
+                delete_after=30,
+            )
+        guild_id = (await self._require_guild(interaction)).id
         player = await self._get_player(guild_id)
         volume = await self._get_volume(guild_id)
         await player.volume(volume)
         if self.node is None:
             self.node = self.lavalink.default_node
-        tracks = await self.node.auto_search_tracks(query)
+        try:
+            tracks = await self.node.auto_search_tracks(query)
+        except KeyError:
+            await self.send_response(
+                interaction,
+                "💤 Трек не найден",
+                delete_after=30,
+            )
+            return
 
         if isinstance(tracks, lavaplay.PlayList):
             logger.debug("Playlist found: %s tracks", len(tracks.tracks))
@@ -377,7 +427,11 @@ class MusicCog(BaseCog):
             await self._handle_track(interaction, player, tracks[0])
         else:
             logger.debug("No track results found for query: %s", query)
-            await interaction.followup.send("❌ Результаты не найдены")
+            await self.send_response(
+                interaction,
+                "💤 Результаты не найдены",
+                delete_after=30,
+            )
 
     async def _handle_track(
         self,
@@ -404,11 +458,17 @@ class MusicCog(BaseCog):
             await interaction.followup.send(embed=embed, silent=True)
         except lavaplay.TrackLoadFailed as e:
             logger.error("Track load error: %s", e)
-            await interaction.followup.send(f"❌ Ошибка загрузки трека: {e}")
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка загрузки трека",
+                description=f"Трек не был загружен из-за ошибки: {e.message}",
+            )
         except Exception as e:
             logger.exception("Unexpected error in _handle_track: %s", e)
-            await interaction.followup.send(
-                "❌ Произошла ошибка во время воспроизведения трека",
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка трека",
+                description="Произошла ошибка во время воспроизведения трека",
             )
 
     async def _handle_playlist(
@@ -426,8 +486,10 @@ class MusicCog(BaseCog):
             )
         except Exception as e:
             logger.exception("Unexpected error in _handle_playlist: %s", e)
-            await interaction.followup.send(
-                "❌ Произошла ошибка при добавлении плейлиста в очередь"
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка плейлиста",
+                description="Произошла ошибка во время воспроизведения плейлиста",
             )
 
     async def _ensure_voice(
@@ -503,7 +565,8 @@ class MusicCog(BaseCog):
         if player is None:
             return
         await player.stop()  # clears queue
-        await interaction.response.send_message(
+        await self.send_response(
+            interaction,
             "Воспроизведение остановлено, очередь очищена",
             delete_after=15,
             silent=True,
@@ -519,7 +582,7 @@ class MusicCog(BaseCog):
         if player is None:
             return
         if not player.queue:
-            await interaction.followup.send("❌ Нечего пропускать.", ephemeral=True)
+            await interaction.followup.send("Нечего пропускать.", ephemeral=True)
             return
         await player.skip()
         await interaction.response.send_message(
@@ -635,7 +698,7 @@ class MusicCog(BaseCog):
         if not interaction.guild or not interaction.guild.voice_client:
             logger.debug("Bot is not connected to a voice channel during leave")
             return await interaction.response.send_message(
-                "❌ Не в голосовом канале", ephemeral=True, silent=True
+                "Не в голосовом канале", ephemeral=True, silent=True
             )
         await interaction.guild.voice_client.disconnect(force=True)
         await interaction.response.send_message(
@@ -657,7 +720,7 @@ class MusicCog(BaseCog):
         current_track = player.queue[0] if player.queue else None
         if current_track is None:
             return await interaction.response.send_message(
-                "❌ Очередь пуста", ephemeral=True
+                "Очередь пуста", ephemeral=True
             )
         requester = current_track.requester
         try:

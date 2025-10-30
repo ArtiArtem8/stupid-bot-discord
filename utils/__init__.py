@@ -15,6 +15,7 @@ from .block_manager import (
     block_manager,
 )
 from .exceptions import BlockedUserError, NoGuildError
+from .failure_ui import FailureUI
 from .image_utils import convert_image, optimize_image, save_image
 from .json_utils import clear_json, get_json, save_json
 from .russian_time_utils import format_time_russian
@@ -28,6 +29,7 @@ __all__ = [
     "BlockManager",
     "BlockedUser",
     "BlockedUserError",
+    "FailureUI",
     "NameHistoryEntry",
     "NoGuildError",
     "birthday_manager",

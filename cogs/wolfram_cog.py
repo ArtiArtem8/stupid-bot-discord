@@ -19,7 +19,7 @@ from discord import File, Interaction, app_commands
 from discord.ext import commands
 
 from config import BOT_ICON, WOLFRAM_APP_ID
-from utils import BaseCog, optimize_image, save_image
+from utils import BaseCog, FailureUI, optimize_image, save_image
 
 
 def should_skip_pod(pod_title: str) -> bool:
@@ -80,7 +80,11 @@ class WolframCog(BaseCog):
             await self.process_wolfram_response(interaction, res, problem)
         except Exception as e:
             self.logger.error(f"Wolfram API error: {e!s}")
-            await interaction.followup.send("❌ Ошибка")
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка",
+                description="Произошла ошибка сервиса Wolfram Alpha",
+            )
 
     @app_commands.command(
         name="plot", description="Построить график математической функции"
@@ -104,7 +108,11 @@ class WolframCog(BaseCog):
             await self.process_plot_response(interaction, res, function)
         except Exception as e:
             self.logger.error(f"Plot generation error: {e!s}")
-            await interaction.followup.send("❌ Ошибка генерации графика")
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка",
+                description="Произошла ошибка генерации графика",
+            )
 
     async def wolfram_context_menu(
         self, interaction: Interaction, message: discord.Message
@@ -127,7 +135,11 @@ class WolframCog(BaseCog):
             await self.process_wolfram_response(interaction, res, message.content)
         except Exception as e:
             self.logger.error(f"Context menu error: {e!s}")
-            await interaction.followup.send("❌ Ошибка при обработке запроса")
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка",
+                description="Произошла ошибка при обработке запроса",
+            )
 
     async def process_wolfram_response(
         self, interaction: Interaction, res: wolframalpha.Result, original_query: str
@@ -155,7 +167,11 @@ class WolframCog(BaseCog):
             )
         except Exception as e:
             self.logger.error(f"Response processing error: {e!s}")
-            await interaction.followup.send("❌ Ошибка обработки результатов")
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка",
+                description="Произошла ошибка при обработке результата",
+            )
 
     def _parse_wolfram_response(self, res: wolframalpha.Result) -> dict[str, list[str]]:
         """Parse Wolfram Alpha response with enhanced filtering."""
@@ -245,7 +261,11 @@ class WolframCog(BaseCog):
                 )
         except Exception as e:
             self.logger.error(f"Plot processing error: {e!s}")
-            await interaction.followup.send("❌ Ошибка обработки запроса графика")
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка",
+                description="Произошла ошибка при обработки запроса графика",
+            )
 
     def _find_plot_url(self, res: wolframalpha.Result) -> str | None:
         """Find plot URL in Wolfram response."""

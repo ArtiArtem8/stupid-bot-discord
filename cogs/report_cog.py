@@ -241,17 +241,6 @@ class ReportCog(BaseCog):
     async def report(self, interaction: Interaction):
         await interaction.response.send_modal(ReportModal(self))
 
-    @report.error
-    async def report_error(
-        self, interaction: Interaction, error: app_commands.AppCommandError
-    ):
-        if isinstance(error, app_commands.CommandOnCooldown):
-            await interaction.response.send_message(
-                f"Пожалуйста, подождите {error.retry_after:.0f} секунд.",
-                ephemeral=True,
-                silent=True,
-            )
-
     @app_commands.command(
         name="set-report-channel",
         description="Установить канал для жалоб (для разработчиков)",

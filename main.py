@@ -3,12 +3,13 @@ import asyncio
 import logging.config
 import os
 import time
+from datetime import timedelta
 from pathlib import Path
 
 import discord
-from discord import Intents, Interaction
-from discord.app_commands import AppCommandError
+from discord import Intents, Interaction, app_commands
 from discord.ext import commands, tasks
+from discord.utils import utcnow
 
 from config import (
     AUTOSAVE_LAST_RUN_FILE_INTERVAL,
@@ -21,6 +22,7 @@ from config import (
 )
 from utils import (
     BlockedUserError,
+    FailureUI,
     NoGuildError,
     format_time_russian,
     get_json,
@@ -39,6 +41,37 @@ intents.members = True
 intents.guilds = True
 
 
+class CustomErrorCommandTree(app_commands.CommandTree):
+    async def on_error(
+        self, interaction: Interaction, error: app_commands.AppCommandError
+    ):
+        """Event handler for when an app command error occurs."""
+        if isinstance(error, BlockedUserError):
+            await interaction.response.send_message(
+                "⛔ Доступ к командам запрещён.", ephemeral=True
+            )
+            return
+        elif isinstance(error, NoGuildError):
+            await interaction.response.send_message(
+                "Команда может быть использована только на сервере",
+                ephemeral=True,
+                silent=True,
+            )
+            return
+        elif isinstance(error, app_commands.CommandOnCooldown):
+            expire_at = utcnow() + timedelta(seconds=error.retry_after)
+            await interaction.response.send_message(
+                f"Время ожидания: {discord.utils.format_dt(expire_at, 'R')}",
+                ephemeral=True,
+                silent=True,
+            )
+            return
+        await FailureUI.send_failure(
+            interaction, title=str(error), delete_after=30.0, ephemeral=False
+        )
+        logger.error(f"Unhandled app command error: {error}", exc_info=error)
+
+
 class StupidBot(commands.Bot):
     def __init__(self):
         """Initialize the StupidBot instance.
@@ -47,7 +80,9 @@ class StupidBot(commands.Bot):
         attributes related to the bot's uptime and activity monitoring.
         Calls the method to load previous uptime data.
         """
-        super().__init__(command_prefix=BOT_PREFIX, intents=intents)
+        super().__init__(
+            command_prefix=BOT_PREFIX, intents=intents, tree_cls=CustomErrorCommandTree
+        )
         if DISCORD_BOT_OWNER_ID:
             self.owner_id = int(DISCORD_BOT_OWNER_ID)
         self.start_time = time.time()
@@ -161,26 +196,6 @@ async def on_ready():
     )
     timer.start()
     autosave.start()
-
-
-@bot.tree.error
-async def on_app_command_error(interaction: Interaction, error: AppCommandError):
-    """Event handler for when an app command error occurs."""
-    print("error", error)
-    if isinstance(error, BlockedUserError):
-        await interaction.response.send_message(
-            "⛔ Доступ к командам запрещён.", ephemeral=True
-        )
-        return
-    elif isinstance(error, NoGuildError):
-        await interaction.response.send_message(
-            "Команда может быть использована только на сервере",
-            ephemeral=True,
-            silent=True,
-        )
-        return
-    # Log other errors
-    logger.error(f"Unhandled app command error: {error}", exc_info=error)
 
 
 @tasks.loop(seconds=11)

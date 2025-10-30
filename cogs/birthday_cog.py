@@ -25,6 +25,7 @@ from utils import (
     BaseCog,
     BirthdayGuildConfig,
     BirthdayUser,
+    FailureUI,
     birthday_manager,
     create_birthday_list_embed,
     parse_birthday,
@@ -123,6 +124,11 @@ class ConfirmDeleteView(discord.ui.View):
         except Exception as e:
             logging.getLogger("BirthdayCog").error(
                 "Error saving birthday file after deletion: %s", e
+            )
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка",
+                description="Произошла ошибка при удалении дня рождения",
             )
             await interaction.response.edit_message(content="Ошибка записи", view=None)
 
@@ -313,8 +319,12 @@ class BirthdayCog(BaseCog):
             await interaction.response.send_message(msg, ephemeral=True)
         except Exception as e:
             self.logger.error("Error saving birthday: %s", e)
-            await interaction.response.send_message(
-                "Ошибка сохранения данных.", ephemeral=True
+
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка",
+                description="Произошла ошибка сохранения данных.",
+                ephemeral=True,
             )
 
     @app_commands.command(
@@ -350,8 +360,11 @@ class BirthdayCog(BaseCog):
             await interaction.response.send_message(response, ephemeral=True)
         except Exception as e:
             self.logger.error("Error saving configuration: %s", e)
-            await interaction.response.send_message(
-                "Ошибка сохранения настроек", ephemeral=True
+            await FailureUI.send_failure(
+                interaction,
+                title="Ошибка",
+                description="Произошла ошибка сохранения данных.",
+                ephemeral=True,
             )
 
     @app_commands.command(

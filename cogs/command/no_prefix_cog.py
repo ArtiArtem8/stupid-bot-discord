@@ -4,6 +4,7 @@ Detects old-style prefix commands and suggests modern slash command alternatives
 """
 
 import logging
+import time
 
 from discord import Message
 from discord.ext import commands
@@ -48,7 +49,11 @@ class PrefixBlockerCog(commands.Cog):
         if suggestion:
             response += f" (возможно вы имели в виду `/{suggestion}`)"
         try:
-            await message.reply(response, mention_author=False, delete_after=30)
+            delete_after = 30
+            timer = f"Удалится <t:{int(time.time() + delete_after)}:R>"
+            await message.reply(
+                response + "\n" + timer, mention_author=False, delete_after=delete_after
+            )
         except Exception as e:
             self.logger.error("Failed to send prefix warning: %s", e)
 
