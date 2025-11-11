@@ -91,6 +91,8 @@ BLOCKED_USERS_FILE = (DATA_DIR / "blocked_users").with_suffix(".json")
 BIRTHDAY_CHECK_INTERVAL = 300  # seconds
 BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(".json")
 # Music cog data
+MUSIC_AUTO_LEAVE_CHECK_INTERVAL = 60  # seconds
+MUSIC_AUTO_LEAVE_TIMEOUT = 900  # 15 minutes in seconds
 MUSIC_DEFAULT_VOLUME = 10  # 0 - 1000%
 MUSIC_VOLUME_FILE = (DATA_DIR / "music_volumes").with_suffix(".json")
 # Report cog data

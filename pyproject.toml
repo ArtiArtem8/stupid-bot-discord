@@ -1,6 +1,6 @@
 [project]
 name = "stupid-bot-discord"
-version = "2.1.1"
+version = "2.1.3"
 description = "A feature-rich Discord bot built with discord.py"
 authors = [
     { name = "ArtiArtem", email = "ArtiArtem8@users.noreply.github.com" },

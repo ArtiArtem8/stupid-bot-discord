@@ -7,6 +7,7 @@ Provides:
 - Playback control (pause, resume, skip, stop)
 - Volume control
 - Voice channel management
+- Auto-leave when channel is empty for too long
 
 Requirements:
     - Lavalink server running
@@ -18,6 +19,7 @@ import functools
 import logging
 import os
 import time
+from datetime import timedelta
 from enum import Enum
 from typing import (
     Any,
@@ -27,6 +29,8 @@ from typing import (
     Coroutine,
     Optional,
     ParamSpec,
+    Self,
+    TypedDict,
     TypeVar,
     Union,
     cast,
@@ -43,9 +47,15 @@ from discord import (
     app_commands,
 )
 from discord.abc import Snowflake
-from discord.ext import commands
+from discord.ext import commands, tasks
+from discord.utils import format_dt, utcnow
 
-from config import MUSIC_DEFAULT_VOLUME, MUSIC_VOLUME_FILE
+from config import (
+    MUSIC_AUTO_LEAVE_CHECK_INTERVAL,
+    MUSIC_AUTO_LEAVE_TIMEOUT,
+    MUSIC_DEFAULT_VOLUME,
+    MUSIC_VOLUME_FILE,
+)
 from utils import BaseCog, FailureUI, get_json, save_json
 
 # Load environment variables
@@ -53,7 +63,17 @@ LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
 LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", 2333))
 LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
 
+PAGE_SIZE = 10
+"""Number of tracks to display in queue per page."""
+
+COLOR_SUCCESS = 0x57F287
+COLOR_INFO = 0xFFAE00
+COLOR_WARNING = 0xFEE75C
+COLOR_ERROR = 0xED4245
+COLOR_MUSIC = 0xFFAE00
+
 logger = logging.getLogger("MusicCog")
+
 T = TypeVar("T")
 P = ParamSpec("P")
 AsyncFunc = Callable[P, Awaitable[T]]
@@ -65,15 +85,20 @@ VoiceCheckData = Optional[
 MusicCommand = Callable[Concatenate[CogT, Interaction, P], Coroutine[Any, Any, T]]
 
 
+class RepeatMode(Enum):
+    off = "off"
+    queue = "queue"
+
+
 class VoiceCheckResult(Enum):
-    ALREADY_CONNECTED = ("✅ Уже подключён к {0}", True)
-    CHANNEL_EMPTY = ("❌ Голосовой канал {0} пуст!", False)
-    CONNECTION_FAILED = ("❌ Ошибка подключения к {0}", False)
-    INVALID_CHANNEL_TYPE = ("❌ Неверный тип голосового канала", False)
-    MOVED_CHANNELS = ("✅ Переместился {0} -> {1}", True)
-    SUCCESS = ("✅ Успешно подключился к {0}", True)
-    USER_NOT_IN_VOICE = ("❌ Вы должны быть в голосовом канале!", False)
-    USER_NOT_MEMBER = ("❌ Неверный тип пользователя", False)
+    ALREADY_CONNECTED = ("Уже подключён к {0}", True)
+    CHANNEL_EMPTY = ("Голосовой канал {0} пуст!", False)
+    CONNECTION_FAILED = ("Ошибка подключения к {0}", False)
+    INVALID_CHANNEL_TYPE = ("Неверный тип голосового канала", False)
+    MOVED_CHANNELS = ("Переместился {0} -> {1}", True)
+    SUCCESS = ("Успешно подключился к {0}", True)
+    USER_NOT_IN_VOICE = ("Вы должны быть в голосовом канале!", False)
+    USER_NOT_MEMBER = ("Неверный тип пользователя", False)
 
     def __init__(self, msg: str, is_success: bool):
         self._msg = msg
@@ -86,6 +111,19 @@ class VoiceCheckResult(Enum):
     @property
     def is_success(self) -> bool:
         return self._is_success
+
+
+class EmptyTimerInfo(TypedDict):
+    """Information about an empty channel timer.
+
+    Attributes:
+        timestamp: Unix timestamp when the timer started
+        reason: Why the timer was started ("empty" or "all_deafened")
+
+    """
+
+    timestamp: float
+    reason: str | None
 
 
 def _format_voice_result_message(
@@ -172,8 +210,12 @@ class MusicCog(BaseCog):
         super().__init__(bot)
         self.lavalink = lavaplay.Lavalink()
         self.node: lavaplay.Node | None = None
+        self.empty_channel_timers: dict[int, EmptyTimerInfo] = {}
 
     async def cog_unload(self) -> None:
+        if hasattr(self, "auto_leave_monitor") and self.auto_leave_monitor.is_running():
+            self.auto_leave_monitor.cancel()
+
         if self.node is not None:
             await self.node.close()
         for node in self.lavalink.nodes:
@@ -183,9 +225,124 @@ class MusicCog(BaseCog):
         if self.bot.is_ready():
             await self.initialize_node()
 
+        self.auto_leave_monitor.start()
+
     @commands.Cog.listener()
     async def on_ready(self):
         await self.initialize_node()
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ):
+        """Monitor voice state changes for auto-leave feature."""
+        if not self.bot.user:
+            return
+
+        guild = member.guild
+        if not guild.voice_client or not isinstance(
+            guild.voice_client, LavalinkVoiceClient
+        ):
+            return
+
+        bot_channel = guild.voice_client.channel
+        affected_channels: set[VocalGuildChannel] = set()
+        if before.channel == bot_channel:
+            affected_channels.add(bot_channel)
+        if after.channel == bot_channel:
+            affected_channels.add(bot_channel)
+
+        if before.channel == bot_channel == after.channel and (
+            before.deaf != after.deaf or before.self_deaf != after.self_deaf
+        ):
+            affected_channels.add(bot_channel)
+
+        for channel in affected_channels:
+            await self._update_channel_timer(guild.id, channel)
+
+    async def _update_channel_timer(self, guild_id: int, channel: VocalGuildChannel):
+        """Update the empty channel timer for a specific guild."""
+        human_members = [m for m in channel.members if not m.bot]
+
+        effectively_empty = False
+        empty_reason: str | None = None
+
+        if len(human_members) == 0:
+            effectively_empty = True
+            empty_reason = "empty"
+        else:
+            listening_users: list[discord.Member] = []
+            for member in human_members:
+                if member.voice and not (member.voice.deaf or member.voice.self_deaf):
+                    listening_users.append(member)
+
+            if len(listening_users) == 0:
+                effectively_empty = True
+                empty_reason = "all_deafened"
+
+        if effectively_empty:
+            if guild_id not in self.empty_channel_timers:
+                self.empty_channel_timers[guild_id] = EmptyTimerInfo(
+                    timestamp=time.time(),
+                    reason=empty_reason,
+                )
+                logger.info(
+                    msg="Started empty timer: "
+                    f"guild={guild_id}, channel={channel.name}, reason={empty_reason}"
+                )
+        else:
+            if guild_id in self.empty_channel_timers:
+                del self.empty_channel_timers[guild_id]
+                logger.info(
+                    "Stopped empty timer: "
+                    f"guild={guild_id}, channel={channel.name}, reason=users_listening"
+                )
+
+    @tasks.loop(seconds=MUSIC_AUTO_LEAVE_CHECK_INTERVAL)
+    async def auto_leave_monitor(self):
+        """Background task that monitors empty channels and triggers auto-leave."""
+        current_time = time.time()
+        guilds_to_leave: list[int] = []
+
+        for guild_id, timer_info in self.empty_channel_timers.items():
+            empty_since = timer_info["timestamp"]
+            if current_time - empty_since >= MUSIC_AUTO_LEAVE_TIMEOUT:
+                guilds_to_leave.append(guild_id)
+
+        for guild_id in guilds_to_leave:
+            try:
+                await self._auto_leave_guild(guild_id)
+            except Exception as e:
+                logger.exception(f"Error during auto-leave for guild {guild_id}: {e}")
+
+    async def _auto_leave_guild(self, guild_id: int):
+        """Automatically leave voice channel for a specific guild."""
+        guild = self.bot.get_guild(guild_id)
+        if not guild or not guild.voice_client:
+            self.empty_channel_timers.pop(guild_id, None)
+            return
+
+        vc = guild.voice_client
+        if not isinstance(vc, LavalinkVoiceClient):
+            self.logger.error("Unexpected voice client type: %s", type(vc))
+            return
+
+        channel_name = vc.channel.name
+        info = self.empty_channel_timers[guild_id]
+        reason = info["reason"]
+
+        logger.info(
+            f"Auto-leaving: guild={guild_id}, channel={channel_name}, reason={reason}"
+        )
+        if self.node:
+            player = self.node.get_player(guild_id)
+            if player:
+                await player.destroy()
+        await vc.disconnect(force=True)
+        self.empty_channel_timers.pop(guild_id, None)
 
     async def initialize_node(self):
         """Safely initialize Lavalink node."""
@@ -254,17 +411,44 @@ class MusicCog(BaseCog):
     async def send_response(
         self,
         interaction: Interaction,
-        content: str,
+        content: str = "",
         *,
         delete_after: float | None = None,
         ephemeral: bool = False,
         silent: bool = True,
         embed: discord.Embed | None = None,
+        title: str | None = None,
+        description: str | None = None,
+        color: int = 0xFFAE00,
     ) -> None:
-        da = delete_after
-        timer = f"\n-# Удалится <t:{int(time.time() + da)}:R>" if da else ""
+        """Send response with optional embed creation.
+
+        Args:
+            interaction: The discord Interaction to respond to.
+            content: Text content (used if no embed provided)
+            delete_after: Time in seconds after which the message should be deleted.
+            ephemeral: Whether the response should be ephemeral.
+            silent: If True, attempt to send the response silently where supported.
+            embed: Pre-built embed to send
+            title: Quick embed title (creates embed if provided)
+            description: Quick embed description (creates embed if provided)
+            color: Embed color (default: orange/gold 0xFFAE00)
+
+        """
+        if not embed and (title or description):
+            embed = discord.Embed(color=color)
+            if title:
+                embed.title = title
+            if description:
+                embed.description = description
+        timer = ""
+        if delete_after:
+            expire_at = utcnow() + timedelta(seconds=delete_after)
+            timer = f"-# Удалится {format_dt(expire_at, style='R')}"
+        if embed and timer:
+            embed.add_field(name="", value=timer, inline=False)
         kwargs: dict[str, Any] = {
-            "content": content + timer,
+            "content": (content + timer) if content else None,
             "ephemeral": ephemeral,
             "embed": embed,
             "silent": silent,
@@ -356,7 +540,11 @@ class MusicCog(BaseCog):
             f"{result.name}. Message: {message}"
         )
         logger.log(logging.INFO if result.is_success else logging.WARNING, log_msg)
-        await interaction.followup.send(message, ephemeral=True, silent=True)
+        await self.send_response(
+            interaction,
+            description=message,
+            color=COLOR_SUCCESS if result.is_success else COLOR_ERROR,
+        )
 
     @app_commands.command(
         name="play",
@@ -393,7 +581,7 @@ class MusicCog(BaseCog):
                 interaction,
                 title="Ошибка",
                 description="Код ошибки: " + error_message,
-                delete_after=30,
+                delete_after=120,
             )
             return
         if not await self._check_and_reconnect_node():
@@ -401,7 +589,7 @@ class MusicCog(BaseCog):
                 interaction,
                 title="Ошибка сервиса",
                 description="Музыкальный сервис недоступен. Попробуйте выйти и зайти.",
-                delete_after=30,
+                delete_after=120,
             )
         guild_id = (await self._require_guild(interaction)).id
         player = await self._get_player(guild_id)
@@ -414,7 +602,7 @@ class MusicCog(BaseCog):
         except KeyError:
             await self.send_response(
                 interaction,
-                "💤 Трек не найден",
+                "Трек не найден",
                 delete_after=30,
             )
             return
@@ -429,7 +617,7 @@ class MusicCog(BaseCog):
             logger.debug("No track results found for query: %s", query)
             await self.send_response(
                 interaction,
-                "💤 Результаты не найдены",
+                title="Результаты не найдены",
                 delete_after=30,
             )
 
@@ -441,21 +629,40 @@ class MusicCog(BaseCog):
     ):
         try:
             await player.play(track, requester=interaction.user.id)
-            if len(player.queue) > 1:
-                embed = discord.Embed(
-                    title="✅ Трек добавлен в очередь",
-                    description=f"[{track.title}]({track.uri})",
-                    color=0xFFAE00,
-                )
-                embed.set_thumbnail(url=track.artworkUrl)
-                return await interaction.followup.send(embed=embed, silent=True)
             embed = discord.Embed(
-                title="🎵 Сейчас играет",
+                title="Трек добавлен в очередь"
+                if len(player.queue) > 1
+                else "Сейчас играет",
                 description=f"[{track.title}]({track.uri})",
-                color=0xFFAE00,
+                color=COLOR_MUSIC,
             )
-            embed.set_thumbnail(url=track.artworkUrl)
-            await interaction.followup.send(embed=embed, silent=True)
+            if track.length:
+                formatted_length = self.format_time(track.length // 1000)
+                embed.add_field(
+                    name="Длительность",
+                    value=formatted_length,
+                    inline=True,
+                )
+
+            requester = (
+                interaction.guild.get_member(interaction.user.id)
+                if interaction.guild
+                else None
+            )
+            if track.artworkUrl:
+                embed.set_thumbnail(url=track.artworkUrl)
+            if requester:
+                embed.set_footer(
+                    text=f"Запросил: {requester.display_name}",
+                    icon_url=requester.display_avatar.url,
+                )
+
+            await self.send_response(
+                interaction,
+                embed=embed,
+                delete_after=min(300, track.length // 1000 + 10),
+                silent=True,
+            )
         except lavaplay.TrackLoadFailed as e:
             logger.error("Track load error: %s", e)
             await FailureUI.send_failure(
@@ -471,6 +678,19 @@ class MusicCog(BaseCog):
                 description="Произошла ошибка во время воспроизведения трека",
             )
 
+    def format_time(self, seconds: int) -> str:
+        """Formats a given number of seconds as a string in the format
+        DD days, HH:MM:SS.
+
+        Args:
+            seconds (int): The number of seconds to format.
+
+        Returns:
+            str: The formatted string.
+
+        """
+        return str(timedelta(seconds=seconds))
+
     async def _handle_playlist(
         self,
         interaction: Interaction,
@@ -479,9 +699,27 @@ class MusicCog(BaseCog):
     ):
         try:
             await player.play_playlist(playlist)
-            await interaction.followup.send(
-                f"🎶 Плейлист **{playlist.name}** с {len(playlist.tracks)} "
-                "треками добавлен в очередь",
+            total_sec = sum(t.length if t else 0 for t in playlist.tracks) // 1000
+            embed = discord.Embed(
+                title=f"Добавлен плейлист **{playlist.name}**",
+                description=f"Треков: {len(playlist.tracks)} шт.",
+                color=COLOR_MUSIC,
+            )
+            embed.add_field(
+                name="",
+                value=f"Общая длительность: {self.format_time(total_sec)}",
+                inline=True,
+            )
+            if playlist.tracks and playlist.tracks[0].artworkUrl:
+                embed.set_thumbnail(url=playlist.tracks[0].artworkUrl)
+            embed.set_footer(
+                text=f"Запросил: {interaction.user.display_name}",
+                icon_url=interaction.user.display_avatar.url,
+            )
+            await self.send_response(
+                interaction,
+                embed=embed,
+                delete_after=min(600, total_sec + 10),
                 silent=True,
             )
         except Exception as e:
@@ -513,7 +751,7 @@ class MusicCog(BaseCog):
         voice_client = guild.voice_client
 
         if voice_client:
-            if not voice_client or not isinstance(voice_client, LavalinkVoiceClient):
+            if not isinstance(voice_client, LavalinkVoiceClient):
                 logger.error("Voice client is not LavalinkVoiceClient")
                 return VoiceCheckResult.CONNECTION_FAILED, voice_channel
             if voice_client.channel == voice_channel:
@@ -564,12 +802,13 @@ class MusicCog(BaseCog):
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return
-        await player.stop()  # clears queue
+        await player.stop()
         await self.send_response(
             interaction,
-            "Воспроизведение остановлено, очередь очищена",
-            delete_after=15,
-            silent=True,
+            title="Остановлено",
+            description="Воспроизведение остановлено, очередь очищена",
+            color=COLOR_INFO,
+            delete_after=60,
         )
         logger.info(f"Player stopped and queue cleared in guild {interaction.guild_id}")
 
@@ -582,12 +821,37 @@ class MusicCog(BaseCog):
         if player is None:
             return
         if not player.queue:
-            await interaction.followup.send("Нечего пропускать.", ephemeral=True)
+            await self.send_response(
+                interaction,
+                title="Пустая очередь",
+                description="Нечего пропускать.",
+                color=COLOR_WARNING,
+                ephemeral=True,
+            )
             return
+        current = player.queue[0]
+        next_track = player.queue[1] if len(player.queue) > 1 else None
         await player.skip()
-        await interaction.response.send_message(
-            "⏭️ Текущий трек пропущен", delete_after=15, silent=True
+        embed = discord.Embed(
+            title="Трек пропущен",
+            color=COLOR_INFO,
         )
+        embed.add_field(
+            name="Пропущен", value=f"[{current.title}]({current.uri})", inline=False
+        )
+
+        if next_track:
+            embed.add_field(
+                name="Следующий",
+                value=f"[{next_track.title}]({next_track.uri})",
+                inline=False,
+            )
+            if next_track.artworkUrl:
+                embed.set_thumbnail(url=next_track.artworkUrl)
+        else:
+            embed.add_field(name="Очередь", value="Пуста", inline=False)
+
+        await self.send_response(interaction, embed=embed, delete_after=60, silent=True)
         logger.info(f"Track skipped for guild {interaction.guild_id}")
 
     @app_commands.command(
@@ -601,8 +865,12 @@ class MusicCog(BaseCog):
         if player is None:
             return
         await player.pause(True)
-        await interaction.response.send_message(
-            "⏸️ Воспроизведение приостановлено", ephemeral=True, silent=True
+        await self.send_response(
+            interaction,
+            title="Пауза",
+            description="Воспроизведение приостановлено",
+            color=COLOR_INFO,
+            delete_after=120,
         )
         logger.info(f"Playback paused for guild {interaction.guild_id}")
 
@@ -615,8 +883,12 @@ class MusicCog(BaseCog):
         if player is None:
             return
         await player.pause(False)
-        await interaction.response.send_message(
-            "▶️ Воспроизведение возобновлено", ephemeral=True, silent=True
+        await self.send_response(
+            interaction,
+            title="Возобновлено",
+            description="Воспроизведение возобновлено",
+            color=COLOR_INFO,
+            delete_after=120,
         )
         logger.info(f"Playback resumed for guild {interaction.guild_id}")
 
@@ -634,33 +906,21 @@ class MusicCog(BaseCog):
         ephemeral: bool = False,
     ):
         """Display the current playback queue."""
+        guild = await self._require_guild(interaction)
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return
         if not player.queue:
-            logger.debug(f"Queue is empty for guild {interaction.guild_id}")
-            return await interaction.response.send_message(
-                "ℹ️ Очередь пуста", ephemeral=True
+            logger.debug(f"Queue is empty for guild {guild.id}")
+            return await self.send_response(
+                interaction,
+                title="Очередь пуста",
+                color=COLOR_WARNING,
+                ephemeral=True,
             )
-        embed = discord.Embed(title="Очередь воспроизведения", color=0xFFAE00)
-        if player.is_playing:
-            embed.add_field(
-                name="Сейчас играет",
-                value=f"[{player.queue[0]}]({player.queue[0].uri})",
-                inline=False,
-            )
-        queue_text = "\n".join(
-            f"{idx + 1}. [{track.title}]({track.uri})"
-            for idx, track in enumerate(player.queue[1:10])
-        )
-        if len(player.queue) > 10:
-            queue_text += f"\n... (+{len(player.queue) - 10} остальных)"
-        if queue_text:
-            embed.add_field(name="Далее", value=queue_text, inline=False)
-        embed.set_footer(text=f"Всего треков: {len(player.queue)}")
-        await interaction.response.send_message(
-            embed=embed, ephemeral=ephemeral, silent=True
-        )
+
+        view = QueuePaginator(interaction.user.id, player)
+        await view.send(interaction, ephemeral=ephemeral)
         logger.info(f"Queue displayed for guild {interaction.guild_id}")
 
     @app_commands.command(
@@ -673,15 +933,19 @@ class MusicCog(BaseCog):
         self, interaction: Interaction, volume: app_commands.Range[int, 0, 200]
     ):
         """Adjust playback volume."""
+        guild = await self._require_guild(interaction)
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return
         await player.volume(volume)
-        await self._set_volume(interaction.guild_id, volume)  # type: ignore
-        await interaction.response.send_message(
-            f"🔊 Громкость установлена на {volume}%", ephemeral=True, silent=True
+        await self._set_volume(guild.id, volume)
+        await self.send_response(
+            interaction,
+            title=f"🔊 Громкость установлена на {volume}%",
+            silent=True,
+            delete_after=120,
         )
-        logger.info(f"Volume set to {volume}% for guild {interaction.guild_id}")
+        logger.info(f"Volume set to {volume}% for guild {guild.id}")
 
     @app_commands.command(name="leave", description="Покинуть голосовой канал")
     @app_commands.guild_only()
@@ -697,12 +961,20 @@ class MusicCog(BaseCog):
 
         if not interaction.guild or not interaction.guild.voice_client:
             logger.debug("Bot is not connected to a voice channel during leave")
-            return await interaction.response.send_message(
-                "Не в голосовом канале", ephemeral=True, silent=True
+            return await self.send_response(
+                interaction,
+                title="Не в голосовом канале",
+                color=COLOR_INFO,
+                ephemeral=True,
             )
+
         await interaction.guild.voice_client.disconnect(force=True)
-        await interaction.response.send_message(
-            "ℹ️ Покинул голосовой канал", ephemeral=True, silent=True
+        await self.send_response(
+            interaction,
+            title="До свидания 💖",
+            description="Покинул голосовой канал",
+            color=COLOR_INFO,
+            delete_after=120,
         )
         logger.info(f"Left voice channel for guild {interaction.guild_id}")
 
@@ -719,8 +991,11 @@ class MusicCog(BaseCog):
 
         current_track = player.queue[0] if player.queue else None
         if current_track is None:
-            return await interaction.response.send_message(
-                "Очередь пуста", ephemeral=True
+            return await self.send_response(
+                interaction,
+                title="Очередь пуста",
+                color=COLOR_WARNING,
+                ephemeral=True,
             )
         requester = current_track.requester
         try:
@@ -729,10 +1004,21 @@ class MusicCog(BaseCog):
             requester = 0
         await player.play(current_track, requester=requester)
         await player.skip()
-        await interaction.response.send_message(
-            f"🔄 Текущий трек  [{current_track.title}]({current_track.uri}) "
-            "пропущен и перемещён в конец",
-            delete_after=15,
+        embed = discord.Embed(
+            title="Очередь сдвинута",
+            description=f"Трек [{current_track.title}]({current_track.uri}) "
+            "перемещён в конец очереди",
+            color=COLOR_INFO,
+        )
+        if current_track.artworkUrl:
+            embed.set_thumbnail(url=current_track.artworkUrl)
+        embed.set_footer(
+            text=f"Новая позиция: {player.queue[0].title if player.queue else 'Пусто'}"
+        )
+        await self.send_response(
+            interaction,
+            embed=embed,
+            delete_after=120,
             silent=True,
         )
         logger.info(
@@ -740,6 +1026,38 @@ class MusicCog(BaseCog):
                 f"Rotated queue for guild {interaction.guild_id}. "
                 f"Current track URI: {getattr(player.queue[0], 'uri', 'N/A')}"
             )
+        )
+
+    @app_commands.command(
+        name="repeat",
+        description="Включить/выключить повтор.",
+    )
+    @app_commands.describe(mode="off — выкл, queue — повтор очереди")
+    @app_commands.guild_only()
+    @handle_errors()
+    async def repeat(self, interaction: Interaction, mode: Optional[RepeatMode] = None):
+        player = await self._get_player_or_handle_error(interaction)
+        if player is None:
+            return
+
+        current = RepeatMode.queue if player._queue_repeat else RepeatMode.off  # pyright: ignore[reportPrivateUsage]
+
+        if mode is None:
+            mode = RepeatMode.off if current == RepeatMode.queue else RepeatMode.queue
+        match mode:
+            case RepeatMode.off:
+                player.queue_repeat(False)
+                msg = "Повтор **отключён**"
+            case RepeatMode.queue:
+                player.queue_repeat(True)
+                msg = "Повтор очереди **включён**"
+
+        await self.send_response(
+            interaction,
+            title="Залупливание",
+            description=msg,
+            color=COLOR_WARNING if current == RepeatMode.off else COLOR_SUCCESS,
+            delete_after=120,
         )
 
 
@@ -845,6 +1163,144 @@ class LavalinkVoiceClient(discord.VoiceClient):
         logger.debug("[DISCONNECT] Attempting to disconnect voice client...")
         await self.channel.guild.change_voice_state(channel=None)
         self.cleanup()
+
+
+class QueuePaginator(discord.ui.View):
+    def __init__(
+        self,
+        author_id: int,
+        player: lavaplay.player.Player,
+        *,
+        timeout: float = 600,
+    ):
+        super().__init__(timeout=timeout)
+        self.author_id = author_id
+        self.player = player
+        self.page = 0
+
+        # explicit buttons, just to individually disable them
+        sec_button = discord.ButtonStyle.secondary
+        prim_button = discord.ButtonStyle.primary
+        dan_button = discord.ButtonStyle.danger
+        self.first_btn = discord.ui.Button[Self](label="⏮", style=sec_button, row=0)
+        self.prev_btn = discord.ui.Button[Self](label="◀", style=sec_button, row=0)
+        self.next_btn = discord.ui.Button[Self](label="▶", style=sec_button, row=0)
+        self.last_btn = discord.ui.Button[Self](label="⏭", style=sec_button, row=0)
+        self.update_btn = discord.ui.Button[Self](label="⭮", style=prim_button, row=1)
+        self.close_btn = discord.ui.Button[Self](label="✕", style=dan_button, row=1)
+        self.first_btn.callback = self.first
+        self.prev_btn.callback = self.prev
+        self.next_btn.callback = self.next
+        self.last_btn.callback = self.last
+        self.update_btn.callback = self.update
+        self.close_btn.callback = self.close
+
+        self.add_item(self.first_btn)
+        self.add_item(self.prev_btn)
+        self.add_item(self.next_btn)
+        self.add_item(self.last_btn)
+        self.add_item(self.update_btn)
+        self.add_item(self.close_btn)
+        self._update_buttons()
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "Попрошу не трогать", ephemeral=True
+            )
+            return False
+        return True
+
+    def _pages_count(self) -> int:
+        total = max(len(self.player.queue) - 1, 0)
+        return max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1)
+
+    def _update_buttons(self) -> None:
+        """Enable/disable navigation buttons based on current page and total pages."""
+        pages = self._pages_count()
+
+        self.first_btn.disabled = self.page == 0 or pages == 1
+        self.prev_btn.disabled = self.page == 0 or pages == 1
+        self.next_btn.disabled = self.page >= pages - 1 or pages == 1
+        self.last_btn.disabled = self.page >= pages - 1 or pages == 1
+
+    def _make_embed(self) -> discord.Embed:
+        q = self.player.queue
+        embed = discord.Embed(title="Очередь воспроизведения", color=0xFFAE00)
+        if q:
+            now = q[0]
+            embed.add_field(
+                name="Сейчас играет", value=f"[{now.title}]({now.uri})", inline=False
+            )
+        start = 1 + self.page * PAGE_SIZE
+        end = min(len(q), start + PAGE_SIZE)
+        if start < len(q):
+            lines = [
+                f"{idx}. [{track.title}]({track.uri})"
+                for idx, track in enumerate(q[start:end], start=start)
+            ]
+            if lines:
+                embed.add_field(name="Далее", value="\n".join(lines), inline=False)
+
+        mode = self.player._queue_repeat  # pyright: ignore[reportPrivateUsage]
+        embed.set_footer(
+            text=f"Стр. {self.page + 1}/{self._pages_count()}"
+            f" • Всего: {len(q)}"
+            f" • Повтор: {'вкл.' if mode else 'выкл.'}"
+        )
+        return embed
+
+    async def send(self, interaction: Interaction, *, ephemeral: bool) -> None:
+        await interaction.response.send_message(
+            embed=self._make_embed(),
+            view=self,
+            ephemeral=ephemeral,
+            silent=True,
+        )
+
+    async def _update_view(self, interaction: Interaction) -> None:
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self._make_embed(), view=self)
+
+    async def first(self, interaction: Interaction):
+        self.page = 0
+        await self._update_view(interaction)
+
+    async def prev(self, interaction: Interaction):
+        self.page = max(self.page - 1, 0)
+        await self._update_view(interaction)
+
+    async def next(self, interaction: Interaction):
+        self.page = min(self.page + 1, self._pages_count() - 1)
+        await self._update_view(interaction)
+
+    async def last(self, interaction: Interaction):
+        self.page = self._pages_count() - 1
+        await self._update_view(interaction)
+
+    async def update(self, interaction: Interaction):
+        self.page = 0
+        await self._update_view(interaction)
+        logger.debug(f"Queue refreshed for guild {self.player.guild_id}")
+
+    async def close(self, interaction: Interaction):
+        self.first_btn.disabled = True
+        self.prev_btn.disabled = True
+        self.next_btn.disabled = True
+        self.last_btn.disabled = True
+        self.update_btn.disabled = True
+        self.close_btn.disabled = True
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+    async def on_timeout(self) -> None:
+        self.first_btn.disabled = True
+        self.prev_btn.disabled = True
+        self.next_btn.disabled = True
+        self.last_btn.disabled = True
+        self.update_btn.disabled = True
+        self.close_btn.disabled = True
+        self.stop()
 
 
 async def setup(bot: commands.Bot):

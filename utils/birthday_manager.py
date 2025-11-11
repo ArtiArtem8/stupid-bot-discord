@@ -407,6 +407,19 @@ def create_birthday_list_embed(
 class BirthdayManager:
     def __init__(self) -> None:
         self._cache: dict[int, BirthdayGuildConfig] = {}
+        self._file_mtime_ns: int | None = None
+
+    def _current_file_mtime_ns(self) -> int | None:
+        try:
+            return BIRTHDAY_FILE.stat().st_mtime_ns
+        except FileNotFoundError:
+            return None
+
+    def _refresh_if_file_changed(self) -> None:
+        mtime = self._current_file_mtime_ns()
+        if mtime != self._file_mtime_ns:
+            self._cache.clear()
+            self._file_mtime_ns = mtime
 
     def get_guild_config(self, guild_id: int) -> BirthdayGuildConfig | None:
         """Get guild birthday configuration.
@@ -421,6 +434,7 @@ class BirthdayManager:
             GuildBirthdayConfig if exists, None otherwise
 
         """
+        self._refresh_if_file_changed()
         if guild_id in self._cache:
             return self._cache[guild_id]
 
@@ -463,6 +477,7 @@ class BirthdayManager:
         raw_data = get_json(BIRTHDAY_FILE) or {}
         raw_data[str(config.guild_id)] = config.to_dict()
         save_json(BIRTHDAY_FILE, raw_data)
+        self._file_mtime_ns = self._current_file_mtime_ns()
 
     def delete_guild_config(self, guild_id: int) -> bool:
         """Delete guild birthday configuration from cache and file.
@@ -474,12 +489,14 @@ class BirthdayManager:
             True if the configuration was found and deleted, False otherwise
 
         """
+        self._refresh_if_file_changed()
         if guild_id in self._cache:
             del self._cache[guild_id]
         raw_data = get_json(BIRTHDAY_FILE) or {}
         if str(guild_id) in raw_data:
             del raw_data[str(guild_id)]
             save_json(BIRTHDAY_FILE, raw_data)
+            self._file_mtime_ns = self._current_file_mtime_ns()
             return True
         return False
 
@@ -490,6 +507,7 @@ class BirthdayManager:
             A list of guild IDs as integers.
 
         """
+        self._refresh_if_file_changed()
         raw_data = get_json(BIRTHDAY_FILE) or {}
         return [int(k) for k in raw_data.keys()]
 

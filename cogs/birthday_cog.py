@@ -45,7 +45,7 @@ async def safe_role_edit(
     operation: Literal["add", "remove"],
     logger: logging.Logger,
 ) -> bool:
-    """Safely add or remove role with permission checks.
+    """Safely add or remove a role.
 
     Args:
         member: Member to modify
@@ -57,18 +57,6 @@ async def safe_role_edit(
         True if successful, False otherwise
 
     """
-    if not member.guild.me.guild_permissions.manage_roles:
-        logger.warning("Bot lacks manage_roles permission")
-        return False
-
-    if role >= member.guild.me.top_role:
-        logger.debug("Role too high, %s >= %s", role, member.guild.me.top_role)
-        return False
-
-    if not role.is_assignable():
-        logger.debug("Role is not assignable, %s", role)
-        return False
-
     try:
         match operation:
             case "add":
@@ -76,12 +64,28 @@ async def safe_role_edit(
             case "remove":
                 await member.remove_roles(role, reason="День рождения прошел")
             case _:
-                raise ValueError(f"Invalid operation: {operation}")  # !unreachable
+                raise ValueError(f"Invalid operation: {operation}")
         return True
+
     except Forbidden:
+        logger.debug(
+            "Forbidden: Cannot %s role %s for %s (check permissions and role hierarchy)",
+            operation,
+            role.name,
+            member,
+        )
         return False
+
     except HTTPException as exc:
         if exc.status in (400, 403, 404):
+            logger.debug(
+                "HTTP %s when attempting to %s role %s for %s: %s",
+                exc.status,
+                operation,
+                role.name,
+                member,
+                exc.text,
+            )
             return False
         raise
 
@@ -226,7 +230,7 @@ class BirthdayCog(BaseCog):
         today_key = today.strftime("%d-%m")
 
         for user_id, user_data in config.users.items():
-            if user_data.birth_day_month != today_key:
+            if user_data.birth_day_month() != today_key:
                 member = await safe_fetch_member(guild, user_id, self.logger)
                 if member and role in member.roles:
                     await safe_role_edit(member, role, "remove", self.logger)

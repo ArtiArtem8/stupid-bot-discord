@@ -88,11 +88,10 @@ class BaseCog(abc.ABC, commands.Cog, metaclass=CogABCMeta):
         return True
 
     async def _require_guild(self, interaction: discord.Interaction) -> discord.Guild:
-        """Ensure the interaction is in a guild and respond if not.
+        """Ensure the interaction is in a guild and raise :py:exc:`NoGuildError` if not.
 
         Args:
             interaction: The Discord interaction.
-            logger: Logger for warnings.
 
         Returns:
             The guild object.
@@ -134,8 +133,10 @@ class BaseCog(abc.ABC, commands.Cog, metaclass=CogABCMeta):
             context = f"guild {guild_name} (ID: {interaction.guild.id}), {channel_name}"
         else:
             context = "DM"
-
         self.logger.info(
-            f"Command '{command_name}' invoked by {user_display} "
-            f"(ID: {user.id}) in {context}"
+            "Command '%s' invoked by %s (ID: %s) in %s",
+            command_name,
+            user_display,
+            user.id,
+            context,
         )

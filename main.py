@@ -67,7 +67,7 @@ class CustomErrorCommandTree(app_commands.CommandTree):
             )
             return
         await FailureUI.send_failure(
-            interaction, title=str(error), delete_after=30.0, ephemeral=False
+            interaction, title=str(error), delete_after=300.0, ephemeral=False
         )
         logger.error(f"Unhandled app command error: {error}", exc_info=error)
 
@@ -86,7 +86,7 @@ class StupidBot(commands.Bot):
         if DISCORD_BOT_OWNER_ID:
             self.owner_id = int(DISCORD_BOT_OWNER_ID)
         self.start_time = time.time()
-        self.last_activity_str = "None"
+        self.last_activity_str = "N/A"
         self.enable_watch = False
         self._load_previous_uptime()
 
