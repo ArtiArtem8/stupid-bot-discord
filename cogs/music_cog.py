@@ -14,6 +14,8 @@ Requirements:
     - Environment variables: LAVALINK_HOST, LAVALINK_PORT, LAVALINK_PASSWORD
 """
 
+from __future__ import annotations
+
 import asyncio
 import functools
 import logging
@@ -27,18 +29,14 @@ from typing import (
     Callable,
     Concatenate,
     Coroutine,
-    Optional,
-    ParamSpec,
     Self,
     TypedDict,
-    TypeVar,
-    Union,
     cast,
+    override,
 )
 
 import discord
 import lavaplay  # type: ignore
-import lavaplay.player  # type: ignore
 from discord import (
     Interaction,
     Member,
@@ -49,6 +47,7 @@ from discord import (
 from discord.abc import Snowflake
 from discord.ext import commands, tasks
 from discord.utils import format_dt, utcnow
+from lavaplay.player import Player  # type: ignore
 
 from config import (
     MUSIC_AUTO_LEAVE_CHECK_INTERVAL,
@@ -74,15 +73,15 @@ COLOR_MUSIC = 0xFFAE00
 
 logger = logging.getLogger("MusicCog")
 
-T = TypeVar("T")
-P = ParamSpec("P")
-AsyncFunc = Callable[P, Awaitable[T]]
-CogT = TypeVar("CogT", bound="MusicCog")
-VocalGuildChannel = Union[StageChannel, VoiceChannel]
-VoiceCheckData = Optional[
-    VocalGuildChannel | tuple[VocalGuildChannel, VocalGuildChannel]
+type AsyncFunc[T, **P] = Callable[P, Awaitable[T]]
+type VocalGuildChannel = StageChannel | VoiceChannel
+type VoiceCheckData = (
+    VocalGuildChannel | tuple[VocalGuildChannel, VocalGuildChannel] | None
+)
+type MusicCommand[CogT: MusicCog, T, **P] = Callable[
+    Concatenate[CogT, Interaction, P],
+    Coroutine[Any, Any, T],
 ]
-MusicCommand = Callable[Concatenate[CogT, Interaction, P], Coroutine[Any, Any, T]]
 
 
 class RepeatMode(Enum):
@@ -155,8 +154,8 @@ def _format_voice_result_message(
         return result.msg
 
 
-def handle_errors() -> Callable[
-    [MusicCommand[CogT, P, T]], MusicCommand[CogT, P, Optional[T]]
+def handle_errors[CogT: MusicCog, T, **P]() -> Callable[
+    [MusicCommand[CogT, T, P]], MusicCommand[CogT, T | None, P]
 ]:
     """Decorator to add error handling to asynchronous functions.
 
@@ -171,14 +170,14 @@ def handle_errors() -> Callable[
 
     """
 
-    def decorator(func: MusicCommand[CogT, P, T]) -> MusicCommand[CogT, P, Optional[T]]:
+    def decorator(func: MusicCommand[CogT, T, P]) -> MusicCommand[CogT, T | None, P]:
         @functools.wraps(func)
         async def wrapper(
             self: CogT,
             interaction: Interaction,
             *args: P.args,
             **kwargs: P.kwargs,
-        ) -> Optional[T]:
+        ) -> T | None:
             """Wrapper that adds error handling."""
             try:
                 return await func(self, interaction, *args, **kwargs)
@@ -200,7 +199,7 @@ def handle_errors() -> Callable[
                 )
             return None
 
-        return cast(MusicCommand[CogT, P, Optional[T]], wrapper)
+        return cast(MusicCommand[CogT, T | None, P], wrapper)
 
     return decorator
 
@@ -212,6 +211,7 @@ class MusicCog(BaseCog):
         self.node: lavaplay.Node | None = None
         self.empty_channel_timers: dict[int, EmptyTimerInfo] = {}
 
+    @override
     async def cog_unload(self) -> None:
         if hasattr(self, "auto_leave_monitor") and self.auto_leave_monitor.is_running():
             self.auto_leave_monitor.cancel()
@@ -221,6 +221,7 @@ class MusicCog(BaseCog):
         for node in self.lavalink.nodes:
             self.lavalink.destroy_node(node)
 
+    @override
     async def cog_load(self):
         if self.bot.is_ready():
             await self.initialize_node()
@@ -286,7 +287,7 @@ class MusicCog(BaseCog):
         if effectively_empty:
             if guild_id not in self.empty_channel_timers:
                 self.empty_channel_timers[guild_id] = EmptyTimerInfo(
-                    timestamp=time.time(),
+                    timestamp=time.monotonic(),
                     reason=empty_reason,
                 )
                 logger.info(
@@ -304,7 +305,7 @@ class MusicCog(BaseCog):
     @tasks.loop(seconds=MUSIC_AUTO_LEAVE_CHECK_INTERVAL)
     async def auto_leave_monitor(self):
         """Background task that monitors empty channels and triggers auto-leave."""
-        current_time = time.time()
+        current_time = time.monotonic()
         guilds_to_leave: list[int] = []
 
         for guild_id, timer_info in self.empty_channel_timers.items():
@@ -350,7 +351,7 @@ class MusicCog(BaseCog):
             return
         await self._connect_node()
 
-    async def _get_player(self, guild_id: int) -> lavaplay.player.Player:
+    async def _get_player(self, guild_id: int) -> Player:
         """Get existing player or create new one with proper voice data."""
         await self.initialize_node()  # Ensure node is connected
         if self.node is None:
@@ -464,7 +465,7 @@ class MusicCog(BaseCog):
 
     async def _get_player_or_handle_error(
         self, interaction: Interaction, *, needs_player: bool = True
-    ) -> Optional[lavaplay.player.Player]:
+    ) -> Player | None:
         """Gets the Lavalink player for the interaction's guild.
 
         Handles node initialization, guild ID checks, and optionally player
@@ -624,7 +625,7 @@ class MusicCog(BaseCog):
     async def _handle_track(
         self,
         interaction: Interaction,
-        player: lavaplay.player.Player,
+        player: Player,
         track: lavaplay.Track,
     ):
         try:
@@ -694,7 +695,7 @@ class MusicCog(BaseCog):
     async def _handle_playlist(
         self,
         interaction: Interaction,
-        player: lavaplay.player.Player,
+        player: Player,
         playlist: lavaplay.PlayList,
     ):
         try:
@@ -1035,7 +1036,7 @@ class MusicCog(BaseCog):
     @app_commands.describe(mode="off — выкл, queue — повтор очереди")
     @app_commands.guild_only()
     @handle_errors()
-    async def repeat(self, interaction: Interaction, mode: Optional[RepeatMode] = None):
+    async def repeat(self, interaction: Interaction, mode: RepeatMode | None = None):
         player = await self._get_player_or_handle_error(interaction)
         if player is None:
             return
@@ -1081,13 +1082,14 @@ class LavalinkVoiceClient(discord.VoiceClient):
         except Exception as e:
             logger.exception("Unexpected error in voice client init: %s", e)
 
+    @override
     async def on_voice_server_update(self, data: dict[str, str]):  # pyright: ignore[reportIncompatibleMethodOverride]
         logger.debug("[VOICE SERVER UPDATE] Received data: %s", data)
         if self.lavalink is None:
             logger.exception("Voice error occurred: lavalink is None", exc_info=True)
             return
         player = cast(
-            None | lavaplay.player.Player,
+            None | Player,
             self.lavalink.get_player(self.channel.guild.id),
         )
         if player is None:
@@ -1097,6 +1099,7 @@ class LavalinkVoiceClient(discord.VoiceClient):
             data.get("endpoint", "missing"), data.get("token", "missing")
         )
 
+    @override
     async def on_voice_state_update(self, data: dict[str, str]):  # pyright: ignore[reportIncompatibleMethodOverride]
         logger.debug("[VOICE STATE UPDATE] Received data: %s", data)
         if self.lavalink is None:
@@ -1104,7 +1107,7 @@ class LavalinkVoiceClient(discord.VoiceClient):
             return
 
         player = cast(
-            None | lavaplay.player.Player,
+            None | Player,
             self.lavalink.get_player(self.channel.guild.id),
         )
         channel_id = cast(
@@ -1135,6 +1138,7 @@ class LavalinkVoiceClient(discord.VoiceClient):
             channel_id,
         )
 
+    @override
     async def move_to(
         self, channel: Snowflake | None, *, timeout: float | None = 30
     ) -> None:
@@ -1146,6 +1150,7 @@ class LavalinkVoiceClient(discord.VoiceClient):
             return
         await self.channel.guild.change_voice_state(channel=channel)
 
+    @override
     async def connect(
         self,
         *,
@@ -1159,6 +1164,7 @@ class LavalinkVoiceClient(discord.VoiceClient):
             channel=self.channel, self_mute=self_mute, self_deaf=self_deaf
         )
 
+    @override
     async def disconnect(self, *, force: bool = False) -> None:
         logger.debug("[DISCONNECT] Attempting to disconnect voice client...")
         await self.channel.guild.change_voice_state(channel=None)
@@ -1169,7 +1175,7 @@ class QueuePaginator(discord.ui.View):
     def __init__(
         self,
         author_id: int,
-        player: lavaplay.player.Player,
+        player: Player,
         *,
         timeout: float = 600,
     ):
@@ -1203,6 +1209,7 @@ class QueuePaginator(discord.ui.View):
         self.add_item(self.close_btn)
         self._update_buttons()
 
+    @override
     async def interaction_check(self, interaction: Interaction) -> bool:
         if interaction.user.id != self.author_id:
             await interaction.response.send_message(
@@ -1293,6 +1300,7 @@ class QueuePaginator(discord.ui.View):
         await interaction.response.edit_message(view=None)
         self.stop()
 
+    @override
     async def on_timeout(self) -> None:
         self.first_btn.disabled = True
         self.prev_btn.disabled = True
