@@ -8,27 +8,9 @@ from typing import NotRequired, Self, TypedDict
 
 import discord
 
-from config import BIRTHDAY_FILE
+import config
+from resources import MONTH_NAMES_RU
 from utils.json_utils import get_json, save_json
-
-MONTH_NAMES_RU: dict[int, str] = {
-    1: "января",
-    2: "февраля",
-    3: "марта",
-    4: "апреля",
-    5: "мая",
-    6: "июня",
-    7: "июля",
-    8: "августа",
-    9: "сентября",
-    10: "октября",
-    11: "ноября",
-    12: "декабря",
-}
-"""Dictionary of month names in Russian."""
-
-DATE_FORMAT = "%d-%m-%Y"
-"""canonical format: DD-MM-YYYY"""
 
 
 class BirthdayListEntry(TypedDict):
@@ -84,7 +66,7 @@ def calculate_days_until_birthday(
 
         next_year_birthday = date(reference_date.year + 1, month_int, day_int)
         return (next_year_birthday - reference_date).days
-    except (ValueError, IndexError):
+    except ValueError:
         return None
 
 
@@ -109,10 +91,10 @@ def parse_birthday(date_str: str) -> str:
         '15-05-2000'
 
     """
-    for fmt in (DATE_FORMAT, "%Y-%m-%d"):
+    for fmt in (config.DATE_FORMAT, "%Y-%m-%d"):
         try:
             dt = datetime.strptime(date_str, fmt)
-            return dt.strftime(DATE_FORMAT)
+            return dt.strftime(config.DATE_FORMAT)
         except ValueError:
             continue
     raise ValueError("Invalid date format. Use DD-MM-YYYY or YYYY-MM-DD.")
@@ -140,7 +122,7 @@ def format_birthday_date(birthday_str: str) -> str | None:
             return None
 
         return f"{day_int} {MONTH_NAMES_RU[month_int]}"
-    except (ValueError, IndexError):
+    except ValueError:
         return None
 
 
@@ -193,7 +175,7 @@ class BirthdayUser:
         if not self.has_birthday():
             return None
         try:
-            return datetime.strptime(self.birthday, DATE_FORMAT).date()
+            return datetime.strptime(self.birthday, config.DATE_FORMAT).date()
         except ValueError:
             return None
 
@@ -201,11 +183,11 @@ class BirthdayUser:
         return self.birthday[:5] if self.has_birthday() else ""
 
     def was_congratulated_today(self, today: date) -> bool:
-        today_str = today.strftime(DATE_FORMAT)
+        today_str = today.strftime(config.DATE_FORMAT)
         return today_str in self.was_congrats
 
     def add_congratulation(self, congratulation_date: date) -> None:
-        date_str = congratulation_date.strftime(DATE_FORMAT)
+        date_str = congratulation_date.strftime(config.DATE_FORMAT)
         if date_str not in self.was_congrats:
             self.was_congrats.append(date_str)
 
@@ -411,7 +393,7 @@ class BirthdayManager:
 
     def _current_file_mtime_ns(self) -> int | None:
         try:
-            return BIRTHDAY_FILE.stat().st_mtime_ns
+            return config.BIRTHDAY_FILE.stat().st_mtime_ns
         except FileNotFoundError:
             return None
 
@@ -438,7 +420,7 @@ class BirthdayManager:
         if guild_id in self._cache:
             return self._cache[guild_id]
 
-        raw_data = get_json(BIRTHDAY_FILE)
+        raw_data = get_json(config.BIRTHDAY_FILE)
         if not isinstance(raw_data, dict):
             return None
 
@@ -446,9 +428,9 @@ class BirthdayManager:
         if guild_raw is None:
             return None
 
-        config = BirthdayGuildConfig.from_dict(guild_id, guild_raw)
-        self._cache[guild_id] = config
-        return config
+        guild_config = BirthdayGuildConfig.from_dict(guild_id, guild_raw)
+        self._cache[guild_id] = guild_config
+        return guild_config
 
     def get_or_create_guild_config(
         self, guild_id: int, server_name: str, channel_id: int
@@ -466,17 +448,17 @@ class BirthdayManager:
         self._cache[guild_id] = new_config
         return new_config
 
-    def save_guild_config(self, config: BirthdayGuildConfig) -> None:
+    def save_guild_config(self, guild_config: BirthdayGuildConfig) -> None:
         """Save guild birthday configuration to file.
 
         Args:
-            config: BirthdayGuildConfig instance to save
+            guild_config: BirthdayGuildConfig instance to save
 
         """
-        self._cache[config.guild_id] = config
-        raw_data = get_json(BIRTHDAY_FILE) or {}
-        raw_data[str(config.guild_id)] = config.to_dict()
-        save_json(BIRTHDAY_FILE, raw_data)
+        self._cache[guild_config.guild_id] = guild_config
+        raw_data = get_json(config.BIRTHDAY_FILE) or {}
+        raw_data[str(guild_config.guild_id)] = guild_config.to_dict()
+        save_json(config.BIRTHDAY_FILE, raw_data)
         self._file_mtime_ns = self._current_file_mtime_ns()
 
     def delete_guild_config(self, guild_id: int) -> bool:
@@ -492,10 +474,10 @@ class BirthdayManager:
         self._refresh_if_file_changed()
         if guild_id in self._cache:
             del self._cache[guild_id]
-        raw_data = get_json(BIRTHDAY_FILE) or {}
+        raw_data = get_json(config.BIRTHDAY_FILE) or {}
         if str(guild_id) in raw_data:
             del raw_data[str(guild_id)]
-            save_json(BIRTHDAY_FILE, raw_data)
+            save_json(config.BIRTHDAY_FILE, raw_data)
             self._file_mtime_ns = self._current_file_mtime_ns()
             return True
         return False
@@ -508,7 +490,7 @@ class BirthdayManager:
 
         """
         self._refresh_if_file_changed()
-        raw_data = get_json(BIRTHDAY_FILE) or {}
+        raw_data = get_json(config.BIRTHDAY_FILE) or {}
         return [int(k) for k in raw_data.keys()]
 
     def clear_cache(self) -> None:

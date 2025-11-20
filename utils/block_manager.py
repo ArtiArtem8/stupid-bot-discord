@@ -1,21 +1,20 @@
+import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Self, TypedDict
 
 import discord
+from discord.utils import utcnow
 
-from config import BLOCKED_USERS_FILE
+import config
 from utils.json_utils import get_json, save_json
+
+LOGGER = logging.getLogger("BlockManager")
 
 
 def datetime_now_isoformat() -> str:
     """Return current time in isoformat."""
-    return datetime.now(timezone.utc).isoformat()
-
-
-def datetime_now() -> datetime:
-    """Return current time."""
-    return datetime.now(timezone.utc)
+    return utcnow().isoformat()
 
 
 class BlockHistoryEntryDict(TypedDict):
@@ -104,17 +103,13 @@ class BlockedUser:
 
     def add_block_entry(self, admin_id: int, reason: str = "") -> None:
         self.block_history.append(
-            BlockHistoryEntry(
-                admin_id=admin_id, reason=reason, timestamp=datetime_now()
-            )
+            BlockHistoryEntry(admin_id=admin_id, reason=reason, timestamp=utcnow())
         )
         self.blocked = True
 
     def add_unblock_entry(self, admin_id: int, reason: str = "") -> None:
         self.unblock_history.append(
-            BlockHistoryEntry(
-                admin_id=admin_id, reason=reason, timestamp=datetime_now()
-            )
+            BlockHistoryEntry(admin_id=admin_id, reason=reason, timestamp=utcnow())
         )
         self.blocked = False
 
@@ -126,7 +121,7 @@ class BlockedUser:
             self.name_history.append(
                 NameHistoryEntry(
                     username=username,
-                    timestamp=datetime_now(),
+                    timestamp=utcnow(),
                 )
             )
             self.current_username = username
@@ -170,39 +165,119 @@ class BlockManager:
 
     def __init__(self) -> None:
         self._cache: dict[int, dict[int, BlockedUser]] = {}
+        self._loaded = False
+
+    def _ensure_loaded(self):
+        """Lazy load the entire JSON file into cache."""
+        if self._loaded:
+            return
+
+        raw_data = get_json(config.BLOCKED_USERS_FILE) or {}
+        self._cache = {}
+        for guild_id_str, guild_data in raw_data.items():
+            guild_id = int(guild_id_str)
+            users_data = guild_data.get("users", {})
+            self._cache[guild_id] = {
+                int(uid): BlockedUser.from_dict(u_data)
+                for uid, u_data in users_data.items()
+            }
+        self._loaded = True
+
+    def _save_cache(self):
+        """Dump the entire cache to JSON."""
+        output_data: dict[str, dict[str, dict[str, BlockedUserDict]]] = {}
+        for guild_id, users_map in self._cache.items():
+            output_data[str(guild_id)] = {
+                "users": {str(uid): user.to_dict() for uid, user in users_map.items()}
+            }
+
+        save_json(config.BLOCKED_USERS_FILE, output_data)
+
+    def _get_or_create_user(self, guild_id: int, member: discord.Member) -> BlockedUser:
+        """Get existing user entry or create a new one with name tracking.
+
+        Automatically updates name history if the user exists.
+        """
+        self._ensure_loaded()
+        if guild_id not in self._cache:
+            self._cache[guild_id] = {}
+        guild_cache = self._cache[guild_id]
+        user_id = member.id
+        if user_id in guild_cache:
+            user = guild_cache[user_id]
+            if user.update_name_history(member.display_name, member.name):
+                LOGGER.info(
+                    "Updated name history for user %d in guild %d. Name: %s",
+                    user_id,
+                    guild_id,
+                    member.display_name,
+                )
+            return user
+
+        new_user = BlockedUser(
+            user_id=user_id,
+            current_username=member.display_name,
+            current_global_name=member.name,
+        )
+        new_user.name_history.append(
+            NameHistoryEntry(
+                username=member.display_name,
+                timestamp=utcnow(),
+            )
+        )
+        guild_cache[user_id] = new_user
+        LOGGER.info("Created block entry for %d in %d", user_id, guild_id)
+        return new_user
 
     def is_user_blocked(self, guild_id: int, user_id: int) -> bool:
         """Check if a user is currently blocked in the guild."""
-        guild_data = self.get_guild_data(guild_id)
-        user_entry = guild_data.get(user_id)
-        return user_entry.is_blocked if user_entry else False
+        self._ensure_loaded()
+        user = self._cache.get(guild_id, {}).get(user_id)
+        return user.is_blocked if user else False
 
-    def get_guild_data(self, guild_id: int) -> dict[int, BlockedUser]:
-        """Get the blocked users for a guild."""
-        if guild_id in self._cache:
-            return self._cache[guild_id]
-        raw_data = get_json(BLOCKED_USERS_FILE) or {}
-        guild_data = raw_data.get(str(guild_id), {})
-        users = guild_data.get("users", {})
-        self._cache[guild_id] = {
-            int(uid): BlockedUser.from_dict(u) for uid, u in users.items()
-        }
-        return self._cache[guild_id]
+    def get_guild_users(self, guild_id: int) -> list[BlockedUser]:
+        """Get list of all tracked users for a guild."""
+        self._ensure_loaded()
+        return list(self._cache.get(guild_id, {}).values())
 
-    def save_guild_data(
-        self, guild: discord.Guild, users: dict[int, BlockedUser]
-    ) -> None:
-        """Save the blocked users for a guild."""
-        guild_id = str(guild.id)
-        raw_data = get_json(BLOCKED_USERS_FILE) or {}
-        raw_data[guild_id] = {
-            "member_count": guild.member_count
-            or raw_data.get(guild_id, {}).get("member_count", 0),
-            "server": guild.name,
-            "users": {str(user.user_id): user.to_dict() for user in users.values()},
-        }
-        save_json(BLOCKED_USERS_FILE, raw_data)
-        self._cache[guild.id] = users
+    def get_user(self, guild_id: int, user_id: int) -> BlockedUser | None:
+        """Get a specific user (Read-only)."""
+        self._ensure_loaded()
+        return self._cache.get(guild_id, {}).get(user_id)
+
+    def block_user(
+        self, guild_id: int, target: discord.Member, admin_id: int, reason: str
+    ) -> BlockedUser:
+        """Block a user and save to disk."""
+        user = self._get_or_create_user(guild_id, target)
+
+        if user.is_blocked:
+            return user
+
+        user.add_block_entry(admin_id, reason)
+
+        self._save_cache()
+        return user
+
+    def unblock_user(
+        self, guild_id: int, target: discord.Member, admin_id: int, reason: str
+    ) -> BlockedUser:
+        """Unblock a user and save to disk."""
+        user = self._get_or_create_user(guild_id, target)
+
+        if not user.is_blocked:
+            return user
+
+        user.add_unblock_entry(admin_id, reason)
+
+        self._save_cache()
+        return user
+
+    def reload(self):
+        """Force reload from disk (useful if file edited manually)."""
+        self._loaded = False
+        self._cache.clear()
+        self._ensure_loaded()
 
 
 block_manager = BlockManager()

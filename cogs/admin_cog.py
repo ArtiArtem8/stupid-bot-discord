@@ -10,16 +10,15 @@ Provides:
 
 import logging
 from enum import StrEnum
-from typing import Callable, override
+from typing import override
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils import BaseCog, BlockedUser, block_manager
-
-MAX_FIELD_LENGTH = 1024
-"""Maximum characters per embed field to avoid Discord limits"""
+import config
+from resources import ACTION_TITLES
+from utils import BaseCog, block_manager
 
 
 class BlockAction(StrEnum):
@@ -31,11 +30,6 @@ class BlockAction(StrEnum):
 
 BLOCK = BlockAction.BLOCK
 UNBLOCK = BlockAction.UNBLOCK
-
-ACTION_TITLES: dict[BlockAction, str] = {
-    BLOCK: "Блокировка",
-    UNBLOCK: "Разблокировка",
-}
 
 
 def create_block_embed(
@@ -59,7 +53,7 @@ def create_block_embed(
     embed = discord.Embed(
         title=title,
         description=description,
-        color=0xFFAE00,
+        color=config.Color.INFO,
     )
 
     if reason:
@@ -100,40 +94,6 @@ class AdminCog(BaseCog):
         """Allow admin commands to bypass block checks."""
         return True
 
-    def _get_or_create_user_entry(
-        self, guild_id: int, member: discord.Member
-    ) -> tuple[BlockedUser, dict[int, BlockedUser]]:
-        """Get or create user entry with name tracking.
-
-        Returns:
-            Tuple of (user_entry, guild_data)
-
-        """
-        guild_data = block_manager.get_guild_data(guild_id)
-        user_id = member.id
-
-        if user_id in guild_data:
-            user_entry = guild_data[user_id]
-            if user_entry.update_name_history(member.display_name, member.name):
-                self.logger.info(
-                    f"Updated name history for user {user_id} in guild {guild_id}. "
-                    f"New name: {member.display_name=}, global: {member.name=}"
-                )
-        else:
-            user_entry = BlockedUser(
-                user_id=user_id,
-                current_username=member.display_name,
-                current_global_name=member.name,
-            )
-            user_entry.update_name_history(member.display_name, member.name)
-            guild_data[user_id] = user_entry
-            self.logger.info(
-                f"Created new block entry for user {user_id} in guild {guild_id}. "
-                f"Initial name: {member.display_name}"
-            )
-
-        return user_entry, guild_data
-
     @app_commands.command(
         name="block", description="Заблокировать пользователя от использования бота."
     )
@@ -148,7 +108,15 @@ class AdminCog(BaseCog):
     ):
         """Block a user from using the bot."""
         guild = await self._require_guild(interaction)
-        await self._apply_block_action(interaction, guild, user, BLOCK, reason)
+        if block_manager.is_user_blocked(guild.id, user.id):
+            await interaction.response.send_message(
+                f"{user.mention} уже заблокирован.", ephemeral=True
+            )
+            return
+        block_manager.block_user(guild.id, user, interaction.user.id, reason)
+        self.logger.info("Blocked user %d in guild %d", user.id, guild.id)
+        embed = create_block_embed(user, BLOCK, reason)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(
         name="unblock",
@@ -165,45 +133,14 @@ class AdminCog(BaseCog):
     ):
         """Unblock a user from using the bot."""
         guild = await self._require_guild(interaction)
-        await self._apply_block_action(interaction, guild, user, UNBLOCK, reason)
-
-    async def _apply_block_action(
-        self,
-        interaction: discord.Interaction,
-        guild: discord.Guild,
-        user: discord.Member,
-        action: BlockAction,
-        reason: str,
-    ):
-        user_entry, guild_data = self._get_or_create_user_entry(guild.id, user)
-        already_blocked = user_entry.is_blocked
-        if (already_blocked and action == BLOCK) or (
-            not already_blocked and action == UNBLOCK
-        ):
-            msg = (
-                f"{user.mention} уже заблокирован."
-                if action == BLOCK
-                else f"{user.mention} не заблокирован."
+        if not block_manager.is_user_blocked(guild.id, user.id):
+            await interaction.response.send_message(
+                f"{user.mention} не заблокирован.", ephemeral=True
             )
-            log_msg = (
-                f"{action.capitalize()} attempt failed - user {user.id} "
-                f"{already_blocked=} in {guild.name} ({guild.id})"
-            )
-            self.logger.info(log_msg)
-            await interaction.response.send_message(msg, ephemeral=True)
             return
-
-        action_methods: dict[BlockAction, Callable[[int, str], None]] = {
-            BLOCK: user_entry.add_block_entry,
-            UNBLOCK: user_entry.add_unblock_entry,
-        }
-        action_methods[action](interaction.user.id, reason)
-        block_manager.save_guild_data(guild, guild_data)
-
-        embed = create_block_embed(user, action, reason)
-        self.logger.info(
-            f"Successfully {action}ed user {user.id} in guild {guild.name} ({guild.id})"
-        )
+        block_manager.unblock_user(guild.id, user, interaction.user.id, reason)
+        self.logger.info("Unblocked user %d in guild %d", user.id, guild.id)
+        embed = create_block_embed(user, UNBLOCK, reason)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(
@@ -224,8 +161,7 @@ class AdminCog(BaseCog):
     ):
         """Display detailed block history for a user."""
         guild = await self._require_guild(interaction)
-        guild_data = block_manager.get_guild_data(guild.id)
-        user_entry = guild_data.get(user.id)
+        user_entry = block_manager.get_user(guild.id, user.id)
 
         if not user_entry or not user_entry.block_history:
             self.logger.info(
@@ -243,8 +179,8 @@ class AdminCog(BaseCog):
         )
         # Build detailed embed
         embed = discord.Embed(
-            title="📜 Полная история блокировок",
-            color=0x2B2D31,
+            title="Полная история блокировок",
+            color=config.Color.ERROR if user_entry.is_blocked else config.Color.SUCCESS,
         )
         embed.set_author(name=str(user), icon_url=user.display_avatar.url)
         embed.set_thumbnail(url=user.display_avatar.url)
@@ -254,13 +190,13 @@ class AdminCog(BaseCog):
             last_block = user_entry.block_history[-1]
             timestamp = int(last_block.timestamp.timestamp())
             status_value = (
-                f"🔴 **Заблокирован**\n"
+                f"**Заблокирован**\n"
                 f"• Администратор: <@{last_block.admin_id}>\n"
                 f"• Причина: {last_block.reason or 'Не указана'}\n"
                 f"• Дата: <t:{timestamp}:F>"
             )
         else:
-            status_value = "🟢 Не заблокирован"
+            status_value = "Не заблокирован"
 
         embed.add_field(
             name="Текущий статус",
@@ -305,7 +241,7 @@ class AdminCog(BaseCog):
                 name_changes.append(f"<t:{ts}:D>:\n• Имя: {name_entry.username}\n")
 
             embed.add_field(
-                name="📝 История имён",
+                name="История имён",
                 value="\n".join(name_changes)[:1024],
             )
 
@@ -322,7 +258,7 @@ class AdminCog(BaseCog):
             stats.append(f"• Последняя разблокировка: <t:{last_unblock_ts}:D>")
 
         embed.add_field(
-            name="📊 Статистика",
+            name="Статистика",
             value="\n".join(stats),
             inline=False,
         )
@@ -352,13 +288,13 @@ class AdminCog(BaseCog):
     ):
         """Display all currently blocked users with basic information."""
         guild = await self._require_guild(interaction)
-        blocked_users = block_manager.get_guild_data(guild.id)
-        blocked_users = [user for user in blocked_users.values() if user.is_blocked]
+        all_users = block_manager.get_guild_users(guild.id)
+        blocked_users = [u for u in all_users if u.is_blocked]
 
         if not blocked_users:
             self.logger.info(f"No blocked users found in guild {guild.id}")
             await interaction.response.send_message(
-                "Нет заблокированных пользователей на этом сервере.",
+                "Нет заблокированных пользователей.",
                 ephemeral=ephemeral,
             )
             return
@@ -366,7 +302,8 @@ class AdminCog(BaseCog):
             f"Found {len(blocked_users)} blocked users in guild {guild.id} "
         )
         embed = discord.Embed(
-            title=f"Заблокированные пользователи ({len(blocked_users)})", color=0x36393F
+            title=f"Заблокированные пользователи ({len(blocked_users)})",
+            color=config.Color.INFO,
         )
 
         unresolved_count = 0
@@ -375,7 +312,7 @@ class AdminCog(BaseCog):
         for user_entry in blocked_users:
             user = guild.get_member(user_entry.user_id)
             if user is None:
-                user_info = f"🚷 Пользователь покинул сервер `{user_entry.user_id}`"
+                user_info = f"Пользователь покинул сервер `{user_entry.user_id}`"
                 current_username = user_entry.current_username
                 unresolved_count += 1
             else:
@@ -411,7 +348,7 @@ class AdminCog(BaseCog):
 
         for entry in entries:
             entry_length = len(entry) + 2
-            if current_length + entry_length > MAX_FIELD_LENGTH:
+            if current_length + entry_length > config.MAX_EMBED_FIELD_LENGTH:
                 embed.add_field(
                     name="Заблокированные пользователи",
                     value="\n\n".join(current_field),

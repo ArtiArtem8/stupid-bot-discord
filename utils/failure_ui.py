@@ -1,58 +1,34 @@
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import Self
 
 import discord
-from discord import ButtonStyle
 from discord.ui import Button, View
 from discord.utils import format_dt, utcnow
 
-if TYPE_CHECKING:
-    from main import StupidBot
+import config
+from utils.report_manager import ReportModal
 
 REPORT_BUTTON_LABEL = "Сообщить о проблеме"
 
 
-async def _open_report_modal(inter: discord.Interaction["StupidBot"]) -> None:
-    cog = inter.client.get_cog("ReportCog")
-    if cog is None:
-        await inter.response.send_message("Отчёт сейчас недоступен.", ephemeral=True)
-        return
-    from cogs.report_cog import ReportCog, ReportModal
-
-    if not isinstance(cog, ReportCog):
-        raise TypeError(f"ReportCog expected, got {type(cog)}")
-
-    await inter.response.send_modal(ReportModal(cog))
-
-
 class ReportButtonView(View):
-    def __init__(
-        self,
-        user_id: int,
-        *,
-        timeout: float | None = 180,
-    ):
+    def __init__(self, user_id: int, timeout: float | None = 180):
         super().__init__(timeout=timeout)
         self.user_id = user_id
 
-    @discord.ui.button(label=REPORT_BUTTON_LABEL, style=ButtonStyle.danger)
-    async def report(
-        self,
-        interaction: discord.Interaction["StupidBot"],
-        button: Button["ReportButtonView"],
-    ):
+    @discord.ui.button(label=REPORT_BUTTON_LABEL, style=discord.ButtonStyle.danger)
+    async def report(self, interaction: discord.Interaction, button: Button[Self]):
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "Вы не можете выполнить это действие.", ephemeral=True
+            return await interaction.response.send_message(
+                "Это не ваше сообщение.", ephemeral=True
             )
-            return
-        await _open_report_modal(interaction)
+        await interaction.response.send_modal(ReportModal())
 
 
 class FailureUI:
     @staticmethod
     def make_embed(
-        title: str, description: str, *, color: int = 0xED4245
+        title: str, description: str, *, color: int = config.Color.ERROR
     ) -> discord.Embed:
         embed = discord.Embed(title=title, description=description, color=color)
         return embed

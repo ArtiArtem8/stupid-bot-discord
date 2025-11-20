@@ -83,6 +83,15 @@ def optimize_image(
     Returns:
         Path to optimized image
 
+    Note:
+        - For JPEG: quality 1-95 recommended (avoid 100)
+        - For WEBP: quality 0-100 (80-90 optimal)
+        - For PNG: quality ignored, uses compress_level 0-9
+
+    Raises:
+        ValueError: If image format is unsupported
+        RuntimeError: If optimization fails
+
     """
     try:
         output_path = output_path or input_path

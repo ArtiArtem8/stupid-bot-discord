@@ -10,8 +10,7 @@ from discord import Message
 from discord.ext import commands
 from fuzzywuzzy.process import extractOne  # type: ignore
 
-SUGGESTION_THRESHOLD = 25
-"""Minimum fuzzy match score to suggest command"""
+import config
 
 
 class PrefixBlockerCog(commands.Cog):
@@ -29,7 +28,6 @@ class PrefixBlockerCog(commands.Cog):
         prefixes = await self.bot.get_prefix(message)
         prefixes = [prefixes] if isinstance(prefixes, str) else prefixes
 
-        # Find which prefix was used (if any)
         if not any((message.content.startswith(i), pref := i)[0] for i in prefixes):
             return
 
@@ -42,7 +40,7 @@ class PrefixBlockerCog(commands.Cog):
         suggestion = None
         if slash_commands:
             best_match: tuple[str, int] = extractOne(raw_content, slash_commands)  # type: ignore
-            if best_match and best_match[1] >= SUGGESTION_THRESHOLD:
+            if best_match and best_match[1] >= config.SUGGESTION_THRESHOLD:
                 suggestion = best_match[0]
 
         response = "Префиксы убраны; воспользуйтесь слэш-командами."

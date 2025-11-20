@@ -11,14 +11,9 @@ from discord import Message
 from discord.ext import commands
 from fuzzywuzzy.process import extract  # type: ignore
 
-from config import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
+import config
+from resources import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
 from utils import block_manager
-
-DEFAULT_FUZZY_THRESHOLD = 95
-"""Minimum fuzzy match score (0-100) to trigger response"""
-
-FUZZY_MATCH_LIMIT = 10
-"""Maximum number of fuzzy matches to evaluate"""
 
 
 class OnMessageCog(commands.Cog):
@@ -99,7 +94,7 @@ class OnMessageCog(commands.Cog):
         message: Message,
         quests: list[str],
         answers: list[str],
-        threshold: int = DEFAULT_FUZZY_THRESHOLD,
+        threshold: int = config.FUZZY_THRESHOLD_DEFAULT,
     ) -> str | None:
         """Process a message to check if it matches one of the given "quests" and
         return a random answer if it does.
@@ -115,7 +110,7 @@ class OnMessageCog(commands.Cog):
 
         """
         fuzzy_results: list[tuple[str, int]] = extract(  # type: ignore
-            message.content, quests, limit=FUZZY_MATCH_LIMIT
+            message.content, quests, limit=config.FUZZY_MATCH_LIMIT
         )
         _, best_score = max(fuzzy_results, key=lambda x: x[1])
 

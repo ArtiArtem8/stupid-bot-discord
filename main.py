@@ -1,25 +1,16 @@
 import argparse
 import asyncio
-import logging.config
+import logging
 import os
 import time
 from datetime import timedelta
-from pathlib import Path
 
 import discord
 from discord import Intents, Interaction, app_commands
 from discord.ext import commands, tasks
 from discord.utils import utcnow
 
-from config import (
-    AUTOSAVE_LAST_RUN_FILE_INTERVAL,
-    BOT_PREFIX,
-    DISCONNECT_TIMER_THRESHOLD,
-    DISCORD_BOT_OWNER_ID,
-    DISCORD_BOT_TOKEN,
-    LAST_RUN_FILE,
-    LOGGING_CONFIG,
-)
+import config
 from utils import (
     BlockedUserError,
     FailureUI,
@@ -27,18 +18,10 @@ from utils import (
     format_time_russian,
     get_json,
     save_json,
+    setup_logging,
 )
 
-logging.config.dictConfig(LOGGING_CONFIG)
-
 logger = logging.getLogger("StupidBot")
-
-intents = Intents.default()
-intents.messages = True
-intents.presences = True
-intents.message_content = True
-intents.members = True
-intents.guilds = True
 
 
 class CustomErrorCommandTree(app_commands.CommandTree):
@@ -73,181 +56,199 @@ class CustomErrorCommandTree(app_commands.CommandTree):
 
 
 class StupidBot(commands.Bot):
-    def __init__(self):
+    def __init__(self, watch_cogs: bool = False):
         """Initialize the StupidBot instance.
 
         Sets up the command prefix, intents, and initializes various
         attributes related to the bot's uptime and activity monitoring.
         Calls the method to load previous uptime data.
         """
+        intents = Intents.default()
+        intents.presences = True
+        intents.message_content = True
+        intents.members = True
         super().__init__(
-            command_prefix=BOT_PREFIX, intents=intents, tree_cls=CustomErrorCommandTree
+            command_prefix=config.BOT_PREFIX,
+            intents=intents,
+            tree_cls=CustomErrorCommandTree,
         )
-        if DISCORD_BOT_OWNER_ID:
-            self.owner_id = int(DISCORD_BOT_OWNER_ID)
-        self.start_time = time.time()
-        self.last_activity_str = "N/A"
-        self.enable_watch = False
-        self._load_previous_uptime()
+        self.owner_id = (
+            int(config.DISCORD_BOT_OWNER_ID) if config.DISCORD_BOT_OWNER_ID else None
+        )
+        self.enable_watch = watch_cogs
 
-    def _load_previous_uptime(self):
-        last_run = load_last_run()
+        self.start_time: float = time.time()
+        self.last_activity_str = "N/A"
+        self._restore_uptime()
+
+    def _restore_uptime(self):
+        """Logic to resume accumulated uptime if restart was quick."""
+        last_run = get_json(config.LAST_RUN_FILE)
         if last_run is None:
             return
-        last_shutdown = last_run.get("last_shutdown", 0)
-        accumulated = last_run.get("accumulated_uptime", 0)
+
+        last_shutdown = last_run.get("last_shutdown", 0.0)
+        accumulated = last_run.get("accumulated_uptime", 0.0)
         disconnect_time = time.time() - last_shutdown
-        if disconnect_time < DISCONNECT_TIMER_THRESHOLD:
+
+        if disconnect_time < config.DISCONNECT_TIMER_THRESHOLD:
             self.start_time = time.time() - accumulated
-            logger.info(
-                "Resuming uptime (bot was offline for %.0f seconds)",
-                disconnect_time,
-            )
+            logger.info("Resuming uptime (Offline for %.0fs)", disconnect_time)
         else:
             logger.info(
-                "Offline time (%.0f seconds) exceeded threshold; starting fresh.",
+                "Offline time (%.0fs) exceeded threshold; Resetting uptime.",
                 disconnect_time,
             )
 
+    def save_state(self) -> float:
+        """Saves the current uptime state to file."""
+        current_uptime = time.time() - self.start_time
+        data = {
+            "last_shutdown": time.time(),
+            "accumulated_uptime": current_uptime,
+        }
+        try:
+            save_json(config.LAST_RUN_FILE, data, backup_amount=1)
+        except Exception as e:
+            logger.error("Failed to save state: %s", e)
+        return current_uptime
+
     async def setup_hook(self) -> None:
-        cogs_dir = Path.cwd() / "cogs"
-        for file_path in cogs_dir.rglob("*_cog.py"):
-            if file_path.name.startswith("_"):
-                continue
-            rel_path = file_path.relative_to(cogs_dir).with_suffix("")
-            dotted_path = ".".join(rel_path.parts)
-            try:
-                logger.debug("Loading cog: %s", file_path.relative_to(cogs_dir))
-                await self.load_extension(f"cogs.{dotted_path}")
-                logger.info("Loaded cog: %s", file_path.relative_to(cogs_dir))
-            except Exception as e:
-                logger.error("Failed to load cog %s: %s", file_path, e, exc_info=True)
-        await self.tree.sync()
+        await self._load_cogs()
+        commands = await self.tree.sync()
         logger.info("Application commands synced")
+        logger.debug("Synced commands: %s", commands)
+        self.update_activity_task.start()
+        self.autosave_task.start()
         if self.enable_watch:
             self._watcher = self.loop.create_task(self._cog_watcher())
             logger.info("Cog watcher enabled (argument provided).")
 
+    async def _load_cogs(self):
+        for file_path in config.COGS_DIR.rglob("*_cog.py"):
+            if file_path.name.startswith("_"):
+                continue
+            rel_path = file_path.relative_to(config.BASE_DIR)
+            module_name = ".".join(rel_path.parts).removesuffix(".py")
+            logger.debug("Relative path: %s", rel_path)
+            try:
+                logger.debug("Loading: %s", module_name)
+                await self.load_extension(module_name)
+                logger.info("Loaded: %s", module_name)
+            except Exception:
+                logger.exception("Failed to load %s", module_name)
+
     async def _cog_watcher(self):
-        print("Watching for changes...")
-        last = time.time()
+        """Watch for file changes and reload cogs hot."""
+        logger.info("Watching for changes...")
+        last_check = time.time()
         while True:
             extensions: set[str] = set()
             for name, module in self.extensions.items():
-                if module.__file__ and os.stat(module.__file__).st_mtime > last:
-                    extensions.add(name)
+                try:
+                    if (
+                        module.__file__
+                        and os.stat(module.__file__).st_mtime > last_check
+                    ):
+                        extensions.add(name)
+                except OSError:
+                    pass
             for ext in extensions:
                 try:
                     await self.reload_extension(ext)
-                    print(f"Reloaded {ext}")
-                except commands.ExtensionError as e:
-                    print(f"Failed to reload {ext}: {e}")
-            last = time.time()
+                    logger.info("Reloaded %s", ext)
+                except Exception:
+                    logger.exception(f"Failed to reload {ext}")
+            last_check = time.time()
             await asyncio.sleep(1)
 
+    async def on_ready(self) -> None:
+        """Event handler for when the bot is ready.
 
-def load_last_run() -> dict[str, int] | None:
-    """Load the last run info if available."""
-    data = get_json(LAST_RUN_FILE)
-
-    if data is None and os.path.exists(LAST_RUN_FILE):
-        logger.error("Failed to load last run data (file exists but is invalid)")
-
-    return data
-
-
-def save_last_run(accumulated_uptime: float) -> None:
-    """Save the current shutdown time and accumulated uptime."""
-    data = {
-        "last_shutdown": time.time(),
-        "accumulated_uptime": accumulated_uptime,
-    }
-    try:
-        save_json(
-            filename=LAST_RUN_FILE,
-            data=data,
-            backup_amount=1,
+        Logs the bot's username and ID, and starts the timer and autosave tasks.
+        """
+        logger.info("Bot is ready -------------------------")
+        logger.info(
+            "Logged in as %s (ID: %s) (API Version: %s)",
+            self.user,
+            self.user.id if self.user else "DISCONNECTED",
+            discord.__version__,
         )
-    except Exception as e:
-        logger.error("Failed to save last run data: %s", e)
+        logger.debug(
+            "bot's owner: %s (%s)",
+            self.owner_id,
+            self.owner_ids if self.owner_ids else "Not a group",
+        )
+
+    @tasks.loop(seconds=11)
+    async def update_activity_task(self) -> None:
+        """Task to periodically update the bot's activity with its uptime.
+
+        The uptime is formatted using :func:`format_time_russian` and the
+        """
+        uptime = time.time() - self.start_time
+        formatted_time = format_time_russian(int(uptime), depth=1)
+        activity_str = f"жизнь уже {formatted_time}."
+
+        if activity_str == self.last_activity_str:
+            return
+
+        self.last_activity_str = activity_str
+        await self.change_presence(
+            activity=discord.Game(name=activity_str, platform="IRL")
+        )
+
+    @tasks.loop(seconds=config.AUTOSAVE_UPTIME_INTERVAL)
+    async def autosave_task(self):
+        uptime = self.save_state()
+        logger.debug("Autosaved uptime: %.0f seconds", uptime)
+
+    @update_activity_task.before_loop
+    @autosave_task.before_loop
+    async def before_tasks(self):
+        await self.wait_until_ready()
 
 
-bot = StupidBot()
-
-
-@bot.event
-async def on_ready():
-    """Event handler for when the bot is ready.
-
-    Logs the bot's username and ID, and starts the timer and autosave tasks.
-    """
-    discord_version = discord.__version__
-    logger.info("Program started ----------------------")
-    logger.info(
-        "Logged in as %s (ID: %s) (API Version: %s)",
-        bot.user,
-        bot.user.id if bot.user else "Can't get id",
-        discord_version,
-    )
-    logger.debug(
-        "Bot owner: %s (%s)",
-        bot.owner_id,
-        bot.owner_ids if bot.owner_ids else "Not a group",
-    )
-    timer.start()
-    autosave.start()
-
-
-@tasks.loop(seconds=11)
-async def timer():
-    """Task to periodically update the bot's activity with its uptime.
-
-    This task updates the bot's activity to reflect its current uptime.
-    The uptime is formatted using :func:`format_time_russian` and the
-    bot's activity is updated every 11 seconds.
-    """
-    uptime = time.time() - bot.start_time
-    formatted_time = format_time_russian(int(uptime), depth=1)
-    activity_str = f"жизнь уже {formatted_time}."
-    if activity_str == bot.last_activity_str:
-        return
-    bot.last_activity_str = activity_str
-
-    game_act = discord.Game(name=activity_str)
-    game_act.platform = "IRL"
-    await bot.change_presence(activity=game_act)
-
-
-@tasks.loop(seconds=AUTOSAVE_LAST_RUN_FILE_INTERVAL)
-async def autosave():
-    """Periodically save the current uptime in case of an emergency shutdown."""
-    uptime = time.time() - bot.start_time
-    save_last_run(uptime)
-    logger.info("Autosaved uptime: %.0f seconds", uptime)
-
-
-# Run the bot
-if __name__ == "__main__":
+async def main() -> None:
+    """Main entry point."""
     parser = argparse.ArgumentParser(description="Run the Discord bot.")
     parser.add_argument(
         "-w",
-        "--watch-cogs",
+        "--watch",
         action="store_true",
         help="Enables watcher that will reload cogs on code changes.",
     )
     args = parser.parse_args()
 
-    bot.enable_watch = args.watch_cogs
+    for dir in [
+        config.DATA_DIR,
+        config.BACKUP_DIR,
+        config.TEMP_DIR,
+        config.COGS_DIR,
+    ]:
+        dir.mkdir(parents=True, exist_ok=True)
 
-    async def main():
-        """Main entry point for the bot."""
-        async with bot:
-            await bot.start(DISCORD_BOT_TOKEN or "Token_is_missing")
+    setup_logging(config.ENCODING)
+
+    if not config.DISCORD_BOT_TOKEN:
+        logger.critical("DISCORD_BOT_TOKEN is missing in environment/config!")
+        return
+
+    bot = StupidBot(watch_cogs=args.watch)
 
     logger.info("Starting bot...")
     try:
-        asyncio.run(main())
+        async with bot:
+            await bot.start(config.DISCORD_BOT_TOKEN)
     except (KeyboardInterrupt, SystemExit):
-        uptime = time.time() - bot.start_time
-        save_last_run(uptime)
-        logger.info("Program stopped. Uptime saved: %.0f seconds", uptime)
+        logger.info("Keyboard Interrupt detected.")
+    finally:
+        uptime = bot.save_state()
+        logger.info(f"Bot stopped. Final saved uptime: {uptime:.0f}s")
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

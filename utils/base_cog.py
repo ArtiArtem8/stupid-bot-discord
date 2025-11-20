@@ -11,8 +11,8 @@ import discord
 from discord.ext import commands
 from discord.utils import maybe_coroutine
 
-from .block_manager import block_manager
-from .exceptions import BlockedUserError, NoGuildError
+from utils.block_manager import block_manager
+from utils.exceptions import BlockedUserError, NoGuildError
 
 
 class CogABCMeta(commands.CogMeta, abc.ABCMeta):

@@ -1,182 +1,111 @@
-"""Bot configuration and constants.
-
-This module centralizes all configuration values and provides
-type-safe access to environment variables.
-
-Environment Variables:
-    DISCORD_BOT_TOKEN: Bot authentication token (required)
-    DISCORD_BOT_OWNER_ID: Owner user ID for special permissions
-    WOLFRAM_APP_ID: Wolfram Alpha API key
-    LAVALINK_HOST: Lavalink server host
-    LAVALINK_PORT: Lavalink server port
-    LAVALINK_PASSWORD: Lavalink authentication password
-"""
+"""Bot configuration and environment variables."""
 
 import os
+from enum import IntEnum
 from pathlib import Path
-from typing import Any
+from typing import Final
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# GENERAL
 
-BOT_ICON = "https://icon-library.com/images/icon-for-discord/icon-for-discord-17.jpg"
-BOT_PREFIX = "s!"  # ? unused - all commands are slash (app) commands currently
-DISCORD_BOT_OWNER_ID = os.environ.get("DISCORD_BOT_OWNER_ID")
+# --- Environment variables ---
+# Required
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
-ENCODING = "utf-8"
-
-BACKUP_DIR = Path(__file__).parent / "backups"
-DATA_DIR = Path(__file__).parent / "data"
-AUTOSAVE_LAST_RUN_FILE_INTERVAL = 1800  # 30 mins
-DISCONNECT_TIMER_THRESHOLD = 3600  # 1 hour
-
-# https://developer.wolframalpha.com/access
+if not DISCORD_BOT_TOKEN:
+    raise ValueError("DISCORD_BOT_TOKEN not found in environment variables")
+# Optional
+DISCORD_BOT_OWNER_ID = os.environ.get("DISCORD_BOT_OWNER_ID")
+# Wolfram Alpha API (https://developer.wolframalpha.com/access)
 WOLFRAM_APP_ID = os.environ.get("WOLFRAM_APP_ID")
+# Lavalink Music Server
+LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
+LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", 2333))
+LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
 
-LAST_RUN_FILE = (DATA_DIR / "last_run").with_suffix(".json")
+
+# --- Directory structure ---
+BASE_DIR = Path(__file__).parent
+COGS_DIR = BASE_DIR / "cogs"
+BACKUP_DIR = BASE_DIR / "backups"
+DATA_DIR = BASE_DIR / "data"
+TEMP_DIR = BASE_DIR / "temp"
 
 
-LOGGING_CONFIG: dict[str, Any] = {
-    "version": 1,
-    "formatters": {
-        "detailed": {
-            "format": "%(asctime)s %(levelname)s [%(name)s]: %(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-        "debug_detailed": {
-            "format": "%(asctime)s %(levelname)s [%(name)s:%(lineno)d]: %(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-    },
-    "handlers": {
-        "file_handler": {
-            "class": "logging.FileHandler",
-            "filename": "discord-bot.log",
-            "encoding": ENCODING,
-            "formatter": "detailed",
-            "level": "INFO",
-        },
-        "debug_file_handler": {
-            "class": "logging.FileHandler",
-            "filename": "discord-bot-debug.log",
-            "encoding": ENCODING,
-            "formatter": "debug_detailed",
-            "level": "DEBUG",
-        },
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "detailed",
-            "level": "INFO",
-        },
-    },
-    "root": {
-        "handlers": ["file_handler", "debug_file_handler", "console"],
-        "level": "DEBUG",
-    },
-    "loggers": {
-        "discord": {
-            "handlers": ["file_handler", "debug_file_handler", "console"],
-            "level": "INFO",  # Reduce discord library noise in debug log
-            "propagate": False,
-        },
-    },
-}
+# --- Bot schema ---
+BOT_ICON = "https://icon-library.com/images/icon-for-discord/icon-for-discord-17.jpg"
+BOT_PREFIX = "s!"  # Legacy - all commands are slash commands currently
 
-# Admin cog data
-BLOCKED_USERS_FILE = (DATA_DIR / "blocked_users").with_suffix(".json")
-# Birthday cog data
-BIRTHDAY_CHECK_INTERVAL = 300  # seconds
-BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(".json")
-# Music cog data
-MUSIC_AUTO_LEAVE_CHECK_INTERVAL = 60  # seconds
-MUSIC_AUTO_LEAVE_TIMEOUT = 900  # 15 minutes in seconds
-MUSIC_DEFAULT_VOLUME = 10  # 0 - 1000%
-MUSIC_VOLUME_FILE = (DATA_DIR / "music_volumes").with_suffix(".json")
-# Report cog data
-REPORT_FILE = (DATA_DIR / "user_reports").with_suffix(".json")
-# Question cog data
-ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(".json")
 
-# Question cog
-CAPABILITIES = [
-    "Вероятно нет",
-    "Не хочу отвечать",
-    "Весьма спорно",
-    "Почти наверняка",
-    "Возможно",
-    "Скорее да",
-    "Зря ты спросил",
-    "Я не знаю",
-    "Нет!",
-    "Предрешено",
-    "Да!",
-] * 2 + [
-    "Вы из тех людей, с кем очень приятно прощаться",
-    "Вы из тех людей, с кем очень приятно общаться",
-    "Извините, но я сегодня слишком занят для бесполезного общения",
-    "...",
-    "Безумие — это точное повторение одного и того же действия. Раз за разом, в надежде на изменение. Это есть безумие.",  # noqa: E501
-]
+class Color(IntEnum):
+    """Bot theme color palette."""
 
-# OnMessageCog
-MORNING_QUEST = [
-    "дзень добры",
-    "Утречко доброе",
-    "день добрый",
-    "утро утреннее",
-    "солнце взошло",
-    "утро доброе",
-    "доброе утро",
-]
-MORNING_ANSWERS = [
-    "Желаю доброго, бодрого, позитивного, солнечного, восхитительного, радостного и счастливого утра!",  # noqa: E501
-    "Доброго утра! Желаю хорошего настроения, бодрости и выполнения всех планов.",
-    "С добрым утром, с новым днем! Пускай день будет легким, веселым и плодотворным.",
-    "С добрым утром! Просыпайся, потянись, улыбнись, взбодрись и новый день скорей встречай! Ура!",  # noqa: E501
-    "Утро доброе, бл*ть!",
-    "Пусть утро будет добрым, ароматным и бодрящим! А вся неделя легкой, вдохновленной и продуктивной!",  # noqa: E501
-    "Утром один час лучше, чем два вечером. Таджикская пословица",
-    "Что утром не сделаешь, то вечером не наверстаешь.",
-    "https://tenor.com/view/anime-smile-beautiful-cute-happy-gif-16596386",
-    "https://tenor.com/view/little-witch-academia-witch-good-morning-yawn-stretching-gif-16843917",
-    "https://tenor.com/view/shrek-donkey-good-morning-good-morning-good-morning-morning-gif-18326987",
-]
-EVENING_QUEST = [
-    "доброй ночи",
-    "сон",
-    "спать",
-    "Дозавтра",
-    "пора спать",
-    "отрубаюсь",
-    "наступила ночь",
-    "Спокойной ночи",
-    "ночь пришла",
-]
-EVENING_ANSWERS = [
-    "Пусть ваш ангел-хранитель присмотрит за вами, пока вы спите",
-    "Сон – это отражение нашего сердца и души",
-    "Пришло время попрощаться, но только на сегодня",
-    "Сегодня был отличный день, но завтра, как обычно, будет ещё лучше",
-    "https://tenor.com/view/shrek-mehdi-shrek-dance-wati-by-night-maitre-gims-gif-19789528",
-    "https://tenor.com/view/animu-anime-good-night-good-night-peeps-gif-14037283",
-    "https://tenor.com/view/anime-night-gif-13617044",
-]
-# Birthday cog
-BIRTHDAY_WISHES = [
-    "С днем рождения! Желаю жить всегда в радости, в окружении спокойствия и постоянного счастья, желаю вам всего и понемногу, и пусть самые простые дни иногда наполняются сказочными событиями.",  # noqa: E501
-    "Поздравляю с днём рождения тебя! Желаю прекрасной и удивительной жизни, океан безумной любви, бесконечно счастливого времени, только крепкого здоровья и отличного настроения!",  # noqa: E501
-    "С днем рождения! Желаю прекрасного дня в окружении людей, которые любят и ценят тебя больше всего, и много веселья. Улыбайся, наслаждайся радостью общения, и пусть счастье наполнит твою жизнь.",  # noqa: E501
-    "Поздравляю с Днем рождения! Желаю исполнения самых невероятных и головокружительных желаний, ярких и незабываемых впечатлений, успехов во всех твоих начинаниях. Пусть дни будут солнечными и яркими, наполненными улыбками и счастьем. В общем, позитива во всем!",  # noqa: E501
-    "Поздравляем от души с днем рождения! Желаем много любви и счастья, чтобы судьба чаще дарила приятные сюрпризы. Пусть жизнь будет интересной и насыщенной, пусть всегда хватает сил для достижения желаемых высот!",  # noqa: E501
-    "В день твоего рождения хочу пожелать, чтобы в жизни было всегда больше счастливых и радостных минут, чтобы сердце наполнялось радостью от тёплых и ласковых слов, а рядом находились верные друзья!",  # noqa: E501
-    "С днем рождения! Море счастья и улыбок. Вдохновения к воплощению поставленных целей. Пусть жизнь радует своей красочностью и непредсказуемостью. Радуйся каждому дню и дари эти эмоции другим. Оставайся собой, ты один из лучших людей на планете!",  # noqa: E501
-    "Желаю, чтобы птица счастья всегда была в твоих руках, а все печали пролетали мимо! Пускай заветные мечты осуществляются легко и просто, а каждый миг наполняется радостью и позитивом! Открывай новые горизонты, шагай уверенно вперед и достигай всех целей!",  # noqa: E501
-    "С днем рождения! Хочется пожелать тебе в этом году побольше вдохновения и энергии. Пускай все, за что бы ты не взялся, имеет успешный финал. Здоровья побольше, ведь с ним ты сможешь все!",  # noqa: E501
-    "Поздравляю с днем рождения! Желаю позитивного настроения, побольше радостных дней. Желаю Вам встречать каждое утро с улыбкой, верой в лучшее. Пусть у Вашей мечты будут крылья! Свершения Вам задуманных планов!",  # noqa: E501
-]
+    SUCCESS = 0x57F287
+    INFO = 0xFFAE00
+    WARNING = 0xFEE75C
+    ERROR = 0xED4245
+    MUSIC = 0xFFAE00
 
-for directory in [DATA_DIR, BACKUP_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+
+# --- System constants ---
+ENCODING = "utf-8"
+"""Default text encoding for file I/O operations."""
+DATE_FORMAT = "%d-%m-%Y"
+"""Canonical format: DD-MM-YYYY."""
+MAX_EMBED_FIELD_LENGTH = 1024
+"""Discord embed field character limit."""
+PAGE_SIZE = 10
+"""Default number of items per page in paginated views."""
+
+
+# --- Data Files ---
+# fmt: off
+_JSON_SUFFIX: Final = ".json"
+LAST_RUN_FILE = (DATA_DIR / "last_run").with_suffix(_JSON_SUFFIX)  # Main bot
+BLOCKED_USERS_FILE = (DATA_DIR / "blocked_users").with_suffix(_JSON_SUFFIX)  # Admin cog
+BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(_JSON_SUFFIX)  # Birthday cog
+MUSIC_VOLUME_FILE = (DATA_DIR / "music_volumes").with_suffix(_JSON_SUFFIX)  # Music cog
+REPORT_FILE = (DATA_DIR / "user_reports").with_suffix(_JSON_SUFFIX)  # Report cog
+ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(_JSON_SUFFIX)  # Question cog
+# fmt: on
+
+
+# --- Cog settings ---
+# main.py
+AUTOSAVE_UPTIME_INTERVAL = 1800  # seconds (30 minutes)
+DISCONNECT_TIMER_THRESHOLD = 3600  # seconds (1 hour)
+
+# birthday_cog.py
+BIRTHDAY_CHECK_INTERVAL = 300  # seconds (5 minutes)
+
+# music_cog.py
+MUSIC_AUTO_LEAVE_CHECK_INTERVAL = 60  # seconds (1 minute)
+MUSIC_AUTO_LEAVE_TIMEOUT = 900  # seconds (15 minutes)
+MUSIC_DEFAULT_VOLUME = 10  # percentage (10%)
+
+# wolfram_cog.py
+# https://developer.wolframalpha.com/access
+WOLFRAM_API_URL = "http://api.wolframalpha.com/v2/query"
+WOLFRAM_QUERY_TIMEOUT = 30
+WOLFRAM_MAX_QUERY_LEN = 200
+
+# Image settings
+WOLFRAM_PLOT_RESIZE = (800, None)
+"""Target plot width (height scales proportionally)."""
+WOLFRAM_PLOT_MAX_SIZE = (1200, 1200)
+"""Maximum plot dimensions before compression."""
+WOLFRAM_PLOT_QUALITY = 90
+"""JPEG quality (0-100)."""
+
+# Fuzzy matching and search
+FUZZY_THRESHOLD_DEFAULT = 95
+"""Minimum fuzzy match score to consider a match (0-100)."""
+FUZZY_MATCH_LIMIT = 10
+"""Maximum number of fuzzy search results to return."""
+SUGGESTION_THRESHOLD = 25
+"""Minimum score to show as a suggestion (0-100)."""
+
+# question_cog.py
+MAX_ANSWER_SAMPLE_SIZE = 8
+"""Minimum score to show as a suggestion (0-100)."""

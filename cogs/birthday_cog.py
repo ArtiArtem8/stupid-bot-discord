@@ -13,14 +13,15 @@ Configuration:
 import logging
 import secrets
 from datetime import date
-from typing import Any, Literal
+from typing import Literal
 
 import discord
 from discord import Button, Interaction, app_commands
 from discord.errors import Forbidden, HTTPException
 from discord.ext import commands, tasks
 
-from config import BIRTHDAY_CHECK_INTERVAL, BIRTHDAY_WISHES, BOT_ICON
+import config
+from resources import BIRTHDAY_WISHES
 from utils import (
     BaseCog,
     BirthdayGuildConfig,
@@ -31,12 +32,6 @@ from utils import (
     parse_birthday,
     safe_fetch_member,
 )
-
-DATE_FORMAT = "%d-%m-%Y"
-"""canonical format: DD-MM-YYYY"""
-
-BirthdayData = dict[str, Any]
-GuildData = dict[str, Any]
 
 
 async def safe_role_edit(
@@ -69,7 +64,7 @@ async def safe_role_edit(
 
     except Forbidden:
         logger.debug(
-            "Forbidden: Cannot %s role %s for %s (check permissions and role hierarchy)",
+            "Forbidden: Cannot %s role %s for %s (check permission and role hierarchy)",
             operation,
             role.name,
             member,
@@ -167,7 +162,7 @@ class BirthdayCog(BaseCog):
     async def cog_unload(self):
         self.birthday_timer.cancel()
 
-    @tasks.loop(seconds=BIRTHDAY_CHECK_INTERVAL)
+    @tasks.loop(seconds=config.BIRTHDAY_CHECK_INTERVAL)
     async def birthday_timer(self):
         """Main timer loop for birthday checks."""
         today = date.today()
@@ -242,7 +237,7 @@ class BirthdayCog(BaseCog):
         role: discord.Role | None,
         user: BirthdayUser,
         today: date,
-        config: BirthdayGuildConfig,
+        guild_config: BirthdayGuildConfig,
     ) -> None:
         """Handle birthday congratulations and role assignment.
 
@@ -252,7 +247,7 @@ class BirthdayCog(BaseCog):
             role: Optional birthday role
             user: User with birthday
             today: Current date
-            config: Guild configuration
+            guild_config: Guild configuration
 
         """
         member = await safe_fetch_member(guild, user.user_id, self.logger)
@@ -269,12 +264,12 @@ class BirthdayCog(BaseCog):
                 description=f"{wish} {member.mention}",
                 color=discord.Color.gold(),
             )
-            embed.set_thumbnail(url=BOT_ICON)
+            embed.set_thumbnail(url=config.BOT_ICON)
 
             await channel.send(embed=embed)
 
             user.add_congratulation(today)
-            birthday_manager.save_guild_config(config)
+            birthday_manager.save_guild_config(guild_config)
 
         except Exception as e:
             self.logger.error(f"Error handling birthday for {user.user_id}: {e}")

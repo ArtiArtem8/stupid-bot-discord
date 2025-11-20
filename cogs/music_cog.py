@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
-import os
 import time
 from datetime import timedelta
 from enum import Enum
@@ -29,6 +28,7 @@ from typing import (
     Callable,
     Concatenate,
     Coroutine,
+    Final,
     Self,
     TypedDict,
     cast,
@@ -49,27 +49,8 @@ from discord.ext import commands, tasks
 from discord.utils import format_dt, utcnow
 from lavaplay.player import Player  # type: ignore
 
-from config import (
-    MUSIC_AUTO_LEAVE_CHECK_INTERVAL,
-    MUSIC_AUTO_LEAVE_TIMEOUT,
-    MUSIC_DEFAULT_VOLUME,
-    MUSIC_VOLUME_FILE,
-)
+import config
 from utils import BaseCog, FailureUI, get_json, save_json
-
-# Load environment variables
-LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
-LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", 2333))
-LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
-
-PAGE_SIZE = 10
-"""Number of tracks to display in queue per page."""
-
-COLOR_SUCCESS = 0x57F287
-COLOR_INFO = 0xFFAE00
-COLOR_WARNING = 0xFEE75C
-COLOR_ERROR = 0xED4245
-COLOR_MUSIC = 0xFFAE00
 
 logger = logging.getLogger("MusicCog")
 
@@ -302,7 +283,7 @@ class MusicCog(BaseCog):
                     f"guild={guild_id}, channel={channel.name}, reason=users_listening"
                 )
 
-    @tasks.loop(seconds=MUSIC_AUTO_LEAVE_CHECK_INTERVAL)
+    @tasks.loop(seconds=config.MUSIC_AUTO_LEAVE_CHECK_INTERVAL)
     async def auto_leave_monitor(self):
         """Background task that monitors empty channels and triggers auto-leave."""
         current_time = time.monotonic()
@@ -310,7 +291,7 @@ class MusicCog(BaseCog):
 
         for guild_id, timer_info in self.empty_channel_timers.items():
             empty_since = timer_info["timestamp"]
-            if current_time - empty_since >= MUSIC_AUTO_LEAVE_TIMEOUT:
+            if current_time - empty_since >= config.MUSIC_AUTO_LEAVE_TIMEOUT:
                 guilds_to_leave.append(guild_id)
 
         for guild_id in guilds_to_leave:
@@ -368,9 +349,9 @@ class MusicCog(BaseCog):
                 self.node = self.lavalink.default_node
             else:
                 self.node = self.lavalink.create_node(
-                    host=LAVALINK_HOST,
-                    port=LAVALINK_PORT,
-                    password=LAVALINK_PASSWORD,
+                    host=config.LAVALINK_HOST,
+                    port=config.LAVALINK_PORT,
+                    password=config.LAVALINK_PASSWORD,
                     user_id=self.bot.user.id if self.bot.user else 0,
                 )
             self.node.set_event_loop(self.bot.loop)
@@ -400,14 +381,14 @@ class MusicCog(BaseCog):
 
     async def _get_volume(self, guild_id: int) -> int:
         """Get volume for specific guild."""
-        volume_data = get_json(MUSIC_VOLUME_FILE) or {}
-        return volume_data.get(str(guild_id), MUSIC_DEFAULT_VOLUME)
+        volume_data = get_json(config.MUSIC_VOLUME_FILE) or {}
+        return volume_data.get(str(guild_id), config.MUSIC_DEFAULT_VOLUME)
 
     async def _set_volume(self, guild_id: int, volume: int):
         """Save volume for specific guild."""
-        volume_data = get_json(MUSIC_VOLUME_FILE) or {}
+        volume_data = get_json(config.MUSIC_VOLUME_FILE) or {}
         volume_data[str(guild_id)] = volume
-        save_json(MUSIC_VOLUME_FILE, volume_data)
+        save_json(config.MUSIC_VOLUME_FILE, volume_data)
 
     async def send_response(
         self,
@@ -544,7 +525,7 @@ class MusicCog(BaseCog):
         await self.send_response(
             interaction,
             description=message,
-            color=COLOR_SUCCESS if result.is_success else COLOR_ERROR,
+            color=config.Color.SUCCESS if result.is_success else config.Color.ERROR,
         )
 
     @app_commands.command(
@@ -635,7 +616,7 @@ class MusicCog(BaseCog):
                 if len(player.queue) > 1
                 else "Сейчас играет",
                 description=f"[{track.title}]({track.uri})",
-                color=COLOR_MUSIC,
+                color=config.Color.MUSIC,
             )
             if track.length:
                 formatted_length = self.format_time(track.length // 1000)
@@ -704,7 +685,7 @@ class MusicCog(BaseCog):
             embed = discord.Embed(
                 title=f"Добавлен плейлист **{playlist.name}**",
                 description=f"Треков: {len(playlist.tracks)} шт.",
-                color=COLOR_MUSIC,
+                color=config.Color.MUSIC,
             )
             embed.add_field(
                 name="",
@@ -808,7 +789,7 @@ class MusicCog(BaseCog):
             interaction,
             title="Остановлено",
             description="Воспроизведение остановлено, очередь очищена",
-            color=COLOR_INFO,
+            color=config.Color.INFO,
             delete_after=60,
         )
         logger.info(f"Player stopped and queue cleared in guild {interaction.guild_id}")
@@ -826,7 +807,7 @@ class MusicCog(BaseCog):
                 interaction,
                 title="Пустая очередь",
                 description="Нечего пропускать.",
-                color=COLOR_WARNING,
+                color=config.Color.WARNING,
                 ephemeral=True,
             )
             return
@@ -835,7 +816,7 @@ class MusicCog(BaseCog):
         await player.skip()
         embed = discord.Embed(
             title="Трек пропущен",
-            color=COLOR_INFO,
+            color=config.Color.INFO,
         )
         embed.add_field(
             name="Пропущен", value=f"[{current.title}]({current.uri})", inline=False
@@ -870,7 +851,7 @@ class MusicCog(BaseCog):
             interaction,
             title="Пауза",
             description="Воспроизведение приостановлено",
-            color=COLOR_INFO,
+            color=config.Color.INFO,
             delete_after=120,
         )
         logger.info(f"Playback paused for guild {interaction.guild_id}")
@@ -888,7 +869,7 @@ class MusicCog(BaseCog):
             interaction,
             title="Возобновлено",
             description="Воспроизведение возобновлено",
-            color=COLOR_INFO,
+            color=config.Color.INFO,
             delete_after=120,
         )
         logger.info(f"Playback resumed for guild {interaction.guild_id}")
@@ -916,7 +897,7 @@ class MusicCog(BaseCog):
             return await self.send_response(
                 interaction,
                 title="Очередь пуста",
-                color=COLOR_WARNING,
+                color=config.Color.WARNING,
                 ephemeral=True,
             )
 
@@ -965,7 +946,7 @@ class MusicCog(BaseCog):
             return await self.send_response(
                 interaction,
                 title="Не в голосовом канале",
-                color=COLOR_INFO,
+                color=config.Color.INFO,
                 ephemeral=True,
             )
 
@@ -974,7 +955,7 @@ class MusicCog(BaseCog):
             interaction,
             title="До свидания 💖",
             description="Покинул голосовой канал",
-            color=COLOR_INFO,
+            color=config.Color.INFO,
             delete_after=120,
         )
         logger.info(f"Left voice channel for guild {interaction.guild_id}")
@@ -995,7 +976,7 @@ class MusicCog(BaseCog):
             return await self.send_response(
                 interaction,
                 title="Очередь пуста",
-                color=COLOR_WARNING,
+                color=config.Color.WARNING,
                 ephemeral=True,
             )
         requester = current_track.requester
@@ -1009,7 +990,7 @@ class MusicCog(BaseCog):
             title="Очередь сдвинута",
             description=f"Трек [{current_track.title}]({current_track.uri}) "
             "перемещён в конец очереди",
-            color=COLOR_INFO,
+            color=config.Color.INFO,
         )
         if current_track.artworkUrl:
             embed.set_thumbnail(url=current_track.artworkUrl)
@@ -1057,7 +1038,9 @@ class MusicCog(BaseCog):
             interaction,
             title="Залупливание",
             description=msg,
-            color=COLOR_WARNING if current == RepeatMode.off else COLOR_SUCCESS,
+            color=config.Color.WARNING
+            if current == RepeatMode.off
+            else config.Color.SUCCESS,
             delete_after=120,
         )
 
@@ -1180,8 +1163,9 @@ class QueuePaginator(discord.ui.View):
         timeout: float = 600,
     ):
         super().__init__(timeout=timeout)
-        self.author_id = author_id
-        self.player = player
+        self.author_id: Final = author_id
+        self.player: Final = player
+        self.page_size: Final = config.PAGE_SIZE
         self.page = 0
 
         # explicit buttons, just to individually disable them
@@ -1220,7 +1204,7 @@ class QueuePaginator(discord.ui.View):
 
     def _pages_count(self) -> int:
         total = max(len(self.player.queue) - 1, 0)
-        return max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1)
+        return max((total + self.page_size - 1) // self.page_size, 1)
 
     def _update_buttons(self) -> None:
         """Enable/disable navigation buttons based on current page and total pages."""
@@ -1239,8 +1223,8 @@ class QueuePaginator(discord.ui.View):
             embed.add_field(
                 name="Сейчас играет", value=f"[{now.title}]({now.uri})", inline=False
             )
-        start = 1 + self.page * PAGE_SIZE
-        end = min(len(q), start + PAGE_SIZE)
+        start = 1 + self.page * self.page_size
+        end = min(len(q), start + self.page_size)
         if start < len(q):
             lines = [
                 f"{idx}. [{track.title}]({track.uri})"
