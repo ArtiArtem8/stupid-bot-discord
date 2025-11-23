@@ -7,6 +7,7 @@ def setup_logging(encoding: str = "utf-8") -> None:
     """Initialize logging configuration."""
     LOGGING_CONFIG: dict[str, Any] = {
         "version": 1,
+        "disable_existing_loggers": False,
         "formatters": {
             "detailed": {
                 "format": "%(asctime)s %(levelname)s [%(name)s]: %(message)s",
@@ -37,6 +38,11 @@ def setup_logging(encoding: str = "utf-8") -> None:
                 "formatter": "detailed",
                 "level": "INFO",
             },
+            "discord_console": {
+                "class": "logging.StreamHandler",
+                "formatter": "detailed",
+                "level": "WARNING",
+            },
         },
         "root": {
             "handlers": ["file_handler", "debug_file_handler", "console"],
@@ -44,9 +50,13 @@ def setup_logging(encoding: str = "utf-8") -> None:
         },
         "loggers": {
             "discord": {
-                "handlers": ["file_handler", "debug_file_handler", "console"],
+                "handlers": ["file_handler", "debug_file_handler", "discord_console"],
                 "level": "INFO",
                 "propagate": False,
+            },
+            "utils": {
+                "level": "DEBUG",
+                "propagate": True,
             },
         },
     }
