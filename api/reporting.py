@@ -80,7 +80,9 @@ def _create_report_embed(report: ReportDataDict) -> discord.Embed:
         timestamp=datetime.now(),
     )
     embed.add_field(
-        name="Описание", value=shorten(report["reason"], width=1024), inline=False
+        name="Описание",
+        value=shorten(report["reason"], width=config.MAX_EMBED_FIELD_LENGTH),
+        inline=False,
     )
     embed.add_field(
         name="Отправитель",

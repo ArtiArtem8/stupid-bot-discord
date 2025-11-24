@@ -13,12 +13,13 @@ Configuration:
 import logging
 import secrets
 from datetime import date
-from typing import Literal
+from typing import Literal, Self
 
 import discord
-from discord import Button, Interaction, app_commands
+from discord import Interaction, app_commands
 from discord.errors import Forbidden, HTTPException
 from discord.ext import commands, tasks
+from discord.ui import Button
 
 import config
 from api import (
@@ -92,8 +93,8 @@ class ConfirmDeleteView(discord.ui.View):
         self.user_id = user_id
         self.guild_id = guild_id
 
-    @discord.ui.button(label="Да", style=discord.ButtonStyle.green)  # type: ignore
-    async def confirm(self, interaction: Interaction, button: Button) -> None:
+    @discord.ui.button(label="Да", style=discord.ButtonStyle.green)
+    async def confirm(self, interaction: Interaction, button: Button[Self]):
         if interaction.user.id != self.user_id:
             await FeedbackUI.send(
                 interaction,
@@ -142,8 +143,8 @@ class ConfirmDeleteView(discord.ui.View):
                 description="Произошла ошибка при удалении дня рождения",
             )
 
-    @discord.ui.button(label="Нет", style=discord.ButtonStyle.red)  # type: ignore
-    async def cancel(self, interaction: Interaction, button: Button) -> None:
+    @discord.ui.button(label="Нет", style=discord.ButtonStyle.red)
+    async def cancel(self, interaction: Interaction, button: Button[Self]) -> None:
         if interaction.user.id != self.user_id:
             await FeedbackUI.send(
                 interaction,
@@ -319,7 +320,7 @@ class BirthdayCog(BaseCog):
             return await FeedbackUI.send(
                 interaction,
                 type=FeedbackType.WARNING,
-                description="Неверный формат даты. Используйте ДД-ММ-ГГГГ или ГГГГ-ММ-ДД",
+                description="Неверный формат даты. Используйте ДД-ММ-ГГГГ / ГГГГ-ММ-ДД",
                 ephemeral=True,
             )
         guild = await self._require_guild(interaction)
@@ -428,7 +429,7 @@ class BirthdayCog(BaseCog):
             return
 
         view = ConfirmDeleteView(interaction.user.id, guild.id)
-        msg = "❓ Вы уверены, что хотите удалить свой день рождения?"
+        msg = "Вы уверены, что хотите удалить свой день рождения?"
         await FeedbackUI.send(
             interaction,
             type=FeedbackType.WARNING,

@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from textwrap import shorten
-from typing import Final, Literal, override
+from typing import Literal, override
 
 import aiohttp
 import discord
@@ -28,7 +28,7 @@ from api.wolfram import WolframAPIError, WolframClient, WolframResult
 from framework import BaseCog, FeedbackType, FeedbackUI
 from utils import optimize_image, save_image
 
-LOGGER = logging.getLogger("WolframCog")
+LOGGER = logging.getLogger(__name__)
 
 
 class WolframCog(BaseCog):
@@ -260,203 +260,6 @@ class WolframCog(BaseCog):
                 title="Image Error",
                 description="Failed to process graph image.",
             )
-
-    # @app_commands.command(
-    #     name="wolfram_test", description="[Owner] Test batch Wolfram queries"
-    # )
-    # @app_commands.describe(category="Category to test (or 'all')")
-    # @app_commands.choices(
-    #     category=[
-    #         app_commands.Choice(name="All Categories", value="all"),
-    #         app_commands.Choice(name="Algebra", value="Algebra"),
-    #         app_commands.Choice(name="Calculus", value="Calculus"),
-    #         app_commands.Choice(name="Trigonometry", value="Trigonometry"),
-    #         app_commands.Choice(name="Complex Numbers", value="Complex Numbers"),
-    #         app_commands.Choice(name="Linear Algebra", value="Linear Algebra"),
-    #         app_commands.Choice(name="Number Theory", value="Number Theory"),
-    #         app_commands.Choice(name="Plotting", value="Plotting"),
-    #     ]
-    # )
-    # @app_commands.default_permissions(administrator=True)
-    # @commands.is_owner()
-    # async def cmd_test(self, interaction: Interaction, category: str = "all") -> None:
-    #     """Owner-only command to batch test Wolfram queries.
-
-    #     Tests multiple mathematical problems across different categories
-    #     to verify API functionality and response formatting.
-
-    #     Args:
-    #         interaction: The Discord interaction.
-    #         category: Category to test or 'all' for all categories.
-
-    #     """
-    #     # Owner check
-    #     if interaction.user.id != self.bot.owner_id:
-    #         await FeedbackUI.send(
-    #             interaction,
-    #             type=FeedbackType.ERROR,
-    #             description="❌ This command is restricted to the bot owner.",
-    #             ephemeral=True,
-    #         )
-    #         return
-
-    #     await interaction.response.defer(ephemeral=True)
-
-    #     if not self.client_session:
-    #         await FeedbackUI.send(
-    #             interaction,
-    #             type=FeedbackType.ERROR,
-    #             description="❌ Client session not initialized.",
-    #             ephemeral=True,
-    #         )
-    #         return
-
-    #     api = WolframClient(config.WOLFRAM_APP_ID, session=self.client_session)
-
-    #     categories_to_test = TEST_QUERIES.keys() if category == "all" else [category]
-
-    #     results: dict[str, dict[str, bool]] = {}
-    #     total_tests = 0
-    #     passed = 0
-    #     failed = 0
-
-    #     progress_msg = await interaction.followup.send(
-    #         f"🔄 Testing {category}...\n`0/{sum(len(TEST_QUERIES.get(cat, [])) for cat in categories_to_test)}` queries processed",
-    #         ephemeral=True,
-    #         wait=True,
-    #     )
-
-    #     for cat in categories_to_test:
-    #         queries = TEST_QUERIES.get(cat, [])
-    #         results[cat] = {}
-
-    #         for query in queries:
-    #             total_tests += 1
-    #             try:
-    #                 mode = "plot" if cat == "Plotting" else "solve"
-    #                 final_query = f"{mode} {query}"
-
-    #                 result = await api.query(final_query)
-
-    #                 if result.success and result.pods:
-    #                     results[cat][query] = True
-    #                     passed += 1
-    #                 else:
-    #                     results[cat][query] = False
-    #                     failed += 1
-    #                     LOGGER.warning(
-    #                         "Test failed: %s | Error: %s", query, result.error_msg
-    #                     )
-
-    #             except Exception as e:
-    #                 results[cat][query] = False
-    #                 failed += 1
-    #                 LOGGER.error("Test error: %s | Exception: %s", query, e)
-
-    #             if total_tests % 3 == 0:
-    #                 await progress_msg.edit(
-    #                     content=f"🔄 Testing {category}...\n`{total_tests}/{sum(len(TEST_QUERIES.get(c, [])) for c in categories_to_test)}` queries processed"
-    #                 )
-    #             await asyncio.sleep(0.5)
-
-    #     embed = discord.Embed(
-    #         title="🧪 Wolfram Alpha Test Results",
-    #         description=f"**Category:** {category.title()}\n**Total:** {total_tests} | **Passed:** ✅ {passed} | **Failed:** ❌ {failed}",
-    #         color=0x00FF00 if failed == 0 else 0xFF6600,
-    #     )
-
-    #     for cat, queries in results.items():
-    #         if not queries:
-    #             continue
-
-    #         status_lines: list[str] = []
-    #         for query, success in queries.items():
-    #             emoji = "✅" if success else "❌"
-    #             display_query = query if len(query) <= 40 else query[:37] + "..."
-    #             status_lines.append(f"{emoji} `{display_query}`")
-
-    #         # Split into multiple fields if too long
-    #         field_value = "\n".join(status_lines)
-    #         if len(field_value) > 1024:
-    #             mid = len(status_lines) // 2
-    #             embed.add_field(
-    #                 name=f"📊 {cat} (1/2)",
-    #                 value="\n".join(status_lines[:mid]),
-    #                 inline=False,
-    #             )
-    #             embed.add_field(
-    #                 name=f"📊 {cat} (2/2)",
-    #                 value="\n".join(status_lines[mid:]),
-    #                 inline=False,
-    #             )
-    #         else:
-    #             embed.add_field(
-    #                 name=f"📊 {cat}",
-    #                 value=field_value,
-    #                 inline=False,
-    #             )
-
-    #     success_rate = (passed / total_tests * 100) if total_tests > 0 else 0
-    #     embed.set_footer(text=f"Success Rate: {success_rate:.1f}%")
-
-    #     await progress_msg.edit(content=None, embed=embed)
-
-    #     # Log summary
-    #     LOGGER.info(
-    #         "Wolfram test completed: %d/%d passed (%.1f%%)",
-    #         passed,
-    #         total_tests,
-    #         success_rate,
-    #     )
-
-
-TEST_QUERIES: Final[dict[str, list[str]]] = {
-    "Algebra": [
-        "x^2 + 2x + 1 = 0",
-        "x^3 - 6x^2 + 11x - 6 = 0",
-        "2x + 3y = 7, x - y = 1",
-        "expand (x+2)^3",
-        "factor x^4 - 16",
-    ],
-    "Calculus": [
-        "derivative of sin(x)*cos(x)",
-        "integrate x^2 from 0 to 5",
-        "limit of (sin(x)/x) as x approaches 0",
-        "second derivative of e^(x^2)",
-        "integral of 1/(1+x^2)",
-    ],
-    "Trigonometry": [
-        "sin(pi/4)",
-        "tan(60 degrees)",
-        "arcsin(0.5)",
-        "solve sin(x) = 0.5",
-    ],
-    "Complex Numbers": [
-        "(3+4i) * (2-i)",
-        "sqrt(-1)",
-        "e^(i*pi)",
-    ],
-    "Linear Algebra": [
-        "eigenvalues {{1,2},{3,4}}",
-        "determinant {{2,3},{1,4}}",
-        "inverse {{1,2},{3,4}}",
-    ],
-    "Number Theory": [
-        "prime factorization of 1234567",
-        "gcd(48, 180)",
-        "fibonacci(20)",
-    ],
-    "Plotting": [
-        "sin(x)",
-        "x^2 - 4",
-        "e^(-x^2)",
-        "tan(x) from -pi to pi",
-        "x^3 - 3x^2 + 2",
-        "1/x",
-        "cos(x) + sin(2x)",
-        "sqrt(x)",
-    ],
-}
 
 
 async def setup(bot: commands.Bot) -> None:

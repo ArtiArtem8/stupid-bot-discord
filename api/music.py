@@ -1,13 +1,4 @@
-# api/music.py
-"""Music API for Lavalink integration.
-
-Provides:
-- Lavalink node connection and management
-- Player retrieval
-- Volume management
-- Queue management
-- Voice channel management
-"""
+"""Music API for Lavalink integration."""
 
 import asyncio
 import logging
@@ -22,6 +13,7 @@ from discord.ext import commands
 from lavaplay.player import Player  # type: ignore
 
 import config
+from framework import NodeNotConnectedError
 from utils.json_utils import get_json, save_json
 
 LOGGER = logging.getLogger(__name__)
@@ -31,18 +23,6 @@ type VoiceCheckData = (
 )
 type Track = lavaplay.Track
 type PlayList = lavaplay.PlayList
-
-
-class MusicError(Exception):
-    """Base exception for Music API errors."""
-
-
-class NodeNotConnectedError(MusicError):
-    """Raised when Lavalink node is not connected."""
-
-
-class PlayerNotFoundError(MusicError):
-    """Raised when player is not found for a guild."""
 
 
 class PlaylistResponseData(TypedDict):
@@ -585,10 +565,3 @@ class MusicAPI:
             return queue_duration
         except Exception:
             return 0
-
-
-# add typed dict to musicreslutstatus.data to use in generics
-# dont like circular dependencies between Music_cog -> LavalinkVoiceClient -> MusicAPI -> LavalinkPlayer -> MusicCog, and player in queue
-# handle failures and errors differently
-# Should rename FailureUi to ErrorUI?
-# after disconnecting still plays song. (if we disconnect a bot while it is playing 10 song (for example), after inviting him back (/join) he will start next track (skipping the one he was playing before the kick))

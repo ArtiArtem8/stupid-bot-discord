@@ -1,4 +1,3 @@
-# cogs/music_cog.py
 """Music playback with Lavalink integration.
 
 Provides:
@@ -13,8 +12,6 @@ Requirements:
     - Lavalink server running
     - Environment variables: LAVALINK_HOST, LAVALINK_PORT, LAVALINK_PASSWORD
 """
-
-# from __future__ import annotations
 
 import logging
 import time
@@ -340,12 +337,7 @@ class MusicCog(BaseCog):
 
         data = result.data
         if not data:
-            await FeedbackUI.send(
-                interaction,
-                type=FeedbackType.ERROR,
-                description="Ошибка: нет данных о треке.",
-            )
-            return
+            await _send_error(interaction, "Ошибка: данных нет.")
 
         duration_ms = await self.music_api.get_queue_duration(guild.id)
         delay = timedelta(milliseconds=duration_ms) + timedelta(seconds=60)
@@ -765,7 +757,7 @@ class QueuePaginator(discord.ui.View):
 
     def _make_embed(self) -> discord.Embed:
         q = self.player.queue
-        embed = discord.Embed(title="Очередь воспроизведения", color=0xFFAE00)
+        embed = discord.Embed(title="Очередь воспроизведения", color=config.Color.INFO)
 
         if q:
             now = q[0]

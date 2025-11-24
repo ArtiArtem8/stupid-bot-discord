@@ -28,17 +28,20 @@ class FeedbackType(Enum):
 class ReportButtonView(View):
     def __init__(
         self, user_id: int, on_report: ReportCallback, timeout: float | None = 180
-    ):
+    ) -> None:
         super().__init__(timeout=timeout)
         self.user_id = user_id
         self.on_report = on_report
 
     @discord.ui.button(label="Сообщить о проблеме", style=discord.ButtonStyle.danger)
-    async def report(self, interaction: discord.Interaction, button: Button[Self]):
+    async def report(
+        self, interaction: discord.Interaction, button: Button[Self]
+    ) -> None:
         if interaction.user.id != self.user_id:
-            return await interaction.response.send_message(
+            await interaction.response.send_message(
                 "Это не ваше сообщение.", ephemeral=True
             )
+            return
         await self.on_report(interaction)
 
 

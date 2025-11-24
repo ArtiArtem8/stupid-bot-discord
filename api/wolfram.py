@@ -35,9 +35,7 @@ class PodType(StrEnum):
 
 def format_math_text(text: str) -> str:
     """Format mathematical text for better readability."""
-    # Replace 3.14159... with π
     text = re.sub(r"3\.14159\d+", "π", text)
-    # Replace ' approx ' with ≈
     text = text.replace(" approx ", " ≈ ")
     return text
 
