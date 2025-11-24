@@ -17,7 +17,9 @@ from discord import Interaction, app_commands
 from discord.ext import commands
 
 import config
-from utils import BaseCog, ReportModal, get_json, save_json
+from api import ReportModal
+from framework import BaseCog, FeedbackType, FeedbackUI
+from utils import get_json, save_json
 
 
 def get_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
@@ -68,8 +70,11 @@ class ReportCog(BaseCog):
         report_data = get_json(config.REPORT_FILE) or {}
         report_data["report_channel_id"] = channel.id
         save_json(config.REPORT_FILE, report_data)
-        await interaction.response.send_message(
-            f"Report channel set to {channel.mention}", ephemeral=True, silent=True
+        await FeedbackUI.send(
+            interaction,
+            type=FeedbackType.SUCCESS,
+            description=f"Report channel set to {channel.mention}",
+            ephemeral=True,
         )
 
 

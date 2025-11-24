@@ -14,7 +14,7 @@ from utils.json_utils import get_json, save_json
 
 
 class BirthdayListEntry(TypedDict):
-    """Typed dict for birthday list display entries."""
+    """TypedDict for birthday list display entries."""
 
     days_until: int
     date: str

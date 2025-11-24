@@ -11,7 +11,7 @@ from discord.ui import Modal, TextInput
 import config
 from utils.json_utils import get_json, save_json
 
-LOGGER = logging.getLogger("ReportManager")
+LOGGER = logging.getLogger(__name__)
 
 
 class UserInfoDict(TypedDict):
@@ -140,3 +140,8 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
         await interaction.response.send_message(
             "Ваш отчет отправлен. Спасибо!", ephemeral=True
         )
+
+
+async def handle_report_button(interaction: discord.Interaction) -> None:
+    """Callback handler for report button - shows modal."""
+    await interaction.response.send_modal(ReportModal())

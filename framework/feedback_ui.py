@@ -7,14 +7,15 @@ Info, Warning, Error), custom embeds, and automatic report button generation for
 
 from datetime import timedelta
 from enum import Enum
-from typing import Self, overload
+from typing import Awaitable, Callable, Self, overload
 
 import discord
 from discord.ui import Button, View
 from discord.utils import MISSING, format_dt, utcnow
 
 import config
-from api.reporting import ReportModal
+
+type ReportCallback = Callable[[discord.Interaction], Awaitable[None]]
 
 
 class FeedbackType(Enum):
@@ -25,9 +26,12 @@ class FeedbackType(Enum):
 
 
 class ReportButtonView(View):
-    def __init__(self, user_id: int, timeout: float | None = 180):
+    def __init__(
+        self, user_id: int, on_report: ReportCallback, timeout: float | None = 180
+    ):
         super().__init__(timeout=timeout)
         self.user_id = user_id
+        self.on_report = on_report
 
     @discord.ui.button(label="Сообщить о проблеме", style=discord.ButtonStyle.danger)
     async def report(self, interaction: discord.Interaction, button: Button[Self]):
@@ -35,11 +39,18 @@ class ReportButtonView(View):
             return await interaction.response.send_message(
                 "Это не ваше сообщение.", ephemeral=True
             )
-        await interaction.response.send_modal(ReportModal())
+        await self.on_report(interaction)
 
 
 class FeedbackUI:
     """Unified UI for sending feedback messages (Success, Info, Warning, Error)."""
+
+    _default_report_callback: ReportCallback | None = None
+
+    @classmethod
+    def configure(cls, report_callback: ReportCallback) -> None:
+        """Configure default report handler. Call once at bot startup."""
+        cls._default_report_callback = report_callback
 
     @staticmethod
     def make_embed(
@@ -116,7 +127,13 @@ class FeedbackUI:
             embed = FeedbackUI.make_embed(title, description, type.value)
 
         if type is FeedbackType.ERROR and not disable_report_btn and view is MISSING:
-            view = ReportButtonView(interaction.user.id)
+            if FeedbackUI._default_report_callback is None:
+                raise RuntimeError(
+                    "FeedbackUI not configured. Call FeedbackUI.configure() at startup."
+                )
+            view = ReportButtonView(
+                interaction.user.id, FeedbackUI._default_report_callback
+            )
 
         if delete_after:
             expire_at = utcnow() + timedelta(seconds=delete_after)

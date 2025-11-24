@@ -11,8 +11,9 @@ from discord import Interaction, app_commands
 from discord.ext import commands
 
 import config
+from framework import BaseCog
 from resources import CAPABILITIES
-from utils import BaseCog, get_json, random_answer, save_json, str_local
+from utils import get_json, random_answer, save_json, str_local
 
 
 class QuestionCog(BaseCog):

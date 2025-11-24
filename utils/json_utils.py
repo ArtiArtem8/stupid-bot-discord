@@ -3,9 +3,10 @@ import secrets
 import shutil
 import time
 from datetime import datetime
+from os import PathLike
 from pathlib import Path
 from string import ascii_letters, digits
-from typing import Any
+from typing import Any, Mapping
 
 from config import BACKUP_DIR, ENCODING
 
@@ -19,7 +20,7 @@ def _generate_backup_filename(filename: Path) -> str:
     return f"{filename.stem}_{timestamp}{rand_suffix}{filename.suffix}"
 
 
-def _create_backup(filename: str | Path, max_backups: int = 3) -> None:
+def _create_backup(filename: str | PathLike[str], max_backups: int = 3) -> None:
     """Creates a backup for the file, *that must exist!*."""
     if not BACKUP_DIR.exists():
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
@@ -33,7 +34,7 @@ def _create_backup(filename: str | Path, max_backups: int = 3) -> None:
     shutil.copy(filename, BACKUP_DIR / backup_filename)
 
 
-def get_json(filename: str | Path) -> dict[str, Any] | None:
+def get_json(filename: str | PathLike[str]) -> dict[str, Any] | None:
     """Reads a JSON file and returns its content as a dictionary.
 
     If the file does not exist or the content is not a valid JSON, returns None.
@@ -49,7 +50,7 @@ def get_json(filename: str | Path) -> dict[str, Any] | None:
 
 
 def save_json(
-    filename: str | Path, data: dict[str, Any], backup_amount: int = 3
+    filename: str | PathLike[str], data: Mapping[str, Any], backup_amount: int = 3
 ) -> None:
     """Saves a JSON file with the given data.
 
@@ -82,7 +83,7 @@ def save_json(
 
 
 def clear_json(
-    filename: str | Path, default: str = "{}", backup_amount: int = 3
+    filename: str | PathLike[str], default: str = "{}", backup_amount: int = 3
 ) -> None:
     """Clears the content of a JSON file and replaces it with a default value.
 
@@ -90,7 +91,7 @@ def clear_json(
     of the file before clearing, keeping the specified number of backups.
 
     Args:
-        filename (str | Path): The path to the JSON file to be cleared.
+        filename (str | PathLike): The path to the JSON file to be cleared.
         default (str): The default JSON content to write. Must be a valid JSON string.
         backup_amount (int): The number of backups to keep. If > 0, creates backups.
 

@@ -21,17 +21,16 @@ from discord.errors import Forbidden, HTTPException
 from discord.ext import commands, tasks
 
 import config
-from resources import BIRTHDAY_WISHES
-from utils import (
-    BaseCog,
+from api import (
     BirthdayGuildConfig,
     BirthdayUser,
-    FailureUI,
     birthday_manager,
     create_birthday_list_embed,
     parse_birthday,
     safe_fetch_member,
 )
+from framework import BaseCog, FeedbackType, FeedbackUI
+from resources import BIRTHDAY_WISHES
 
 
 async def safe_role_edit(
@@ -96,49 +95,69 @@ class ConfirmDeleteView(discord.ui.View):
     @discord.ui.button(label="Да", style=discord.ButtonStyle.green)  # type: ignore
     async def confirm(self, interaction: Interaction, button: Button) -> None:
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "Вы не можете выполнить это действие", ephemeral=True
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.ERROR,
+                description="Вы не можете выполнить это действие",
+                ephemeral=True,
             )
             return
 
         config = birthday_manager.get_guild_config(self.guild_id)
         if not config:
-            await interaction.response.edit_message(
-                content="Конфигурация сервера не найдена", view=None
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.ERROR,
+                description="Конфигурация сервера не найдена",
+                ephemeral=True,
             )
             return
         user = config.get_user(self.user_id)
         if not user or not user.has_birthday():
-            await interaction.response.edit_message(
-                content="У вас нет сохранённого дня рождения.", view=None
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.WARNING,
+                description="У вас нет сохранённого дня рождения.",
+                ephemeral=True,
             )
             return
 
         user.clear_birthday()
         try:
             birthday_manager.save_guild_config(config)
-            await interaction.response.edit_message(
-                content="Ваш день рождения удалён", view=None
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.SUCCESS,
+                description="Ваш день рождения удалён",
+                ephemeral=True,
             )
         except Exception as e:
             logging.getLogger("BirthdayCog").error(
                 "Error saving birthday file after deletion: %s", e
             )
-            await FailureUI.send_failure(
+            await FeedbackUI.send(
                 interaction,
+                type=FeedbackType.ERROR,
                 title="Ошибка",
                 description="Произошла ошибка при удалении дня рождения",
             )
-            await interaction.response.edit_message(content="Ошибка записи", view=None)
 
     @discord.ui.button(label="Нет", style=discord.ButtonStyle.red)  # type: ignore
     async def cancel(self, interaction: Interaction, button: Button) -> None:
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "Вы не можете выполнить это действие.", ephemeral=True
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.ERROR,
+                description="Вы не можете выполнить это действие.",
+                ephemeral=True,
             )
             return
-        await interaction.response.edit_message(content="Отменено", view=None)
+        await FeedbackUI.send(
+            interaction,
+            type=FeedbackType.INFO,
+            description="Отменено",
+            ephemeral=True,
+        )
 
 
 class BirthdayCog(BaseCog):
@@ -297,8 +316,10 @@ class BirthdayCog(BaseCog):
         try:
             normalized_date = parse_birthday(date_input)
         except ValueError:
-            return await interaction.response.send_message(
-                "Неверный формат даты. Используйте ДД-ММ-ГГГГ или ГГГГ-ММ-ДД",
+            return await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.WARNING,
+                description="Неверный формат даты. Используйте ДД-ММ-ГГГГ или ГГГГ-ММ-ДД",
                 ephemeral=True,
             )
         guild = await self._require_guild(interaction)
@@ -315,12 +336,18 @@ class BirthdayCog(BaseCog):
         try:
             birthday_manager.save_guild_config(config)
             msg = f"Ваш день рождения записан: {normalized_date}"
-            await interaction.response.send_message(msg, ephemeral=True)
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.SUCCESS,
+                description=msg,
+                ephemeral=True,
+            )
         except Exception as e:
             self.logger.error("Error saving birthday: %s", e)
 
-            await FailureUI.send_failure(
+            await FeedbackUI.send(
                 interaction,
+                type=FeedbackType.ERROR,
                 title="Ошибка",
                 description="Произошла ошибка сохранения данных.",
                 ephemeral=True,
@@ -356,11 +383,17 @@ class BirthdayCog(BaseCog):
             response: str = f"Настройки обновлены:\n- Канал: {channel.mention}"
             if role:
                 response += f"\n- Роль: {role.mention}"
-            await interaction.response.send_message(response, ephemeral=True)
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.SUCCESS,
+                description=response,
+                ephemeral=True,
+            )
         except Exception as e:
             self.logger.error("Error saving configuration: %s", e)
-            await FailureUI.send_failure(
+            await FeedbackUI.send(
                 interaction,
+                type=FeedbackType.ERROR,
                 title="Ошибка",
                 description="Произошла ошибка сохранения данных.",
                 ephemeral=True,
@@ -376,21 +409,33 @@ class BirthdayCog(BaseCog):
         config = birthday_manager.get_guild_config(guild.id)
 
         if not config:
-            await interaction.response.send_message(
-                "Конфигурация сервера не найдена", ephemeral=True
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.ERROR,
+                description="Конфигурация сервера не найдена",
+                ephemeral=True,
             )
             return
 
         user = config.get_user(interaction.user.id)
         if not user or not user.has_birthday():
-            await interaction.response.send_message(
-                "Вы не установили свой день рождения", ephemeral=True
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.WARNING,
+                description="Вы не установили свой день рождения",
+                ephemeral=True,
             )
             return
 
         view = ConfirmDeleteView(interaction.user.id, guild.id)
         msg = "❓ Вы уверены, что хотите удалить свой день рождения?"
-        await interaction.response.send_message(msg, view=view, ephemeral=True)
+        await FeedbackUI.send(
+            interaction,
+            type=FeedbackType.WARNING,
+            description=msg,
+            view=view,
+            ephemeral=True,
+        )
 
     @app_commands.command(
         name="list_birthdays",
@@ -404,15 +449,20 @@ class BirthdayCog(BaseCog):
         guild = await self._require_guild(interaction)
         config = birthday_manager.get_guild_config(guild.id)
         if not config:
-            await interaction.response.send_message(
-                "На этом сервере нет настроенной системы дней рождений",
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.WARNING,
+                description="На этом сервере нет настроенной системы дней рождений",
                 ephemeral=True,
             )
             return
 
         if not config.users:
-            await interaction.response.send_message(
-                "На этом сервере нет сохранённых дней рождений.", ephemeral=True
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.INFO,
+                description="На этом сервере нет сохранённых дней рождений.",
+                ephemeral=True,
             )
             return
 
@@ -423,13 +473,15 @@ class BirthdayCog(BaseCog):
         )
 
         if not entries:
-            await interaction.response.send_message(
-                "На этом сервере нет **корректно** сохранённых дней рождений.",
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.WARNING,
+                description="На этом сервере нет **корректно** сохранённых дней рождений.",
                 ephemeral=True,
             )
 
         embed = create_birthday_list_embed(guild.name, entries)
-        await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
+        await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
 
 async def setup(bot: commands.Bot):

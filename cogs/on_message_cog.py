@@ -12,8 +12,8 @@ from discord.ext import commands
 from fuzzywuzzy.process import extract  # type: ignore
 
 import config
+from api import block_manager
 from resources import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
-from utils import block_manager
 
 
 class OnMessageCog(commands.Cog):

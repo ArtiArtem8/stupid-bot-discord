@@ -17,8 +17,9 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
+from api import block_manager
+from framework import BaseCog, FeedbackType, FeedbackUI
 from resources import ACTION_TITLES
-from utils import BaseCog, block_manager
 
 
 class BlockAction(StrEnum):
@@ -109,14 +110,17 @@ class AdminCog(BaseCog):
         """Block a user from using the bot."""
         guild = await self._require_guild(interaction)
         if block_manager.is_user_blocked(guild.id, user.id):
-            await interaction.response.send_message(
-                f"{user.mention} уже заблокирован.", ephemeral=True
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.WARNING,
+                description=f"{user.mention} уже заблокирован.",
+                ephemeral=True,
             )
             return
         block_manager.block_user(guild.id, user, interaction.user.id, reason)
         self.logger.info("Blocked user %d in guild %d", user.id, guild.id)
         embed = create_block_embed(user, BLOCK, reason)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
 
     @app_commands.command(
         name="unblock",
@@ -134,14 +138,17 @@ class AdminCog(BaseCog):
         """Unblock a user from using the bot."""
         guild = await self._require_guild(interaction)
         if not block_manager.is_user_blocked(guild.id, user.id):
-            await interaction.response.send_message(
-                f"{user.mention} не заблокирован.", ephemeral=True
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.WARNING,
+                description=f"{user.mention} не заблокирован.",
+                ephemeral=True,
             )
             return
         block_manager.unblock_user(guild.id, user, interaction.user.id, reason)
         self.logger.info("Unblocked user %d in guild %d", user.id, guild.id)
         embed = create_block_embed(user, UNBLOCK, reason)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
 
     @app_commands.command(
         name="blockinfo",
@@ -168,8 +175,11 @@ class AdminCog(BaseCog):
                 f"No block history found for user {user.id} "
                 f"in guild {guild.name} ({guild.id})"
             )
-            await interaction.response.send_message(
-                f"{user.mention} не имеет истории блокировок.", ephemeral=ephemeral
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.INFO,
+                description=f"{user.mention} не имеет истории блокировок.",
+                ephemeral=ephemeral,
             )
             return
 
@@ -267,7 +277,7 @@ class AdminCog(BaseCog):
         danger_level = format_danger_level(len(user_entry.block_history))
         embed.set_footer(text=f"Уровень проблемности: {danger_level}")
 
-        await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
+        await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
         self.logger.info(f"Displayed blockinfo for user {user.id} in guild {guild.id}")
 
@@ -293,8 +303,10 @@ class AdminCog(BaseCog):
 
         if not blocked_users:
             self.logger.info(f"No blocked users found in guild {guild.id}")
-            await interaction.response.send_message(
-                "Нет заблокированных пользователей.",
+            await FeedbackUI.send(
+                interaction,
+                type=FeedbackType.INFO,
+                description="Нет заблокированных пользователей.",
                 ephemeral=ephemeral,
             )
             return
@@ -372,7 +384,7 @@ class AdminCog(BaseCog):
             text="" if not show_details else "Детальная информация о блокировках"
         )
 
-        await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
+        await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
 
 async def setup(bot: commands.Bot):

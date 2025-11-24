@@ -9,7 +9,7 @@ from discord.utils import utcnow
 import config
 from utils.json_utils import get_json, save_json
 
-LOGGER = logging.getLogger("BlockManager")
+LOGGER = logging.getLogger(__name__)
 
 
 def datetime_now_isoformat() -> str:

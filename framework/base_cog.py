@@ -12,7 +12,7 @@ from discord.ext import commands
 from discord.utils import maybe_coroutine
 
 from api.blocking import block_manager
-from utils.discord.exceptions import BlockedUserError, NoGuildError
+from framework.exceptions import BlockedUserError, NoGuildError
 
 
 class CogABCMeta(commands.CogMeta, abc.ABCMeta):

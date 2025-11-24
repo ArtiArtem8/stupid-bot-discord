@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, Concatenate, Coroutine, cast
 import discord
 from discord import Interaction
 
-from utils.discord.feedback_ui import FeedbackType, FeedbackUI
+from framework.feedback_ui import FeedbackType, FeedbackUI
 
 LOGGER = logging.getLogger(__name__)
 
