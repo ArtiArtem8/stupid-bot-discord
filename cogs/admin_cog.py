@@ -10,7 +10,7 @@ Provides:
 
 import logging
 from enum import StrEnum
-from typing import override
+from typing import NoReturn, override
 
 import discord
 from discord import app_commands
@@ -18,7 +18,7 @@ from discord.ext import commands
 
 import config
 from api import block_manager
-from framework import BaseCog, FeedbackType, FeedbackUI
+from framework import BaseCog, FeedbackType, FeedbackUI, handle_errors
 from resources import ACTION_TITLES
 
 
@@ -94,6 +94,17 @@ class AdminCog(BaseCog):
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:
         """Allow admin commands to bypass block checks."""
         return True
+
+    @app_commands.command(name="error-test", description="Тестирование ошибок")
+    @commands.is_owner()
+    async def error(self, interaction: discord.Interaction) -> NoReturn:
+        raise RuntimeError("Test error")
+
+    @app_commands.command(name="error-test-handled", description="Тестирование ошибок")
+    @commands.is_owner()
+    @handle_errors()
+    async def error_handled(self, interaction: discord.Interaction) -> NoReturn:
+        raise RuntimeError("Test handled error")
 
     @app_commands.command(
         name="block", description="Заблокировать пользователя от использования бота."

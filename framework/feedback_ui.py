@@ -15,7 +15,7 @@ from discord.utils import MISSING, format_dt, utcnow
 
 import config
 
-type ReportCallback = Callable[[discord.Interaction], Awaitable[None]]
+type ReportCallback = Callable[[discord.Interaction, str | None], Awaitable[None]]
 
 
 class FeedbackType(Enum):
@@ -27,11 +27,16 @@ class FeedbackType(Enum):
 
 class ReportButtonView(View):
     def __init__(
-        self, user_id: int, on_report: ReportCallback, timeout: float | None = 180
+        self,
+        user_id: int,
+        on_report: ReportCallback,
+        error_info: str | None = None,
+        timeout: float | None = 180,
     ) -> None:
         super().__init__(timeout=timeout)
         self.user_id = user_id
         self.on_report = on_report
+        self.error_info = error_info
 
     @discord.ui.button(label="Сообщить о проблеме", style=discord.ButtonStyle.danger)
     async def report(
@@ -42,7 +47,7 @@ class ReportButtonView(View):
                 "Это не ваше сообщение.", ephemeral=True
             )
             return
-        await self.on_report(interaction)
+        await self.on_report(interaction, self.error_info)
 
 
 class FeedbackUI:
@@ -59,14 +64,17 @@ class FeedbackUI:
     def make_embed(
         title: str | None,
         description: str,
-        color: int,
+        type: FeedbackType,
     ) -> discord.Embed:
         """Create a standard embed for feedback."""
-        return discord.Embed(
+        embed = discord.Embed(
             title=title,
             description=description,
-            color=color,
+            color=type.value,
         )
+        if type is FeedbackType.ERROR:
+            embed.set_thumbnail(url=config.ERROR_THUMBNAIL)
+        return embed
 
     @overload
     @staticmethod
@@ -77,9 +85,10 @@ class FeedbackUI:
         description: str | None = None,
         title: str | None = None,
         delete_after: float | None = None,
-        ephemeral: bool = True,
+        ephemeral: bool = False,
         view: View = MISSING,
         disable_report_btn: bool = False,
+        error_info: str | None = None,
     ) -> None: ...
 
     @overload
@@ -90,9 +99,10 @@ class FeedbackUI:
         embed: discord.Embed,
         type: FeedbackType = FeedbackType.INFO,
         delete_after: float | None = None,
-        ephemeral: bool = True,
+        ephemeral: bool = False,
         view: View = MISSING,
         disable_report_btn: bool = False,
+        error_info: str | None = None,
     ) -> None: ...
 
     @staticmethod
@@ -103,10 +113,11 @@ class FeedbackUI:
         description: str | None = None,
         title: str | None = None,
         delete_after: float | None = None,
-        ephemeral: bool = True,
+        ephemeral: bool = False,
         view: View = MISSING,
         disable_report_btn: bool = False,
         embed: discord.Embed = MISSING,
+        error_info: str | None = None,
     ) -> None:
         """Send a standardized feedback message.
 
@@ -122,12 +133,13 @@ class FeedbackUI:
             disable_report_btn: If True, suppresses the Report button for ERROR type.
             embed: Optional custom embed. If provided, type/description/title are
                 ignored.
+            error_info: Optional error information to pre-fill the report modal.
 
         """
         if embed is MISSING:
             if description is None:
                 description = ""
-            embed = FeedbackUI.make_embed(title, description, type.value)
+            embed = FeedbackUI.make_embed(title, description, type)
 
         if type is FeedbackType.ERROR and not disable_report_btn and view is MISSING:
             if FeedbackUI._default_report_callback is None:
@@ -135,7 +147,9 @@ class FeedbackUI:
                     "FeedbackUI not configured. Call FeedbackUI.configure() at startup."
                 )
             view = ReportButtonView(
-                interaction.user.id, FeedbackUI._default_report_callback
+                interaction.user.id,
+                FeedbackUI._default_report_callback,
+                error_info=error_info,
             )
 
         if delete_after:

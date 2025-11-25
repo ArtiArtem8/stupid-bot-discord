@@ -13,7 +13,6 @@ from discord.ext import commands
 from lavaplay.player import Player  # type: ignore
 
 import config
-from framework import NodeNotConnectedError
 from utils.json_utils import get_json, save_json
 
 LOGGER = logging.getLogger(__name__)
@@ -23,6 +22,18 @@ type VoiceCheckData = (
 )
 type Track = lavaplay.Track
 type PlayList = lavaplay.PlayList
+
+
+class MusicError(Exception):
+    """Base exception for Music API errors."""
+
+    pass
+
+
+class NodeNotConnectedError(MusicError):
+    """Raised when Lavalink node is not connected."""
+
+    pass
 
 
 class PlaylistResponseData(TypedDict):
@@ -108,7 +119,7 @@ class LavalinkVoiceClient(discord.VoiceClient):
         LOGGER.debug("[INIT] Creating voice client...")
         super().__init__(client, channel)
         try:
-            cog = self.client.get_cog("MusicCog")  # type: ignore
+            cog = self.client.get_cog("MusicCog")  # type: ignore TODO: Review
             if not cog:
                 raise RuntimeError("MusicCog not loaded!")
             self.lavalink = getattr(cast(Any, cog), "node", None)

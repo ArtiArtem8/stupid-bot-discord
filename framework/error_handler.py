@@ -41,5 +41,6 @@ class CustomErrorCommandTree(app_commands.CommandTree):
             title=str(error),
             delete_after=300,
             ephemeral=False,
+            error_info=str(error),
         )
         LOGGER.error(f"Unhandled app command error: {error}", exc_info=error)

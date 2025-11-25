@@ -57,6 +57,7 @@ MAX_EMBED_FIELD_LENGTH = 1024
 """Discord embed field character limit."""
 PAGE_SIZE = 10
 """Default number of items per page in paginated views."""
+ERROR_THUMBNAIL = "https://cdn.discordapp.com/emojis/839119737458917467.webp?size=96&animated=true"  # mm-m-m-monkey  # noqa: E501
 
 
 # --- Data Files ---

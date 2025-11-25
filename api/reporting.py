@@ -105,7 +105,7 @@ def _create_report_embed(report: ReportDataDict) -> discord.Embed:
     return embed
 
 
-async def submit_report(interaction: Interaction, reason: str) -> None:
+async def submit_report(interaction: Interaction, reason: str) -> str:
     """Main entry point: Saves report and notifies devs."""
     report = _build_report_data(interaction, reason)
 
@@ -119,6 +119,7 @@ async def submit_report(interaction: Interaction, reason: str) -> None:
         channel = interaction.client.get_channel(report_channel_id)
         if isinstance(channel, discord.abc.Messageable):
             await channel.send(embed=_create_report_embed(report))
+    return report["report_id"]
 
 
 class ReportModal(Modal, title="Отправить отчёт о баге"):
@@ -137,13 +138,33 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
         min_length=10,
     )
 
+    def __init__(self, error_info: str | None = None) -> None:
+        super().__init__()
+        if error_info:
+            self.reason.default = error_info
+
     async def on_submit(self, interaction: Interaction):
-        await submit_report(interaction, self.reason.value)
-        await interaction.response.send_message(
-            "Ваш отчет отправлен. Спасибо!", ephemeral=True
+        report_id = await submit_report(interaction, self.reason.value)
+
+        if interaction.message:
+            try:
+                await interaction.message.edit(view=None)
+            except discord.HTTPException:
+                LOGGER.warning(
+                    "Failed to remove report button from message %s",
+                    interaction.message.id,
+                )
+
+        embed = discord.Embed(
+            title="Спасибо за отчёт!",
+            description=f"-# Ваш персональный ID: `{report_id}`",
+            color=config.Color.SUCCESS,
         )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-async def handle_report_button(interaction: discord.Interaction) -> None:
+async def handle_report_button(
+    interaction: discord.Interaction, error_info: str | None = None
+) -> None:
     """Callback handler for report button - shows modal."""
-    await interaction.response.send_modal(ReportModal())
+    await interaction.response.send_modal(ReportModal(error_info))

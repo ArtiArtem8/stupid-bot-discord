@@ -93,6 +93,13 @@ async def _send_error(interaction: Interaction, message: str) -> None:
     )
 
 
+def _format_duration(ms: int | float) -> str:
+    """Helper to convert milliseconds to timedelta stripping microseconds."""
+    total = timedelta(milliseconds=ms)
+    total -= timedelta(microseconds=total.microseconds)
+    return str(total)
+
+
 class MusicCog(BaseCog):
     def __init__(self, bot: commands.Bot):
         super().__init__(bot)
@@ -376,7 +383,7 @@ class MusicCog(BaseCog):
 
             embed.add_field(
                 name="Длительность",
-                value=str(timedelta(milliseconds=track.length)),
+                value=_format_duration(track.length),
             )
             embed.set_footer(
                 text=f"Запросил: {interaction.user.display_name}",
@@ -401,9 +408,7 @@ class MusicCog(BaseCog):
                 embed.set_thumbnail(url=url)
             embed.add_field(
                 name="Общая длительность",
-                value=str(
-                    timedelta(milliseconds=sum(t.length for t in playlist.tracks))
-                ),
+                value=_format_duration(sum(track.length for track in playlist.tracks)),
             )
             embed.set_footer(
                 text=f"Запросил: {interaction.user.display_name}",
