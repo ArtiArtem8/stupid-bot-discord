@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Self, TypedDict
+from typing import Self, TypedDict
 
 import discord
 from discord.utils import utcnow
@@ -33,9 +33,9 @@ class BlockedUserDict(TypedDict):
     current_username: str
     current_global_name: str | None
     blocked: bool
-    block_history: List[BlockHistoryEntryDict]
-    unblock_history: List[BlockHistoryEntryDict]
-    name_history: List[NameHistoryEntryDict]
+    block_history: list[BlockHistoryEntryDict]
+    unblock_history: list[BlockHistoryEntryDict]
+    name_history: list[NameHistoryEntryDict]
 
 
 @dataclass

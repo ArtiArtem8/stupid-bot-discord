@@ -1,11 +1,13 @@
 import argparse
 import asyncio
 import logging
+import tracemalloc
 
 import config
 from framework.bot import StupidBot
 from utils import setup_logging
 
+tracemalloc.start()
 LOGGER = logging.getLogger("StupidBot")
 
 
@@ -39,7 +41,7 @@ async def main() -> None:
     LOGGER.info("Starting bot...")
     try:
         async with bot:
-            await bot.start(config.DISCORD_BOT_TOKEN)
+            await bot.start(token=config.DISCORD_BOT_TOKEN)
     except (KeyboardInterrupt, SystemExit):
         LOGGER.info("Keyboard Interrupt detected.")
     finally:

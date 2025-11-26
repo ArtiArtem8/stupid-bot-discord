@@ -87,7 +87,7 @@ def _format_voice_result_message(
 async def _send_error(interaction: Interaction, message: str) -> None:
     return await FeedbackUI.send(
         interaction,
-        type=FeedbackType.ERROR,
+        feedback_type=FeedbackType.ERROR,
         description=message,
         delete_after=600,
     )
@@ -249,7 +249,7 @@ class MusicCog(BaseCog):
         if not isinstance(interaction.user, Member):
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 description="Вы не участник сервера.",
                 ephemeral=True,
             )
@@ -258,7 +258,7 @@ class MusicCog(BaseCog):
         if not interaction.user.voice or not interaction.user.voice.channel:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description="Вы должны быть в голосовом канале!",
                 ephemeral=True,
             )
@@ -279,14 +279,17 @@ class MusicCog(BaseCog):
         if not result.is_success:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description=msg,
                 delete_after=120,
             )
             return
 
         await FeedbackUI.send(
-            interaction, type=FeedbackType.INFO, description=msg, delete_after=60
+            interaction,
+            feedback_type=FeedbackType.INFO,
+            description=msg,
+            delete_after=60,
         )
 
     @app_commands.command(
@@ -306,13 +309,12 @@ class MusicCog(BaseCog):
         query: str,
         ephemeral: bool = False,
     ) -> None:
-        await interaction.response.defer(ephemeral=ephemeral)
         guild = await self._require_guild(interaction)
 
         if not isinstance(interaction.user, Member):
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 description="Вы не участник сервера.",
                 ephemeral=True,
             )
@@ -321,14 +323,13 @@ class MusicCog(BaseCog):
         if not interaction.user.voice or not interaction.user.voice.channel:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description="Вы должны быть в голосовом канале!",
                 ephemeral=True,
             )
             return
-
+        await interaction.response.defer(ephemeral=ephemeral)
         channel = interaction.user.voice.channel
-
         result = await self.music_api.play(guild, channel, query, interaction.user.id)
 
         if not result.is_success:
@@ -338,7 +339,7 @@ class MusicCog(BaseCog):
                 else FeedbackType.ERROR
             )
             await FeedbackUI.send(
-                interaction, type=feedback_type, description=result.message
+                interaction, feedback_type=feedback_type, description=result.message
             )
             return
 
@@ -433,7 +434,7 @@ class MusicCog(BaseCog):
 
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.INFO,
+            feedback_type=FeedbackType.INFO,
             description=result.message,
             delete_after=60,
         )
@@ -476,7 +477,7 @@ class MusicCog(BaseCog):
 
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.SUCCESS,
+            feedback_type=FeedbackType.SUCCESS,
             embed=embed,
             delete_after=60,
         )
@@ -494,7 +495,7 @@ class MusicCog(BaseCog):
 
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.INFO,
+            feedback_type=FeedbackType.INFO,
             description="Воспроизведение приостановлено.",
             delete_after=60,
         )
@@ -512,7 +513,7 @@ class MusicCog(BaseCog):
 
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.INFO,
+            feedback_type=FeedbackType.INFO,
             description="Воспроизведение продолжено.",
             delete_after=60,
         )
@@ -533,7 +534,7 @@ class MusicCog(BaseCog):
         if result.status is MusicResultStatus.ERROR:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 description=result.message,
                 ephemeral=True,
             )
@@ -542,7 +543,7 @@ class MusicCog(BaseCog):
         if not result.data:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.INFO,
+                feedback_type=FeedbackType.INFO,
                 title="Очередь пуста",
                 description="В очереди нет треков.",
                 ephemeral=True,
@@ -569,7 +570,7 @@ class MusicCog(BaseCog):
             volume = await self.music_api.get_volume(guild.id)
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.INFO,
+                feedback_type=FeedbackType.INFO,
                 description=f"Текущая громкость {volume}%.",
                 delete_after=30,
             )
@@ -577,7 +578,7 @@ class MusicCog(BaseCog):
         if not 0 <= value <= 1000:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description="Громкость должна быть от 0 до 200.",
             )
             return
@@ -588,7 +589,7 @@ class MusicCog(BaseCog):
 
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.SUCCESS,
+            feedback_type=FeedbackType.SUCCESS,
             description=f"Громкость установлена на {value}%.",
             delete_after=60,
         )
@@ -607,7 +608,7 @@ class MusicCog(BaseCog):
         if result.status is MusicResultStatus.FAILURE:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description=result.message,
                 ephemeral=True,
             )
@@ -615,7 +616,7 @@ class MusicCog(BaseCog):
 
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.INFO,
+            feedback_type=FeedbackType.INFO,
             description="Отключился от голосового канала.",
             title="До свидания ",
             delete_after=60,
@@ -636,14 +637,14 @@ class MusicCog(BaseCog):
         if result.status is MusicResultStatus.FAILURE:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description=result.message,
                 ephemeral=True,
             )
             return
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.SUCCESS,
+            feedback_type=FeedbackType.SUCCESS,
             description="Трек перемещён в конец очереди.",
             delete_after=60,
         )
@@ -660,7 +661,7 @@ class MusicCog(BaseCog):
 
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.SUCCESS,
+            feedback_type=FeedbackType.SUCCESS,
             description="Очередь перемешана.",
             delete_after=60,
         )

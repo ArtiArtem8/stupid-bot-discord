@@ -42,7 +42,7 @@ class UptimeManager:
         """Saves the current uptime state to file."""
         current_uptime = time.time() - self.start_time
         data: UptimeData = {
-            "last_shutdown": self.start_time,
+            "last_shutdown": time.time(),
             "accumulated_uptime": current_uptime,
         }
         try:

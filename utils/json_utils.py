@@ -2,11 +2,12 @@ import json
 import secrets
 import shutil
 import time
+from collections.abc import Mapping
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
 from string import ascii_letters, digits
-from typing import Any, Mapping
+from typing import Any
 
 from config import BACKUP_DIR, ENCODING
 

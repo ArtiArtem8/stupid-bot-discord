@@ -28,7 +28,7 @@ CAPABILITIES = [
 ]
 
 # OnMessageCog - greetings
-MORNING_QUEST = [
+MORNING_QUEST = (
     "день добрый",
     "дзень добры",
     "доброе утро",
@@ -36,8 +36,8 @@ MORNING_QUEST = [
     "Утречко доброе",
     "утро доброе",
     "утро утреннее",
-]
-MORNING_ANSWERS = [
+)
+MORNING_ANSWERS = (
     "https://tenor.com/view/anime-smile-beautiful-cute-happy-gif-16596386",
     "https://tenor.com/view/little-witch-academia-witch-good-morning-yawn-stretching-gif-16843917",
     "https://tenor.com/view/shrek-donkey-good-morning-good-morning-good-morning-morning-gif-18326987",
@@ -49,8 +49,8 @@ MORNING_ANSWERS = [
     "Утро доброе, бл*ть!",
     "Утром один час лучше, чем два вечером. Таджикская пословица",
     "Что утром не сделаешь, то вечером не наверстаешь.",
-]
-EVENING_QUEST = [
+)
+EVENING_QUEST = (
     "доброй ночи",
     "сон",
     "спать",
@@ -60,8 +60,8 @@ EVENING_QUEST = [
     "наступила ночь",
     "Спокойной ночи",
     "ночь пришла",
-]
-EVENING_ANSWERS = [
+)
+EVENING_ANSWERS = (
     "https://tenor.com/view/anime-night-gif-13617044",
     "https://tenor.com/view/animu-anime-good-night-good-night-peeps-gif-14037283",
     "https://tenor.com/view/shrek-mehdi-shrek-dance-wati-by-night-maitre-gims-gif-19789528",
@@ -69,10 +69,10 @@ EVENING_ANSWERS = [
     "Пусть ваш ангел-хранитель присмотрит за вами, пока вы спите",
     "Сегодня был отличный день, но завтра, как обычно, будет ещё лучше",
     "Сон – это отражение нашего сердца и души",
-]
+)
 
 # Birthday cog
-MONTH_NAMES_RU: dict[int, str] = {
+MONTH_NAMES_RU = {
     1: "января",
     2: "февраля",
     3: "марта",
@@ -87,7 +87,8 @@ MONTH_NAMES_RU: dict[int, str] = {
     12: "декабря",
 }
 """Dictionary of month names in Russian."""
-BIRTHDAY_WISHES = [
+
+BIRTHDAY_WISHES = (
     "В день твоего рождения хочу пожелать, чтобы в жизни было всегда больше счастливых и радостных минут, чтобы сердце наполнялось радостью от тёплых и ласковых слов, а рядом находились верные друзья!",
     "Желаю, чтобы птица счастья всегда была в твоих руках, а все печали пролетали мимо! Пускай заветные мечты осуществляются легко и просто, а каждый миг наполняется радостью и позитивом! Открывай новые горизонты, шагай уверенно вперед и достигай всех целей!",
     "Поздравляем от души с днем рождения! Желаем много любви и счастья, чтобы судьба чаще дарила приятные сюрпризы. Пусть жизнь будет интересной и насыщенной, пусть всегда хватает сил для достижения желаемых высот!",
@@ -98,10 +99,10 @@ BIRTHDAY_WISHES = [
     "С днем рождения! Желаю прекрасного дня в окружении людей, которые любят и ценят тебя больше всего, и много веселья. Улыбайся, наслаждайся радостью общения, и пусть счастье наполнит твою жизнь.",
     "С днем рождения! Море счастья и улыбок. Вдохновения к воплощению поставленных целей. Пусть жизнь радует своей красочностью и непредсказуемостью. Радуйся каждому дню и дари эти эмоции другим. Оставайся собой, ты один из лучших людей на планете!",
     "С днем рождения! Хочется пожелать тебе в этом году побольше вдохновения и энергии. Пускай все, за что бы ты не взялся, имеет успешный финал. Здоровья побольше, ведь с ним ты сможешь все!",
-]
+)
 
 # Wolfram cog
-WOLFRAM_IGNORED_TITLES: frozenset[str] = frozenset(
+WOLFRAM_IGNORED_TITLES = frozenset(
     {
         "American pronunciation",
         "Anagrams",
@@ -148,7 +149,7 @@ WOLFRAM_IGNORED_TITLES: frozenset[str] = frozenset(
     }
 )
 
-WOLFRAM_IGNORED_PATTERNS: frozenset[str] = frozenset(
+WOLFRAM_IGNORED_PATTERNS = frozenset(
     {
         "Additional",
         "All 2nd roots of",

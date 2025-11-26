@@ -5,9 +5,10 @@ to users via Discord interactions. It supports various feedback types (Success,
 Info, Warning, Error), custom embeds, and automatic report button generation for errors.
 """
 
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from enum import Enum
-from typing import Awaitable, Callable, Self, overload
+from typing import Self, overload
 
 import discord
 from discord.ui import Button, View
@@ -64,15 +65,15 @@ class FeedbackUI:
     def make_embed(
         title: str | None,
         description: str,
-        type: FeedbackType,
+        feedback_type: FeedbackType,
     ) -> discord.Embed:
         """Create a standard embed for feedback."""
         embed = discord.Embed(
             title=title,
             description=description,
-            color=type.value,
+            color=feedback_type.value,
         )
-        if type is FeedbackType.ERROR:
+        if feedback_type is FeedbackType.ERROR:
             embed.set_thumbnail(url=config.ERROR_THUMBNAIL)
         return embed
 
@@ -81,7 +82,7 @@ class FeedbackUI:
     async def send(
         interaction: discord.Interaction,
         *,
-        type: FeedbackType = FeedbackType.INFO,
+        feedback_type: FeedbackType = FeedbackType.INFO,
         description: str | None = None,
         title: str | None = None,
         delete_after: float | None = None,
@@ -97,7 +98,7 @@ class FeedbackUI:
         interaction: discord.Interaction,
         *,
         embed: discord.Embed,
-        type: FeedbackType = FeedbackType.INFO,
+        feedback_type: FeedbackType = FeedbackType.INFO,
         delete_after: float | None = None,
         ephemeral: bool = False,
         view: View = MISSING,
@@ -109,7 +110,7 @@ class FeedbackUI:
     async def send(
         interaction: discord.Interaction,
         *,
-        type: FeedbackType = FeedbackType.INFO,
+        feedback_type: FeedbackType = FeedbackType.INFO,
         description: str | None = None,
         title: str | None = None,
         delete_after: float | None = None,
@@ -123,8 +124,7 @@ class FeedbackUI:
 
         Args:
             interaction: The interaction to respond to.
-            type: The type of feedback (SUCCESS, INFO, WARNING, ERROR). Defaults to
-                INFO.
+            feedback_type: The type of feedback (SUCCESS, INFO, WARNING, ERROR)
             description: The main content of the message.
             title: Optional title.
             delete_after: Auto-delete after N seconds.
@@ -139,9 +139,13 @@ class FeedbackUI:
         if embed is MISSING:
             if description is None:
                 description = ""
-            embed = FeedbackUI.make_embed(title, description, type)
+            embed = FeedbackUI.make_embed(title, description, feedback_type)
 
-        if type is FeedbackType.ERROR and not disable_report_btn and view is MISSING:
+        if (
+            feedback_type is FeedbackType.ERROR
+            and not disable_report_btn
+            and view is MISSING
+        ):
             if FeedbackUI._default_report_callback is None:
                 raise RuntimeError(
                     "FeedbackUI not configured. Call FeedbackUI.configure() at startup."

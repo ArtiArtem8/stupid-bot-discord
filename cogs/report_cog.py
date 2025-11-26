@@ -10,8 +10,6 @@ This cog requires setting an owner ID to use this command :
   don't set both at the same time
 """
 
-import logging
-
 import discord
 from discord import Interaction, app_commands
 from discord.ext import commands
@@ -47,7 +45,6 @@ class ReportCog(BaseCog):
 
     def __init__(self, bot: commands.Bot):
         super().__init__(bot)
-        self.logger = logging.getLogger("ReportCog")
 
     @app_commands.command(
         name="report", description="Отправить отчет о баге или проблеме"
@@ -72,7 +69,7 @@ class ReportCog(BaseCog):
         save_json(config.REPORT_FILE, report_data)
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.SUCCESS,
+            feedback_type=FeedbackType.SUCCESS,
             description=f"Report channel set to {channel.mention}",
             ephemeral=True,
         )

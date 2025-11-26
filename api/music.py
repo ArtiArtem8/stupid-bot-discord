@@ -357,7 +357,6 @@ class MusicAPI:
         """Join a voice channel."""
         voice_client = guild.voice_client
 
-        # If not connected, connect
         if not voice_client:
             try:
                 await channel.connect(cls=LavalinkVoiceClient)
@@ -366,7 +365,6 @@ class MusicAPI:
                 LOGGER.error(f"Failed to connect to voice: {e}")
                 return VoiceCheckResult.CONNECTION_FAILED, channel
 
-        # If connected but to a different channel
         if voice_client.channel != channel:
             try:
                 old_channel = voice_client.channel
@@ -405,7 +403,6 @@ class MusicAPI:
         requester_id: int,
     ) -> MusicResult[PlayResponseData]:
         """Play a track or playlist."""
-        # Ensure connection
         check_result, _ = await self.join(guild, voice_channel)
         if not check_result.is_success and check_result not in (
             VoiceCheckResult.SUCCESS,
@@ -512,9 +509,6 @@ class MusicAPI:
         try:
             player = await self.get_player(guild_id)
 
-            # lavaplay uses _queue_repeat property (private but accessible in python)
-            # or we just track state ourselves if we can't read it nicely.
-            # The provided code shows `self._queue_repeat`.
             current_state = getattr(player, "_queue_repeat", False)
             current_mode = RepeatMode.QUEUE if current_state else RepeatMode.OFF
 

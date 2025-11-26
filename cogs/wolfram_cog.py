@@ -13,7 +13,6 @@ Requirements:
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from textwrap import shorten
 from typing import Literal, override
@@ -27,8 +26,6 @@ import config
 from api.wolfram import WolframAPIError, WolframClient, WolframResult
 from framework import BaseCog, FeedbackType, FeedbackUI
 from utils import optimize_image, save_image
-
-LOGGER = logging.getLogger(__name__)
 
 
 class WolframCog(BaseCog):
@@ -54,7 +51,7 @@ class WolframCog(BaseCog):
     async def cog_load(self) -> None:
         """Initialize persistent session."""
         self.client_session = aiohttp.ClientSession()
-        LOGGER.info("WolframCog loaded.")
+        self.logger.info("WolframCog loaded.")
 
     @override
     async def cog_unload(self) -> None:
@@ -68,7 +65,7 @@ class WolframCog(BaseCog):
     async def cmd_solve(self, interaction: Interaction, problem: str) -> None:
         """Slash command handler for solving."""
         await interaction.response.defer(ephemeral=True)
-        LOGGER.info("Solve: %s | User: %s", problem, interaction.user)
+        self.logger.info("Solve: %s | User: %s", problem, interaction.user)
         await self._handle_query(interaction, problem, mode="solve")
 
     @app_commands.command(name="plot", description="Plot a mathematical function")
@@ -76,7 +73,7 @@ class WolframCog(BaseCog):
     async def cmd_plot(self, interaction: Interaction, function: str) -> None:
         """Slash command handler for plotting."""
         await interaction.response.defer(ephemeral=True)
-        LOGGER.info("Plot: %s | User: %s", function, interaction.user)
+        self.logger.info("Plot: %s | User: %s", function, interaction.user)
         await self._handle_query(interaction, function, mode="plot")
 
     async def _context_solve(
@@ -89,13 +86,13 @@ class WolframCog(BaseCog):
         if not content or len(content) > config.WOLFRAM_MAX_QUERY_LEN:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description="Query empty or too long.",
                 ephemeral=True,
             )
             return
 
-        LOGGER.info("Ctx Solve: %s | User: %s", content, interaction.user)
+        self.logger.info("Ctx Solve: %s | User: %s", content, interaction.user)
         await self._handle_query(interaction, content, mode="solve")
 
     async def _handle_query(
@@ -105,7 +102,7 @@ class WolframCog(BaseCog):
         if not self.client_session:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 title="Internal Error",
                 description="Session not initialized.",
             )
@@ -115,7 +112,7 @@ class WolframCog(BaseCog):
         except ValueError:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 title="API Error",
                 description="The API key is not set.",
             )
@@ -130,7 +127,7 @@ class WolframCog(BaseCog):
                 msg = result.error_msg or "Wolfram could not understand the input."
                 await FeedbackUI.send(
                     interaction,
-                    type=FeedbackType.WARNING,
+                    feedback_type=FeedbackType.WARNING,
                     title="No Results",
                     description=msg,
                 )
@@ -142,7 +139,7 @@ class WolframCog(BaseCog):
                 elif mode == "plot":
                     await FeedbackUI.send(
                         interaction,
-                        type=FeedbackType.WARNING,
+                        feedback_type=FeedbackType.WARNING,
                         title="No Plot",
                         description="No graph generated.",
                     )
@@ -152,7 +149,7 @@ class WolframCog(BaseCog):
         except WolframAPIError as e:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 title="API Error",
                 description=str(e),
             )
@@ -193,7 +190,7 @@ class WolframCog(BaseCog):
         if fields_added == 0:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description="No displayable results found.\n"
                 "All results were filtered out.",
                 title=f"Query: `{query}`",
@@ -210,7 +207,7 @@ class WolframCog(BaseCog):
         msg = await interaction.channel.send(embed=embed)
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.SUCCESS,
+            feedback_type=FeedbackType.SUCCESS,
             description=f"Results: {msg.jump_url}",
         )
 
@@ -236,7 +233,7 @@ class WolframCog(BaseCog):
             ):
                 await FeedbackUI.send(
                     interaction,
-                    type=FeedbackType.WARNING,
+                    feedback_type=FeedbackType.WARNING,
                     description="Cannot upload images in this context.",
                     ephemeral=True,
                 )
@@ -248,15 +245,15 @@ class WolframCog(BaseCog):
             )
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.SUCCESS,
+                feedback_type=FeedbackType.SUCCESS,
                 description=f"Graph generated: {msg.jump_url}",
             )
 
         except Exception as e:
-            LOGGER.error("Image pipeline failed: %s", e, exc_info=True)
+            self.logger.error("Image pipeline failed: %s", e, exc_info=True)
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 title="Image Error",
                 description="Failed to process graph image.",
             )

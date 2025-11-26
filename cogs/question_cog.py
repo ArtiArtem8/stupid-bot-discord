@@ -4,7 +4,6 @@ Provides a `/ask` command that gives random answers to user questions,
 with answer history tracking to prevent duplicate questions.
 """
 
-import logging
 import secrets
 
 from discord import Interaction, app_commands
@@ -19,7 +18,6 @@ from utils import get_json, random_answer, save_json, str_local
 class QuestionCog(BaseCog):
     def __init__(self, bot: commands.Bot):
         super().__init__(bot)
-        self.logger = logging.getLogger("QuestionCog")
         # predictions
         self.answers = secrets.SystemRandom().sample(
             CAPABILITIES, min(len(CAPABILITIES), config.MAX_ANSWER_SAMPLE_SIZE)

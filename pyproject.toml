@@ -7,17 +7,15 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "discord-py>=2.5.2",
-    "python-dotenv>=1.1.0",
-    "requests>=2.32.3",
-    "fuzzywuzzy>=0.18.0",
-    "python-Levenshtein>=0.27.1",
-    "wolframalpha==4.3.1  ",
-    "pillow==11.2.1",
-    "lavaplay.py>=1.0.15a0",
-    "PyNaCl>=1.5.0",
     "aiofiles>=24.1.0",
     "defusedxml>=0.7.1",
+    "discord-py[voice]>=2.5.2",
+    "lavaplay.py>=1.0.15a0",
+    "pillow==11.2.1",
+    "PyNaCl>=1.5.0",
+    "python-dotenv>=1.1.0",
+    "rapidfuzz>=3.14.1",
+    "requests>=2.32.3",
 ]
 
 [tool.ruff]

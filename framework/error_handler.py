@@ -37,7 +37,7 @@ class CustomErrorCommandTree(app_commands.CommandTree):
             return
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.ERROR,
+            feedback_type=FeedbackType.ERROR,
             title=str(error),
             delete_after=300,
             ephemeral=False,

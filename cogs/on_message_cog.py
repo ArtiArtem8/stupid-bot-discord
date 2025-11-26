@@ -5,11 +5,13 @@ Listens to messages and responds to greetings.
 
 import logging
 import secrets
+from collections.abc import Callable, Iterable, Sequence, Sized
+from textwrap import shorten
 from typing import Any
 
 from discord import Message
 from discord.ext import commands
-from fuzzywuzzy.process import extract  # type: ignore
+from rapidfuzz.process import extract
 
 import config
 from api import block_manager
@@ -39,37 +41,49 @@ class OnMessageCog(commands.Cog):
         except Exception as e:
             self.logger.error("Failed to process message %s: %s", message.content, e)
 
+    def _format_change(self, attr: str, before: Any, after: Any) -> str:
+        """Smart diff formatting by type."""
+        if type(before) is not type(after):
+            return (
+                f"{attr} (type changed): "
+                f"{type(before).__name__} -> {type(after).__name__}"
+            )
+        elif isinstance(before, str):
+            return f"{attr}: '{shorten(before, 100)}' -> '{shorten(after, 100)}'"
+        elif isinstance(before, Sized):
+            return f"{attr}: {len(before)} -> {len(after)}"
+        elif isinstance(before, bool):
+            return f"{attr}: {before} -> {after}"
+        else:
+            before_summ = "exists" if before else "None"
+            after_summ = "exists" if after else "None"
+            return f"{attr}: {before_summ} -> {after_summ}"
+
     @commands.Cog.listener()
     async def on_message_edit(self, before: Message, after: Message):
-        if before.flags.loading and not after.flags.loading:
-            self.logger.info(
-                "Message %s finished loading - relogging final state from %s in %s",
-                after.id,
-                after.author,
-                after.channel,
-            )
-            self._log_message(after)
-            return
         changes: list[str] = []
 
-        if before.content != after.content:
-            changes.append(f"content: '{before.content}' -> '{after.content}'")
+        attr_whitelist = [
+            "content",
+            "embeds",
+            "attachments",
+            "stickers",
+            "components",
+            "pinned",
+            "reference",
+        ]
 
-        if before.embeds != after.embeds:
-            changes.append(f"embeds: {len(before.embeds)} -> {len(after.embeds)}")
+        for attr in attr_whitelist:
+            before_val = getattr(before, attr, None)
+            after_val = getattr(after, attr, None)
+
+            if before_val != after_val:
+                changes.append(self._format_change(attr, before_val, after_val))
 
         if before.flags.value != after.flags.value:
             before_flags = [name for name, value in before.flags if value]
             after_flags = [name for name, value in after.flags if value]
             changes.append(f"flags: {before_flags} -> {after_flags}")
-
-        if before.attachments != after.attachments:
-            changes.append(
-                f"attachments: {len(before.attachments)} -> {len(after.attachments)}"
-            )
-
-        if before.pinned != after.pinned:
-            changes.append(f"pinned: {before.pinned} -> {after.pinned}")
 
         if changes:
             self.logger.info(
@@ -78,22 +92,24 @@ class OnMessageCog(commands.Cog):
                 after.channel,
                 ", ".join(changes),
             )
+            self._log_message(after)
 
     async def quest_process_message(self, message: Message):
-        if len(message.content) >= 5:
-            res = self.process_fuzzy_message(message, MORNING_QUEST, MORNING_ANSWERS)
-            if res:
-                return await message.channel.send(res)
+        if len(message.content) < 5:
+            return
+        res = self.process_fuzzy_message(message, MORNING_QUEST, MORNING_ANSWERS)
+        if res:
+            return await message.channel.send(res)
 
-            res = self.process_fuzzy_message(message, EVENING_QUEST, EVENING_ANSWERS)
-            if res:
-                return await message.channel.send(res)
+        res = self.process_fuzzy_message(message, EVENING_QUEST, EVENING_ANSWERS)
+        if res:
+            return await message.channel.send(res)
 
     def process_fuzzy_message(
         self,
         message: Message,
-        quests: list[str],
-        answers: list[str],
+        quests: Iterable[str],
+        answers: Sequence[str],
         threshold: int = config.FUZZY_THRESHOLD_DEFAULT,
     ) -> str | None:
         """Process a message to check if it matches one of the given "quests" and
@@ -109,10 +125,8 @@ class OnMessageCog(commands.Cog):
             A random answer if the message matches, None otherwise.
 
         """
-        fuzzy_results: list[tuple[str, int]] = extract(  # type: ignore
-            message.content, quests, limit=config.FUZZY_MATCH_LIMIT
-        )
-        _, best_score = max(fuzzy_results, key=lambda x: x[1])
+        fuzzy_results = extract(message.content, quests, limit=config.FUZZY_MATCH_LIMIT)
+        _, best_score, _ = max(fuzzy_results, key=lambda x: x[1])
 
         if best_score >= threshold:
             self.logger.info(
@@ -122,84 +136,116 @@ class OnMessageCog(commands.Cog):
                 message.channel,
                 message.author,
             )
-            return secrets.choice(answers or [None])
 
+            return secrets.choice(answers or [None])
         return None
 
-    def _log_message(self, message: Message):
-        msg = '%s sended - "%s" in %s (%s)'
-        flags = {
-            "has_attachments": bool(message.attachments),
-            "has_embeds": bool(message.embeds),
-            "has_stickers": bool(message.stickers),
-            "has_components": bool(message.components),
-            "has_reference": bool(message.reference),
-            "has_poll": bool(message.poll),
+    def _log_section[T](
+        self,
+        label: str,
+        data: T | None,
+        summary_factory: Callable[[T], object],
+        debug_factory: Callable[[T], object],
+    ) -> None:
+        """Helper to log a section with INFO summary and lazy DEBUG details.
+
+        Args:
+            self: Self with logger.
+            label: The log label (e.g., "Attachments").
+            data: The object to check for truthiness before logging.
+            summary_factory: Lambda returning the lightweight INFO payload.
+            debug_factory: Lambda returning the expensive DEBUG payload.
+
+        """
+        if not data:
+            return
+
+        self.logger.info(f"{label}: %s", summary_factory(data))
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Full {label.lower()}: %s", debug_factory(data))
+
+    def _log_message(self, message: Message) -> None:
+        """Log message with structured INFO summaries and lazy DEBUG details."""
+        content_flags: dict[str, Any] = {
+            "attachments": message.attachments,
+            "embeds": message.embeds,
+            "stickers": message.stickers,
+            "components": message.components,
+            "reference": message.reference,
+            "poll": message.poll,
         }
+
         self.logger.info(
-            msg,
+            '%s sent - "%s" in %s (%s)',
             message.author,
             message.content,
             message.channel,
-            ", ".join(k for k in flags if flags[k]),
+            ", ".join(k for k, v in content_flags.items() if v),
         )
 
-        if message.attachments:
-            attachments = tuple(
-                ((x.url, x.content_type, x.filename) for x in message.attachments)
-            )
-            self.logger.info("Attachments: %s", attachments)
-        if message.embeds:
-            embed_info: list[dict[str, Any]] = []
-            for embed in message.embeds:
-                embed_dict: dict[str, Any] = {
-                    "type": embed.type,
-                    "title": embed.title,
-                    "description": embed.description[:100]
-                    if embed.description
-                    else None,
-                    "url": embed.url,
-                    "color": embed.color,
-                    "footer": embed.footer.text if embed.footer else None,
-                    "author": embed.author.name if embed.author else None,
-                    "field_count": len(embed.fields) if embed.fields else 0,
-                    "has_image": embed.image,
-                    "has_thumbnail": embed.thumbnail,
-                    "has_video": embed.video,
-                }
-                embed_info.append(embed_dict)
-            self.logger.debug("Embeds: %s", embed_info)
+        self._log_section(
+            "Attachments",
+            message.attachments,
+            summary_factory=lambda x: [
+                (a.filename, a.content_type, a.size, a.url) for a in x
+            ],
+            debug_factory=lambda x: {f"att_{i}": a.to_dict() for i, a in enumerate(x)},
+        )
 
-        if message.stickers:
-            sticker_info = tuple(
-                (s.id, s.name, s.format.name) for s in message.stickers
-            )
-            self.logger.info("Stickers: %s", sticker_info)
+        self._log_section(
+            "Embeds",
+            message.embeds,
+            summary_factory=lambda x: [
+                (e.title or "No title", e.type, len(e.fields), e.color) for e in x
+            ],
+            debug_factory=lambda x: {
+                f"embed_{i}": e.to_dict() for i, e in enumerate(x)
+            },
+        )
 
-        if message.reference:
-            ref_info: dict[str, Any] = {
-                "message_id": message.reference.message_id,
-                "channel_id": message.reference.channel_id,
-                "guild_id": message.reference.guild_id,
-                "type": message.type.name,
-            }
-            self.logger.info("Message reference: %s", ref_info)
+        self._log_section(
+            "Stickers",
+            message.stickers,
+            summary_factory=lambda x: [(s.id, s.name, s.format.name) for s in x],
+            debug_factory=lambda x: [(s.id, s.name, s.format.name, s.url) for s in x],
+        )
 
-        if message.components:
-            component_types = [type(comp).__name__ for comp in message.components]
-            self.logger.debug("Components: %s", component_types)
+        self._log_section(
+            "Reference",
+            message.reference,
+            summary_factory=lambda x: {
+                "message_id": x.message_id,
+                "channel_id": x.channel_id,
+                "guild_id": x.guild_id,
+            },
+            debug_factory=lambda x: x.to_dict(),
+        )
 
-        if message.flags.value:
-            flag_names = [name for name, value in message.flags if value]
-            self.logger.debug("Flags: %s", flag_names)
+        self._log_section(
+            "Components",
+            message.components,
+            summary_factory=lambda x: [type(c).__name__ for c in x],
+            debug_factory=lambda x: {
+                f"component_{i}": c.to_dict() for i, c in enumerate(x)
+            },
+        )
 
-        if message.poll:
-            poll_info: dict[str, Any] = {
-                "question": message.poll.question,
-                "options": message.poll.answers,
-                "duration": message.poll.duration.total_seconds(),
-            }
-            self.logger.info("Poll: %s", poll_info)
+        self._log_section(
+            "Poll",
+            message.poll,
+            summary_factory=lambda x: {
+                "question": x.question,
+                "options_count": len(x.answers),
+            },
+            debug_factory=lambda x: getattr(x, "_to_dict", repr(x)),
+        )
+
+        self._log_section(
+            "Flags",
+            message.flags.value,
+            summary_factory=lambda x: x,
+            debug_factory=lambda x: f"{x} (0x{x:x})",
+        )
 
 
 async def setup(bot: commands.Bot):

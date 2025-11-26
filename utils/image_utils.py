@@ -1,7 +1,7 @@
 import secrets
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import requests
 from PIL import Image, UnidentifiedImageError
@@ -68,7 +68,7 @@ def generate_unique_filename(extension: str) -> Path:
 
 def optimize_image(
     input_path: Path,
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
     quality: int = 85,
     max_size: tuple[int, int] | None = None,
 ) -> Path:

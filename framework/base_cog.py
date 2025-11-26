@@ -6,6 +6,7 @@ validation, reducing repetition across cogs.
 
 import abc
 import logging
+from typing import override
 
 import discord
 from discord.ext import commands
@@ -23,26 +24,26 @@ class CogABCMeta(commands.CogMeta, abc.ABCMeta):
     """
 
 
-class BaseCog(abc.ABC, commands.Cog, metaclass=CogABCMeta):
+class GenericBaseCog[BotT: commands.Bot](abc.ABC, commands.Cog, metaclass=CogABCMeta):
     """Abstract base class for StupidBot cogs.
 
     Provides:
     - Centralized interaction_check for blocked users (raises BlockedUserError).
     - Helper for requiring guild context in commands.
 
-    Subclasses should set self.logger in __init__ for logging.
     """
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: BotT, logger_name: str | None = None):
         """Initialize the base cog.
 
         Args:
             bot: The bot instance.
+            logger_name: Custom logger name. Default to the class name.
 
         """
         super().__init__()
         self.bot = bot
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(logger_name or self.__class__.__name__)
 
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:
         """Return True to skip the blocked-user check for this interaction.
@@ -51,6 +52,7 @@ class BaseCog(abc.ABC, commands.Cog, metaclass=CogABCMeta):
         """
         return False
 
+    @override
     async def interaction_check(self, interaction: discord.Interaction) -> bool:  # pyright: ignore[reportIncompatibleMethodOverride]
         """Centralized check for blocked users.
 
@@ -140,3 +142,9 @@ class BaseCog(abc.ABC, commands.Cog, metaclass=CogABCMeta):
             user.id,
             context,
         )
+
+
+class BaseCog(GenericBaseCog[commands.Bot]):
+    """Default BaseCog locked to standard commands.Bot."""
+
+    pass

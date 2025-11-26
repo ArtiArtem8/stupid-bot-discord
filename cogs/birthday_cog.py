@@ -98,7 +98,7 @@ class ConfirmDeleteView(discord.ui.View):
         if interaction.user.id != self.user_id:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 description="Вы не можете выполнить это действие",
                 ephemeral=True,
             )
@@ -108,7 +108,7 @@ class ConfirmDeleteView(discord.ui.View):
         if not config:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 description="Конфигурация сервера не найдена",
                 ephemeral=True,
             )
@@ -117,7 +117,7 @@ class ConfirmDeleteView(discord.ui.View):
         if not user or not user.has_birthday():
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description="У вас нет сохранённого дня рождения.",
                 ephemeral=True,
             )
@@ -128,7 +128,7 @@ class ConfirmDeleteView(discord.ui.View):
             birthday_manager.save_guild_config(config)
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.SUCCESS,
+                feedback_type=FeedbackType.SUCCESS,
                 description="Ваш день рождения удалён",
                 ephemeral=True,
             )
@@ -138,7 +138,7 @@ class ConfirmDeleteView(discord.ui.View):
             )
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 title="Ошибка",
                 description="Произошла ошибка при удалении дня рождения",
             )
@@ -148,14 +148,14 @@ class ConfirmDeleteView(discord.ui.View):
         if interaction.user.id != self.user_id:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 description="Вы не можете выполнить это действие.",
                 ephemeral=True,
             )
             return
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.INFO,
+            feedback_type=FeedbackType.INFO,
             description="Отменено",
             ephemeral=True,
         )
@@ -176,7 +176,6 @@ class BirthdayCog(BaseCog):
 
     def __init__(self, bot: commands.Bot):
         super().__init__(bot)
-        self.logger = logging.getLogger("BirthdayCog")
         self.birthday_timer.start()
 
     async def cog_unload(self):
@@ -319,7 +318,7 @@ class BirthdayCog(BaseCog):
         except ValueError:
             return await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description="Неверный формат даты. Используйте ДД-ММ-ГГГГ / ГГГГ-ММ-ДД",
                 ephemeral=True,
             )
@@ -339,7 +338,7 @@ class BirthdayCog(BaseCog):
             msg = f"Ваш день рождения записан: {normalized_date}"
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.SUCCESS,
+                feedback_type=FeedbackType.SUCCESS,
                 description=msg,
                 ephemeral=True,
             )
@@ -348,7 +347,7 @@ class BirthdayCog(BaseCog):
 
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 title="Ошибка",
                 description="Произошла ошибка сохранения данных.",
                 ephemeral=True,
@@ -386,7 +385,7 @@ class BirthdayCog(BaseCog):
                 response += f"\n- Роль: {role.mention}"
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.SUCCESS,
+                feedback_type=FeedbackType.SUCCESS,
                 description=response,
                 ephemeral=True,
             )
@@ -394,7 +393,7 @@ class BirthdayCog(BaseCog):
             self.logger.error("Error saving configuration: %s", e)
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 title="Ошибка",
                 description="Произошла ошибка сохранения данных.",
                 ephemeral=True,
@@ -412,7 +411,7 @@ class BirthdayCog(BaseCog):
         if not config:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.ERROR,
+                feedback_type=FeedbackType.ERROR,
                 description="Конфигурация сервера не найдена",
                 ephemeral=True,
             )
@@ -422,7 +421,7 @@ class BirthdayCog(BaseCog):
         if not user or not user.has_birthday():
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description="Вы не установили свой день рождения",
                 ephemeral=True,
             )
@@ -432,7 +431,7 @@ class BirthdayCog(BaseCog):
         msg = "Вы уверены, что хотите удалить свой день рождения?"
         await FeedbackUI.send(
             interaction,
-            type=FeedbackType.WARNING,
+            feedback_type=FeedbackType.WARNING,
             description=msg,
             view=view,
             ephemeral=True,
@@ -452,7 +451,7 @@ class BirthdayCog(BaseCog):
         if not config:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description="На этом сервере нет настроенной системы дней рождений",
                 ephemeral=True,
             )
@@ -461,7 +460,7 @@ class BirthdayCog(BaseCog):
         if not config.users:
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.INFO,
+                feedback_type=FeedbackType.INFO,
                 description="На этом сервере нет сохранённых дней рождений.",
                 ephemeral=True,
             )
@@ -474,10 +473,11 @@ class BirthdayCog(BaseCog):
         )
 
         if not entries:
+            msg = "На этом сервере нет **корректно** сохранённых дней рождений."
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
-                description="На этом сервере нет **корректно** сохранённых дней рождений.",
+                feedback_type=FeedbackType.WARNING,
+                description=msg,
                 ephemeral=True,
             )
 

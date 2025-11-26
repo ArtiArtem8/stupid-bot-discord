@@ -2,7 +2,8 @@
 
 import functools
 import logging
-from typing import Any, Awaitable, Callable, Concatenate, Coroutine, cast
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any, Concatenate, cast
 
 import discord
 from discord import Interaction
@@ -52,7 +53,7 @@ def handle_errors[CogT, T, **P]() -> Callable[
                 await FeedbackUI.send(
                     interaction,
                     title="Discord Ошибка",
-                    type=FeedbackType.ERROR,
+                    feedback_type=FeedbackType.ERROR,
                     description=f"❌ {type(e).__name__}: {e}",
                     delete_after=600,
                 )
@@ -60,7 +61,7 @@ def handle_errors[CogT, T, **P]() -> Callable[
                 LOGGER.exception(f"Unexpected error in {func.__name__}")
                 await FeedbackUI.send(
                     interaction,
-                    type=FeedbackType.ERROR,
+                    feedback_type=FeedbackType.ERROR,
                     title="Внутренняя ошибка",
                     description=f"❌ {type(e).__name__}: {e}",
                     delete_after=600,

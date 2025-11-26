@@ -8,7 +8,7 @@ import time
 
 from discord import Message
 from discord.ext import commands
-from fuzzywuzzy.process import extractOne  # type: ignore
+from rapidfuzz.process import extractOne
 
 import config
 
@@ -39,7 +39,7 @@ class PrefixBlockerCog(commands.Cog):
         slash_commands = [cmd.name for cmd in self.bot.tree.get_commands()]
         suggestion = None
         if slash_commands:
-            best_match: tuple[str, int] = extractOne(raw_content, slash_commands)  # type: ignore
+            best_match = extractOne(raw_content, slash_commands)
             if best_match and best_match[1] >= config.SUGGESTION_THRESHOLD:
                 suggestion = best_match[0]
 

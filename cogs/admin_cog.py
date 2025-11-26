@@ -8,7 +8,6 @@ Provides:
 
 """
 
-import logging
 from enum import StrEnum
 from typing import NoReturn, override
 
@@ -88,7 +87,6 @@ class AdminCog(BaseCog):
 
     def __init__(self, bot: commands.Bot):
         super().__init__(bot)
-        self.logger = logging.getLogger("AdminCog")
 
     @override
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:
@@ -123,7 +121,7 @@ class AdminCog(BaseCog):
         if block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description=f"{user.mention} уже заблокирован.",
                 ephemeral=True,
             )
@@ -151,7 +149,7 @@ class AdminCog(BaseCog):
         if not block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.WARNING,
+                feedback_type=FeedbackType.WARNING,
                 description=f"{user.mention} не заблокирован.",
                 ephemeral=True,
             )
@@ -188,7 +186,7 @@ class AdminCog(BaseCog):
             )
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.INFO,
+                feedback_type=FeedbackType.INFO,
                 description=f"{user.mention} не имеет истории блокировок.",
                 ephemeral=ephemeral,
             )
@@ -316,7 +314,7 @@ class AdminCog(BaseCog):
             self.logger.info(f"No blocked users found in guild {guild.id}")
             await FeedbackUI.send(
                 interaction,
-                type=FeedbackType.INFO,
+                feedback_type=FeedbackType.INFO,
                 description="Нет заблокированных пользователей.",
                 ephemeral=ephemeral,
             )
