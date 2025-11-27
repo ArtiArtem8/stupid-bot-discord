@@ -21,7 +21,6 @@ from typing import (
     Final,
     Self,
     TypedDict,
-    cast,
     override,
 )
 
@@ -31,7 +30,7 @@ from discord.channel import VocalGuildChannel
 from discord.ext import commands, tasks
 
 import config
-from api.music import (
+from api import (
     LavalinkVoiceClient,
     MusicAPI,
     MusicResultStatus,
@@ -39,8 +38,8 @@ from api.music import (
     PlayList,
     RepeatMode,
     Track,
-    VoiceCheckData,
     VoiceCheckResult,
+    VoiceJoinResult,
 )
 from framework import BaseCog, FeedbackType, FeedbackUI, handle_errors
 
@@ -52,36 +51,28 @@ class EmptyTimerInfo(TypedDict):
     reason: str | None
 
 
+VOICE_MESSAGES = {
+    VoiceCheckResult.ALREADY_CONNECTED: "Уже подключён к {0}",
+    VoiceCheckResult.CHANNEL_EMPTY: "Голосовой канал {0} пуст!",
+    VoiceCheckResult.CONNECTION_FAILED: "Ошибка подключения к {0}",
+    VoiceCheckResult.INVALID_CHANNEL_TYPE: "Неверный тип голосового канала",
+    VoiceCheckResult.MOVED_CHANNELS: "Переместился {1} -> {0}",
+    VoiceCheckResult.SUCCESS: "Успешно подключился к {0}",
+    VoiceCheckResult.USER_NOT_IN_VOICE: "Вы должны быть в голосовом канале!",
+    VoiceCheckResult.USER_NOT_MEMBER: "Неверный тип пользователя",
+}
+
+
 def _format_voice_result_message(
     result: VoiceCheckResult,
-    data: VoiceCheckData,
+    to_channel: VocalGuildChannel,
+    from_channel: VocalGuildChannel | None,
 ) -> str:
     """Helper to format the message based on the result and data."""
-    try:
-        match result:
-            case (
-                VoiceCheckResult.ALREADY_CONNECTED
-                | VoiceCheckResult.CHANNEL_EMPTY
-                | VoiceCheckResult.CONNECTION_FAILED
-                | VoiceCheckResult.SUCCESS
-            ):
-                channel = cast(VocalGuildChannel, data)
-                return result.msg.format(channel.mention)
-            case VoiceCheckResult.MOVED_CHANNELS:
-                from_channel, to_channel = cast(
-                    tuple[VocalGuildChannel, VocalGuildChannel], data
-                )
-                return result.msg.format(from_channel.mention, to_channel.mention)
-            case _:
-                return result.msg
-    except (TypeError, AttributeError, ValueError, IndexError) as e:
-        LOGGER.error(
-            "Error formatting voice res message for %s: %s. Data: %r",
-            result.name,
-            e,
-            data,
-        )
-        return result.msg
+    msg = VOICE_MESSAGES.get(result, "Неизвестная ошибка")
+    return msg.format(
+        to_channel.mention, from_channel.mention if from_channel else None
+    )
 
 
 async def _send_error(interaction: Interaction, message: str) -> None:
@@ -240,6 +231,26 @@ class MusicCog(BaseCog):
     async def before_auto_leave_monitor(self) -> None:
         await self.bot.wait_until_ready()
 
+    async def _handle_failed_join(
+        self,
+        interaction: Interaction,
+        channel: VocalGuildChannel,
+        voice_join_result: VoiceJoinResult,
+    ) -> None:
+        """Handle failed join attempts."""
+        result, from_channel = voice_join_result
+        msg = _format_voice_result_message(result, channel, from_channel)
+        if result.status is not MusicResultStatus.SUCCESS:
+            if result.status is MusicResultStatus.ERROR:
+                await _send_error(interaction, msg)
+                return
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description=msg,
+                ephemeral=True,
+            )
+
     @app_commands.command(name="join", description="Подключиться к голосовому каналу")
     @app_commands.guild_only()
     @handle_errors()
@@ -265,24 +276,20 @@ class MusicCog(BaseCog):
             return
 
         channel = interaction.user.voice.channel
-        result, data = await self.music_api.join(guild, channel)
-        msg = _format_voice_result_message(result, data)
+        result, from_channel = await self.music_api.join(guild, channel)
+        is_error = result.status is MusicResultStatus.ERROR
+        msg = _format_voice_result_message(result, channel, from_channel)
 
         self.logger.log(
-            logging.INFO if result.is_success else logging.WARNING,
+            logging.ERROR if is_error else logging.INFO,
             "Join command: %s for user %s in %s",
             result.name,
             interaction.user,
             guild.id,
         )
 
-        if not result.is_success:
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.WARNING,
-                description=msg,
-                delete_after=120,
-            )
+        if result.status is not MusicResultStatus.SUCCESS:
+            await self._handle_failed_join(interaction, channel, (result, from_channel))
             return
 
         await FeedbackUI.send(
@@ -333,19 +340,16 @@ class MusicCog(BaseCog):
         result = await self.music_api.play(guild, channel, query, interaction.user.id)
 
         if not result.is_success:
-            feedback_type = (
-                FeedbackType.WARNING
-                if result.status == MusicResultStatus.FAILURE
-                else FeedbackType.ERROR
-            )
-            await FeedbackUI.send(
-                interaction, feedback_type=feedback_type, description=result.message
-            )
+            if isinstance(result.data, tuple):
+                await self._handle_failed_join(interaction, channel, result.data)
+            else:
+                await _send_error(interaction, result.message or "Неизвестная ошибка.")
             return
 
         data = result.data
         if not data:
             await _send_error(interaction, "Ошибка: данных нет.")
+            return
 
         duration_ms = await self.music_api.get_queue_duration(guild.id)
         delay = timedelta(milliseconds=duration_ms) + timedelta(seconds=60)

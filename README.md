@@ -1,40 +1,72 @@
 # StupidBot
 
-[![Python](https://img.shields.io/badge/python-%3E%3D3.12-blue)](https://www.python.org/)
-[![Discord.py](https://img.shields.io/badge/discord.py-%3E%3D2.5.2-blueviolet)](https://github.com/Rapptz/discord.py)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![ Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Python](https://img.shields.io/badge/python-3.12-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Discord.py](https://img.shields.io/badge/discord.py-2.5.2%2B-5865F2?style=flat-square&logo=discord&logoColor=white)](https://github.com/Rapptz/discord.py)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Dependency Manager](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/b094540d4d7b4bbea618b775ce0597e7)](https://app.codacy.com/gh/ArtiArtem8/stupid-bot-discord/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
-StupidBot is a feature-rich, open-source Discord bot built with [discord.py](https://github.com/Rapptz/discord.py) v2.x. It's a modern rewrite of an older bot (v1.7), emphasizing slash commands, cogs for modularity, and integrations like WolframAlpha and Lavalink. Designed for fun and utility in guilds of any size, it handles birthdays, music, math solving, reports, and per-guild bot block for users.
+**StupidBot** is a Discord bot built with Python 3.12 and [discord.py](https://github.com/Rapptz/discord.py). It has a component-based architecture (Cogs) to provide music playback, utilities, and server administration tools. All data is stored in the `data` directory in `.json` format *(might be changed in the future)*. Main language in representation layer is **Russian** (no translations yet).
+
+## Table of Contents
+
+- [Features](#features)
+  - [Extensibility](#extensibility)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+  - [Logging](#logging)
+  - [Resources](#resources)
+- [Development](#development)
+  - [Code Quality Tools](#code-quality-tools)
+  - [Linting and Formatting](#linting-and-formatting)
+  - [Type Checking](#type-checking)
+- [License](#license)
 
 ## Features
 
-- **Admin Tools** (`/block`, `/unblock`, `/blockinfo`, `/list-blocked`):  
-  Manage blocked users with history tracking, name changes, and stats. Admins only.
-  Blocked users are not allowed to use any of bots functionality.
+- **Audio Playback** ([Lavalink](https://github.com/lavalink-devs/Lavalink)):
+  - Commands: `/join`, `/play`, `/stop`, `/skip`, `/pause`, `/resume`, `/queue`, `/volume`, `/leave`, `/rotate-queue`
+  - Supports YouTube, SoundCloud, Yandex Music and Soundcloud. Requires manual plugin installation.
+  - *Note: Requires a running Lavalink server.*
 
-- **Birthday System** (`/setbirthday`, `/setup-birthdays`, `/remove-birthday`, `/list_birthdays`):  
-  Set personal birthdays (DD-MM-YYYY or YYYY-MM-DD). Auto-wishes in configured channel, assigns/removes roles.
+- **WolframAlpha Integration** ([WolframAlpha API](https://products.wolframalpha.com/api/)):
+  - Commands: `/solve`, `/plot`
+  - Solves math problems and generates plots.
+  - *Note: Requires a valid `WOLFRAM_APP_ID` in `.env`.*
 
-- **WolframAlpha Integration** (`/solve`, `/plot`, context menu "Solve with Wolfram"):  
-  Solve math problems or plot functions (e.g., `sin(x)`). Outputs embeds/images.
+- **Administration Tools**:
+  - Commands: `/block`, `/unblock`, `/blockinfo`, `/list-blocked`
+  - Manages blocked users with history tracking. Blocked users cannot interact with the bot.
 
-- **Music Player** ([Lavalink-powered](https://github.com/lavalink-devs/Lavalink): `/join`, `/play`, `/stop`, `/skip`, `/pause`, `/resume`, `/queue`, `/volume`, `/leave`, `/rotate-queue`):  
-  Play tracks/playlists from YouTube, SoundCloud, Yandex Music, VK. Queue management, volume (0-200%), voice channel handling.
+- **Birthday System**:
+  - Commands: `/setbirthday`, `/setup-birthdays`, `/remove-birthday`, `/list_birthdays`
+  - Tracks birthdays and sends automated wishes in a configured channel, also gives a special role.
+  - *Note: Requires `/setup-birthdays` to be run in the target channel.*
 
-- **Question Magic 8-Ball** (`/ask`):  
-  Ask questions for randomized, deterministic answers (e.g., "Will it rain?"). Caches per-user.
+- **Feedback System**:
+  - Commands: `/report`, `/set-report-channel`
+  - Allows users to submit bug reports.
+  - *Note: Requires `/set-report-channel` to configure the destination channel.*
 
-- **Message Reactions**:  
-  Fuzzy-matches greetings (e.g., "доброе утро") for morning/evening responses. Logs attachments.
+- **Utilities**:
+  - **Magic 8-Ball**: `/ask` - Deterministic answers cached per user.
+  - **Message Reactions**: Fuzzy matching for greetings (e.g., "доброе утро").
+  - **Russian Time Formatting**: Custom formatting for time durations.
 
-- **Report System** (`/report`, `/set-report-channel`):  
-  Submit bugs/issues (cooldown: 1/min). Sends to dev channel with embeds; devs only for setup.
+### Extensibility
 
-- **Utilities**:  
-  - Uptime tracking (persists across restarts).
-  - Russian time formatting (e.g., "1 час и 32 минуты").
-  - Data backup (JSON).
+The bot is designed to be easily extensible. New features can be added by creating new Cog classes in the `cogs/` directory. The bot automatically discovers and loads all valid cogs upon startup.
+
+## Prerequisites
+
+- **Python 3.12**: Strictly required.
+- **[uv](https://github.com/astral-sh/uv)**: Fast Python package installer and resolver.
+- **[Lavalink](https://github.com/lavalink-devs/Lavalink)**: Required for music functionality (Java 11+).
+- **Discord Bot Token**: From [Discord Developer Portal](https://discord.com/developers/applications).
+- **WolframAlpha App ID**: From [WolframAlpha Developer Portal](https://developer.wolframalpha.com/).
 
 ## Installation
 
@@ -42,69 +74,86 @@ StupidBot is a feature-rich, open-source Discord bot built with [discord.py](htt
 
    ```bash
    git clone https://github.com/ArtiArtem8/stupid-bot-discord.git
-   cd stupidbot
+   cd stupid-bot-discord
    ```
 
-2. **Set Up Lavalink:**
-   - Requires running Lavalink server (Java 11+ required)
-   - Official repo: [lavalink](https://github.com/lavalink-devs/Lavalink)
-   - Create `.env` file with Lavalink credentials:
+2. **Configure Environment:**
 
-     ```bash
-     LAVALINK_HOST=localhost
-     LAVALINK_PORT=2333
-     LAVALINK_PASSWORD=youshallnotpass
-     ```
+   Create a `.env` file in the root directory:
+
+   ```env
+   DISCORD_BOT_TOKEN=your_token_here
+   DISCORD_BOT_OWNER_ID=your_id_here
+   WOLFRAM_APP_ID=your_app_id_here
+
+   # Lavalink Configuration (default params)
+   LAVALINK_HOST=localhost
+   LAVALINK_PORT=2333
+   LAVALINK_PASSWORD=youshallnotpass
+   ```
 
 3. **Install Dependencies:**
 
-   ```bash
-   pip install -e .
-   ```
-
-4. **Set Up Environment Variables:**
-
-   Create a `.env` (if not already present) file or set environment variables in your system with at least:
+   Use `uv` for dependency management.
 
    ```bash
-   DISCORD_BOT_TOKEN=your_bot_token_here  # From Discord Developer Portal
-   WOLFRAM_APP_ID=your_wolfram_app_id  # From WolframAlpha (free tier OK)
-   DISCORD_BOT_OWNER_ID=your_user_id
-   LAVALINK_HOST=localhost  # Lavalink server
-   LAVALINK_PORT=2333 # default port
-   LAVALINK_PASSWORD=youshallnotpass # default password
+   uv sync
    ```
 
-   Discord token: [Discord Developer Portal](https://discord.com/developers/applications) > Your Bot > Bot > Token.
-   Intents: Enable Message Content, Members, Guilds in portal.
+4. **Setup Lavalink:**
+
+   Download and run `Lavalink.jar`. Ensure the password matches your `.env`.
+
+## Usage
+
+Start the bot using `uv`:
+
+```bash
+uv run main.py
+```
+
+> [!NOTE]
+> Ensure the Lavalink server is running before starting the bot to enable music functionality.
 
 ## Configuration
 
-All global configuration is stored in [`config.py`](config.py). You can update settings such as:
+Global configuration is managed in [`config.py`](config.py).
 
-- Bot prefix, token and fine tuning.
-- File paths for data storage for various cogs.
-- Logging configuration and formatting.
-- Birthday wishes, questions, and answer lists.
+- **Environment Variables**: API keys (`DISCORD_BOT_TOKEN`, `WOLFRAM_APP_ID`) and Lavalink credentials.
+- **Directories**: Paths for data (`DATA_DIR`), backups (`BACKUP_DIR`), and temp files (`TEMP_DIR`).
+- **Bot Settings**: Theme colors (`Color`), default prefix, and icons.
+- *Other cog specific settings*
 
-## Running the Bot
->
-> [!WARNING]  
-> Lavalink server must be running before running the bot. Do it by yourself
+### Logging
 
-After installing dependencies and setting up your environment variables, run:
+Logging configuration is defined in [`utils/logging_setup.py`](utils/logging_setup.py). It handles console output and log formatting.
+
+### Resources
+
+Static data such as localized strings, birthday wishes, and magic 8-ball answers are stored in [`resources.py`](resources.py).
+
+## Development
+
+We *(Me)* enforce strict code quality standards using **Ruff** and **Pylance**.
+
+### Code Quality Tools
+
+- **[Ruff](https://github.com/astral-sh/ruff)**: A fast Python linter and formatter. It enforces code style, sorts imports, and catches common errors and bugs.
+- **[Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance)**: A performant language server for Python in VS Code. It provides static type analysis, helping to catch type-related errors before runtime.
+
+### Linting and Formatting
 
 ```bash
-python main.py
+# Run linting
+uv run ruff check .
+
+# Run formatting
+uv run ruff format .
 ```
 
-or just run the script using the [`runstupidbot.bat`](runstupidbot.bat) batch file (windows only):
+### Type Checking
 
-The bot will start, load all cogs, and sync its slash commands.
-
-## Contributing
-
-Contributions are welcome! Feel free to open issues or submit pull requests to improve the project. Please ensure your code adheres to the current project structure and style.
+Ensure you have the **Pylance** extension installed in VS Code. The project is configured to work seamlessly with Pylance for static type analysis.
 
 ## License
 

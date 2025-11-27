@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from enum import Enum, StrEnum
+from enum import StrEnum, auto
 from typing import Any, Literal, TypedDict, cast, override
 
 import discord
@@ -17,9 +17,6 @@ from utils.json_utils import get_json, save_json
 
 LOGGER = logging.getLogger(__name__)
 
-type VoiceCheckData = (
-    VocalGuildChannel | tuple[VocalGuildChannel, VocalGuildChannel] | None
-)
 type Track = lavaplay.Track
 type PlayList = lavaplay.PlayList
 
@@ -76,27 +73,29 @@ class RepeatMode(StrEnum):
     QUEUE = "queue"
 
 
-class VoiceCheckResult(Enum):
-    ALREADY_CONNECTED = ("Уже подключён к {0}", True)
-    CHANNEL_EMPTY = ("Голосовой канал {0} пуст!", False)
-    CONNECTION_FAILED = ("Ошибка подключения к {0}", False)
-    INVALID_CHANNEL_TYPE = ("Неверный тип голосового канала", False)
-    MOVED_CHANNELS = ("Переместился {0} -> {1}", True)
-    SUCCESS = ("Успешно подключился к {0}", True)
-    USER_NOT_IN_VOICE = ("Вы должны быть в голосовом канале!", False)
-    USER_NOT_MEMBER = ("Неверный тип пользователя", False)
-
-    def __init__(self, msg: str, is_success: bool):
-        self._msg = msg
-        self._is_success = is_success
+class VoiceCheckResult(StrEnum):
+    ALREADY_CONNECTED = auto()
+    CHANNEL_EMPTY = auto()
+    CONNECTION_FAILED = auto()
+    INVALID_CHANNEL_TYPE = auto()
+    MOVED_CHANNELS = auto()
+    SUCCESS = auto()
+    USER_NOT_IN_VOICE = auto()
+    USER_NOT_MEMBER = auto()
 
     @property
-    def msg(self) -> str:
-        return self._msg
+    def status(self) -> MusicResultStatus:
+        match self:
+            case self.ALREADY_CONNECTED | self.MOVED_CHANNELS | self.SUCCESS:
+                return MusicResultStatus.SUCCESS
+            case self.CONNECTION_FAILED:
+                return MusicResultStatus.ERROR
+            case _:
+                return MusicResultStatus.FAILURE
 
-    @property
-    def is_success(self) -> bool:
-        return self._is_success
+
+type VoiceJoinResult = tuple[VoiceCheckResult, VocalGuildChannel | None]
+# named tuple - perhaps?
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +108,7 @@ class MusicResult[T]:
 
     @property
     def is_success(self) -> bool:
-        return self.status == MusicResultStatus.SUCCESS
+        return self.status is MusicResultStatus.SUCCESS
 
 
 class LavalinkVoiceClient(discord.VoiceClient):
@@ -353,34 +352,31 @@ class MusicAPI:
 
     async def join(
         self, guild: discord.Guild, channel: VocalGuildChannel
-    ) -> tuple[VoiceCheckResult, VoiceCheckData]:
+    ) -> VoiceJoinResult:
         """Join a voice channel."""
         voice_client = guild.voice_client
 
         if not voice_client:
             try:
                 await channel.connect(cls=LavalinkVoiceClient)
-                return VoiceCheckResult.SUCCESS, channel
+                return VoiceCheckResult.SUCCESS, None
             except Exception as e:
                 LOGGER.error(f"Failed to connect to voice: {e}")
-                return VoiceCheckResult.CONNECTION_FAILED, channel
+                return VoiceCheckResult.CONNECTION_FAILED, None
 
         if voice_client.channel != channel:
             try:
-                old_channel = voice_client.channel
                 if not isinstance(voice_client, discord.VoiceClient):
                     LOGGER.error("Voice client is not a VoiceClient")
-                    return VoiceCheckResult.CONNECTION_FAILED, channel
+                    return VoiceCheckResult.CONNECTION_FAILED, None
+                old_channel = voice_client.channel
                 await voice_client.move_to(channel)
-                return VoiceCheckResult.MOVED_CHANNELS, (
-                    cast(VocalGuildChannel, old_channel),
-                    channel,
-                )
+                return VoiceCheckResult.MOVED_CHANNELS, old_channel
             except Exception:
                 LOGGER.exception("Failed to move voice channel")
-                return VoiceCheckResult.CONNECTION_FAILED, channel
+                return VoiceCheckResult.CONNECTION_FAILED, None
 
-        return VoiceCheckResult.ALREADY_CONNECTED, channel
+        return VoiceCheckResult.ALREADY_CONNECTED, None
 
     async def leave(self, guild: discord.Guild) -> MusicResult[None]:
         """Leave voice channel."""
@@ -401,15 +397,18 @@ class MusicAPI:
         voice_channel: VocalGuildChannel,
         query: str,
         requester_id: int,
-    ) -> MusicResult[PlayResponseData]:
-        """Play a track or playlist."""
-        check_result, _ = await self.join(guild, voice_channel)
-        if not check_result.is_success and check_result not in (
-            VoiceCheckResult.SUCCESS,
-            VoiceCheckResult.ALREADY_CONNECTED,
-            VoiceCheckResult.MOVED_CHANNELS,
-        ):
-            return MusicResult(MusicResultStatus.FAILURE, check_result.msg)
+    ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
+        """Play a track or playlist.
+
+        Returns VoiceJoinResult only if failed to join
+        """
+        check_result, from_channel = await self.join(guild, voice_channel)
+        if check_result.status is not MusicResultStatus.SUCCESS:
+            return MusicResult(
+                check_result.status,
+                check_result.value,
+                data=(check_result, from_channel),
+            )
 
         try:
             player = await self.get_player(guild.id)
@@ -515,11 +514,11 @@ class MusicAPI:
             if mode is None:
                 mode = (
                     RepeatMode.OFF
-                    if current_mode == RepeatMode.QUEUE
+                    if current_mode is RepeatMode.QUEUE
                     else RepeatMode.QUEUE
                 )
 
-            if mode == RepeatMode.QUEUE:
+            if mode is RepeatMode.QUEUE:
                 player.queue_repeat(True)
             else:
                 player.queue_repeat(False)

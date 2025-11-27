@@ -15,7 +15,18 @@ from api.blocking import (
     NameHistoryEntry,
     block_manager,
 )
-from api.music import MusicAPI, MusicResult, MusicResultStatus, RepeatMode
+from api.music import (
+    LavalinkVoiceClient,
+    MusicAPI,
+    MusicResult,
+    MusicResultStatus,
+    Player,
+    PlayList,
+    RepeatMode,
+    Track,
+    VoiceCheckResult,
+    VoiceJoinResult,
+)
 from api.reporting import ReportModal
 
 __all__ = [
@@ -24,12 +35,18 @@ __all__ = [
     "BlockHistoryEntry",
     "BlockManager",
     "BlockedUser",
+    "LavalinkVoiceClient",
     "MusicAPI",
     "MusicResult",
     "MusicResultStatus",
     "NameHistoryEntry",
+    "PlayList",
+    "Player",
     "RepeatMode",
     "ReportModal",
+    "Track",
+    "VoiceCheckResult",
+    "VoiceJoinResult",
     "birthday_manager",
     "block_manager",
     "create_birthday_list_embed",
