@@ -21,28 +21,6 @@ dependencies = [
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-lint.select = [
-    "F",   # Pyflakes
-    "E",   # Pycodestyle errors
-    "W",   # Pycodestyle warnings
-    "I",   # Isort
-    "C",   # flake8-comprehensions
-    "B",   # flake8-bugbear
-    "D",   # pydocstyle
-    "S",   # flake8-bandit
-    "RUF", # Ruff-specific rules
-]
-lint.ignore = [
-    "D100",
-    "D101",
-    "D102",
-    "D104",
-    "D107",
-    "D205",
-    "D401",
-    "C901",
-    "RUF001",
-]
 exclude = [
     ".venv",
     "venv",
@@ -54,26 +32,41 @@ exclude = [
     "**/.pytest_cache",
 ]
 
-[tool.ruff.isort]
+
+[tool.ruff.lint]
+select = [
+    "F",   # Pyflakes
+    "E",   # Pycodestyle errors
+    "W",   # Pycodestyle warnings
+    "I",   # Isort
+    "C",   # flake8-comprehensions
+    "B",   # flake8-bugbear
+    "D",   # pydocstyle
+    "S",   # flake8-bandit
+    "RUF", # Ruff-specific rules
+]
+ignore = [
+    "D100",
+    "D101",
+    "D102",
+    "D104",
+    "D107",
+    "D205",
+    "D203",
+    "D213",
+    "D401",
+    "C901",
+    "RUF001",
+]
+
+[tool.ruff.lint.isort]
 known-first-party = ["cogs", "utils"]
 
-[tool.ruff.flake8-pytest-style]
+[tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "main.py" = ["E402"] # Module level import not at top of file
 
-
-[tool.mypy]
-exclude = "^(\\.venv|venv|temp|backups|data)(/|$)"
-python_version = "3.12"
-warn_unused_configs = true
-show_error_codes = true
-ignore_missing_imports = true
-strict_equality = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-disallow_any_generics = true
-
 [dependency-groups]
-dev = ["monkeytype>=23.3.0", "mypy>=1.15.0"]
+dev = ["monkeytype>=23.3.0", "ruff>=0.14.6"]

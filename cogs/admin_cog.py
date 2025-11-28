@@ -234,7 +234,7 @@ class AdminCog(BaseCog):
         if all_events:
             history_lines: list[str] = []
             for timestamp, action, entry in all_events:
-                icon = "🔒" if action == "BLOCK" else "🔓"
+                icon = ("🔓", "🔒")[action == "BLOCK"]
                 ts = int(timestamp.timestamp())
                 history_lines.append(
                     f"{icon} **{action}** <t:{ts}:R>\n"

@@ -139,9 +139,7 @@ if __name__ == "__main__":
     days, remainder = divmod(remainder, 86400)
     hours, remainder = divmod(remainder, 3600)
     minutes, seconds = divmod(remainder, 60)
-    print(
-        f"{years} years, {days} days, {hours} hours, {minutes} minutes, {seconds} seconds"
-    )
+    print(f"{years} years, {days} days, {hours} hours, {minutes} minutes, {seconds} s.")
     print(format_time_russian(32877919 - 31536000, None))
     print(format_time_russian(32877919 - 31536000, 1))
     print(format_time_russian(32877919 - 31536000, 2))

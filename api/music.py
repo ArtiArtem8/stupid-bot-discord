@@ -566,6 +566,7 @@ class MusicAPI:
         try:
             player = await self.get_player(guild_id)
             queue_duration = sum(t.length for t in player.queue)
+            LOGGER.debug(f"Queue duration for guild {guild_id}: {queue_duration} ms.")
             return queue_duration
         except Exception:
             return 0

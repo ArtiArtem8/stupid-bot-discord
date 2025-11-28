@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import time
+import typing
 
 from discord.ext import commands
 
@@ -35,7 +36,7 @@ class CogLoader:
             self._watcher_task = self.bot.loop.create_task(self._cog_watcher())
             LOGGER.info("Cog watcher enabled (argument provided).")
 
-    async def _cog_watcher(self):
+    async def _cog_watcher(self) -> typing.NoReturn:
         """Watch for file changes and reload cogs hot."""
         LOGGER.info("Watching for changes...")
         last_check = time.time()

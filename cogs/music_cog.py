@@ -84,10 +84,22 @@ async def _send_error(interaction: Interaction, message: str) -> None:
     )
 
 
+MAX_TIMEDELTA_DAYS = 999_999_999
+
+
 def _format_duration(ms: int | float) -> str:
     """Helper to convert milliseconds to timedelta stripping microseconds."""
-    total = timedelta(milliseconds=ms)
+    try:
+        total = timedelta(seconds=ms / 1_000.0)  # convert to seconds to avoid overflow
+    except OverflowError:
+        total = timedelta(days=min(MAX_TIMEDELTA_DAYS, ms // 86_400_000))
+    except ValueError:
+        return "NaN"
     total -= timedelta(microseconds=total.microseconds)
+    if total.days >= MAX_TIMEDELTA_DAYS - 1_000_000:
+        return "∞"
+    if total.days >= 14:
+        return str(total.days) + " days"
     return str(total)
 
 
@@ -352,8 +364,12 @@ class MusicCog(BaseCog):
             return
 
         duration_ms = await self.music_api.get_queue_duration(guild.id)
-        delay = timedelta(milliseconds=duration_ms) + timedelta(seconds=60)
-        delay_sec = delay.total_seconds()
+
+        try:
+            delay = timedelta(seconds=duration_ms / 1000 + 60)
+            delay_sec = delay.total_seconds()
+        except Exception:
+            delay_sec = float("inf")
 
         match data:
             case {"type": "playlist", "playlist": playlist}:
