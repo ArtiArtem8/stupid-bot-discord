@@ -14,7 +14,6 @@ Requirements:
 from __future__ import annotations
 
 from pathlib import Path
-from textwrap import shorten
 from typing import Literal, override
 
 import aiohttp
@@ -25,7 +24,7 @@ from discord.ext import commands
 import config
 from api.wolfram import WolframAPIError, WolframClient, WolframResult
 from framework import BaseCog, FeedbackType, FeedbackUI
-from utils import optimize_image, save_image
+from utils import optimize_image, save_image, truncate_text
 
 
 class WolframCog(BaseCog):
@@ -177,7 +176,7 @@ class WolframCog(BaseCog):
                 continue
 
             inline = not pod.is_primary
-            text = shorten(text, width=1000)
+            text = truncate_text(text, width=1000)
 
             embed.add_field(
                 name=f"{pod.title}:", value=f"```\n{text}\n```", inline=inline

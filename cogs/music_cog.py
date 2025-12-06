@@ -16,6 +16,7 @@ Requirements:
 import logging
 import time
 from datetime import timedelta
+from math import ceil
 from typing import (
     Any,
     Final,
@@ -34,6 +35,7 @@ from api import (
     LavalinkVoiceClient,
     MusicAPI,
     MusicResultStatus,
+    MusicSession,
     Player,
     PlayList,
     RepeatMode,
@@ -42,8 +44,12 @@ from api import (
     VoiceJoinResult,
 )
 from framework import BaseCog, FeedbackType, FeedbackUI, handle_errors
+from utils import truncate_text
 
 LOGGER = logging.getLogger("MusicCog")
+PAGE_SIZE = 20
+MAX_SELECT_OPTIONS = 25
+EMBED_SAFE_DESC_LIMIT = 3800
 
 
 class EmptyTimerInfo(TypedDict):
@@ -103,8 +109,163 @@ def _format_duration(ms: int | float) -> str:
     return str(total)
 
 
+class SessionSummaryView(discord.ui.View):
+    """Simplified view for session summaries with ephemeral full details."""
+
+    def __init__(self, *, session: MusicSession, timeout: float = 300.0) -> None:
+        super().__init__(timeout=timeout)
+        self.session = session
+        self.message: discord.Message | None = None
+
+    @discord.ui.button(label="История", style=discord.ButtonStyle.primary)
+    async def view_full_button(
+        self, interaction: Interaction, button: discord.ui.Button[Self]
+    ) -> None:
+        """Send full session details as ephemeral paginated message."""
+        total_tracks = len(self.session.tracks)
+
+        if total_tracks == 0:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.INFO,
+                description="В этой сессии нет треков.",
+                ephemeral=True,
+            )
+            return
+        paginator = SessionDetailsPaginator(
+            user_id=interaction.user.id, session=self.session
+        )
+        await paginator.send(interaction)
+
+    @override
+    async def on_timeout(self) -> None:
+        if self.message:
+            try:
+                await self.message.edit(view=None)
+            except (discord.NotFound, discord.HTTPException):
+                LOGGER.debug("Failed to edit message view: %s", self.message.id)
+                pass
+
+
+class SessionDetailsPaginator(discord.ui.View):
+    """Ephemeral paginator for full session details."""
+
+    def __init__(
+        self, user_id: int, session: MusicSession, *, timeout: float = 300.0
+    ) -> None:
+        super().__init__(timeout=timeout)
+        self.user_id: Final = user_id
+        self.session: Final = session
+        self.page_size: Final = 15
+        self.page = 0
+
+        # Setup navigation buttons
+        self.prev_btn = discord.ui.Button[Self](
+            label="◀", style=discord.ButtonStyle.secondary, disabled=True
+        )
+        self.next_btn = discord.ui.Button[Self](
+            label="▶", style=discord.ButtonStyle.secondary
+        )
+        self.close_btn = discord.ui.Button[Self](
+            label="✕", style=discord.ButtonStyle.danger, row=0
+        )
+
+        self.prev_btn.callback = self.prev_page
+        self.next_btn.callback = self.next_page
+        self.close_btn.callback = self.close
+
+        self.add_item(self.prev_btn)
+        self.add_item(self.next_btn)
+        self.add_item(self.close_btn)
+        self._update_buttons()
+
+    @override
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        """Ensure only the command user can interact."""
+        if interaction.user.id != self.user_id:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Попрошу не трогать, вы не диджей.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    def _total_pages(self) -> int:
+        """Calculate total number of pages."""
+        return max(1, ceil(len(self.session.tracks) / self.page_size))
+
+    def _update_buttons(self) -> None:
+        """Update button states based on current page."""
+        total_pages = self._total_pages()
+        self.prev_btn.disabled = self.page == 0
+        self.next_btn.disabled = self.page >= total_pages - 1
+
+    def _make_embed(self) -> discord.Embed:
+        """Generate embed for current page."""
+        start = self.page * self.page_size
+        end = min(len(self.session.tracks), start + self.page_size)
+
+        embed = discord.Embed(
+            title="Полная история",
+            color=config.Color.INFO,
+            timestamp=self.session.start_time,
+        )
+
+        lines: list[str] = []
+        for idx, track in enumerate(self.session.tracks[start:end], start=start + 1):
+            status = "~~" if track.skipped else ""
+            track_str = f"[{truncate_text(track.title, width=35, placeholder='...')}]({track.uri})"
+            requester_str = f"(<@{track.requester_id}>)" if track.requester_id else ""
+            lines.append(f"{idx}. {status}{track_str}{status} {requester_str}")
+
+        embed.description = "\n".join(lines) if lines else "Пусто"
+
+        embed.set_footer(
+            text=f"Стр. {self.page + 1}/{self._total_pages()} • "
+            f"{len(self.session.tracks)} всего"
+        )
+
+        return embed
+
+    async def send(self, interaction: Interaction) -> None:
+        """Send initial paginated message."""
+        await interaction.response.send_message(
+            embed=self._make_embed(), view=self, ephemeral=True
+        )
+
+    async def _update_view(self, interaction: Interaction) -> None:
+        """Update the view with current page."""
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self._make_embed(), view=self)
+
+    async def prev_page(self, interaction: Interaction) -> None:
+        """Navigate to previous page."""
+        self.page = max(0, self.page - 1)
+        await self._update_view(interaction)
+
+    async def next_page(self, interaction: Interaction) -> None:
+        """Navigate to next page."""
+        self.page = min(self.page + 1, self._total_pages() - 1)
+        await self._update_view(interaction)
+
+    async def close(self, interaction: Interaction) -> None:
+        """Close the paginator."""
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+        await interaction.response.edit_message(view=self)
+        self.stop()
+
+    @override
+    async def on_timeout(self) -> None:
+        """Handle view timeout."""
+        self.stop()
+
+
 class MusicCog(BaseCog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
         self.music_api = MusicAPI(bot)
         self.empty_channel_timers: dict[int, EmptyTimerInfo] = {}
@@ -148,8 +309,9 @@ class MusicCog(BaseCog):
             guild.voice_client, LavalinkVoiceClient
         ):
             return
-
+        self.logger.debug("Voice state update: %s -> %s", before, after)
         bot_channel = guild.voice_client.channel
+        self.logger.debug("Bot channel: %s", bot_channel)
         affected_channels: set[VocalGuildChannel] = set()
         if before.channel == bot_channel:
             affected_channels.add(bot_channel)
@@ -234,7 +396,7 @@ class MusicCog(BaseCog):
                 guild_id,
                 reason,
             )
-            await guild.voice_client.disconnect(force=False)
+            await self.music_api.leave(guild)
             self.empty_channel_timers.pop(guild_id, None)
         except Exception as e:
             self.logger.error("Failed to auto-leave guild %s: %s", guild_id, e)
@@ -261,6 +423,57 @@ class MusicCog(BaseCog):
                 feedback_type=FeedbackType.WARNING,
                 description=msg,
                 ephemeral=True,
+            )
+
+    @commands.Cog.listener()
+    async def on_music_session_end(
+        self, guild_id: int, session: MusicSession, channel_id: int
+    ) -> None:
+        """Handle music session end event with concise summary."""
+        channel = self.bot.get_channel(channel_id)
+        if not channel or not isinstance(channel, discord.abc.Messageable):
+            return
+
+        if not session.tracks:
+            return
+
+        total_tracks = len(session.tracks)
+        played_tracks = sum(1 for t in session.tracks if not t.skipped)
+        skipped_tracks = total_tracks - played_tracks
+
+        embed = discord.Embed(
+            title="Сессия закончена",
+            color=config.Color.INFO,
+            timestamp=session.start_time,
+        )
+
+        embed.add_field(
+            name="В общем:",
+            value=(
+                f"**Всего:** {total_tracks} шт." + f"(скипов: {skipped_tracks})\n"
+                if skipped_tracks
+                else f"**Диджеев:** {len(session.participants)} чел."
+            ),
+            inline=True,
+        )
+
+        preview_tracks = session.tracks[-15:]
+        track_preview: list[str] = []
+        for t in preview_tracks:
+            status = "~~" if t.skipped else ""
+            track_str = f"[{truncate_text(t.title, 35, placeholder='...')}]({t.uri})"
+            track_preview.append(f"{status}{track_str}{status}\n")
+        total_preview = "".join(reversed(track_preview))
+        if len(total_preview) >= 1024:
+            total_preview = total_preview[:1022].rsplit("\n", 1)[0] + "\n"
+        embed.add_field(name="Недавние треки:", value=total_preview, inline=False)
+        view = SessionSummaryView(session=session, timeout=300.0)
+        try:
+            msg = await channel.send(embed=embed, view=view)
+            view.message = msg
+        except Exception:
+            self.logger.exception(
+                "Failed to send session summary to channel %s", channel_id
             )
 
     @app_commands.command(name="join", description="Подключиться к голосовому каналу")
@@ -349,7 +562,13 @@ class MusicCog(BaseCog):
             return
         await interaction.response.defer(ephemeral=ephemeral)
         channel = interaction.user.voice.channel
-        result = await self.music_api.play(guild, channel, query, interaction.user.id)
+        result = await self.music_api.play(
+            guild,
+            channel,
+            query,
+            interaction.user.id,
+            text_channel_id=interaction.channel_id,
+        )
 
         if not result.is_success:
             if isinstance(result.data, tuple):
@@ -448,7 +667,11 @@ class MusicCog(BaseCog):
     async def stop(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
 
-        result = await self.music_api.stop_player(guild.id)
+        result = await self.music_api.stop_player(
+            guild.id,
+            requester_id=interaction.user.id,
+            text_channel_id=interaction.channel_id,
+        )
         if not result.is_success:
             return await _send_error(interaction, result.message)
 
@@ -466,7 +689,11 @@ class MusicCog(BaseCog):
     async def skip(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
 
-        result = await self.music_api.skip_track(guild.id)
+        result = await self.music_api.skip_track(
+            guild.id,
+            requester_id=interaction.user.id,
+            text_channel_id=interaction.channel_id,
+        )
 
         if not result.is_success or not result.data:
             return await _send_error(interaction, result.message)
@@ -650,7 +877,11 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def rotate(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
-        result = await self.music_api.rotate_current_track(guild.id)
+        result = await self.music_api.rotate_current_track(
+            guild.id,
+            requester_id=interaction.user.id,
+            text_channel_id=interaction.channel_id,
+        )
 
         if result.status is MusicResultStatus.ERROR:
             return await _send_error(interaction, result.message)
@@ -675,7 +906,11 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def shuffle(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
-        result = await self.music_api.shuffle_queue(guild.id)
+        result = await self.music_api.shuffle_queue(
+            guild.id,
+            requester_id=interaction.user.id,
+            text_channel_id=interaction.channel_id,
+        )
         if not result.is_success:
             return await _send_error(interaction, result.message)
 
@@ -696,7 +931,12 @@ class MusicCog(BaseCog):
         mode: RepeatMode | None = None,
     ) -> None:
         guild = await self._require_guild(interaction)
-        result = await self.music_api.set_repeat(guild.id, mode)
+        result = await self.music_api.set_repeat(
+            guild.id,
+            mode,
+            requester_id=interaction.user.id,
+            text_channel_id=interaction.channel_id,
+        )
 
         data = result.data
         if not result.is_success or not data:

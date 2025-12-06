@@ -6,7 +6,6 @@ Listens to messages and responds to greetings.
 import logging
 import secrets
 from collections.abc import Callable, Iterable, Sequence, Sized
-from textwrap import shorten
 from typing import Any
 
 from discord import Message
@@ -16,6 +15,7 @@ from rapidfuzz.process import extract
 import config
 from api import block_manager
 from resources import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
+from utils import truncate_text
 
 
 class OnMessageCog(commands.Cog):
@@ -49,7 +49,10 @@ class OnMessageCog(commands.Cog):
                 f"{type(before).__name__} -> {type(after).__name__}"
             )
         elif isinstance(before, str):
-            return f"{attr}: '{shorten(before, 100)}' -> '{shorten(after, 100)}'"
+            return (
+                f"{attr}: '{truncate_text(before, 100, mode='middle')}'"
+                f" -> '{truncate_text(after, 100, mode='middle')}'"
+            )
         elif isinstance(before, Sized):
             return f"{attr}: {len(before)} -> {len(after)}"
         elif isinstance(before, bool):
@@ -186,9 +189,7 @@ class OnMessageCog(commands.Cog):
         self._log_section(
             "Attachments",
             message.attachments,
-            summary_factory=lambda x: [
-                (a.filename, a.content_type, a.size, a.url) for a in x
-            ],
+            summary_factory=lambda x: [(a.content_type, a.url) for a in x],
             debug_factory=lambda x: {f"att_{i}": a.to_dict() for i, a in enumerate(x)},
         )
 

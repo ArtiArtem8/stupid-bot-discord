@@ -1,5 +1,7 @@
+import math
 from functools import lru_cache
 from string import ascii_lowercase, digits
+from typing import Literal
 
 
 def random_answer(text: str, answers: list[str]) -> str:
@@ -99,3 +101,44 @@ def format_list(strlist: list[str], cut: int, theme: bool = True) -> list[str]:
         else:
             strlist[v] += "," + char
     return strlist
+
+
+def truncate_text(
+    text: str,
+    width: int,
+    *,
+    placeholder: str = "...",
+    mode: Literal["end", "start", "middle"] = "end",
+) -> str:
+    """Truncates a string to a maximum width using a configurable strategy.
+
+    Args:
+        text: The source string to be shortened.
+        width: The maximum allowed length of the result.
+        placeholder: The string to append/insert where text is cut. Defaults to "...".
+        mode: The truncation strategy.
+            - "end": Truncates the tail (e.g., "filename...").
+            - "middle": Truncates the center (e.g., "file...ame").
+            - "start": Truncates the head (e.g., "...name").
+            Defaults to "end".
+
+    Returns:
+        The truncated string fitting strictly within the specified width.
+
+    """
+    if len(text) <= width:
+        return text
+
+    if width < len(placeholder):
+        return placeholder[:width]
+    content_len = width - len(placeholder)
+
+    if mode == "middle":
+        left_len = math.ceil(content_len / 2)
+        right_len = math.floor(content_len / 2)
+        right_part = text[-right_len:] if right_len > 0 else ""
+        return f"{text[:left_len]}{placeholder}{right_part}"
+
+    elif mode == "start":
+        return f"{placeholder}{text[-content_len:]}"
+    return f"{text[:content_len]}{placeholder}"

@@ -1,7 +1,6 @@
 import logging
 import uuid
 from datetime import datetime
-from textwrap import shorten
 from typing import Self, TypedDict
 
 import discord
@@ -9,6 +8,7 @@ from discord import DMChannel, Interaction
 from discord.ui import Modal, TextInput
 
 import config
+from utils import truncate_text
 from utils.json_utils import get_json, save_json
 
 LOGGER = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ def _create_report_embed(report: ReportDataDict) -> discord.Embed:
     )
     embed.add_field(
         name="Описание",
-        value=shorten(report["reason"], width=config.MAX_EMBED_FIELD_LENGTH),
+        value=truncate_text(report["reason"], width=config.MAX_EMBED_FIELD_LENGTH),
         inline=False,
     )
     embed.add_field(
