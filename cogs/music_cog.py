@@ -13,37 +13,48 @@ Requirements:
     - Environment variables: LAVALINK_HOST, LAVALINK_PORT, LAVALINK_PASSWORD
 """
 
+import asyncio
 import logging
 import time
 from datetime import timedelta
 from math import ceil
 from typing import (
-    Any,
-    Final,
+    Awaitable,
+    Callable,
     Self,
     TypedDict,
     override,
 )
 
 import discord
+import mafic
 from discord import Interaction, Member, app_commands
+from discord.abc import Connectable
 from discord.channel import VocalGuildChannel
 from discord.ext import commands, tasks
 
 import config
 from api import (
-    LavalinkVoiceClient,
     MusicAPI,
     MusicResultStatus,
     MusicSession,
-    Player,
-    PlayList,
+    Playlist,
+    QueueSnapshot,
     RepeatMode,
     Track,
     VoiceCheckResult,
     VoiceJoinResult,
 )
-from framework import BaseCog, FeedbackType, FeedbackUI, handle_errors
+from api.music import MusicPlayer
+from framework import (
+    BaseCog,
+    BasePaginator,
+    FeedbackType,
+    FeedbackUI,
+    PaginationData,
+    handle_errors,
+)
+from framework.pagination import PRIMARY
 from utils import truncate_text
 
 LOGGER = logging.getLogger("MusicCog")
@@ -109,171 +120,29 @@ def _format_duration(ms: int | float) -> str:
     return str(total)
 
 
-class SessionSummaryView(discord.ui.View):
-    """Simplified view for session summaries with ephemeral full details."""
-
-    def __init__(self, *, session: MusicSession, timeout: float = 300.0) -> None:
-        super().__init__(timeout=timeout)
-        self.session = session
-        self.message: discord.Message | None = None
-
-    @discord.ui.button(label="История", style=discord.ButtonStyle.primary)
-    async def view_full_button(
-        self, interaction: Interaction, button: discord.ui.Button[Self]
-    ) -> None:
-        """Send full session details as ephemeral paginated message."""
-        total_tracks = len(self.session.tracks)
-
-        if total_tracks == 0:
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.INFO,
-                description="В этой сессии нет треков.",
-                ephemeral=True,
-            )
-            return
-        paginator = SessionDetailsPaginator(
-            user_id=interaction.user.id, session=self.session
-        )
-        await paginator.send(interaction)
-
-    @override
-    async def on_timeout(self) -> None:
-        if self.message:
-            try:
-                await self.message.edit(view=None)
-            except (discord.NotFound, discord.HTTPException):
-                LOGGER.debug("Failed to edit message view: %s", self.message.id)
-                pass
-
-
-class SessionDetailsPaginator(discord.ui.View):
-    """Ephemeral paginator for full session details."""
-
-    def __init__(
-        self, user_id: int, session: MusicSession, *, timeout: float = 300.0
-    ) -> None:
-        super().__init__(timeout=timeout)
-        self.user_id: Final = user_id
-        self.session: Final = session
-        self.page_size: Final = 15
-        self.page = 0
-
-        # Setup navigation buttons
-        self.prev_btn = discord.ui.Button[Self](
-            label="◀", style=discord.ButtonStyle.secondary, disabled=True
-        )
-        self.next_btn = discord.ui.Button[Self](
-            label="▶", style=discord.ButtonStyle.secondary
-        )
-        self.close_btn = discord.ui.Button[Self](
-            label="✕", style=discord.ButtonStyle.danger, row=0
-        )
-
-        self.prev_btn.callback = self.prev_page
-        self.next_btn.callback = self.next_page
-        self.close_btn.callback = self.close
-
-        self.add_item(self.prev_btn)
-        self.add_item(self.next_btn)
-        self.add_item(self.close_btn)
-        self._update_buttons()
-
-    @override
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        """Ensure only the command user can interact."""
-        if interaction.user.id != self.user_id:
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.WARNING,
-                description="Попрошу не трогать, вы не диджей.",
-                ephemeral=True,
-            )
-            return False
-        return True
-
-    def _total_pages(self) -> int:
-        """Calculate total number of pages."""
-        return max(1, ceil(len(self.session.tracks) / self.page_size))
-
-    def _update_buttons(self) -> None:
-        """Update button states based on current page."""
-        total_pages = self._total_pages()
-        self.prev_btn.disabled = self.page == 0
-        self.next_btn.disabled = self.page >= total_pages - 1
-
-    def _make_embed(self) -> discord.Embed:
-        """Generate embed for current page."""
-        start = self.page * self.page_size
-        end = min(len(self.session.tracks), start + self.page_size)
-
-        embed = discord.Embed(
-            title="Полная история",
-            color=config.Color.INFO,
-            timestamp=self.session.start_time,
-        )
-
-        lines: list[str] = []
-        for idx, track in enumerate(self.session.tracks[start:end], start=start + 1):
-            status = "~~" if track.skipped else ""
-            track_str = f"[{truncate_text(track.title, width=35, placeholder='...')}]({track.uri})"
-            requester_str = f"(<@{track.requester_id}>)" if track.requester_id else ""
-            lines.append(f"{idx}. {status}{track_str}{status} {requester_str}")
-
-        embed.description = "\n".join(lines) if lines else "Пусто"
-
-        embed.set_footer(
-            text=f"Стр. {self.page + 1}/{self._total_pages()} • "
-            f"{len(self.session.tracks)} всего"
-        )
-
-        return embed
-
-    async def send(self, interaction: Interaction) -> None:
-        """Send initial paginated message."""
-        await interaction.response.send_message(
-            embed=self._make_embed(), view=self, ephemeral=True
-        )
-
-    async def _update_view(self, interaction: Interaction) -> None:
-        """Update the view with current page."""
-        self._update_buttons()
-        await interaction.response.edit_message(embed=self._make_embed(), view=self)
-
-    async def prev_page(self, interaction: Interaction) -> None:
-        """Navigate to previous page."""
-        self.page = max(0, self.page - 1)
-        await self._update_view(interaction)
-
-    async def next_page(self, interaction: Interaction) -> None:
-        """Navigate to next page."""
-        self.page = min(self.page + 1, self._total_pages() - 1)
-        await self._update_view(interaction)
-
-    async def close(self, interaction: Interaction) -> None:
-        """Close the paginator."""
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                item.disabled = True
-        await interaction.response.edit_message(view=self)
-        self.stop()
-
-    @override
-    async def on_timeout(self) -> None:
-        """Handle view timeout."""
-        self.stop()
-
-
 class MusicCog(BaseCog):
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
         self.music_api = MusicAPI(bot)
         self.empty_channel_timers: dict[int, EmptyTimerInfo] = {}
+        self.track_controller_manager = TrackControllerManager(bot)
 
-    @property
-    def node(self) -> Any | None:
-        """Expose node for LavalinkVoiceClient (accessed via getattr)."""
-        return self.music_api.node
+    # @property
+    # def node(self) -> Any | None:
+    #     """Expose node for LavalinkVoiceClient (accessed via getattr)."""
+    #     return self.music_api.node
+
+    async def interaction_check(self, interaction: Interaction[discord.Client]) -> bool:
+        if interaction.guild_id != 748606123065475134:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                title="Приносим извинения. Команда находится в разработке",
+                description="Мы переходим на на другой клиент и перерабатываем всю функциональность.",
+                ephemeral=True,
+            )
+            return False
+        return await super().interaction_check(interaction)
 
     @override
     async def cog_unload(self) -> None:
@@ -305,14 +174,12 @@ class MusicCog(BaseCog):
             return
 
         guild = member.guild
-        if not guild.voice_client or not isinstance(
-            guild.voice_client, LavalinkVoiceClient
-        ):
+        if not guild.voice_client or not isinstance(guild.voice_client, MusicPlayer):
             return
         self.logger.debug("Voice state update: %s -> %s", before, after)
-        bot_channel = guild.voice_client.channel
+        bot_channel: Connectable = guild.voice_client.channel
         self.logger.debug("Bot channel: %s", bot_channel)
-        affected_channels: set[VocalGuildChannel] = set()
+        affected_channels: set[Connectable] = set()
         if before.channel == bot_channel:
             affected_channels.add(bot_channel)
         if after.channel == bot_channel:
@@ -324,6 +191,9 @@ class MusicCog(BaseCog):
             affected_channels.add(bot_channel)
 
         for channel in affected_channels:
+            if not isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+                LOGGER.debug("Channel is not a voice channel: %s", channel)
+                continue
             await self._update_channel_timer(guild.id, channel)
 
     async def _update_channel_timer(
@@ -404,6 +274,27 @@ class MusicCog(BaseCog):
     @auto_leave_monitor.before_loop
     async def before_auto_leave_monitor(self) -> None:
         await self.bot.wait_until_ready()
+
+    @commands.Cog.listener()
+    async def on_track_start(self, event: mafic.TrackStartEvent[MusicPlayer]) -> None:
+        player = event.player
+        requester = player.get_requester(event.track)
+        session = self.music_api.sessions[player.guild.id]
+        main_channel_id = (
+            max(session.channel_usage, key=lambda k: session.channel_usage[k])
+            if session.channel_usage
+            else None
+        )
+        if not main_channel_id:
+            return
+        channel = self.bot.get_channel(main_channel_id)
+        if channel:
+            await self.track_controller_manager.create_for_user(
+                guild_id=player.guild.id,
+                user_id=requester or 0,
+                channel=channel,
+                player=player,
+            )
 
     async def _handle_failed_join(
         self,
@@ -618,7 +509,7 @@ class MusicCog(BaseCog):
                 description=f"[{track.title}]({track.uri})",
                 color=config.Color.INFO,
             )
-            if url := track.artworkUrl:
+            if url := track.artwork_url:
                 embed.set_thumbnail(url=url)
 
             embed.add_field(
@@ -636,7 +527,7 @@ class MusicCog(BaseCog):
             await _send_error(interaction, "Ошибка при отображении трека.")
 
     async def _handle_playlist_result(
-        self, interaction: Interaction, playlist: PlayList, delete_after: float
+        self, interaction: Interaction, playlist: Playlist, delete_after: float
     ) -> None:
         try:
             embed = discord.Embed(
@@ -644,7 +535,7 @@ class MusicCog(BaseCog):
                 description=(f"Треков: {len(playlist.tracks)} шт."),
                 color=config.Color.INFO,
             )
-            if playlist.tracks and (url := playlist.tracks[0].artworkUrl):
+            if playlist.tracks and (url := playlist.tracks[0].artwork_url):
                 embed.set_thumbnail(url=url)
             embed.add_field(
                 name="Общая длительность",
@@ -712,8 +603,8 @@ class MusicCog(BaseCog):
                 value=f"[{next_track.title}]({next_track.uri})",
                 inline=False,
             )
-            if next_track.artworkUrl:
-                embed.set_thumbnail(url=next_track.artworkUrl)
+            if url := next_track.artwork_url:
+                embed.set_thumbnail(url=url)
 
         if skipped_track:
             embed.add_field(
@@ -777,28 +668,25 @@ class MusicCog(BaseCog):
     ) -> None:
         guild = await self._require_guild(interaction)
 
-        result = await self.music_api.get_queue(guild.id)
-        if result.status is MusicResultStatus.ERROR:
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.ERROR,
-                description=result.message,
-                ephemeral=True,
-            )
-            return
+        async def fetch_queue() -> QueueSnapshot | None:
+            res = await self.music_api.get_queue(guild.id)
+            return res.data if res.is_success else None
 
-        if not result.data:
+        initial_data = await fetch_queue()
+        if not initial_data:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                title="Очередь пуста",
-                description="В очереди нет треков.",
+                description="Очередь пуста.",
                 ephemeral=True,
             )
             return
 
-        paginator = QueuePaginator(interaction.user.id, result.data)
-        await paginator.send(interaction, ephemeral=ephemeral)
+        adapter = QueuePaginationAdapter(initial_data)
+        view = QueuePaginator(
+            adapter=adapter, refresh_callback=fetch_queue, user_id=interaction.user.id
+        )
+        await view.send(interaction, ephemeral=ephemeral)
         self.logger.debug("Sent queue paginator for guild %s", guild.id)
 
     @app_commands.command(
@@ -961,155 +849,387 @@ class MusicCog(BaseCog):
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)
 
 
-class QueuePaginator(discord.ui.View):
-    def __init__(
-        self,
-        author_id: int,
-        player: Player,
-        *,
-        timeout: float = 600,
-    ):
-        super().__init__(timeout=timeout)
-        self.author_id: Final = author_id
-        self.player: Final = player
-        self.page_size: Final = config.PAGE_SIZE
-        self.page = 0
+type QueueRefreshCallback = Callable[[], Awaitable[QueueSnapshot | None]]
 
-        sec_button = discord.ButtonStyle.secondary
-        prim_button = discord.ButtonStyle.primary
-        dan_button = discord.ButtonStyle.danger
 
-        self.first_btn = discord.ui.Button[Self](label="⏮", style=sec_button, row=0)
-        self.prev_btn = discord.ui.Button[Self](label="◀", style=sec_button, row=0)
-        self.next_btn = discord.ui.Button[Self](label="▶", style=sec_button, row=0)
-        self.last_btn = discord.ui.Button[Self](label="⏭", style=sec_button, row=0)
-        self.update_btn = discord.ui.Button[Self](label="⭮", style=prim_button, row=1)
-        self.close_btn = discord.ui.Button[Self](label="✕", style=dan_button, row=1)
+class QueuePaginationAdapter(PaginationData):
+    """Adapts music queue data for the paginator."""
 
-        self.first_btn.callback = self.first
-        self.prev_btn.callback = self.prev
-        self.next_btn.callback = self.next
-        self.last_btn.callback = self.last
-        self.update_btn.callback = self.update
-        self.close_btn.callback = self.close
+    def __init__(self, snapshot: QueueSnapshot, page_size: int = 20) -> None:
+        self.snapshot = snapshot
+        self.page_size = page_size
 
-        self.add_item(self.first_btn)
-        self.add_item(self.prev_btn)
-        self.add_item(self.next_btn)
-        self.add_item(self.last_btn)
-        self.add_item(self.update_btn)
-        self.add_item(self.close_btn)
-        self._update_buttons()
+    def update_snapshot(self, snapshot: QueueSnapshot) -> None:
+        """Update internal data with fresh snapshot."""
+        self.snapshot = snapshot
 
     @override
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message(
-                "Попрошу не трогать", ephemeral=True
-            )
-            return False
-        return True
+    async def get_page_count(self) -> int:
+        upcoming_count = len(self.snapshot.queue)
+        return max((upcoming_count + self.page_size - 1) // self.page_size, 1)
 
-    def _pages_count(self) -> int:
-        total = max(len(self.player.queue) - 1, 0)
-        return max((total + self.page_size - 1) // self.page_size, 1)
-
-    def _update_buttons(self) -> None:
-        pages = self._pages_count()
-        self.first_btn.disabled = self.page == 0 or pages == 1
-        self.prev_btn.disabled = self.page == 0 or pages == 1
-        self.next_btn.disabled = self.page >= pages - 1 or pages == 1
-        self.last_btn.disabled = self.page >= pages - 1 or pages == 1
-
-    def _make_embed(self) -> discord.Embed:
-        q = self.player.queue
+    @override
+    def make_embed(self, page: int) -> discord.Embed:
         embed = discord.Embed(title="Очередь воспроизведения", color=config.Color.INFO)
 
-        if q:
-            now = q[0]
+        current = self.snapshot.current
+        if current:
             embed.add_field(
                 name="Сейчас играет",
-                value=f"[{now.title}]({now.uri})",
+                value=f"[{current.title}]({current.uri})",
+                inline=False,
+            )
+            if current.artwork_url:
+                embed.set_thumbnail(url=current.artwork_url)
+        else:
+            embed.description = "Ничего не играет."
+
+        queue_list = list(self.snapshot.queue)
+        start = page * self.page_size
+        end = min(len(queue_list), start + self.page_size)
+
+        if queue_list and start < len(queue_list):
+            lines = [
+                f"{idx + 1}. [{track.title}]({track.uri})"
+                for idx, track in enumerate(queue_list[start:end], start=start)
+            ]
+            embed.add_field(
+                name="Далее",
+                value="\n".join(lines),
                 inline=False,
             )
 
-        start = 1 + self.page * self.page_size
-        end = min(len(q), start + self.page_size)
+        repeat_str = (
+            "выкл."
+            if self.snapshot.repeat_mode.value == "off"
+            else self.snapshot.repeat_mode.value
+        )
+        total_pages = max((len(queue_list) + self.page_size - 1) // self.page_size, 1)
 
-        if start < len(q):
-            lines = [
-                f"{idx}. [{track.title}]({track.uri})"
-                for idx, track in enumerate(q[start:end], start=start)
-            ]
-            if lines:
-                embed.add_field(
-                    name="Далее",
-                    value="\n".join(lines),
-                    inline=False,
-                )
-
-        # Using getattr to access private/protected member safely in python
-        mode = getattr(self.player, "_queue_repeat", False)
         embed.set_footer(
             text=(
-                f"Стр. {self.page + 1}/{self._pages_count()}"
-                f" • Всего: {len(q)}"
-                f" • Повтор: {'вкл.' if mode else 'выкл.'}"
+                f"Стр. {page + 1}/{total_pages} • "
+                f"В очереди: {len(queue_list)} • "
+                f"Повтор: {repeat_str}"
             )
         )
         return embed
 
-    async def send(self, interaction: Interaction, *, ephemeral: bool) -> None:
-        await interaction.response.send_message(
-            embed=self._make_embed(),
-            view=self,
-            ephemeral=ephemeral,
-            silent=True,
+    @override
+    async def on_unauthorized(self, interaction: Interaction) -> None:
+        await FeedbackUI.send(
+            interaction,
+            feedback_type=FeedbackType.WARNING,
+            description="Попрошу не трогать, вы не диджей.",
+            ephemeral=True,
         )
 
-    async def _update_view(self, interaction: Interaction) -> None:
-        self._update_buttons()
-        await interaction.response.edit_message(embed=self._make_embed(), view=self)
 
-    async def first(self, interaction: Interaction) -> None:
-        self.page = 0
-        await self._update_view(interaction)
+class QueuePaginator(BasePaginator):
+    """Specialized paginator with a Refresh button."""
 
-    async def prev(self, interaction: Interaction) -> None:
-        self.page = max(self.page - 1, 0)
-        await self._update_view(interaction)
+    def __init__(
+        self,
+        adapter: QueuePaginationAdapter,
+        refresh_callback: QueueRefreshCallback,
+        user_id: int,
+    ) -> None:
+        # Initialize base buttons (Row 0)
+        super().__init__(adapter, user_id, show_first_last=True)
 
-    async def next(self, interaction: Interaction) -> None:
-        self.page = min(self.page + 1, self._pages_count() - 1)
-        await self._update_view(interaction)
+        self.adapter = adapter
+        self.refresh_callback = refresh_callback
 
-    async def last(self, interaction: Interaction) -> None:
-        self.page = self._pages_count() - 1
-        await self._update_view(interaction)
+        # Add Refresh button on Row 1
+        self.refresh_btn = discord.ui.Button[Self](label="⭮", style=PRIMARY, row=1)
+        self.refresh_btn.callback = self.refresh
+        self.add_item(self.refresh_btn)
 
-    async def update(self, interaction: Interaction) -> None:
-        self.page = 0
-        await self._update_view(interaction)
+    async def refresh(self, interaction: Interaction) -> None:
+        """Fetch fresh data via callback and update view."""
+        new_data = await self.refresh_callback()
 
-    async def close(self, interaction: Interaction) -> None:
-        self.first_btn.disabled = True
-        self.prev_btn.disabled = True
-        self.next_btn.disabled = True
-        self.last_btn.disabled = True
-        self.update_btn.disabled = True
-        self.close_btn.disabled = True
-        await interaction.response.edit_message(view=None)
-        self.stop()
+        if new_data:
+            self.adapter.update_snapshot(new_data)
+            self.page = 0
+            await self._update_view(interaction)
+        else:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Не удалось обновить очередь",
+                ephemeral=True,
+            )
+            self.stop()
+
+
+class SessionSummaryView(discord.ui.View):
+    """Simplified view for session summaries with ephemeral full details."""
+
+    def __init__(self, *, session: MusicSession, timeout: float = 300.0) -> None:
+        super().__init__(timeout=timeout)
+        self.session = session
+        self.message: discord.Message | None = None
+
+    @discord.ui.button(label="История", style=discord.ButtonStyle.primary)
+    async def view_full_button(
+        self, interaction: Interaction, button: discord.ui.Button[Self]
+    ) -> None:
+        """Send full session details as ephemeral paginated message."""
+        total_tracks = len(self.session.tracks)
+
+        if total_tracks == 0:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.INFO,
+                description="В этой сессии нет треков.",
+                ephemeral=True,
+            )
+            return
+        adapter = SessionPaginationAdapter(self.session)
+        paginator = BasePaginator(
+            data=adapter, user_id=interaction.user.id, show_first_last=False
+        )
+        await paginator.send(interaction, ephemeral=True, silent=True)
 
     @override
     async def on_timeout(self) -> None:
-        self.first_btn.disabled = True
-        self.prev_btn.disabled = True
-        self.next_btn.disabled = True
-        self.last_btn.disabled = True
-        self.update_btn.disabled = True
-        self.close_btn.disabled = True
-        self.stop()
+        if self.message:
+            try:
+                await self.message.edit(view=None)
+            except (discord.NotFound, discord.HTTPException):
+                LOGGER.debug("Failed to edit message view: %s", self.message.id)
+                pass
+
+
+class SessionPaginationAdapter(PaginationData):
+    """Adapts music session history for the paginator."""
+
+    def __init__(self, session: MusicSession, page_size: int = 15) -> None:
+        self.session = session
+        self.page_size = page_size
+
+    @override
+    async def get_page_count(self) -> int:
+        return max(1, ceil(len(self.session.tracks) / self.page_size))
+
+    @override
+    def make_embed(self, page: int) -> discord.Embed:
+        start = page * self.page_size
+        end = min(len(self.session.tracks), start + self.page_size)
+
+        embed = discord.Embed(
+            title="Полная история",
+            color=config.Color.INFO,
+            timestamp=self.session.start_time,
+        )
+
+        lines: list[str] = []
+        for idx, track in enumerate(self.session.tracks[start:end], start=start + 1):
+            status = "~~" if track.skipped else ""
+            track_str = f"[{truncate_text(track.title, width=35, placeholder='...')}]({track.uri})"
+            requester_str = f"(<@{track.requester_id}>)" if track.requester_id else ""
+            lines.append(f"{idx}. {status}{track_str}{status} {requester_str}")
+
+        embed.description = "\n".join(lines) if lines else "Пусто"
+
+        total_pages = max(1, ceil(len(self.session.tracks) / self.page_size))
+        embed.set_footer(
+            text=f"Стр. {page + 1}/{total_pages} • {len(self.session.tracks)} всего"
+        )
+        return embed
+
+    @override
+    async def on_unauthorized(self, interaction: Interaction) -> None:
+        await FeedbackUI.send(
+            interaction,
+            feedback_type=FeedbackType.WARNING,
+            description="Попрошу не трогать, вы не диджей.",
+            ephemeral=True,
+        )
+
+
+class TrackControllerManager:
+    """Manages per-user track controllers per guild.
+    Each controller exists only while its track is the current track.
+    """
+
+    def __init__(self, bot):
+        self.bot = bot
+        # guild_id -> { user_id -> Controller }
+        self.controllers: dict[int, dict[int, TrackControllerView]] = {}
+
+    async def destroy_for_guild(self, guild_id: int):
+        """Destroy all controllers for a guild (on stop/leave)."""
+        if guild_id not in self.controllers:
+            return
+        for view in self.controllers[guild_id].values():
+            await view.destroy()
+        self.controllers[guild_id].clear()
+
+    async def create_for_user(
+        self,
+        *,
+        guild_id: int,
+        user_id: int,
+        channel: discord.abc.Messageable,
+        player: MusicPlayer,
+    ):
+        """Create a controller for requester when track starts playing."""
+        # Clean old controllers of this user if exist
+        self.controllers.setdefault(guild_id, {})
+        if user_id in self.controllers[guild_id]:
+            await self.controllers[guild_id][user_id].destroy()
+
+        view = TrackControllerView(
+            user_id=user_id,
+            player=player,
+            manager=self,
+            guild_id=guild_id,
+        )
+        msg = await channel.send(embed=view.make_embed(), view=view, silent=True)
+        view.message = msg
+        self.controllers[guild_id][user_id] = view
+        view.start_updater()
+
+    async def destroy_specific(self, guild_id: int, user_id: int):
+        if guild_id not in self.controllers:
+            return
+        view = self.controllers[guild_id].pop(user_id, None)
+        if view:
+            await view.destroy()
+
+    async def destroy_all_for_track_end(self, guild_id: int):
+        await self.destroy_for_guild(guild_id)
+
+
+class TrackControllerView(discord.ui.View):
+    def __init__(
+        self,
+        *,
+        user_id: int,
+        player: MusicPlayer,
+        manager: TrackControllerManager,
+        guild_id: int,
+    ):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.player = player
+        self.manager = manager
+        self.guild_id = guild_id
+        self.message: discord.Message | None = None
+        self._task: asyncio.Task | None = None
+
+    # --- Utility ---
+    def make_embed(self) -> discord.Embed:
+        track = self.player.current
+        if not track:
+            return discord.Embed(title="Ничего не играет", color=0x5865F2)
+        pos = self.player.position or 0
+        length = track.length
+        bar = self._make_bar(pos, length)
+        e = discord.Embed(
+            title=f"🎵 {track.title}",
+            description=f"[{bar}]`{pos // 1000}s / {length // 1000}s`",
+            color=0x5865F2,
+        )
+        if track.artwork_url:
+            e.set_thumbnail(url=track.artwork_url)
+        return e
+
+    def _make_bar(self, pos: int, length: int, width: int = 19) -> str:
+        ratio = pos / length if length > 0 else 0
+        filled = int(ratio * width)
+        return "▬" * filled + "🔘" + "▬" * (width - filled)
+
+    async def destroy(self):
+        if self._task:
+            self._task.cancel()
+        if self.message:
+            try:
+                await self.message.delete()
+            except discord.HTTPException:
+                pass
+
+    def start_updater(self):
+        self._task = asyncio.create_task(self._loop())
+
+    async def _loop(self):
+        try:
+            while True:
+                await asyncio.sleep(5)
+                if not self.player.current:
+                    await self.manager.destroy_specific(self.guild_id, self.user_id)
+                    return
+                await self._safe_update()
+        except asyncio.CancelledError:
+            return
+
+    async def _safe_update(self):
+        if self.message:
+            try:
+                await self.message.edit(embed=self.make_embed(), view=self)
+            except discord.HTTPException:
+                pass
+
+    # --- Permission check ---
+    async def _check_owner(self, interaction: Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Этот контроллер не ваш.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    # --- Buttons ---
+    @discord.ui.button(label="⏮ 0s", style=discord.ButtonStyle.primary)
+    async def restart(self, interaction: Interaction, _: discord.ui.Button[Self]):
+        if not await self._check_owner(interaction):
+            return
+        await self.player.seek(0)
+        await interaction.response.defer()
+        await self._safe_update()
+
+    @discord.ui.button(label="-10s", style=discord.ButtonStyle.secondary)
+    async def back10(self, interaction: Interaction, _: discord.ui.Button[Self]):
+        if not await self._check_owner(interaction):
+            return
+        new = max((self.player.position or 0) - 10000, 0)
+        await self.player.seek(new)
+        await interaction.response.defer()
+        await self._safe_update()
+
+    @discord.ui.button(label="⏯", style=discord.ButtonStyle.primary)
+    async def pause_resume(self, interaction: Interaction, _: discord.ui.Button[Self]):
+        if not await self._check_owner(interaction):
+            return
+        if self.player.paused:
+            await self.player.resume()
+        else:
+            await self.player.pause()
+        await interaction.response.defer()
+        await self._safe_update()
+
+    @discord.ui.button(label="+10s", style=discord.ButtonStyle.secondary)
+    async def forward10(self, interaction: Interaction, _: discord.ui.Button[Self]):
+        if not await self._check_owner(interaction):
+            return
+        new = min((self.player.position or 0) + 10000, self.player.current.length)
+        await self.player.seek(new)
+        await interaction.response.defer()
+        await self._safe_update()
+
+    @discord.ui.button(label="⏭", style=discord.ButtonStyle.danger)
+    async def skip(self, interaction: Interaction, _: discord.ui.Button[Self]):
+        if not await self._check_owner(interaction):
+            return
+        await self.player.skip()
+        await interaction.response.defer()
+
+        await self.manager.destroy_all_for_track_end(self.guild_id)
 
 
 async def setup(bot: commands.Bot):

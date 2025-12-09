@@ -16,7 +16,7 @@ from discord.ext import commands
 
 import config
 from api import ReportModal
-from framework import BaseCog, FeedbackType, FeedbackUI
+from framework import BaseCog, FeedbackType, FeedbackUI, is_owner_app
 from utils import get_json, save_json
 
 
@@ -60,7 +60,7 @@ class ReportCog(BaseCog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
     @app_commands.describe(channel="Report channel")
-    @commands.is_owner()
+    @is_owner_app()
     async def set_report_channel(
         self, interaction: Interaction, channel: discord.TextChannel
     ):

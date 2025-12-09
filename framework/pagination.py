@@ -13,7 +13,7 @@ DANGER = discord.ButtonStyle.danger
 class PaginationData(Protocol):
     """Protocol defining what data a paginator needs."""
 
-    def get_page_count(self) -> int:
+    async def get_page_count(self) -> int:
         """Return the total number of pages."""
         ...
 
@@ -40,7 +40,10 @@ class ManagedView(discord.ui.View):
             if isinstance(item, Button):
                 item.disabled = True
         if self._message:
-            await self._message.edit(view=None)
+            try:
+                await self._message.edit(view=None)
+            except (discord.NotFound, discord.HTTPException):
+                pass
         self.stop()
 
     async def send(
@@ -48,11 +51,12 @@ class ManagedView(discord.ui.View):
         interaction: Interaction,
         *,
         ephemeral: bool = False,
+        silent: bool = False,
         **kwargs: Any,
     ) -> None:
         """Send the view and track the message."""
         response = await interaction.response.send_message(
-            view=self, ephemeral=ephemeral, **kwargs
+            view=self, ephemeral=ephemeral, silent=silent, **kwargs
         )
         if isinstance(response.resource, discord.InteractionMessage):
             self._message = response.resource
@@ -75,8 +79,6 @@ class BasePaginator(ManagedView):
         self.page = 0
         self._user_id = user_id
 
-        self._message: discord.InteractionMessage | None = None
-
         self._setup_buttons(show_first_last, show_close)
         self._update_buttons()
 
@@ -84,20 +86,20 @@ class BasePaginator(ManagedView):
         """Setup navigation buttons based on configuration."""
         if show_first_last:
             self.first_btn = Button[Self](label="⏮", style=SECONDARY, row=0)
-            self.last_btn = Button[Self](label="⏭", style=SECONDARY, row=0)
             self.first_btn.callback = self.first_page
-            self.last_btn.callback = self.last_page
             self.add_item(self.first_btn)
 
-        self.prev_btn = Button[Self](label="◀", style=SECONDARY, row=0)
         self.next_btn = Button[Self](label="▶", style=SECONDARY, row=0)
-        self.prev_btn.callback = self.prev_page
+        self.prev_btn = Button[Self](label="◀", style=SECONDARY, row=0)
         self.next_btn.callback = self.next_page
+        self.prev_btn.callback = self.prev_page
 
         self.add_item(self.prev_btn)
         self.add_item(self.next_btn)
 
         if show_first_last:
+            self.last_btn = Button[Self](label="⏭", style=SECONDARY, row=0)
+            self.last_btn.callback = self.last_page
             self.add_item(self.last_btn)
 
         if show_close:
@@ -113,23 +115,19 @@ class BasePaginator(ManagedView):
             return False
         return True
 
-    def get_total_pages(self) -> int:
+    async def get_total_pages(self) -> int:
         """Get total number of pages."""
-        return self.data.get_page_count()
+        return await self.data.get_page_count()
 
     def make_embed(self) -> discord.Embed:
         """Create embed for current page."""
         return self.data.make_embed(self.page)
 
-    def _is_navigable(self) -> bool:
-        """Check if there is no pages to navigate through."""
-        return self.get_total_pages() <= 1
-
-    def _update_buttons(self) -> None:
+    def _update_buttons(self, total_pages: int = 1) -> None:
         """Update button states based on current page."""
         is_first_page = self.page == 0
-        is_last_page = self.page >= self.get_total_pages() - 1
-        disable_nav = self._is_navigable()
+        is_last_page = self.page >= total_pages - 1
+        disable_nav = total_pages <= 1
 
         if hasattr(self, "first_btn"):
             self.first_btn.disabled = is_first_page or disable_nav
@@ -141,6 +139,9 @@ class BasePaginator(ManagedView):
 
     async def _update_view(self, interaction: Interaction) -> None:
         """Update the view with current page."""
+        total_pages = await self.get_total_pages()
+        if total_pages > 0:
+            self.page = min(self.page, total_pages - 1)
         self._update_buttons()
         try:
             await interaction.response.edit_message(embed=self.make_embed(), view=self)
@@ -156,11 +157,11 @@ class BasePaginator(ManagedView):
         await self._update_view(interaction)
 
     async def next_page(self, interaction: Interaction) -> None:
-        self.page = min(self.page + 1, self.get_total_pages() - 1)
+        self.page = min(self.page + 1, await self.get_total_pages() - 1)
         await self._update_view(interaction)
 
     async def last_page(self, interaction: Interaction) -> None:
-        self.page = self.get_total_pages() - 1
+        self.page = await self.get_total_pages() - 1
         await self._update_view(interaction)
 
     async def close(self, interaction: Interaction) -> None:
@@ -173,9 +174,18 @@ class BasePaginator(ManagedView):
 
     @override
     async def send(
-        self, interaction: Interaction, *, ephemeral: bool = False, **kwargs: Any
+        self,
+        interaction: Interaction,
+        *,
+        ephemeral: bool = False,
+        silent: bool = False,
+        **kwargs: Any,
     ) -> None:
         """Send the paginated message."""
         await super().send(
-            interaction, embed=self.make_embed(), ephemeral=ephemeral, **kwargs
+            interaction,
+            embed=self.make_embed(),
+            ephemeral=ephemeral,
+            silent=silent,
+            **kwargs,
         )

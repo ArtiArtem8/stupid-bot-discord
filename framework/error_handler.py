@@ -35,6 +35,8 @@ class CustomErrorCommandTree(app_commands.CommandTree):
                 silent=True,
             )
             return
+        elif isinstance(error, app_commands.CheckFailure):
+            return
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.ERROR,

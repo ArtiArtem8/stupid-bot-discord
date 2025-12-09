@@ -360,18 +360,6 @@ wheels = [
 ]
 
 [[package]]
-name = "lavaplay-py"
-version = "1.0.17a0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiohttp" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/37/5f/500702c3d3ede7b381b67c7faea2fe21e05a2bf220605d9d6196a02d6d33/lavaplay_py-1.0.17a0.tar.gz", hash = "sha256:d53f49052c553b28ae198b4f1cacf693b28080d5d0f8386780a78b4186e75916", size = 17734, upload-time = "2025-06-13T20:20:54.614Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/a7/783b42bf9ba4c6abdc40331aa780aa895038173242de14088f330274273b/lavaplay_py-1.0.17a0-py3-none-any.whl", hash = "sha256:cb25d747cd5386d2149c56a0034d7b3fe82dd8cb0a5f2657dd22289bcb055b2e", size = 20455, upload-time = "2025-06-13T20:20:53.771Z" },
-]
-
-[[package]]
 name = "libcst"
 version = "1.8.4"
 source = { registry = "https://pypi.org/simple" }
@@ -421,6 +409,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/79/14/02ced7d56d63e3bd55d5396179f91c5d00f0b1207ab560d7874160fd0134/libcst-1.8.4-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:929798ca38ea76a5056f725221d66c6923e749caa9fa7f4cc86e914a3698493d", size = 2390115, upload-time = "2025-09-09T19:42:19.312Z" },
     { url = "https://files.pythonhosted.org/packages/d1/5d/feb4c2ed2f339972f08355777a6aeedc6f5be66a59860734c2306c3111b6/libcst-1.8.4-cp314-cp314t-win_amd64.whl", hash = "sha256:e6f309c0f42e323c527d8c9007f583fd1668e45884208184a70644d916f27829", size = 2177267, upload-time = "2025-09-09T19:42:20.911Z" },
     { url = "https://files.pythonhosted.org/packages/b2/60/a5c1cf99e2bffe9e48375f858c1f06927b69f29821b639bb4e71788c3014/libcst-1.8.4-cp314-cp314t-win_arm64.whl", hash = "sha256:4b1cbadd988fee59b25ea154708cfed99cfaf45f9685707be422ad736371a9fe", size = 2063063, upload-time = "2025-09-09T19:42:22.652Z" },
+]
+
+[[package]]
+name = "mafic"
+version = "2.10.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "yarl" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1f/5e/4dae6572b1f865f07051e3281819e7e5737e904c1caae01e7713f3a01368/mafic-2.10.1.tar.gz", hash = "sha256:47a8ebe9011931a756b9d47a5fd1cd50760a6c8f07bef70c683b3419bd54474b", size = 41340, upload-time = "2025-05-04T14:23:16.306Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bb/59/53a9178fdf1530e8b27958a4e335cc2714e57e28e91ae7043c9730c46b87/mafic-2.10.1-py3-none-any.whl", hash = "sha256:fba783e00d2388025e3e62ada845848bc24c89a4404b3fee73f2640647c7d2f0", size = 49678, upload-time = "2025-05-04T14:23:15.156Z" },
 ]
 
 [[package]]
@@ -806,7 +807,7 @@ dependencies = [
     { name = "aiofiles" },
     { name = "defusedxml" },
     { name = "discord-py", extra = ["voice"] },
-    { name = "lavaplay-py" },
+    { name = "mafic" },
     { name = "pillow" },
     { name = "pynacl" },
     { name = "python-dotenv" },
@@ -825,7 +826,7 @@ requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "discord-py", extras = ["voice"], specifier = ">=2.5.2" },
-    { name = "lavaplay-py", specifier = ">=1.0.15a0" },
+    { name = "mafic", specifier = ">=2.10.1" },
     { name = "pillow", specifier = "==11.2.1" },
     { name = "pynacl", specifier = ">=1.5.0" },
     { name = "python-dotenv", specifier = ">=1.1.0" },

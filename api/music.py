@@ -1,50 +1,47 @@
-"""Music API for Lavalink integration."""
+"""Music API for Mafic (Lavalink) integration."""
+
+from __future__ import annotations
 
 import asyncio
 import logging
+import random
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum, auto
-from typing import Any, Literal, TypedDict, cast, override
+from typing import TYPE_CHECKING, Literal, TypedDict, cast
 
 import discord
-import lavaplay  # type: ignore
+import mafic
 from discord.channel import VocalGuildChannel
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord.utils import utcnow
-from lavaplay.events import *  # type: ignore
-
-# from lavaplay.events import (  # type: ignore
-#     TrackEndEvent,
-#     TrackStartEvent,
-#     WebSocketClosedEvent,
-# )
-from lavaplay.player import Player  # type: ignore
 
 import config
 from utils.json_utils import get_json, save_json
 
+if TYPE_CHECKING:
+    from discord.abc import Connectable
+
 LOGGER = logging.getLogger(__name__)
 
-type Track = lavaplay.Track
-type PlayList = lavaplay.PlayList
+
+type Track = mafic.Track
+type Playlist = mafic.Playlist
+type SearchResult = list[Track] | Playlist | None
 
 
 class MusicError(Exception):
     """Base exception for Music API errors."""
 
-    pass
-
 
 class NodeNotConnectedError(MusicError):
     """Raised when Lavalink node is not connected."""
 
-    pass
-
 
 class PlaylistResponseData(TypedDict):
     type: Literal["playlist"]
-    playlist: PlayList
+    playlist: Playlist
 
 
 class TrackResponseData(TypedDict):
@@ -79,6 +76,7 @@ class MusicResultStatus(StrEnum):
 
 class RepeatMode(StrEnum):
     OFF = "off"
+    TRACK = "track"
     QUEUE = "queue"
 
 
@@ -95,16 +93,19 @@ class VoiceCheckResult(StrEnum):
     @property
     def status(self) -> MusicResultStatus:
         match self:
-            case self.ALREADY_CONNECTED | self.MOVED_CHANNELS | self.SUCCESS:
+            case (
+                VoiceCheckResult.ALREADY_CONNECTED
+                | VoiceCheckResult.MOVED_CHANNELS
+                | VoiceCheckResult.SUCCESS
+            ):
                 return MusicResultStatus.SUCCESS
-            case self.CONNECTION_FAILED:
+            case VoiceCheckResult.CONNECTION_FAILED:
                 return MusicResultStatus.ERROR
             case _:
                 return MusicResultStatus.FAILURE
 
 
 type VoiceJoinResult = tuple[VoiceCheckResult, VocalGuildChannel | None]
-# named tuple - perhaps?
 
 
 @dataclass(slots=True)
@@ -112,7 +113,7 @@ class TrackInfo:
     title: str
     uri: str
     skipped: bool = False
-    requester_id: str | None = None
+    requester_id: int | None = None
 
 
 @dataclass
@@ -141,629 +142,412 @@ class MusicResult[T]:
         return self.status is MusicResultStatus.SUCCESS
 
 
-class LavalinkVoiceClient(discord.VoiceClient):
-    """A voice client for Lavalink."""
+class QueueManager:
+    """Manages the queue of tracks."""
 
-    def __init__(self, client: discord.Client, channel: discord.abc.Connectable):
-        LOGGER.debug("[INIT] Creating voice client...")
-        super().__init__(client, channel)
-        try:
-            cog = self.client.get_cog("MusicCog")  # type: ignore TODO: Review
-            if not cog:
-                raise RuntimeError("MusicCog not loaded!")
-            self.lavalink = getattr(cast(Any, cog), "node", None)
-            self.lavalink = cast(lavaplay.Node, self.lavalink)
-            LOGGER.debug("[INIT] Lavalink assigned; Lavalink: %s", self.lavalink)
-        except Exception as e:
-            LOGGER.exception("Unexpected error in voice client init: %s", e)
-            self.lavalink = None
+    def __init__(self):
+        self._queue: deque[Track] = deque()
 
-    def _get_player(self, lavalink: lavaplay.Node) -> None | Player:
-        return cast(
-            None | Player,
-            lavalink.get_player(self.channel.guild.id),
+    def __len__(self) -> int:
+        """Return the number of tracks in the queue.
+        equivalent to len(self.tracks).
+        """
+        return len(self._queue)
+
+    @property
+    def tracks(self) -> deque[Track]:
+        return self._queue
+
+    @property
+    def next(self) -> Track | None:
+        if not self._queue:
+            return None
+        return self._queue[0]
+
+    def add(self, tracks: list[Track] | Track, at_front: bool = False) -> None:
+        """Add track(s) to the queue."""
+        if isinstance(tracks, list):
+            if at_front:
+                self._queue.extendleft(reversed(tracks))
+            else:
+                self._queue.extend(tracks)
+        else:
+            if at_front:
+                self._queue.appendleft(tracks)
+            else:
+                self._queue.append(tracks)
+
+    def pop_next(self) -> Track | None:
+        """Pop the next track from the queue."""
+        if not self._queue:
+            return None
+        return self._queue.popleft()
+
+    def shuffle(self) -> None:
+        """Shuffle the queue."""
+        if len(self._queue) < 2:
+            return
+        temp = list(self._queue)
+        random.shuffle(temp)
+        self._queue = deque(temp)
+
+    def clear(self) -> None:
+        """Clear the queue."""
+        self._queue.clear()
+
+    @property
+    def is_empty(self) -> bool:
+        return len(self._queue) == 0
+
+    @property
+    def duration_ms(self) -> int:
+        """Total duration of tracks in queue."""
+        return sum(t.length for t in self._queue)
+
+
+class RepeatManager:
+    """Manages repeat mode."""
+
+    def __init__(self):
+        self._mode: RepeatMode = RepeatMode.OFF
+
+    @property
+    def mode(self) -> RepeatMode:
+        return self._mode
+
+    @mode.setter
+    def mode(self, value: RepeatMode) -> None:
+        self._mode = value
+
+    def toggle(self) -> RepeatMode:
+        """Toggle between OFF and QUEUE."""
+        self._mode = (
+            RepeatMode.QUEUE if self._mode is RepeatMode.OFF else RepeatMode.OFF
         )
+        return self._mode
 
-    @override
-    async def on_voice_server_update(self, data: dict[str, str]) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        LOGGER.debug("[VOICE SERVER UPDATE] Received data: %s", data)
-        if self.lavalink is None:
-            LOGGER.critical("Lavalink is not initialized!")
-            return
 
-        player = self._get_player(self.lavalink)
-        if player is None:
-            LOGGER.critical("Player is not initialized!")
-            return
+class MusicPlayer(mafic.Player[discord.Client]):
+    """Custom Mafic Player with Queue, Repeat, and Requester tracking.
 
-        endpoint = data.get("endpoint", "missing")
-        token = data.get("token", "missing")
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                await player.raw_voice_server_update(endpoint, token)
-                LOGGER.debug(
-                    "[VOICE SERVER UPDATE] Successfully updated (attempt %d/%d)",
-                    attempt + 1,
-                    max_retries,
-                )
-                break
-            except Exception as e:
-                LOGGER.warning(
-                    "[VOICE SERVER UPDATE] Failed attempt %d/%d: %s",
-                    attempt + 1,
-                    max_retries,
-                    e,
-                )
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(0.5 * (attempt + 1))
-                else:
-                    LOGGER.error(
-                        "[VOICE SERVER UPDATE] All retry attempts failed for endpoint %s",
-                        endpoint,
-                    )
+    Mafic's Player is a voice protocol that handles the Lavalink<->Discord
+    voice handshake automatically. We extend it to add queue management.
+    """
 
-    @override
-    async def on_voice_state_update(self, data: dict[str, Any]) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        LOGGER.debug("[VOICE STATE UPDATE] Received data: %s", data)
-        if self.lavalink is None:
-            return
+    def __init__(self, client: discord.Client, channel: Connectable) -> None:
+        super().__init__(client, channel)
 
-        player = self._get_player(self.lavalink)
-        channel_id = cast(str | int | None, data.get("channel_id"))
+        self.queue = QueueManager()
+        self.repeat = RepeatManager()
 
-        if player is None:
-            LOGGER.critical("Player is not initialized!")
-            return
+        # self.text_channel_id: int | None = None
+        self._requester_map: dict[str, int] = {}
 
-        if channel_id is None:
-            LOGGER.debug("[VOICE STATE UPDATE] Disconnected from VC: channel_id = None")
-            try:
-                await player.raw_voice_state_update(
-                    int(data["user_id"]),
-                    data["session_id"],
-                    None,
-                )
-                await self.disconnect()
-            except Exception as e:
-                LOGGER.error("[VOICE STATE UPDATE] Failed to notify disconnect: %s", e)
-            return
-
-        channel_id = int(channel_id)
-        if self.channel and channel_id != self.channel.id:
-            channel = self.client.get_channel(channel_id)
-            if isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
-                LOGGER.debug(
-                    "[VOICE STATE UPDATE] Bot moved from %s to %s",
-                    self.channel.name,
-                    channel.name,
-                )
-                self.channel = channel
-        try:
-            await player.raw_voice_state_update(
-                int(data["user_id"]),
-                data["session_id"],
-                channel_id,
-            )
-        except Exception as e:
-            LOGGER.error("[VOICE STATE UPDATE] Failed to update player: %s", e)
-
-    @override
     async def move_to(
-        self, channel: discord.abc.Snowflake | None, *, timeout: float | None = 30
+        self, channel: discord.abc.Snowflake | None, *, timeout: float = 30.0
     ) -> None:
+        """Move to a different voice channel."""
         if channel is None:
-            await self.disconnect(force=True)
+            await self.disconnect()
             return
+
+        if not isinstance(self.channel, (discord.VoiceChannel, discord.StageChannel)):
+            msg = "Voice channel must be a VoiceChannel or StageChannel."
+            raise TypeError(msg)
 
         if self.channel and channel.id == self.channel.id:
             return
-        await self.channel.guild.change_voice_state(channel=channel)
 
-    @override
-    async def connect(
-        self,
-        *,
-        timeout: float,
-        reconnect: bool,
-        self_deaf: bool = False,
-        self_mute: bool = False,
-    ) -> None:
-        LOGGER.debug("[CONNECT] Attempting to connect to %s...", self.channel)
-        await self.channel.guild.change_voice_state(
-            channel=self.channel, self_mute=self_mute, self_deaf=self_deaf
-        )
+        self._voice_state_update_event.clear()
+        self._voice_server_update_event.clear()
 
-    @override
-    async def disconnect(self, *, force: bool = False) -> None:
-        LOGGER.debug("[DISCONNECT] Attempting to disconnect voice client...")
+        await self.guild.change_voice_state(channel=channel)
 
-        player = self._get_player(self.lavalink) if self.lavalink else None
-        await self.channel.guild.change_voice_state(channel=None)
-        self.cleanup()
-        if player and force:
-            LOGGER.info("[DISCONNECT] Force disconnect - stopping player")
-            try:
-                await player.stop()
-            except Exception as e:
-                LOGGER.warning(f"[DISCONNECT] Failed to stop player: {e}")
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    self._voice_state_update_event.wait(),
+                    self._voice_server_update_event.wait(),
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            LOGGER.warning(
+                "Timed out moving to channel %s in guild %s",
+                channel.id,
+                self.guild.id,
+            )
+            raise
+
+    def set_requester(self, track: Track, requester_id: int) -> None:
+        """Associate a requester with a track."""
+        self._requester_map[track.id] = requester_id
+
+    def get_requester(self, track: Track) -> int | None:
+        """Get the requester ID for a track."""
+        return self._requester_map.get(track.id)
+
+    def clear_queue(self) -> None:
+        """Clear the queue and requester map."""
+        self.queue.clear()
+        self._requester_map.clear()
+
+    async def advance(self, *, force_skip: bool = False) -> Track | None:
+        """Advance to the next state (next track or repeat).
+
+        :param force_skip: If True, ignores RepeatMode.TRACK and moves to next song.
+        """
+        current = self.current
+
+        LOGGER.debug("Advancing in guild %s, current track: %s", self.guild.id, current)
+
+        if not force_skip and self.repeat.mode is RepeatMode.TRACK and current:
+            LOGGER.debug("Force skipping track %s", current)
+            await self.play(current)
+            return current
+
+        if self.repeat.mode is RepeatMode.QUEUE and current:
+            LOGGER.debug("Adding track %s to queue", current)
+            self.queue.add(current)
+
+        next_track = self.queue.pop_next()
+        if not next_track:
+            LOGGER.debug("No next track in queue, stopping")
+            return None
+
+        LOGGER.debug("Playing next track: %s", next_track)
+        await self.play(next_track)
+        return next_track
+
+    async def skip(self) -> Track | None:
+        """Skip the current track.
+        This forces the player to advance to the next track, ignoring RepeatMode.TRACK.
+        """
+        skipped_track = self.current
+
+        next_track = await self.advance(force_skip=True)
+
+        if not next_track:
+            await self.stop()
+
+        return skipped_track
+
+    def clear_state(self) -> None:
+        """Clear queue and state."""
+        self.queue.clear()
+        self._requester_map.clear()
+
+
+def music_player_factory(client: discord.Client, connectable: Connectable):
+    """Create a custom Mafic Player."""
+    return MusicPlayer(client, connectable)
+
+
+@dataclass(frozen=True, slots=True)
+class QueueSnapshot:
+    current: Track | None
+    queue: tuple[Track, ...]
+    repeat_mode: RepeatMode
 
 
 class MusicAPI:
-    """API for managing music playback via Lavalink."""
+    """API for managing music playback via Mafic (Lavalink)."""
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.lavalink = lavaplay.Lavalink()
-        self.node: lavaplay.Node | None = None
+        self.pool = mafic.NodePool(bot)
         self.sessions: dict[int, MusicSession] = {}
         self._track_start_times: dict[int, datetime] = {}
-        self._last_node_status: dict = {}
+        self._initialized = False
 
     async def initialize(self) -> None:
-        """Initialize Lavalink node."""
-        if self.node and self.node.is_connect:
+        """Initialize Lavalink node connection."""
+        if self._initialized:
             return
-        await self._connect_node()
-        if self.node is None:
-            raise NodeNotConnectedError("Node is None after initialization")
 
-        if not self.node_health_monitor.is_running():
-            self.node_health_monitor.start()
-        event_types: list[Event] = [
-            ReadyEvent,
-            StatsUpdateEvent,
-            TrackStartEvent,
-            TrackEndEvent,
-            TrackExceptionEvent,
-            TrackStuckEvent,
-            WebSocketClosedEvent,
-            PlayerUpdateEvent,
-            ErrorEvent,
-        ]
-
-        for event_type in event_types:
-            self.node.event_manager.add_listener(
-                event_type.__name__, self._create_debug_handler(event_type.__name__)
-            )
-
-        self.node.event_manager.add_listener(
-            TrackStartEvent.__name__, self.handle_track_start
-        )
-        self.node.event_manager.add_listener(
-            TrackEndEvent.__name__, self.handle_track_end
-        )
         try:
-            self.node.event_manager.add_listener(
-                WebSocketClosedEvent.__name__,
-                self.handle_websocket_closed,
+            await self.pool.create_node(
+                host=config.LAVALINK_HOST,
+                port=config.LAVALINK_PORT,
+                password=config.LAVALINK_PASSWORD,
+                label="MAIN",
+                secure=getattr(config, "LAVALINK_SECURE", False),
             )
-        except ImportError:
-            LOGGER.warning("WebSocketClosedEvent not available in lavaplay version")
+            self._initialized = True
+            self._setup_event_listeners()
 
-    @tasks.loop(seconds=60.0)
-    async def node_health_monitor(self):
-        """Monitor Lavalink node health and status."""
-        if self.node is None:
-            LOGGER.warning("[HEALTH] Node is None - not initialized")
-            return
-        self.node.players
-        try:
-            # Основной статус подключения
-            is_connected = self.node.is_connect
-            LOGGER.info(f"[HEALTH] Node connected: {is_connected}")
-
-            if not is_connected:
-                LOGGER.error("[HEALTH] ❌ Node is NOT connected - attempting reconnect")
-                return
-
-            node_info = {
-                "host": self.node.host,
-                "port": self.node.port,
-                "secure": getattr(self.node, "secure", False),
-                "connected": is_connected,
-                "session_id": getattr(self.node, "session_id", "N/A"),
-            }
-            # Логируем изменения статуса
-            if node_info != self._last_node_status:
-                LOGGER.info("[HEALTH] ✅ Node status changed:")
-                for key, value in node_info.items():
-                    LOGGER.info(f"  - {key}: {value}")
-                self._last_node_status = node_info.copy()
-
-            # Проверка готовности к воспроизведению
-            ready_to_play = is_connected and self.node.session_id is not None
-            if ready_to_play:
-                LOGGER.info("[HEALTH] ✅ Ready to play music")
-            else:
-                LOGGER.warning(
-                    f"[HEALTH] ⚠️ Not ready to play - "
-                    f"Connected: {is_connected}, "
-                    f"Session ID: {getattr(self.node, 'session_id', None)}"
-                )
-
-            await self._log_players_info()
+            LOGGER.info("Mafic node pool initialized successfully")
 
         except Exception as e:
-            LOGGER.error(f"[HEALTH] Error during health check: {e}", exc_info=True)
+            LOGGER.exception("Failed to initialize Mafic node")
+            raise NodeNotConnectedError(f"Failed to connect: {e}") from e
 
-    async def _log_players_info(self):
-        """Log detailed information about all players in the node."""
-        if not hasattr(self.node, "players") or not self.node.players:
-            LOGGER.info("[PLAYERS] No active players")
-            return
+    def _setup_event_listeners(self) -> None:
+        """Register event listeners with the bot."""
+        self.bot.add_listener(self._on_track_start, "on_track_start")
+        self.bot.add_listener(self._on_track_end, "on_track_end")
+        self.bot.add_listener(self._on_node_ready, "on_node_ready")
 
-        players_count = len(self.node.players)
-        LOGGER.info(f"[PLAYERS] Total active players: {players_count}")
-        LOGGER.info("=" * 60)
+    async def _on_node_ready(self, node: mafic.Node[commands.Bot]) -> None:
+        """Handle node ready event."""
+        LOGGER.info("Lavalink node '%s' is ready", node.label)
 
-        for guild_id, player in self.node.players.items():
-            try:
-                await self._log_single_player(guild_id, player)
-            except Exception as e:
-                LOGGER.error(
-                    f"[PLAYERS] Error logging player {guild_id}: {e}", exc_info=True
-                )
-
-        LOGGER.info("=" * 60)
-
-    async def _log_single_player(self, guild_id: int, player):
-        """Log detailed information about a single player."""
-        LOGGER.info(f"[PLAYER:{guild_id}] Guild ID: {guild_id}")
-
-        # === ОСНОВНАЯ ИНФОРМАЦИЯ ===
-        basic_info = {
-            "user_id": getattr(player, "user_id", "N/A"),
-            "is_connected": getattr(player, "_is_connected", False),
-            "is_playing": player.is_playing if hasattr(player, "is_playing") else False,
-            "ping": getattr(player, "_ping", 0),
-        }
-
-        LOGGER.info(f"[PLAYER:{guild_id}] Basic Info:")
-        for key, value in basic_info.items():
-            LOGGER.info(f"  - {key}: {value}")
-
-        # === VOICE STATE ===
-        voice_state = getattr(player, "_voice_state", None)
-        LOGGER.info(f"[PLAYER:{guild_id}] Voice State: {voice_state}")
-
-        # === VOICE HANDLERS ===
-        voice_handlers = getattr(player, "_voice_handlers", {})
-        if voice_handlers:
-            LOGGER.info(f"[PLAYER:{guild_id}] Voice Handlers ({len(voice_handlers)}):")
-            for handler_guild_id, conn_info in voice_handlers.items():
-                LOGGER.info(
-                    f"  - Guild {handler_guild_id}: "
-                    f"Session={getattr(conn_info, 'session_id', 'N/A')}, "
-                    f"Channel={getattr(conn_info, 'channel_id', 'N/A')}"
-                )
-        else:
-            LOGGER.info(f"[PLAYER:{guild_id}] Voice Handlers: None")
-
-        # === VOICE INFO ===
-        voice_info = getattr(player, "_voice_info", {})
-        if voice_info:
-            LOGGER.info(f"[PLAYER:{guild_id}] Voice Info ({len(voice_info)}):")
-            for info_guild_id, v_info in voice_info.items():
-                LOGGER.info(
-                    f"  - Guild {info_guild_id}: "
-                    f"Token={getattr(v_info, 'token', 'N/A')[:20]}..., "
-                    f"Endpoint={getattr(v_info, 'endpoint', 'N/A')}"
-                )
-        else:
-            LOGGER.info(f"[PLAYER:{guild_id}] Voice Info: None")
-
-        # === QUEUE INFORMATION ===
-        queue = getattr(player, "queue", [])
-        queue_length = len(queue)
-        LOGGER.info(f"[PLAYER:{guild_id}] Queue: {queue_length} tracks")
-
-        if queue_length > 0:
-            # Текущий трек (первый в очереди)
-            current_track = queue[0]
-            LOGGER.info(f"[PLAYER:{guild_id}] Current Track:")
-            LOGGER.info(f"  - Title: {getattr(current_track, 'title', 'Unknown')}")
-            LOGGER.info(f"  - Author: {getattr(current_track, 'author', 'Unknown')}")
-            LOGGER.info(f"  - Length: {getattr(current_track, 'length', 0)}ms")
-            LOGGER.info(f"  - URI: {getattr(current_track, 'uri', 'N/A')}")
-            LOGGER.info(f"  - Requester: {getattr(current_track, 'requester', 'N/A')}")
-            LOGGER.info(
-                f"  - Encoded: {getattr(current_track, 'encoded', 'N/A')[:30]}..."
-            )
-
-            # Следующие треки
-            if queue_length > 1:
-                LOGGER.info(
-                    f"[PLAYER:{guild_id}] Next {min(3, queue_length - 1)} tracks:"
-                )
-                for idx, track in enumerate(queue[1:4], 1):
-                    title = getattr(track, "title", "Unknown")
-                    author = getattr(track, "author", "Unknown")
-                    LOGGER.info(f"  {idx}. {title} - {author}")
-
-        # === PLAYBACK SETTINGS ===
-        playback_settings = {
-            "volume": getattr(player, "_volume", 100),
-            "repeat": getattr(player, "_repeat", False),
-            "queue_repeat": getattr(player, "_queue_repeat", False),
-            "shuffle": getattr(player, "_shuffle", False),
-        }
-
-        LOGGER.info(f"[PLAYER:{guild_id}] Playback Settings:")
-        for key, value in playback_settings.items():
-            LOGGER.info(f"  - {key}: {value}")
-
-        # === FILTERS ===
-        filters = getattr(player, "_filters", None)
-        if filters:
-            filters_payload = getattr(filters, "_payload", {})
-            if filters_payload:
-                LOGGER.info(f"[PLAYER:{guild_id}] Active Filters:")
-                for filter_key, filter_value in filters_payload.items():
-                    LOGGER.info(f"  - {filter_key}: {filter_value}")
-            else:
-                LOGGER.info(f"[PLAYER:{guild_id}] Filters: No active filters")
-        else:
-            LOGGER.info(f"[PLAYER:{guild_id}] Filters: None")
-
-        # === REST & NODE REFERENCE ===
-        LOGGER.info(f"[PLAYER:{guild_id}] References:")
-        LOGGER.info(f"  - Node: {getattr(player, 'node', 'N/A')}")
-        LOGGER.info(f"  - REST: {getattr(player, 'rest', 'N/A')}")
-        LOGGER.info(f"  - Loop: {getattr(player, 'loop', 'N/A')}")
-
-    @node_health_monitor.before_loop
-    async def before_health_monitor(self):
-        """Wait for bot to be ready before starting monitor."""
-        await self.bot.wait_until_ready()
-        LOGGER.info("[HEALTH] Health monitor started")
-
-    def _create_debug_handler(self, event_name: str):
-        """Create a debug handler for specific event type."""
-
-        async def debug_handler(event: Any) -> None:
-            LOGGER.debug(f"[{event_name}] {event}")
-            if hasattr(event, "__dict__"):
-                LOGGER.debug(f"[{event_name}] Details: {event.__dict__}")
-
-        return debug_handler
-
-    async def handle_track_start(self, event: TrackStartEvent) -> None:
-        """Handle track start event."""
-        guild_id = event.guild_id
+    async def _on_track_start(self, event: mafic.TrackStartEvent[MusicPlayer]) -> None:
+        """Handle track start - record timing for skip detection."""
+        guild_id = event.player.guild.id
         self.sessions.setdefault(guild_id, MusicSession(guild_id=guild_id))
         self._track_start_times[guild_id] = utcnow()
+        LOGGER.debug("Track started in guild %d: %s", guild_id, event.track.title)
 
-    async def handle_track_end(self, event: TrackEndEvent) -> None:
-        """Handle track end event."""
-        guild_id = event.guild_id
-        session = self.sessions.get(guild_id)
-        if not session:
-            return
-
-        start_time = self._track_start_times.get(guild_id)
-        if not start_time:
-            return
-
-        elapsed = (utcnow() - start_time).total_seconds()
+    async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
+        """Handle track end - record history and auto-advance queue."""
+        player = event.player
+        guild_id = player.guild.id
+        track = event.track
         reason = event.reason
 
-        skipped = False
-        if reason == "finished":
-            skipped = False
-        elif reason in ("stopped", "replaced") and elapsed >= 20:
-            skipped = True
-        else:
-            return
+        LOGGER.debug(
+            "Track ended in guild %d: %s (reason: %s)", guild_id, track.title, reason
+        )
 
-        track = cast(Track | list[Track], event.track)
-        if track and isinstance(track, list):  # wtf why is there list in event.
-            track = track[0]
-        if isinstance(track, lavaplay.Track):
+        session = self.sessions.get(guild_id)
+        start_time = self._track_start_times.pop(guild_id, None)
+
+        if session and start_time:
+            elapsed = (utcnow() - start_time).total_seconds()
+
+            LOGGER.debug(
+                "Track %s in guild %d played for %f seconds",
+                track.title,
+                guild_id,
+                elapsed,
+            )
+
+            skipped = False
+            if reason in (mafic.EndReason.STOPPED, mafic.EndReason.REPLACED):
+                skipped = elapsed < 20
+
             session.tracks.append(
                 TrackInfo(
                     title=track.title,
-                    uri=track.uri,
+                    uri=track.uri or "",
                     skipped=skipped,
-                    requester_id=track.requester,
+                    requester_id=player.get_requester(track),
                 )
             )
 
-    async def handle_websocket_closed(self, event: Any) -> None:
-        """Handle WebSocket closed events from Discord voice gateway."""
-        guild_id = getattr(event, "guild_id", None)
-        code = getattr(event, "code", None)
-        reason = getattr(event, "reason", "Unknown")
-        by_remote = getattr(event, "by_remote", False)
+        if reason in (mafic.EndReason.FINISHED, mafic.EndReason.LOAD_FAILED):
+            LOGGER.debug("Auto-advancing to next track in guild %d", guild_id)
+            await player.advance()
 
-        LOGGER.debug(
-            "[WEBSOCKET CLOSED] Guild %s - Code: %s, Reason: %s, By Remote: %s",
-            guild_id,
-            code,
-            reason,
-            by_remote,
-        )
-
-        if code and 4000 <= code < 5000:
-            LOGGER.error(
-                "[WEBSOCKET CLOSED] Critical error code %s for guild %s - may need reconnect",
-                code,
-                guild_id,
-            )
-
-    async def cleanup(self) -> None:
-        """Cleanup resources."""
-        if self.node is not None:
-            await self.node.close()
-        for node in self.lavalink.nodes:
-            await self.lavalink.destroy_node(node)
-
-    async def _connect_node(self) -> None:
-        """Connect to Lavalink node."""
-        try:
-            if self.lavalink.nodes:
-                self.node = self.lavalink.default_node
-            else:
-                self.node = self.lavalink.create_node(
-                    host=config.LAVALINK_HOST,
-                    port=config.LAVALINK_PORT,
-                    password=config.LAVALINK_PASSWORD,
-                    user_id=self.bot.user.id if self.bot.user else 0,
-                )
-            self.node.set_event_loop(self.bot.loop)
-            self.node.connect()
-            await asyncio.wait_for(self._wait_for_connection(), timeout=10)
-            LOGGER.info("Node connected successfully")
-        except Exception as e:
-            LOGGER.error("Node connection failed: %s", e)
-            raise NodeNotConnectedError(f"Failed to connect to Lavalink: {e}") from e
-
-    async def _wait_for_connection(self) -> None:
-        """Wait until node is fully connected."""
-        while not self.node or not self.node.is_connect:
-            await asyncio.sleep(0.1)
-
-    async def check_connection(self) -> bool:
-        """Check if node is connected and try to reconnect if not."""
-        if not self.node or not self.node.is_connect:
-            LOGGER.warning("Lavalink node not connected, attempting reconnect...")
-            try:
-                await self._connect_node()
-                return True
-            except Exception:
-                return False
-        return True
-
-    async def _record_session_interaction(
-        self, guild_id: int, text_channel_id: int | None, requester_id: int | None
-    ) -> None:
-        """Record interaction for session tracking."""
-        if text_channel_id and requester_id:
-            session = self.sessions.setdefault(
-                guild_id, MusicSession(guild_id=guild_id)
-            )
-            session.record_interaction(text_channel_id, requester_id)
-
-    async def get_player(self, guild_id: int) -> Player:
-        """Get existing player or create new one."""
-        await self.initialize()
-        if self.node is None:
-            raise NodeNotConnectedError("Node is None after initialization")
-
-        player = self.node.get_player(guild_id)
-        if not player:
-            player = self.node.create_player(guild_id)
-        return player
+    def get_player(self, guild_id: int) -> MusicPlayer | None:
+        """Get the MusicPlayer for a guild, if connected."""
+        guild = self.bot.get_guild(guild_id)
+        if guild and isinstance(guild.voice_client, MusicPlayer):
+            return guild.voice_client
+        return None
 
     async def get_volume(self, guild_id: int) -> int:
-        """Get volume for specific guild from DB."""
-        volume_data = get_json(config.MUSIC_VOLUME_FILE) or {}
-        return volume_data.get(str(guild_id), config.MUSIC_DEFAULT_VOLUME)
+        """Get saved volume for guild."""
+        data = get_json(config.MUSIC_VOLUME_FILE) or {}
+        return data.get(str(guild_id), config.MUSIC_DEFAULT_VOLUME)
 
     async def save_volume(self, guild_id: int, volume: int) -> None:
-        """Save volume to DB."""
-        volume_data = get_json(config.MUSIC_VOLUME_FILE) or {}
-        volume_data[str(guild_id)] = volume
-        save_json(config.MUSIC_VOLUME_FILE, volume_data)
-        LOGGER.debug(f"Saved volume for guild {guild_id}: {volume}")
-
-    async def apply_volume(self, guild_id: int, volume: int) -> MusicResult[int]:
-        """Apply volume to live player if exists."""
-        try:
-            player = self.node.get_player(guild_id) if self.node else None
-            if player:
-                await player.volume(volume)
-                LOGGER.debug(f"Applied volume to player for guild {guild_id}: {volume}")
-            return MusicResult(
-                MusicResultStatus.SUCCESS, "Громкость изменена", data=volume
-            )
-        except Exception as e:
-            LOGGER.warning(f"Failed to apply volume to player: {e}")
-            return MusicResult(MusicResultStatus.ERROR, f"Error: {e}", data=volume)
+        """Persist volume setting."""
+        data = get_json(config.MUSIC_VOLUME_FILE) or {}
+        data[str(guild_id)] = volume
+        save_json(config.MUSIC_VOLUME_FILE, data)
 
     async def set_volume(self, guild_id: int, volume: int) -> MusicResult[int]:
-        """Save volume to DB and update live player if exists."""
+        """Set and apply volume."""
         await self.save_volume(guild_id, volume)
-        return await self.apply_volume(guild_id, volume)
+        player = self.get_player(guild_id)
+        if player:
+            try:
+                await player.set_volume(volume)
+            except Exception as e:
+                LOGGER.warning("Failed to apply volume: %s", e)
+        return MusicResult(MusicResultStatus.SUCCESS, "Volume set", data=volume)
 
-    async def search_tracks(
-        self, query: str
-    ) -> list[lavaplay.Track] | lavaplay.PlayList | None:
-        """Search for tracks."""
-        if self.node is None:
-            self.node = self.lavalink.default_node
-
-        return await self.node.auto_search_tracks(query)
-
-    async def _ensure_player_volume(self, guild_id: int) -> None:
-        """Ensure player has correct volume from DB."""
-        try:
-            player = self.node.get_player(guild_id) if self.node else None
-            if not player:
-                return
-
-            saved_volume = await self.get_volume(guild_id)
-            LOGGER.debug(f"Setting volume for guild {guild_id}: {saved_volume}")
-            await player.volume(saved_volume)
-        except Exception as e:
-            LOGGER.warning(f"Failed to ensure player volume: {e}")
+    # --- Connection Management ---
 
     async def join(
         self, guild: discord.Guild, channel: VocalGuildChannel
     ) -> VoiceJoinResult:
         """Join a voice channel."""
+        LOGGER.debug("Joining channel: %s, %s", channel, type(channel))
+        if not isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+            return VoiceCheckResult.INVALID_CHANNEL_TYPE, None
+
         voice_client = guild.voice_client
 
-        if not voice_client:
-            try:
-                await channel.connect(cls=LavalinkVoiceClient)
-                return VoiceCheckResult.SUCCESS, None
-            except Exception as e:
-                LOGGER.error(f"Failed to connect to voice: {e}")
-                return VoiceCheckResult.CONNECTION_FAILED, None
-
-        if voice_client.channel != channel:
-            try:
-                if not isinstance(voice_client, discord.VoiceClient):
-                    LOGGER.error("Voice client is not a VoiceClient")
-                    return VoiceCheckResult.CONNECTION_FAILED, None
-                old_channel = voice_client.channel
-                await voice_client.move_to(channel)
-                return VoiceCheckResult.MOVED_CHANNELS, old_channel
-            except Exception:
-                LOGGER.exception("Failed to move voice channel")
-                return VoiceCheckResult.CONNECTION_FAILED, None
-
-        return VoiceCheckResult.ALREADY_CONNECTED, None
-
-    async def end_session(self, guild_id: int) -> None:
-        """End session and dispatch summary event."""
-        session = self.sessions.pop(guild_id, None)
-        LOGGER.debug(f"End session for guild {guild_id}: {session}")
-        self._track_start_times.pop(guild_id, None)
-
-        if not session or not session.tracks:
-            return
-        main_channel_id = None
-        if session.channel_usage:
-            main_channel_id = max(session.channel_usage, key=session.channel_usage.get)  # type: ignore
-
-        if main_channel_id:
-            self.bot.dispatch("music_session_end", guild_id, session, main_channel_id)
-
-    async def leave(self, guild: discord.Guild) -> MusicResult[None]:
-        """Leave voice channel."""
-        if not guild.voice_client:
-            return MusicResult(MusicResultStatus.FAILURE, "Не подключен к войсу")
+        if (
+            voice_client
+            and isinstance(
+                voice_client.channel, (discord.VoiceChannel, discord.StageChannel)
+            )
+            and voice_client.channel.id == channel.id
+        ):
+            return VoiceCheckResult.ALREADY_CONNECTED, None
 
         try:
-            await self.stop_player(guild.id)
+            if voice_client and isinstance(voice_client, MusicPlayer):
+                old_channel = cast(VocalGuildChannel, voice_client.channel)
+                await voice_client.move_to(channel)
+                return VoiceCheckResult.MOVED_CHANNELS, old_channel
+
+            await channel.connect(cls=music_player_factory)
+
+            player = self.get_player(guild.id)
+            if player:
+                vol = await self.get_volume(guild.id)
+                await player.set_volume(vol)
+
+            return VoiceCheckResult.SUCCESS, None
+
+        except asyncio.TimeoutError:
+            LOGGER.warning("Voice connection timed out for guild %s", guild.id)
+            return VoiceCheckResult.CONNECTION_FAILED, None
+        except Exception:
+            LOGGER.exception("Failed to join voice channel")
+            return VoiceCheckResult.CONNECTION_FAILED, None
+
+    async def leave(self, guild: discord.Guild) -> MusicResult[None]:
+        """Leave voice channel and cleanup."""
+        player = self.get_player(guild.id)
+        if not player:
+            return MusicResult(MusicResultStatus.FAILURE, "Not connected")
+
+        try:
             await self.end_session(guild.id)
-            await guild.voice_client.disconnect(force=True)
+            player.clear_queue()
+            await player.disconnect()
             return MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
         except Exception as e:
             LOGGER.exception("Error leaving voice")
             return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
+
+    async def end_session(self, guild_id: int) -> None:
+        """End session and dispatch summary event."""
+        session = self.sessions.pop(guild_id, None)
+        self._track_start_times.pop(guild_id, None)
+
+        if session and session.tracks:
+            main_channel_id = (
+                max(session.channel_usage, key=lambda k: session.channel_usage[k])
+                if session.channel_usage
+                else None
+            )
+            if main_channel_id:
+                self.bot.dispatch(
+                    "music_session_end", guild_id, session, main_channel_id
+                )
+
+    async def search_tracks(self, query: str, player: MusicPlayer) -> SearchResult:
+        """Search for tracks using the node pool."""
+        if not self.pool.nodes:
+            await self.initialize()
+        return await player.fetch_tracks(query)
 
     async def play(
         self,
@@ -773,67 +557,55 @@ class MusicAPI:
         requester_id: int,
         text_channel_id: int | None = None,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        """Play a track or playlist.
-
-        Returns VoiceJoinResult only if failed to join
-        """
-        check_result, from_channel = await self.join(guild, voice_channel)
-        if check_result.status is not MusicResultStatus.SUCCESS:
+        """Play a track or playlist."""
+        check_result, old_channel = await self.join(guild, voice_channel)
+        if check_result.status is MusicResultStatus.ERROR:
             return MusicResult(
                 check_result.status,
-                check_result.value,
-                data=(check_result, from_channel),
+                "Connection failed",
+                data=(check_result, old_channel),
             )
 
-        try:
-            player = await self.get_player(guild.id)
-        except Exception as e:
-            return MusicResult(MusicResultStatus.ERROR, f"Failed to get player: {e}")
+        player = self.get_player(guild.id)
+        if not player:
+            return MusicResult(MusicResultStatus.ERROR, "Player not available")
 
-        current_vol = await self.get_volume(guild.id)
-        try:
-            await player.volume(current_vol)
-        except lavaplay.VolumeError:
-            LOGGER.warning("Failed to set volume to %s", current_vol)
+        # player.text_channel_id = text_channel_id
+        await self._record_interaction(guild.id, text_channel_id, requester_id)
 
         try:
-            tracks = await self.search_tracks(query)
-            if not tracks:
-                return MusicResult(MusicResultStatus.FAILURE, "Ничего не найдено")
+            result = await self.search_tracks(query, player)
 
-            if isinstance(tracks, lavaplay.PlayList):
-                for track in tracks.tracks:
-                    await player.play(track, requester=requester_id)
+            if not result:
+                return MusicResult(MusicResultStatus.FAILURE, "Nothing found")
 
-                if text_channel_id:
-                    session = self.sessions.setdefault(
-                        guild.id, MusicSession(guild_id=guild.id)
-                    )
-                    session.record_interaction(text_channel_id, requester_id)
+            if isinstance(result, mafic.Playlist):
+                for track in result.tracks:
+                    player.set_requester(track, requester_id)
+
+                player.queue.add(result.tracks)
+                if not player.current:
+                    await player.advance()
 
                 return MusicResult(
                     MusicResultStatus.SUCCESS,
                     "Playlist added",
-                    data={"type": "playlist", "playlist": tracks},
+                    data={"type": "playlist", "playlist": result},
                 )
 
-            track = tracks[0]
-            is_playing_before = player.is_playing
-            await player.play(track, requester=requester_id)
-            if text_channel_id:
-                session = self.sessions.setdefault(
-                    guild.id, MusicSession(guild_id=guild.id)
-                )
-                session.record_interaction(text_channel_id, requester_id)
+            track = result[0]
+            player.set_requester(track, requester_id)
+
+            is_playing = player.current is not None
+            if is_playing:
+                player.queue.add(track)
+            else:
+                await player.play(track)
 
             return MusicResult(
                 MusicResultStatus.SUCCESS,
                 "Track processed",
-                data={
-                    "type": "track",
-                    "track": track,
-                    "playing": is_playing_before,
-                },
+                data={"type": "track", "track": track, "playing": is_playing},
             )
 
         except Exception as e:
@@ -846,18 +618,15 @@ class MusicAPI:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
-        """Stop player and clear queue."""
-        try:
-            player = await self.get_player(guild_id)
-            await player.stop()
+        """Stop playback and clear queue."""
+        player = self.get_player(guild_id)
+        if not player:
+            return MusicResult(MusicResultStatus.FAILURE, "No player")
 
-            await self._record_session_interaction(
-                guild_id, text_channel_id, requester_id
-            )
-
-            return MusicResult(MusicResultStatus.SUCCESS, "Stopped and cleared queue")
-        except Exception as e:
-            return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
+        player.clear_queue()
+        await player.stop()
+        await self._record_interaction(guild_id, text_channel_id, requester_id)
+        return MusicResult(MusicResultStatus.SUCCESS, "Stopped")
 
     async def skip_track(
         self,
@@ -865,40 +634,40 @@ class MusicAPI:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[SkipTrackData]:
-        """Skip current track."""
-        try:
-            player = await self.get_player(guild_id)
-            skipped_track = player.queue[0] if player.queue else None
-            up_next = player.queue[1] if len(player.queue) > 1 else None
-            await player.skip()
+        """Skip the current track."""
+        player = self.get_player(guild_id)
+        if not player:
+            return MusicResult(MusicResultStatus.FAILURE, "No player")
 
-            await self._record_session_interaction(
-                guild_id, text_channel_id, requester_id
-            )
+        current = player.current
+        up_next = player.queue.next
 
-            return MusicResult(
-                MusicResultStatus.SUCCESS,
-                "Skipped track",
-                data={"before": skipped_track, "after": up_next},
-            )
-        except Exception as e:
-            return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
+        await player.skip()
+        await self._record_interaction(guild_id, text_channel_id, requester_id)
+
+        return MusicResult(
+            MusicResultStatus.SUCCESS,
+            "Skipped",
+            data={"before": current, "after": up_next},
+        )
 
     async def pause_player(self, guild_id: int) -> MusicResult[None]:
-        try:
-            player = await self.get_player(guild_id)
-            await player.pause(True)
-            return MusicResult(MusicResultStatus.SUCCESS, "Paused")
-        except Exception as e:
-            return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
+        """Pause playback."""
+        player = self.get_player(guild_id)
+        if not player:
+            return MusicResult(MusicResultStatus.FAILURE, "No player")
+
+        await player.pause()
+        return MusicResult(MusicResultStatus.SUCCESS, "Paused")
 
     async def resume_player(self, guild_id: int) -> MusicResult[None]:
-        try:
-            player = await self.get_player(guild_id)
-            await player.pause(False)
-            return MusicResult(MusicResultStatus.SUCCESS, "Resumed")
-        except Exception as e:
-            return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
+        """Resume playback."""
+        player = self.get_player(guild_id)
+        if not player:
+            return MusicResult(MusicResultStatus.FAILURE, "No player")
+
+        await player.resume()
+        return MusicResult(MusicResultStatus.SUCCESS, "Resumed")
 
     async def shuffle_queue(
         self,
@@ -906,66 +675,53 @@ class MusicAPI:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
-        try:
-            player = await self.get_player(guild_id)
-            player.shuffle()
+        """Shuffle the queue."""
+        player = self.get_player(guild_id)
+        if not player:
+            return MusicResult(MusicResultStatus.FAILURE, "No player")
 
-            await self._record_session_interaction(
-                guild_id, text_channel_id, requester_id
-            )
-
-            return MusicResult(MusicResultStatus.SUCCESS, "Shuffled")
-        except Exception as e:
-            return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
+        player.queue.shuffle()
+        await self._record_interaction(guild_id, text_channel_id, requester_id)
+        return MusicResult(MusicResultStatus.SUCCESS, "Shuffled")
 
     async def set_repeat(
         self,
         guild_id: int,
-        mode: RepeatMode | None,
+        mode: RepeatMode | None = None,
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RepeatModeData]:
-        try:
-            player = await self.get_player(guild_id)
+        """Set repeat mode."""
+        player = self.get_player(guild_id)
+        if not player:
+            return MusicResult(MusicResultStatus.FAILURE, "No player")
 
-            current_state = getattr(player, "_queue_repeat", False)
-            current_mode = RepeatMode.QUEUE if current_state else RepeatMode.OFF
+        previous = player.repeat.mode
 
-            if mode is None:
-                mode = (
-                    RepeatMode.OFF
-                    if current_mode is RepeatMode.QUEUE
-                    else RepeatMode.QUEUE
-                )
+        if mode is None:
+            player.repeat.toggle()
+        else:
+            player.repeat.mode = mode
+        await self._record_interaction(guild_id, text_channel_id, requester_id)
 
-            if mode is RepeatMode.QUEUE:
-                player.queue_repeat(True)
-            else:
-                player.queue_repeat(False)
+        return MusicResult(
+            MusicResultStatus.SUCCESS,
+            "Repeat updated",
+            data={"mode": player.repeat.mode, "previous": previous},
+        )
 
-            await self._record_session_interaction(
-                guild_id, text_channel_id, requester_id
-            )
+    async def get_queue(self, guild_id: int) -> MusicResult[QueueSnapshot]:
+        player = self.get_player(guild_id)
 
-            return MusicResult(
-                MusicResultStatus.SUCCESS,
-                "Repeat updated",
-                data={"mode": mode, "previous": current_mode},
-            )
-        except Exception as e:
-            return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
+        if not player or (not player.queue and not player.current):
+            return MusicResult(MusicResultStatus.FAILURE, "Queue empty")
 
-    async def get_queue(self, guild_id: int) -> MusicResult[Player]:
-        """Get current queue data."""
-        try:
-            player = await self.get_player(guild_id)
-            if not player.queue:
-                return MusicResult(MusicResultStatus.FAILURE, "Очередь пуста")
-            return MusicResult(
-                MusicResultStatus.SUCCESS, "Queue retrieved", data=player
-            )
-        except Exception as e:
-            return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
+        snapshot = QueueSnapshot(
+            current=player.current,
+            queue=tuple(player.queue.tracks),
+            repeat_mode=player.repeat.mode,
+        )
+        return MusicResult(MusicResultStatus.SUCCESS, "Retrieved", data=snapshot)
 
     async def rotate_current_track(
         self,
@@ -973,34 +729,47 @@ class MusicAPI:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RotateTrackData]:
-        """Move current track to the end of the queue and skip."""
-        try:
-            player = await self.get_player(guild_id)
-            current = player.queue[0] if player.queue else None
-            if not current:
-                return MusicResult(MusicResultStatus.FAILURE, "Очередь пуста")
-            await player.play(player.queue[0], requester=int(current.requester or "0"))
-            await player.skip()
+        """Move current track to end of queue and skip."""
+        player = self.get_player(guild_id)
+        if not player or not player.current:
+            return MusicResult(MusicResultStatus.FAILURE, "Nothing playing")
 
-            await self._record_session_interaction(
-                guild_id, text_channel_id, requester_id
-            )
+        current = player.current
+        player.queue.add(current)
+        await player.skip()
 
-            new_current = player.queue[0] if player.queue else None
-            return MusicResult(
-                MusicResultStatus.SUCCESS,
-                "Rotated track",
-                data={"skipped": current, "next": new_current},
-            )
-        except Exception as e:
-            return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
+        await self._record_interaction(guild_id, text_channel_id, requester_id)
+
+        next_track = player.queue.next
+        return MusicResult(
+            MusicResultStatus.SUCCESS,
+            "Rotated",
+            data={"skipped": current, "next": next_track},
+        )
 
     async def get_queue_duration(self, guild_id: int) -> int:
-        """Get total duration of current track + queue in milliseconds."""
-        try:
-            player = await self.get_player(guild_id)
-            queue_duration = sum(t.length for t in player.queue)
-            LOGGER.debug(f"Queue duration for guild {guild_id}: {queue_duration} ms.")
-            return queue_duration
-        except Exception:
+        """Get total queue duration in milliseconds."""
+        player = self.get_player(guild_id)
+        if not player:
             return 0
+        total = player.queue.duration_ms
+        if player.current:
+            position = player.position or 0
+            total += max(0, player.current.length - position)
+        return total
+
+    async def _record_interaction(
+        self, guild_id: int, text_channel_id: int | None, requester_id: int | None
+    ) -> None:
+        """Record interaction for session analytics."""
+        if text_channel_id and requester_id:
+            session = self.sessions.setdefault(
+                guild_id, MusicSession(guild_id=guild_id)
+            )
+            session.record_interaction(text_channel_id, requester_id)
+
+    async def cleanup(self) -> None:
+        """Cleanup on shutdown."""
+        for guild in self.bot.guilds:
+            if guild.voice_client:
+                await guild.voice_client.disconnect(force=True)

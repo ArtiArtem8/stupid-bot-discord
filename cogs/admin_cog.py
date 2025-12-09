@@ -17,7 +17,7 @@ from discord.ext import commands
 
 import config
 from api import block_manager
-from framework import BaseCog, FeedbackType, FeedbackUI, handle_errors
+from framework import BaseCog, FeedbackType, FeedbackUI, handle_errors, is_owner_app
 from resources import ACTION_TITLES
 
 
@@ -94,12 +94,14 @@ class AdminCog(BaseCog):
         return True
 
     @app_commands.command(name="error-test", description="Тестирование ошибок")
-    @commands.is_owner()
+    @is_owner_app()
+    @app_commands.default_permissions(administrator=True)
     async def error(self, interaction: discord.Interaction) -> NoReturn:
         raise RuntimeError("Test error")
 
     @app_commands.command(name="error-test-handled", description="Тестирование ошибок")
-    @commands.is_owner()
+    @is_owner_app()
+    @app_commands.default_permissions(administrator=True)
     @handle_errors()
     async def error_handled(self, interaction: discord.Interaction) -> NoReturn:
         raise RuntimeError("Test handled error")
@@ -394,6 +396,28 @@ class AdminCog(BaseCog):
         )
 
         await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
+
+    @app_commands.command(
+        name="del", description="Удалить сообщение по ID (только владелец)."
+    )
+    @commands.is_owner()
+    @app_commands.describe(message_id="ID сообщения для удаления")
+    @app_commands.default_permissions(administrator=True)
+    async def delete_message(self, interaction: discord.Interaction, message_id: str):
+        """Silently deletes a message by ID."""
+        try:
+            msg = await interaction.channel.fetch_message(int(message_id))  # type: ignore
+
+            await msg.delete()
+            await interaction.response.send_message(
+                "Удалено.", ephemeral=True, delete_after=1.0
+            )
+        except (discord.NotFound, ValueError):
+            await interaction.response.send_message(
+                "Сообщение не найдено.", ephemeral=True
+            )
+        except Exception:
+            await interaction.response.send_message("Нет прав.", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
