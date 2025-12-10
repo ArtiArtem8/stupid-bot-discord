@@ -56,6 +56,7 @@ def handle_errors[CogT, T, **P]() -> Callable[
                     feedback_type=FeedbackType.ERROR,
                     description=f"❌ {type(e).__name__}: {e}",
                     delete_after=600,
+                    error_info=str(e),
                 )
             except Exception as e:
                 LOGGER.exception(f"Unexpected error in {func.__name__}")
@@ -65,6 +66,7 @@ def handle_errors[CogT, T, **P]() -> Callable[
                     title="Внутренняя ошибка",
                     description=f"❌ {type(e).__name__}: {e}",
                     delete_after=600,
+                    error_info=str(e),
                 )
             return None
 

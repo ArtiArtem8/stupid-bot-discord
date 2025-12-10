@@ -6,8 +6,12 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum, auto
-from typing import Literal, Self, TypedDict
+from typing import TYPE_CHECKING, Literal, Protocol, Self, TypedDict
 
+if TYPE_CHECKING:
+    import discord
+
+    from .player import MusicPlayer, Track
 import discord
 import mafic
 from discord.utils import utcnow
@@ -172,7 +176,7 @@ class MusicSession:
     participants: set[int] = field(default_factory=set[int])
 
     def record_interaction(self, channel_id: int, user_id: int) -> None:
-        """Record a user interaction in a channel."""
+        """Record a user interaction in a text channel."""
         self.channel_usage[channel_id] = self.channel_usage.get(channel_id, 0) + 1
         self.participants.add(user_id)
 
@@ -183,6 +187,7 @@ class MusicSession:
         requester_id: int | None,
         channel_id: int | None,
         skipped: bool = False,
+        timestamp: datetime | None = None,
     ) -> None:
         """Add a track to the session."""
         track = TrackInfo(
@@ -242,3 +247,49 @@ class QueueSnapshot:
     current: Track | None
     queue: tuple[Track, ...]
     repeat_mode: RepeatMode
+
+
+@dataclass(slots=True)
+class PlayerStateSnapshot:
+    """Complete state of a player for restoration."""
+
+    guild_id: int
+    voice_channel_id: int
+    text_channel_id: int | None
+
+    # Track State
+    current_track: Track | None
+    position: int
+    is_paused: bool
+    volume: int
+
+    # Queue State
+    queue: list[Track]
+    repeat_mode: RepeatMode
+
+    # Filters
+    filters: mafic.Filter | None
+
+    # Requester Map (Crucial for history/permissions)
+    requester_map: dict[str, TrackRequester]
+    session: MusicSession | None
+
+
+class ControllerManagerProtocol(Protocol):
+    """Protocol for controller management."""
+
+    async def create_for_user(
+        self,
+        *,
+        guild_id: int,
+        user_id: int,
+        channel: discord.abc.Messageable,
+        player: MusicPlayer,
+        track: Track,
+    ) -> None:
+        """Create a controller for a user."""
+        ...
+
+    async def destroy_for_guild(self, guild_id: int) -> None:
+        """Destroy controller for a guild."""
+        ...

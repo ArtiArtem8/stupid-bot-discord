@@ -83,7 +83,6 @@ class BasePaginator(ManagedView):
         self._user_id = user_id
 
         self._setup_buttons(show_first_last, show_close)
-        self._update_buttons()
 
     def _setup_buttons(self, show_first_last: bool, show_close: bool) -> None:
         """Setup navigation buttons based on configuration."""
@@ -126,7 +125,15 @@ class BasePaginator(ManagedView):
         """Create embed for current page."""
         return self.data.make_embed(self.page)
 
-    def _update_buttons(self, total_pages: int = 1) -> None:
+    async def prepare(self):
+        """Prepare the paginator for use.
+
+        This method fetches the total number of pages and updates the  buttons.
+        """
+        total_pages = await self.get_total_pages()
+        self._update_buttons(total_pages)
+
+    def _update_buttons(self, total_pages: int) -> None:
         """Update button states based on current page."""
         is_first_page = self.page == 0
         is_last_page = self.page >= total_pages - 1
@@ -145,7 +152,7 @@ class BasePaginator(ManagedView):
         total_pages = await self.get_total_pages()
         if total_pages > 0:
             self.page = min(self.page, total_pages - 1)
-        self._update_buttons()
+        self._update_buttons(total_pages)
         try:
             await interaction.response.edit_message(embed=self.make_embed(), view=self)
         except discord.NotFound:
@@ -160,11 +167,17 @@ class BasePaginator(ManagedView):
         await self._update_view(interaction)
 
     async def next_page(self, interaction: Interaction) -> None:
-        self.page = min(self.page + 1, await self.get_total_pages() - 1)
+        total_pages = await self.get_total_pages()
+        if total_pages <= 1:
+            return
+        self.page = min(self.page + 1, total_pages - 1)
         await self._update_view(interaction)
 
     async def last_page(self, interaction: Interaction) -> None:
-        self.page = await self.get_total_pages() - 1
+        total_pages = await self.get_total_pages()
+        if total_pages <= 1:
+            return
+        self.page = total_pages - 1
         await self._update_view(interaction)
 
     async def close(self, interaction: Interaction) -> None:
@@ -172,7 +185,10 @@ class BasePaginator(ManagedView):
         for item in self.children:
             if isinstance(item, Button):
                 item.disabled = True
-        await interaction.response.edit_message(view=None)
+        try:
+            await interaction.response.edit_message(view=None)
+        except discord.NotFound:
+            pass
         self.stop()
 
     @override

@@ -1,7 +1,8 @@
 import math
+from collections.abc import Iterable
 from functools import lru_cache
 from string import ascii_lowercase, digits
-from typing import Literal
+from typing import Any, Literal, Protocol
 
 
 def random_answer(text: str, answers: list[str]) -> str:
@@ -142,3 +143,122 @@ def truncate_text(
     elif mode == "start":
         return f"{placeholder}{text[-content_len:]}"
     return f"{text[:content_len]}{placeholder}"
+
+
+def truncate_sequence(
+    items: Iterable[str],
+    max_length: int,
+    *,
+    separator: str = "\n",
+    placeholder: str = "...",
+    reverse: bool = False,
+) -> str:
+    """Joins a sequence of strings and truncates the result at a boundary (separator)
+    to fit strictly within a maximum length.
+
+    Args:
+        items: An iterable of strings to join.
+        max_length: The hard limit for the final string length.
+        separator: The string used to join items. Defaults to newline.
+        placeholder: Appended when truncation occurs. Defaults to "...".
+        reverse: If True, reverses the sequence before joining.
+
+    Returns:
+        A string guaranteed to be <= max_length.
+
+    """
+    if max_length <= 0:
+        return ""
+
+    item_list = list(items)
+    if reverse:
+        item_list.reverse()
+    if not item_list:
+        return ""
+
+    full_text = separator.join(item_list)
+    if len(full_text) <= max_length:
+        return full_text
+
+    if max_length <= len(placeholder):
+        return placeholder[:max_length]
+
+    target_len = max_length - len(placeholder)
+    truncated = full_text[:target_len]
+
+    last_sep_index = truncated.rfind(separator)
+
+    if last_sep_index != -1:
+        return truncated[:last_sep_index] + separator + placeholder
+
+    return truncate_text(full_text, max_length, placeholder=placeholder, mode="end")
+
+
+class ItemMapper[T](Protocol):
+    """Protocol for mapping an item to a string representation.
+
+    Arguments:
+        item: The generic item to be mapped.
+        index: The global index of the item (0-based) in the source sequence.
+
+    Returns:
+        A string representation of the item.
+
+    """
+
+    def __call__(self, item: T, index: int, *args: Any, **kwargs: Any) -> str: ...
+
+
+class TextPaginator:
+    """Paginate pre-formatted strings.
+
+    Handles joining and strict length limits.
+    """
+
+    __slots__ = ("_pages", "_total_count")
+
+    def __init__(
+        self,
+        lines: Iterable[str],
+        *,
+        page_size: int = 25,
+        max_length: int = 1024,
+        separator: str = "\n",
+    ):
+        self._pages: list[str] = []
+        input_lines = list(lines)
+        self._total_count = len(input_lines)
+
+        current_page: list[str] = []
+        current_len = 0
+        sep_len = len(separator)
+
+        for line in input_lines:
+            if len(line) > max_length:
+                line = truncate_text(line, width=max_length)
+
+            line_len = len(line)
+            cost = sep_len + line_len if current_page else line_len
+
+            is_full_len = (current_len + cost) > max_length
+            is_full_count = len(current_page) >= page_size
+
+            if is_full_len or is_full_count:
+                if current_page:
+                    self._pages.append(separator.join(current_page))
+                current_page = [line]
+                current_len = line_len
+            else:
+                current_page.append(line)
+                current_len += cost
+
+        if current_page:
+            self._pages.append(separator.join(current_page))
+
+    @property
+    def pages(self) -> list[str]:
+        return self._pages
+
+    @property
+    def total_items(self) -> int:
+        return self._total_count

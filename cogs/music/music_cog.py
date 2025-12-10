@@ -5,13 +5,11 @@ from collections.abc import Sequence
 from itertools import groupby
 
 import discord
-import mafic
 from discord import Interaction, Member, app_commands
 from discord.ext import commands, tasks
 
 import config
 from api.music import (
-    MusicPlayer,
     MusicResultStatus,
     MusicService,
     MusicSession,
@@ -70,16 +68,7 @@ class MusicCog(BaseCog):
         super().__init__(bot)
         self.service = MusicService(bot)
         self.track_controller_manager = TrackControllerManager(bot)
-
-    # async def interaction_check(self, interaction: Interaction) -> bool:
-    #     if interaction.guild_id != 748606123065475134:
-    #         await send_warning(
-    #             interaction,
-    #             "Мы переходим на другой клиент и перерабатываем всю функциональность.",
-    #             ephemeral=True,
-    #         )
-    #         return False
-    #     return await super().interaction_check(interaction)
+        self.service.controller_manager = self.track_controller_manager
 
     async def cog_load(self) -> None:
         if self.bot.is_ready():
@@ -94,45 +83,6 @@ class MusicCog(BaseCog):
     @commands.Cog.listener()
     async def on_ready(self) -> None:
         await self.service.initialize()
-
-    @commands.Cog.listener()
-    async def on_track_start(self, event: mafic.TrackStartEvent[MusicPlayer]) -> None:
-        """Create track controller for the user."""
-        LOGGER.debug("Track started: %s in player: %s", event.track, event.player)
-        player = event.player
-        requester_info = player.get_requester(event.track)
-
-        if not requester_info:
-            LOGGER.warning("No requester info for track %s", event.track)
-            return
-        session = self.service.sessions.get(player.guild.id)
-        if not session:
-            return
-
-        if not (channel_id := requester_info.channel_id):
-            channel_id = (
-                max(session.channel_usage, key=lambda k: session.channel_usage[k])
-                if session.channel_usage
-                else None
-            )
-        if not channel_id:
-            return
-        LOGGER.debug("Creating track controller for user %s", requester_info.user_id)
-        channel = self.bot.get_channel(channel_id)
-        if (
-            channel
-            and isinstance(channel, discord.abc.Messageable)
-            and event.track.length >= 45_000
-        ):
-            await self.track_controller_manager.destroy_for_guild(player.guild.id)
-            await self.track_controller_manager.create_for_user(
-                guild_id=player.guild.id,
-                user_id=requester_info.user_id,
-                channel=channel,
-                player=player,
-                track=event.track,
-            )
-            LOGGER.debug("Created track controller for user %s", requester_info.user_id)
 
     @commands.Cog.listener()
     async def on_music_session_end(
@@ -422,6 +372,7 @@ class MusicCog(BaseCog):
 
         adapter = QueuePaginationAdapter(data)
         view = QueuePaginator(adapter, fetch, interaction.user.id)
+        await view.prepare()
         await view.send(interaction, ephemeral=ephemeral)
 
     @app_commands.command(name="volume", description="Установить громкость (0-200)")
@@ -569,6 +520,23 @@ class MusicCog(BaseCog):
             await send_info(interaction, "Воспроизведение продолжено")
         else:
             await send_warning(interaction, "Нет проигрывателя")
+
+    # @commands.command(name="test_4006")
+    # @commands.is_owner()
+    # async def test_4006(self, ctx: commands.Context) -> None:
+    #     player = self.service.get_player(ctx.guild.id)
+    #     if not player:
+    #         await ctx.reply("No player to test on.")
+    #         return
+
+    #     fake_payload = {
+    #         "code": 4006,
+    #         "reason": "Session is no longer valid.",
+    #         "byRemote": True,
+    #     }
+    #     event = mafic.WebSocketClosedEvent(payload=fake_payload, player=player)
+    #     await self.service._on_websocket_closed(event)
+    #     await ctx.reply("Simulated 4006 close; healer/cleanup should have run.")
 
 
 async def setup(bot: commands.Bot):

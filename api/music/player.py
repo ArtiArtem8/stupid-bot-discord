@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import discord
 import mafic
+from discord.utils import MISSING
 
 from .models import RepeatMode, Track, TrackId, TrackRequester
 from .queue import QueueManager, RepeatManager
@@ -117,6 +118,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
         next_track = self.queue.pop_next()
         if not next_track:
             LOGGER.debug("No next track in queue, stopping")
+            await self.stop()
             return None
 
         LOGGER.debug("Playing next track: %s", next_track)
@@ -135,6 +137,32 @@ class MusicPlayer(mafic.Player[discord.Client]):
             await self.stop()
 
         return skipped_track
+
+    @override
+    async def update(
+        self,
+        *,
+        track: Track | str | None = MISSING,
+        position: int | None = None,
+        end_time: int | None = None,
+        volume: int | None = None,
+        pause: bool | None = None,
+        filter: mafic.Filter | None = None,
+        replace: bool = False,
+    ) -> None:
+        try:
+            return await super().update(
+                track=track,
+                position=position,
+                end_time=end_time,
+                volume=volume,
+                pause=pause,
+                filter=filter,
+                replace=replace,
+            )
+        except mafic.errors.HTTPNotFound as e:
+            LOGGER.exception("Failed to update player: %s", e)
+            await self.disconnect(force=True)
 
 
 def music_player_factory(

@@ -64,7 +64,7 @@ class QueueManager:
     @property
     def is_empty(self) -> bool:
         """Check if queue is empty."""
-        return len(self._queue) == 0
+        return len(self._queue) <= 0
 
     @property
     def duration_ms(self) -> int:

@@ -3,14 +3,17 @@ from utils.json_utils import clear_json, get_json, save_json
 from utils.logging_setup import setup_logging
 from utils.russian_time_utils import format_time_russian
 from utils.text_utils import (
+    TextPaginator,
     format_list,
     random_answer,
     reverse_date,
     str_local,
+    truncate_sequence,
     truncate_text,
 )
 
 __all__ = [
+    "TextPaginator",
     "clear_json",
     "convert_image",
     "format_list",
@@ -23,5 +26,6 @@ __all__ = [
     "save_json",
     "setup_logging",
     "str_local",
+    "truncate_sequence",
     "truncate_text",
 ]

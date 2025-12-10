@@ -16,7 +16,9 @@ from discord.utils import utcnow
 import config
 from utils.json_utils import get_json, save_json
 
+from .healer import SessionHealer
 from .models import (
+    ControllerManagerProtocol,
     MusicResult,
     MusicResultStatus,
     MusicSession,
@@ -49,8 +51,13 @@ class MusicService:
         self._track_start_times: dict[int, datetime] = {}
         self._initialized = False
 
+        # Recover mechanic
+        self.healer = SessionHealer(self)
+        self._healing_guilds: set[int] = set()
+
         # Auto-leave tracking
         self.empty_channel_timers: dict[int, EmptyTimerInfo] = {}
+        self.controller_manager: ControllerManagerProtocol
 
     async def initialize(self) -> None:
         """Initialize Lavalink node connection."""
@@ -80,57 +87,154 @@ class MusicService:
         self.bot.add_listener(self._on_track_end, "on_track_end")
         self.bot.add_listener(self._on_node_ready, "on_node_ready")
         self.bot.add_listener(self._on_voice_state_update, "on_voice_state_update")
+        self.bot.add_listener(self._on_websocket_closed, "on_websocket_closed")
 
     async def _on_node_ready(self, node: mafic.Node[commands.Bot]) -> None:
         LOGGER.info("Lavalink node '%s' is ready", node.label)
 
     async def _on_track_start(self, event: mafic.TrackStartEvent[MusicPlayer]) -> None:
-        guild_id = event.player.guild.id
-        self.sessions.setdefault(guild_id, MusicSession(guild_id=guild_id))
-        self._track_start_times[guild_id] = utcnow()
-        LOGGER.debug("Track started in guild %d: %s", guild_id, event.track.title)
-
-    async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
+        if event.player.guild.id in self._healing_guilds:
+            LOGGER.debug(
+                "Ignoring track_start during healing for guild %s",
+                event.player.guild.id,
+            )
+            return
         player = event.player
         guild_id = player.guild.id
         track = event.track
-        reason = event.reason
+        self.sessions.setdefault(guild_id, MusicSession(guild_id=guild_id))
+        self._track_start_times[guild_id] = utcnow()
+        LOGGER.debug("Track started in guild %d: %s", guild_id, track.title)
 
-        LOGGER.debug(
-            "Track ended in guild %d: %s (reason: %s)", guild_id, track.title, reason
+        await self._spawn_controller(player, track)
+
+    async def _spawn_controller(self, player: MusicPlayer, track: mafic.Track) -> None:
+        """Helper to safely spawn a UI controller."""
+        requester_info = player.get_requester(track)
+        if not requester_info:
+            LOGGER.debug("No requester found for track: %s", track.title)
+            return
+
+        # Determine best channel: Explicit > Most Used
+        channel_id = requester_info.channel_id
+        if not channel_id:
+            session = self.sessions.get(player.guild.id)
+            if session and session.channel_usage:
+                channel_id = max(
+                    session.channel_usage, key=lambda k: session.channel_usage[k]
+                )
+
+        if not channel_id:
+            LOGGER.debug("No channel found for track: %s", track.title)
+            return
+
+        channel = self.bot.get_channel(channel_id)
+        if not channel or not isinstance(channel, discord.abc.Messageable):
+            LOGGER.debug("No channel found for track: %s", track.title)
+            return
+
+        # Only show controller for tracks > 45s (prevent spam on short clips)
+        if track.length < 45_000:
+            LOGGER.debug("Track too short: %s, %s", track.title, track.length)
+            return
+
+        # Let Manager handle the heavy lifting (lock, cleanup, creation)
+        await self.controller_manager.create_for_user(
+            guild_id=player.guild.id,
+            user_id=requester_info.user_id,
+            channel=channel,
+            player=player,
+            track=track,
         )
 
+    async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
+        if event.player.guild.id in self._healing_guilds:
+            LOGGER.debug(
+                "Ignoring track_end during healing for guild %s",
+                event.player.guild.id,
+            )
+            return
+        player = event.player
+        track = event.track
+        reason = event.reason
+
+        LOGGER.debug("Track ended: %s (Reason: %s)", track.title, reason)
+
+        await self._record_history(player, track, reason)
+
+        if event.reason is mafic.EndReason.FINISHED and player.queue.is_empty:
+            LOGGER.debug("Queue finished. destroying controller immediately.")
+            await self.controller_manager.destroy_for_guild(player.guild.id)
+
+        if reason in (mafic.EndReason.FINISHED, mafic.EndReason.LOAD_FAILED):
+            await player.advance(previous_track=track)
+
+    async def _record_history(
+        self, player: MusicPlayer, track: mafic.Track, reason: mafic.EndReason
+    ) -> None:
+        guild_id = player.guild.id
         session = self.sessions.get(guild_id)
         start_time = self._track_start_times.pop(guild_id, None)
 
-        if session and start_time:
-            elapsed = (utcnow() - start_time).total_seconds()
-            LOGGER.debug(
-                "Track '%s' in guild %d played for %.2fs.",
-                track.title,
-                guild_id,
-                elapsed,
-            )
-            skipped = elapsed < 20 and reason in (
-                mafic.EndReason.STOPPED,
-                mafic.EndReason.REPLACED,
-            )
-            requester_info = player.get_requester(track)
-            LOGGER.debug("Requester info: %s", player._requester_map)  # type: ignore
-            if not requester_info:
-                LOGGER.warning("No requester info for track %s", track.title)
-            user_id = requester_info.user_id if requester_info else None
-            channel_id = requester_info.channel_id if requester_info else None
-            session.add_track(
-                track.title,
-                track.uri or "",
-                user_id,
-                channel_id,
-                skipped,
-            )
+        if not session or not start_time:
+            return
 
-        if reason in (mafic.EndReason.FINISHED, mafic.EndReason.LOAD_FAILED):
-            await player.advance(previous_track=event.track)
+        skipped = False
+        if reason == mafic.EndReason.STOPPED:
+            skipped = True
+        elif reason == mafic.EndReason.REPLACED:
+            skipped = True
+
+        requester_info = player.get_requester(track)
+
+        session.add_track(
+            title=track.title,
+            uri=track.uri or "",
+            requester_id=requester_info.user_id if requester_info else None,
+            channel_id=requester_info.channel_id if requester_info else None,
+            skipped=skipped,
+            timestamp=start_time,
+        )
+        LOGGER.debug("Recorded history: %s (Skipped: %s)", track.title, skipped)
+
+    async def _on_websocket_closed(
+        self, event: mafic.WebSocketClosedEvent[MusicPlayer]
+    ) -> None:
+        """Handle Lavalink/Discord voice websocket closures.
+
+        - 1000: Normal closure (usually ignored)
+        - 4006: Session invalid (force disconnect, region change fail, etc.)
+        - 4014: Disconnected can be normal move, but if by_discord=True often means kick
+        """
+        guild_id = event.player.guild.id
+        LOGGER.warning(
+            "Voice websocket closed for guild %s. Code: %s, Reason: %s",
+            event.player.guild.id,
+            event.code,
+            event.reason,
+        )
+
+        if event.code == 4006:
+            LOGGER.warning(
+                "Detected 4006 for guild %s. Initiating HEALING protocol.",
+                event.player.guild.id,
+            )
+            if guild_id in self._healing_guilds:
+                return  # already healing
+            self._healing_guilds.add(guild_id)
+            # Clean up the OLD controller/timers first to avoid conflicts
+            try:
+                # cleaning
+                await self.controller_manager.destroy_for_guild(guild_id)
+                self.empty_channel_timers.pop(guild_id, None)
+
+                await self.healer.capture_and_heal(guild_id)
+            finally:
+                self._healing_guilds.discard(guild_id)
+
+        elif event.code == 4014 and event.by_discord:
+            # Normal cleanup
+            await self._cleanup_after_disconnect(event.player.guild.id)
 
     async def _on_voice_state_update(
         self,
@@ -138,33 +242,73 @@ class MusicService:
         before: discord.VoiceState,
         after: discord.VoiceState,
     ) -> None:
-        """Monitor voice state changes for auto-leave feature."""
+        """Monitor voice state changes for:
+        1. Bot disconnection (Graceful Cleanup)
+        2. Bot movement (Update State)
+        3. Auto-leave (Empty Channel detection).
+        """
         if not self.bot.user:
             return
 
+        if member.id == self.bot.user.id:
+            if after.channel is None:
+                LOGGER.info(
+                    "Bot was disconnected from guild %s. Cleaning up.", member.guild.id
+                )
+                # We do NOT call self.leave() here because we are already disconnected.
+                # Just clean up the internal state.
+                await self._cleanup_after_disconnect(member.guild.id)
+                return
+
+            if before.channel is not None and before.channel != after.channel:
+                LOGGER.info(
+                    "Bot moved from %s to %s in guild %s. Continuing playback.",
+                    before.channel.name,
+                    after.channel.name,
+                    member.guild.id,
+                )
+                if member.guild.id in self.empty_channel_timers:
+                    await self._update_channel_timer(member.guild.id, after.channel)
+                return
+
         guild = member.guild
-        if not guild.voice_client or not isinstance(guild.voice_client, MusicPlayer):
+        voice_client = guild.voice_client
+
+        # Guard: Bot must be connected
+        if not voice_client or not isinstance(voice_client, MusicPlayer):
             return
 
-        bot_channel = guild.voice_client.channel
+        bot_channel = voice_client.channel
         if not bot_channel:
             return
 
-        # Check if the update affects the bot's channel
-        affected = False
-        if before.channel == bot_channel or after.channel == bot_channel:
-            affected = True
+        # Check if update affects the bot's current channel
+        is_relevant = before.channel == bot_channel or after.channel == bot_channel
 
-        # Also check for deafen status changes if in the same channel
-        if before.channel == bot_channel == after.channel and (
-            before.deaf != after.deaf or before.self_deaf != after.self_deaf
-        ):
-            affected = True
+        # Also check deafen state if member is in the same channel
+        if before.channel == bot_channel == after.channel:
+            if before.deaf != after.deaf or before.self_deaf != after.self_deaf:
+                is_relevant = True
 
-        if affected and isinstance(
-            bot_channel, (discord.VoiceChannel, discord.StageChannel)
-        ):
-            await self._update_channel_timer(guild.id, bot_channel)
+        if is_relevant:
+            if isinstance(bot_channel, (discord.VoiceChannel, discord.StageChannel)):
+                await self._update_channel_timer(guild.id, bot_channel)
+
+    async def _cleanup_after_disconnect(self, guild_id: int) -> None:
+        """Cleans up session/controller state without calling player.disconnect()."""
+        # 1. Destroy Controller (UI)
+        await self.controller_manager.destroy_for_guild(guild_id)
+
+        # 2. End Session (Triggers history embed)
+        await self.end_session(guild_id)
+
+        # 3. Clear Timer
+        self.empty_channel_timers.pop(guild_id, None)
+
+        # 4. Clear Internal State
+        player = self.get_player(guild_id)
+        if player:
+            player.clear_queue()
 
     async def _update_channel_timer(
         self, guild_id: int, channel: discord.VoiceChannel | discord.StageChannel
@@ -312,16 +456,30 @@ class MusicService:
 
     async def leave(self, guild: discord.Guild) -> MusicResult[None]:
         player = self.get_player(guild.id)
-        if not player:
-            return MusicResult(MusicResultStatus.FAILURE, "Not connected")
+        voice_client = guild.voice_client
+
+        # Even if player is None, we might have lingering session state to clean up
+        is_player_connected = player and player.connected
+        is_voice_connected = (
+            voice_client
+            and isinstance(voice_client, MusicPlayer)
+            and voice_client.is_connected()
+        )
 
         try:
+            # Always clean up session/UI first (Idempotent)
             await self.end_session(guild.id)
-            player.clear_queue()
-            await player.disconnect()
-
-            # Clear timer on leave
+            await self.controller_manager.destroy_for_guild(guild.id)
             self.empty_channel_timers.pop(guild.id, None)
+
+            if not is_player_connected and not is_voice_connected:
+                return MusicResult(MusicResultStatus.FAILURE, "Not connected")
+            if player:
+                player.clear_queue()
+                if player.connected:
+                    await player.disconnect()
+            if guild.voice_client:
+                await guild.voice_client.disconnect(force=True)
 
             return MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
         except Exception as e:
@@ -330,6 +488,7 @@ class MusicService:
 
     async def end_session(self, guild_id: int) -> None:
         session = self.sessions.pop(guild_id, None)
+        LOGGER.debug("Ending session for guild %s, %s", guild_id, session)
         self._track_start_times.pop(guild_id, None)
 
         if session and session.tracks:
@@ -338,7 +497,7 @@ class MusicService:
                 if session.channel_usage
                 else None
             )
-            if main_channel_id:
+            if main_channel_id and guild_id not in self._healing_guilds:
                 self.bot.dispatch(
                     "music_session_end", guild_id, session, main_channel_id
                 )
@@ -419,6 +578,7 @@ class MusicService:
 
         player.clear_queue()
         await player.stop()
+        await self.controller_manager.destroy_for_guild(guild_id)
         await self._record_interaction(guild_id, text_channel_id, requester_id)
         return MusicResult(MusicResultStatus.SUCCESS, "Stopped")
 

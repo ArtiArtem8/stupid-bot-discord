@@ -5,28 +5,32 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from math import ceil
-from typing import Awaitable, Callable, Self
+from collections import defaultdict
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import TYPE_CHECKING, Any, Self
 
 import discord
+import mafic
 from discord import Interaction, ui
 from discord.abc import PrivateChannel
-from discord.ext import commands
 from discord.utils import format_dt
 
 import config
 from api.music import (
-    MusicPlayer,
     MusicSession,
     QueueSnapshot,
     RepeatMode,
-    Track,
     TrackId,
 )
 from framework import PRIMARY, BasePaginator, PaginationData
-from utils import truncate_text
+from utils import TextPaginator, truncate_text
 
 from .ui import send_warning
+
+if TYPE_CHECKING:
+    from discord.ext.commands import Bot  # pyright: ignore[reportMissingTypeStubs]
+
+    from api.music import MusicPlayer, Track
 
 LOGGER = logging.getLogger(__name__)
 MUSIC_PLAYER_EMOJIS = {
@@ -57,13 +61,22 @@ class QueuePaginationAdapter(PaginationData):
     def __init__(self, snapshot: QueueSnapshot, page_size: int = 20) -> None:
         self.snapshot = snapshot
         self.page_size = page_size
+        self._paginator = self._build_paginator(snapshot)
 
     def update_snapshot(self, snapshot: QueueSnapshot) -> None:
         self.snapshot = snapshot
+        self._paginator = self._build_paginator(snapshot)
 
     async def get_page_count(self) -> int:
-        upcoming_count = len(self.snapshot.queue)
-        return max((upcoming_count + self.page_size - 1) // self.page_size, 1)
+        return max(1, len(self._paginator.pages))
+
+    def _build_paginator(self, snapshot: QueueSnapshot) -> TextPaginator:
+        return TextPaginator(
+            [f"{i}. [{t.title}]({t.uri})" for i, t in enumerate(snapshot.queue, 1)],
+            page_size=self.page_size,
+            max_length=config.MAX_EMBED_FIELD_LENGTH,
+            separator="\n",
+        )
 
     def make_embed(self, page: int) -> discord.Embed:
         embed = discord.Embed(title="Очередь воспроизведения", color=config.Color.INFO)
@@ -80,18 +93,10 @@ class QueuePaginationAdapter(PaginationData):
         else:
             embed.description = "Ничего не играет."
 
-        queue_list = list(self.snapshot.queue)
-        start = page * self.page_size
-        end = min(len(queue_list), start + self.page_size)
-
-        if queue_list and start < len(queue_list):
-            lines = [
-                f"{idx + 1}. [{track.title}]({track.uri})"
-                for idx, track in enumerate(queue_list[start:end], start=start)
-            ]
+        if 0 <= page < len(self._paginator.pages):
             embed.add_field(
                 name="Далее",
-                value="\n".join(lines),
+                value=self._paginator.pages[page],
                 inline=False,
             )
 
@@ -100,12 +105,11 @@ class QueuePaginationAdapter(PaginationData):
             if self.snapshot.repeat_mode is RepeatMode.OFF
             else self.snapshot.repeat_mode.value
         )
-        total_pages = max((len(queue_list) + self.page_size - 1) // self.page_size, 1)
-
+        total_pages = max(1, len(self._paginator.pages))
         embed.set_footer(
             text=(
                 f"Стр. {page + 1}/{total_pages} • "
-                f"В очереди: {len(queue_list)} • "
+                f"В очереди: {self._paginator.total_items} • "
                 f"Повтор: {repeat_str}"
             )
         )
@@ -113,7 +117,7 @@ class QueuePaginationAdapter(PaginationData):
 
     async def on_unauthorized(self, interaction: Interaction) -> None:
         await send_warning(
-            interaction, "Попрошу не трогать, вы не диджей.", ephemeral=True
+            interaction, "Попрошу не трогать, это не ваше сообщение.", ephemeral=True
         )
 
 
@@ -153,40 +157,50 @@ class SessionPaginationAdapter(PaginationData):
     def __init__(self, session: MusicSession, page_size: int = 15) -> None:
         self.session = session
         self.page_size = page_size
+        self._paginator = self._build_paginator()
 
     async def get_page_count(self) -> int:
-        return max(1, ceil(len(self.session.tracks) / self.page_size))
+        return max(1, len(self._paginator.pages))
+
+    def _build_paginator(self) -> TextPaginator:
+        lines = [
+            f"{format_dt(t.timestamp, 'T')} • {i}. "
+            f"{'~~' if t.skipped else ''}"
+            f"[{truncate_text(t.title, 45)}]({t.uri})"
+            f"{'~~' if t.skipped else ''} "
+            f"{f'(<@{t.requester_id}>)' if t.requester_id else ''}"
+            for i, t in enumerate(self.session.tracks, 1)
+        ]
+        # Result: [timestamp] • [index]. [title] [requester_id]
+        return TextPaginator(
+            lines,
+            page_size=self.page_size,
+            max_length=config.MAX_EMBED_FIELD_LENGTH,
+            separator="\n",
+        )
 
     def make_embed(self, page: int) -> discord.Embed:
-        start = page * self.page_size
-        end = min(len(self.session.tracks), start + self.page_size)
+        description = (
+            self._paginator.pages[page]
+            if 0 <= page < len(self._paginator.pages)
+            else "Пусто"
+        )
 
         embed = discord.Embed(
             title="Полная история",
             color=config.Color.INFO,
             timestamp=self.session.start_time,
+            description=description,
         )
 
-        lines: list[str] = []
-        for idx, track in enumerate(self.session.tracks[start:end], start=start + 1):
-            status = "~~" if track.skipped else ""
-            track_str = f"[{truncate_text(track.title, width=45, placeholder='...')}]({track.uri})"
-            requester_str = f"(<@{track.requester_id}>)" if track.requester_id else ""
-            lines.append(
-                f"{format_dt(track.timestamp, style='T')} • {idx}. {status}{track_str}{status} {requester_str}"
-            )
-
-        embed.description = "\n".join(lines) if lines else "Пусто"
-        total_pages = max(1, ceil(len(self.session.tracks) / self.page_size))
+        total_pages = max(1, len(self._paginator.pages))
         embed.set_footer(
-            text=f"Стр. {page + 1}/{total_pages} • {len(self.session.tracks)} всего"
+            text=f"Стр. {page + 1}/{total_pages} • {self._paginator.total_items} всего"
         )
         return embed
 
     async def on_unauthorized(self, interaction: Interaction) -> None:
-        await send_warning(
-            interaction, "Попрошу не трогать, вы не диджей.", ephemeral=True
-        )
+        await send_warning(interaction, "Как ты этого добился?", ephemeral=True)
 
 
 class SessionSummaryView(ui.View):
@@ -210,6 +224,7 @@ class SessionSummaryView(ui.View):
         paginator = BasePaginator(
             data=adapter, user_id=interaction.user.id, show_first_last=False
         )
+        await paginator.prepare()
         await paginator.send(interaction, ephemeral=True, silent=True)
 
     async def on_timeout(self) -> None:
@@ -221,18 +236,14 @@ class SessionSummaryView(ui.View):
 
 
 class TrackControllerManager:
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: Bot):
         self.bot = bot
         self.controllers: dict[int, TrackControllerView] = {}
         self._active_messages: dict[int, tuple[int, int]] = {}
-        self._locks: dict[int, asyncio.Lock] = {}
-
-    def _get_lock(self, guild_id: int) -> asyncio.Lock:
-        if guild_id not in self._locks:
-            self._locks[guild_id] = asyncio.Lock()
-        return self._locks[guild_id]
+        self._locks = defaultdict(asyncio.Lock)
 
     async def _safe_delete_message(self, channel_id: int, message_id: int):
+        """Safely delete a message, handling missing channels/messages."""
         try:
             channel = self.bot.get_channel(channel_id)
             if not channel:
@@ -243,15 +254,10 @@ class TrackControllerManager:
             if isinstance(
                 channel, (discord.ForumChannel, discord.CategoryChannel, PrivateChannel)
             ):
-                LOGGER.debug(
-                    "Ignoring message deletion for channel type %s", type(channel)
-                )
                 return
             partial_msg = channel.get_partial_message(message_id)
             await partial_msg.delete()
-        except (discord.NotFound, discord.Forbidden):
-            pass
-        except discord.HTTPException:
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             pass
 
     async def create_for_user(
@@ -263,45 +269,41 @@ class TrackControllerManager:
         player: MusicPlayer,
         track: Track,
     ):
-        async with self._get_lock(guild_id):
+        """Creates a new controller, replacing any existing one safely."""
+        async with self._locks[guild_id]:
             LOGGER.debug(f"Manager: Setup controller for guild {guild_id}")
-
             target_id = TrackId.from_track(track)
 
-            async def wait_for_sync():
-                for _ in range(10):
-                    if (
-                        player.current
-                        and TrackId.from_track(player.current) == target_id
-                    ):
-                        return True
-                    await asyncio.sleep(0.2)
-                return False
-
-            if not await wait_for_sync():
+            # 1. Wait for Player State Consistency
+            # We verify the player is actually playing the track we want to control
+            if not await self._wait_for_sync(player, target_id, timeout=2.0):
+                current_id = (
+                    TrackId.from_track(player.current) if player.current else "None"
+                )
                 LOGGER.debug(
-                    f"Manager: Aborting. Player state desynced. "
-                    f"Expected: {target_id}, Got: {TrackId.from_track(player.current) if player.current else 'None'}"
+                    f"Manager: Aborting. Player state desynced. Expected: {target_id}, Got: {current_id}"
                 )
                 return
 
-            if guild_id in self.controllers:
-                self.controllers[guild_id].stop()
-                del self.controllers[guild_id]
+            # 2. Cleanup Existing Controller (if any)
+            # We explicitly clean up here to ensure only one active controller exists
+            await self._cleanup_existing(guild_id)
 
-            if guild_id in self._active_messages:
-                old_chan, old_msg = self._active_messages.pop(guild_id)
-                await self._safe_delete_message(old_chan, old_msg)
+            # 3. Create New View
+            # We define a callback for the view to request its own destruction
+            async def on_view_stop_callback(view_ref: TrackControllerView):
+                await self.destroy_for_guild(guild_id, requesting_view=view_ref)
 
             view = TrackControllerView(
                 user_id=user_id,
                 player=player,
-                manager=self,
                 guild_id=guild_id,
                 track_id=target_id,
+                on_stop_callback=on_view_stop_callback,
             )
 
             try:
+                # 4. Send Message & Register
                 view.update_buttons_state()
                 msg = await channel.send(
                     embed=view.make_embed(), view=view, silent=True
@@ -310,25 +312,103 @@ class TrackControllerManager:
                 view.message = msg
                 self.controllers[guild_id] = view
                 self._active_messages[guild_id] = (channel.id, msg.id)  # type: ignore
+
                 view.start_updater()
                 LOGGER.debug(f"Manager: Controller active for {target_id.id}")
 
             except Exception as e:
                 LOGGER.exception(f"Failed to send controller: {e}")
+                view.stop()
 
-    async def destroy_for_guild(self, guild_id: int):
-        async with self._get_lock(guild_id):
-            if guild_id in self.controllers:
-                self.controllers[guild_id].stop()
-                del self.controllers[guild_id]
+    async def destroy_for_guild(
+        self, guild_id: int, requesting_view: TrackControllerView | None = None
+    ):
+        """Destroys the controller for a guild.
+        If requesting_view is provided, only destroys if current active view.
+        """
+        async with self._locks[guild_id]:
+            current_view = self.controllers.get(guild_id)
 
-            if guild_id in self._active_messages:
-                chan_id, msg_id = self._active_messages.pop(guild_id)
+            if requesting_view and current_view != requesting_view:
+                LOGGER.debug(
+                    f"Manager: Ignoring destroy request from stale view for guild {guild_id}"
+                )
+                return
+
+            # Perform Cleanup
+            await self._cleanup_existing(guild_id)
+
+    async def _cleanup_existing(self, guild_id: int):
+        """Internal helper to clean up resources. Assumes lock is held."""
+        # 1. Stop and remove View
+        controller = self.controllers.pop(guild_id, None)
+        if controller:
+            try:
+                controller.stop()
+            except Exception as e:
+                LOGGER.error(f"Error stopping controller: {e}")
+
+        # 2. Delete Message
+        message_info = self._active_messages.pop(guild_id, None)
+        if message_info:
+            chan_id, msg_id = message_info
+            try:
                 await self._safe_delete_message(chan_id, msg_id)
+            except Exception as e:
+                LOGGER.warning(f"Failed to delete message: {e}")
 
-    async def destroy_specific(self, guild_id: int, user_id: int):
-        # Redirect to main destroy logic to ensure lock safety
-        await self.destroy_for_guild(guild_id)
+    async def _wait_for_sync(
+        self, player: MusicPlayer, target_id: TrackId, timeout: float = 2.0
+    ) -> bool:
+        """Helper to wait for player state to match target track."""
+
+        async def check():
+            while True:
+                if player.current and TrackId.from_track(player.current) == target_id:
+                    return
+                await asyncio.sleep(0.1)
+
+        try:
+            await asyncio.wait_for(check(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+
+type ButtonCallback = Callable[
+    ["TrackControllerView", Interaction, ui.Button["TrackControllerView"]],
+    Coroutine[Any, Any, None],
+]
+
+
+def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
+    """Decorator to handle exceptions in button callbacks.
+
+    Catches mafic.PlayerNotConnected and mafic.PlayerException exceptions,
+    stopping the view and calling the on_stop_callback if provided.
+    Logs any unhandled exceptions.
+
+    """
+
+    async def wrapper(
+        self: "TrackControllerView",
+        interaction: Interaction,
+        button: ui.Button["TrackControllerView"],
+    ) -> None:
+        try:
+            await func(self, interaction, button)
+        except (mafic.PlayerNotConnected, mafic.PlayerException):
+            LOGGER.warning("Player error in %s", func.__name__)
+            self.stop()
+            if self.on_stop_callback:
+                await self.on_stop_callback(self)
+        except Exception:
+            LOGGER.exception("Unhandled error in %s", func.__name__)
+            self.stop()
+            if self.on_stop_callback:
+                await self.on_stop_callback(self)
+
+    return wrapper
 
 
 class TrackControllerView(ui.View):
@@ -337,35 +417,36 @@ class TrackControllerView(ui.View):
         *,
         user_id: int,
         player: MusicPlayer,
-        manager: TrackControllerManager,
         guild_id: int,
         track_id: TrackId,
+        on_stop_callback: Callable[[TrackControllerView], Awaitable[None]] | None,
     ):
         super().__init__(timeout=None)
         self.user_id = user_id
-        self.track_id = track_id
         self.player = player
-        self.manager = manager
         self.guild_id = guild_id
+        self.track_id = track_id
+        self.on_stop_callback = on_stop_callback
+
         self.message: discord.Message | None = None
         self._task: asyncio.Task[None] | None = None
         self.update_interval = 20
+        self._running = True
 
-        # State
+        # State Cache
         self._is_paused_cache: bool = False
         self._pause_start_time: float | None = None
         self._frozen_position: int = 0
         self._max_pause_duration = 900
         self._last_update_time: float = 0
         self._min_update_delay: float = 1.0
-        self._running = True
 
-    def _stop(self):
-        """Stops the updater loop safely."""
+    def stop(self):
+        """Stops the updater loop and interaction."""
         self._running = False
         if self._task:
             self._task.cancel()
-        self.stop()
+        super().stop()
 
     def make_embed(self) -> discord.Embed:
         track = self.player.current
@@ -434,43 +515,55 @@ class TrackControllerView(ui.View):
         self._task = asyncio.create_task(self._loop())
 
     async def _loop(self):
+        """Background loop to update embed and check track state."""
         failure_count = 0
         MAX_FAILURES = 3
+
         try:
             while self._running:
                 await asyncio.sleep(self.update_interval)
+
                 current_track = self.player.current
-                # Check 1: Is track still playing?
+
                 if not current_track:
                     failure_count += 1
                     if failure_count >= MAX_FAILURES:
-                        LOGGER.debug("Player empty for too long. Destroying.")
-                        await self.manager.destroy_for_guild(self.guild_id)
+                        LOGGER.debug("View: Player empty. Requesting stop.")
+                        self.stop()
+                        if self.on_stop_callback:
+                            await self.on_stop_callback(self)
                         return
                     continue
 
                 current_id = TrackId.from_track(current_track)
                 if current_id != self.track_id:
                     LOGGER.debug(
-                        f"Track changed ({self.track_id} -> {current_id}). Destroying."
+                        f"View: Track changed ({self.track_id} -> {current_id}). Requesting stop."
                     )
-                    await self.manager.destroy_for_guild(self.guild_id)
+                    self.stop()
+                    if self.on_stop_callback:
+                        await self.on_stop_callback(self)
                     return
 
                 failure_count = 0
-                if self.player.paused:
+
+                is_paused = self.player.paused
+
+                if is_paused:
                     if not self._is_paused_cache:
                         self._is_paused_cache = True
                         self._pause_start_time = time.monotonic()
                         self._frozen_position = self.player.position or 0
                         await self._safe_update(force=True)
                     else:
-                        # Timeout Check
                         if self._pause_start_time and (
                             time.monotonic() - self._pause_start_time
                             > self._max_pause_duration
                         ):
-                            await self.manager.destroy_for_guild(self.guild_id)
+                            LOGGER.debug("View: Paused too long. Requesting stop.")
+                            self.stop()
+                            if self.on_stop_callback:
+                                await self.on_stop_callback(self)
                             return
                 else:
                     if self._is_paused_cache:
@@ -481,7 +574,9 @@ class TrackControllerView(ui.View):
                         await self._safe_update()
 
         except asyncio.CancelledError:
-            return
+            pass
+        except Exception as e:
+            LOGGER.exception(f"View Loop Error: {e}")
 
     def update_buttons_state(self):
         for child in self.children:
@@ -494,22 +589,24 @@ class TrackControllerView(ui.View):
                 break
 
     async def _safe_update(self, force: bool = False):
+        """Updates the message with rate limiting."""
+        if not self.message:
+            return
+
         now = time.monotonic()
         if not force and (now - self._last_update_time < self._min_update_delay):
             return
 
-        if self.message:
-            try:
-                self.update_buttons_state()
-                await self.message.edit(embed=self.make_embed(), view=self)
-                self._last_update_time = now
-            except discord.NotFound:
-                # Message was deleted externally. Stop updater.
-                self._stop()
-            except discord.HTTPException:
-                pass
+        try:
+            self.update_buttons_state()
+            await self.message.edit(embed=self.make_embed(), view=self)
+            self._last_update_time = now
+        except discord.NotFound:
+            LOGGER.debug("View: Message deleted externally. Stopping.")
+            self.stop()
+        except discord.HTTPException:
+            pass
 
-    # --- BUTTONS ---
     async def _check_owner(self, interaction: Interaction) -> bool:
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
@@ -523,6 +620,7 @@ class TrackControllerView(ui.View):
         style=discord.ButtonStyle.secondary,
         custom_id="btn_restart",
     )
+    @handle_view_errors
     async def restart(self, interaction: Interaction, _: ui.Button[Self]):
         if not await self._check_owner(interaction):
             return
@@ -537,6 +635,7 @@ class TrackControllerView(ui.View):
         style=discord.ButtonStyle.secondary,
         custom_id="btn_back10",
     )
+    @handle_view_errors
     async def back10(self, interaction: Interaction, _: ui.Button[Self]):
         if not await self._check_owner(interaction):
             return
@@ -557,6 +656,7 @@ class TrackControllerView(ui.View):
         style=discord.ButtonStyle.secondary,
         custom_id="btn_pause_resume",
     )
+    @handle_view_errors
     async def pause_resume(self, interaction: Interaction, _: ui.Button[Self]):
         if not await self._check_owner(interaction):
             return
@@ -576,6 +676,7 @@ class TrackControllerView(ui.View):
         style=discord.ButtonStyle.secondary,
         custom_id="btn_fwd10",
     )
+    @handle_view_errors
     async def forward10(self, interaction: Interaction, _: ui.Button[Self]):
         if not await self._check_owner(interaction):
             return
@@ -598,6 +699,7 @@ class TrackControllerView(ui.View):
         style=discord.ButtonStyle.secondary,
         custom_id="btn_skip",
     )
+    @handle_view_errors
     async def skip(self, interaction: Interaction, _: ui.Button[Self]):
         if not await self._check_owner(interaction):
             return
