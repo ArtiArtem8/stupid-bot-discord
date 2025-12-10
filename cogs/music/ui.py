@@ -1,0 +1,78 @@
+"""UI helpers for Music Cog."""
+
+import logging
+from datetime import timedelta
+
+from discord import Interaction
+
+from framework import FeedbackType, FeedbackUI
+
+LOGGER = logging.getLogger(__name__)
+
+MAX_TIMEDELTA_DAYS = 999_999_999
+
+
+def format_duration(ms: int | float) -> str:
+    """Helper to convert milliseconds to timedelta stripping microseconds."""
+    try:
+        total = timedelta(seconds=ms / 1_000.0)
+    except OverflowError:
+        total = timedelta(days=min(MAX_TIMEDELTA_DAYS, ms // 86_400_000))
+    except ValueError:
+        return "NaN"
+    total -= timedelta(microseconds=total.microseconds)
+    if total.days >= MAX_TIMEDELTA_DAYS - 1_000_000:
+        return "∞"
+    if total.days >= 14:
+        return str(total.days) + " days"
+    return str(total)
+
+
+async def send_error(interaction: Interaction, message: str) -> None:
+    """Send an error feedback."""
+    await FeedbackUI.send(
+        interaction,
+        feedback_type=FeedbackType.ERROR,
+        description=message,
+        delete_after=600,
+    )
+
+
+async def send_warning(
+    interaction: Interaction, message: str, ephemeral: bool = True
+) -> None:
+    """Send a warning feedback."""
+    await FeedbackUI.send(
+        interaction,
+        feedback_type=FeedbackType.WARNING,
+        description=message,
+        ephemeral=ephemeral,
+    )
+
+
+async def send_info(
+    interaction: Interaction,
+    message: str,
+    delete_after: float | None = 60,
+    title: str | None = None,
+) -> None:
+    """Send info feedback."""
+    await FeedbackUI.send(
+        interaction,
+        feedback_type=FeedbackType.INFO,
+        description=message,
+        title=title,
+        delete_after=delete_after,
+    )
+
+
+async def send_success(
+    interaction: Interaction, message: str, delete_after: float | None = 60
+) -> None:
+    """Send success feedback."""
+    await FeedbackUI.send(
+        interaction,
+        feedback_type=FeedbackType.SUCCESS,
+        description=message,
+        delete_after=delete_after,
+    )

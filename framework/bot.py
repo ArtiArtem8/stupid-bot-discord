@@ -16,6 +16,10 @@ from utils import format_time_russian
 LOGGER = logging.getLogger("StupidBot")
 
 
+class DevServer:
+    id = 748606123065475134
+
+
 class StupidBot(commands.Bot):
     def __init__(
         self,

@@ -6,9 +6,19 @@ from framework.exceptions import (
     NoGuildError,
 )
 from framework.feedback_ui import FeedbackType, FeedbackUI
-from framework.pagination import BasePaginator, ManagedView, PaginationData
+from framework.pagination import (
+    DANGER,
+    PRIMARY,
+    SECONDARY,
+    BasePaginator,
+    ManagedView,
+    PaginationData,
+)
 
 __all__ = [
+    "DANGER",
+    "PRIMARY",
+    "SECONDARY",
     "BaseCog",
     "BasePaginator",
     "BlockedUserError",

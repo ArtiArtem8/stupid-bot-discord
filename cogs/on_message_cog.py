@@ -89,13 +89,14 @@ class OnMessageCog(commands.Cog):
             changes.append(f"flags: {before_flags} -> {after_flags}")
 
         if changes:
-            self.logger.info(
+            self.logger.debug(
                 "Message edited by %s in %s | Changes: %s",
                 after.author,
                 after.channel,
                 ", ".join(changes),
             )
-            self._log_message(after)
+
+            self._log_message(after, is_edit=True)
 
     async def quest_process_message(self, message: Message):
         if len(message.content) < 5:
@@ -162,12 +163,14 @@ class OnMessageCog(commands.Cog):
         """
         if not data:
             return
+        if log_data := summary_factory(data):
+            self.logger.info(f"{label}: %s", log_data)
+        if self.logger.isEnabledFor(logging.DEBUG) and (
+            log_data := debug_factory(data)
+        ):
+            self.logger.debug(f"Full {label.lower()}: %s", log_data)
 
-        self.logger.info(f"{label}: %s", summary_factory(data))
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"Full {label.lower()}: %s", debug_factory(data))
-
-    def _log_message(self, message: Message) -> None:
+    def _log_message(self, message: Message, *, is_edit: bool = False) -> None:
         """Log message with structured INFO summaries and lazy DEBUG details."""
         content_flags: dict[str, Any] = {
             "attachments": message.attachments,
@@ -177,14 +180,14 @@ class OnMessageCog(commands.Cog):
             "reference": message.reference,
             "poll": message.poll,
         }
-
-        self.logger.info(
-            '%s sent - "%s" in %s (%s)',
-            message.author,
-            message.content,
-            message.channel,
-            ", ".join(k for k, v in content_flags.items() if v),
-        )
+        if not is_edit:
+            self.logger.info(
+                '%s sent - "%s" in %s (%s)',
+                message.author,
+                message.content,
+                message.channel,
+                ", ".join(k for k, v in content_flags.items() if v),
+            )
 
         self._log_section(
             "Attachments",
@@ -196,9 +199,7 @@ class OnMessageCog(commands.Cog):
         self._log_section(
             "Embeds",
             message.embeds,
-            summary_factory=lambda x: [
-                (e.title or "No title", e.type, len(e.fields), e.color) for e in x
-            ],
+            summary_factory=lambda _: "",
             debug_factory=lambda x: {
                 f"embed_{i}": e.to_dict() for i, e in enumerate(x)
             },
@@ -207,7 +208,7 @@ class OnMessageCog(commands.Cog):
         self._log_section(
             "Stickers",
             message.stickers,
-            summary_factory=lambda x: [(s.id, s.name, s.format.name) for s in x],
+            summary_factory=lambda _: "",
             debug_factory=lambda x: [(s.id, s.name, s.format.name, s.url) for s in x],
         )
 
@@ -225,7 +226,7 @@ class OnMessageCog(commands.Cog):
         self._log_section(
             "Components",
             message.components,
-            summary_factory=lambda x: [type(c).__name__ for c in x],
+            summary_factory=lambda _: "",
             debug_factory=lambda x: {
                 f"component_{i}": c.to_dict() for i, c in enumerate(x)
             },
@@ -244,7 +245,7 @@ class OnMessageCog(commands.Cog):
         self._log_section(
             "Flags",
             message.flags.value,
-            summary_factory=lambda x: x,
+            summary_factory=lambda _: "",
             debug_factory=lambda x: f"{x} (0x{x:x})",
         )
 

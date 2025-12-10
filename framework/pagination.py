@@ -6,8 +6,11 @@ from discord import Interaction
 from discord.ui import Button
 
 SECONDARY = discord.ButtonStyle.secondary
+""":py:attr:`discord.ButtonStyle.secondary` """
 PRIMARY = discord.ButtonStyle.primary
+""":py:attr:`discord.ButtonStyle.primary` """
 DANGER = discord.ButtonStyle.danger
+""":py:attr:`discord.ButtonStyle.danger` """
 
 
 class PaginationData(Protocol):
