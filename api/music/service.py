@@ -219,22 +219,23 @@ class MusicService:
                 "Detected 4006 for guild %s. Initiating HEALING protocol.",
                 event.player.guild.id,
             )
-            if guild_id in self._healing_guilds:
-                return  # already healing
-            self._healing_guilds.add(guild_id)
-            # Clean up the OLD controller/timers first to avoid conflicts
-            try:
-                # cleaning
-                await self.controller_manager.destroy_for_guild(guild_id)
-                self.empty_channel_timers.pop(guild_id, None)
-
-                await self.healer.capture_and_heal(guild_id)
-            finally:
-                self._healing_guilds.discard(guild_id)
+            await self.heal(guild_id)
 
         elif event.code == 4014 and event.by_discord:
             # Normal cleanup
             await self._cleanup_after_disconnect(event.player.guild.id)
+
+    async def heal(self, guild_id: int) -> None:
+        if guild_id in self._healing_guilds:
+            return
+        self._healing_guilds.add(guild_id)
+        try:
+            await self.controller_manager.destroy_for_guild(guild_id)
+            self.empty_channel_timers.pop(guild_id, None)
+
+            await self.healer.capture_and_heal(guild_id)
+        finally:
+            self._healing_guilds.discard(guild_id)
 
     async def _on_voice_state_update(
         self,

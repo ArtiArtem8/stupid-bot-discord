@@ -301,7 +301,9 @@ class MusicCog(BaseCog):
                 icon_url=interaction.user.display_avatar.url,
             )
 
-            await FeedbackUI.send(interaction, embed=embed, delete_after=60)
+            await FeedbackUI.send(
+                interaction, embed=embed, delete_after=min(delay_sec, 900)
+            )
 
     @app_commands.command(
         name="stop", description="Остановить воспроизведение и очистить очередь"
@@ -521,22 +523,27 @@ class MusicCog(BaseCog):
         else:
             await send_warning(interaction, "Нет проигрывателя")
 
-    # @commands.command(name="test_4006")
-    # @commands.is_owner()
-    # async def test_4006(self, ctx: commands.Context) -> None:
-    #     player = self.service.get_player(ctx.guild.id)
-    #     if not player:
-    #         await ctx.reply("No player to test on.")
-    #         return
-
-    #     fake_payload = {
-    #         "code": 4006,
-    #         "reason": "Session is no longer valid.",
-    #         "byRemote": True,
-    #     }
-    #     event = mafic.WebSocketClosedEvent(payload=fake_payload, player=player)
-    #     await self.service._on_websocket_closed(event)
-    #     await ctx.reply("Simulated 4006 close; healer/cleanup should have run.")
+    @app_commands.command(
+        name="reconnect", description="Переподключиться в случае ошибок"
+    )
+    @app_commands.guild_only()
+    @handle_errors()
+    async def heal(self, interaction: Interaction) -> None:
+        if interaction.guild_id is None:
+            await send_warning(interaction, "сервер не найден", ephemeral=True)
+            return
+        player = self.service.get_player(interaction.guild_id)
+        if not player:
+            await send_warning(interaction, "нет проигрывателя", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        await self.service.heal(interaction.guild_id)
+        await send_warning(
+            interaction,
+            title="Восстановлен",
+            message="Попытка переподключения сделана",
+            ephemeral=True,
+        )
 
 
 async def setup(bot: commands.Bot):

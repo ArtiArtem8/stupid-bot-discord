@@ -39,7 +39,10 @@ async def send_error(interaction: Interaction, message: str) -> None:
 
 
 async def send_warning(
-    interaction: Interaction, message: str, ephemeral: bool = True
+    interaction: Interaction,
+    message: str,
+    title: str | None = None,
+    ephemeral: bool = True,
 ) -> None:
     """Send a warning feedback."""
     await FeedbackUI.send(
@@ -47,6 +50,7 @@ async def send_warning(
         feedback_type=FeedbackType.WARNING,
         description=message,
         ephemeral=ephemeral,
+        title=title,
     )
 
 
