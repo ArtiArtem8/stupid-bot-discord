@@ -84,15 +84,14 @@ class MusicCog(BaseCog):
         self.container.register(ConnectionManager)
         self.container.register(StateManager)
         self.container.register(VolumeRepository)
-
-        self.track_controller_manager = TrackControllerManager(bot)
         self.container.register(
-            ControllerManagerProtocol, factory=lambda c: self.track_controller_manager
+            ControllerManagerProtocol, implementation=TrackControllerManager
         )
-
+        self.track_controller_manager = self.container.resolve(
+            ControllerManagerProtocol
+        )
         self.container.register(UIOrchestrator)
 
-        # Register Healer (resolving dependencies automatically)
         self.container.register(HealerProtocol, implementation=SessionHealer)
 
         self.container.register(MusicEventHandlers)

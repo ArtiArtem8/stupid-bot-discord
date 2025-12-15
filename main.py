@@ -8,7 +8,7 @@ from framework.bot import StupidBot
 from utils import setup_logging
 
 tracemalloc.start()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("StupidBot")
 
 
 async def main() -> None:

@@ -1,127 +1,80 @@
 from __future__ import annotations
 
+import logging
+from typing import TYPE_CHECKING, Any, cast
+
 import config
 from api.birthday_models import BirthdayGuildConfig, BirthdayGuildDict
-from utils.json_utils import get_json, save_json
+from repositories.base_repository import BaseRepository
+from utils import AsyncJsonFileStore
+
+logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    pass
+
+type JsonDict = dict[str, Any]
 
 
-class SyncBirthdayRepository:
-    """Repository for managing birthday data.
-    Maintains an in-memory cache validated against file modification time.
-    """
+class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
+    """Repository for managing birthday data asynchronously."""
 
-    def __init__(self) -> None:
-        self.file_path = config.BIRTHDAY_FILE
-        self._cache: dict[int, BirthdayGuildConfig] = {}
-        self._file_mtime_ns: int | None = None
+    def __init__(self, store: AsyncJsonFileStore | None = None) -> None:
+        self._store = store or AsyncJsonFileStore(config.BIRTHDAY_FILE)
 
-    def _current_file_mtime_ns(self) -> int | None:
-        try:
-            return self.file_path.stat().st_mtime_ns
-        except FileNotFoundError:
+    async def get(self, key: int) -> BirthdayGuildConfig | None:
+        """Get guild config by guild_id."""
+        data = await self._store.read()
+        guild_key = str(key)
+
+        if guild_key not in data:
             return None
 
-    def _refresh_if_file_changed(self) -> None:
-        mtime = self._current_file_mtime_ns()
-        if mtime != self._file_mtime_ns:
-            self._cache.clear()
-            self._file_mtime_ns = mtime
-
-    def get_guild_config(self, guild_id: int) -> BirthdayGuildConfig | None:
-        """Get guild config from cache or file."""
-        self._refresh_if_file_changed()
-
-        if guild_id in self._cache:
-            return self._cache[guild_id]
-
-        # Load from file if not in cache (but cache invalidation happens above,
-        # so this implies it wasn't there or cache was cleared)
-
-        # Optimization: We should load ALL from file if cache is cleared?
-        # Or load on demand?
-        # get_json loads the WHOLE file.
-        # So we should probably load everything into cache if cache is empty?
-        # But if cache was just cleared, we need to reload.
-
-        # Let's inspect get_json again. It returns the dict.
-        # If I call get_json() inside here, it's expensive if done per guild if I don't cache the result of get_json.
-        # But wait, get_json reads the file.
-
-        # Logic:
-        # If cache is empty (due to invalidation), we reload the whole file map?
-        # Implementation:
-
-        raw_data = get_json(self.file_path)
-        if not isinstance(raw_data, dict):
+        guild_data = data[guild_key]
+        if not isinstance(guild_data, dict):
             return None
 
-        # Populate cache completely to avoid re-reading for other guilds?
-        # Yes, good practice for single-file DB.
+        # Safe cast assuming schema validity
+        return BirthdayGuildConfig.from_dict(key, cast(BirthdayGuildDict, guild_data))
 
-        for gid_str, g_data in raw_data.items():
-            gid = int(gid_str)
-            self._cache[gid] = BirthdayGuildConfig.from_dict(gid, g_data)  # type: ignore
+    async def get_all(self) -> list[BirthdayGuildConfig]:
+        """Get all guild configs."""
+        data = await self._store.read()
+        results: list[BirthdayGuildConfig] = []
 
-        return self._cache.get(guild_id)
+        for guild_key, guild_data in data.items():
+            if not guild_key.isdigit() or not isinstance(guild_data, dict):
+                continue
 
-    def save_guild_config(self, guild_config: BirthdayGuildConfig) -> None:
-        """Update cache and save to file."""
-        self._cache[guild_config.guild_id] = guild_config
+            try:
+                config = BirthdayGuildConfig.from_dict(
+                    int(guild_key), cast(BirthdayGuildDict, guild_data)
+                )
+                results.append(config)
+            except Exception:
+                logger.error("Failed to load guild config %s", guild_key)
+                continue
 
-        # We need to save ALL data.
-        # So we take our cache (assuming it covers everything loaded)
-        # BUT we might have partial cache if we only loaded on demand?
-        # Above I changed logic to load ALL into cache on miss. So cache is authoritative for the file state.
-        # IF the file changed externally, _refresh_if_file_changed invalidates cache, so we reload.
+        return results
 
-        # Potential race condition: if we invalidate, then load all, then modify one, then save.
+    async def save(self, entity: BirthdayGuildConfig, key: int | None = None) -> None:
+        """Save a guild config."""
+        guild_id = key if key is not None else entity.guild_id
 
-        raw_data: dict[str, BirthdayGuildDict] = {}
-        # Ensure we have all known data.
-        # Use simple get_json to make sure we don't overwrite others if cache was partial?
-        # But if we loaded all on miss, cache is full representation.
+        def _updater(data: JsonDict) -> None:
+            data[str(guild_id)] = entity.to_dict()
 
-        for gid, conf in self._cache.items():
-            raw_data[str(gid)] = conf.to_dict()
+        await self._store.update(_updater)
 
-        save_json(self.file_path, raw_data)
-        self._file_mtime_ns = self._current_file_mtime_ns()
+    async def delete(self, key: int) -> None:
+        """Delete a guild config by guild_id."""
 
-    def delete_guild_config(self, guild_id: int) -> bool:
-        self._refresh_if_file_changed()
+        def _updater(data: JsonDict) -> None:
+            data.pop(str(key), None)
 
-        found = False
-        if guild_id in self._cache:
-            del self._cache[guild_id]
-            found = True
+        await self._store.update(_updater)
 
-        # Even if not in cache (maybe not loaded?), we might need to check file if we didn't force load?
-        # But get_guild_config forces load.
-        # Let's ensure load.
-        if not self._cache:
-            self.get_guild_config(guild_id)  # side effect: load
-            if guild_id in self._cache:
-                del self._cache[guild_id]
-                found = True
-
-        if found:
-            # Save new state
-            raw_data: dict[str, BirthdayGuildDict] = {}
-            for gid, conf in self._cache.items():
-                raw_data[str(gid)] = conf.to_dict()
-            save_json(self.file_path, raw_data)
-            self._file_mtime_ns = self._current_file_mtime_ns()
-            return True
-
-        return False
-
-    def get_all_guild_ids(self) -> list[int]:
-        self._refresh_if_file_changed()
-        # Ensure load
-        if not self._cache and self.file_path.exists():
-            self.get_guild_config(0)  # Logic hack to trigger load
-
-        return list(self._cache.keys())
-
-    def clear_cache(self) -> None:
-        self._cache.clear()
+    async def get_all_guild_ids(self) -> list[int]:
+        """Get list of all guild IDs in the store."""
+        data = await self._store.read()
+        return [int(k) for k in data.keys() if k.isdigit()]

@@ -8,6 +8,7 @@ from typing import NotRequired, Self, TypedDict
 import discord
 
 import config
+from utils import is_birthday_today
 from utils.birthday_utils import calculate_days_until_birthday, format_birthday_date
 
 
@@ -114,11 +115,14 @@ class BirthdayGuildConfig:
         return False
 
     def get_birthdays_today(self, today: date) -> list[BirthdayUser]:
-        today_key = today.strftime("%d-%m")
+        """Get list of users whose birthday is today.
+
+        Uses utils.birthday_utils.is_birthday_today to handle leap year logic.
+        """
         return [
             user
             for user in self.users.values()
-            if user.birth_day_month() == today_key
+            if is_birthday_today(user.birthday, today)
             and not user.was_congratulated_today(today)
         ]
 

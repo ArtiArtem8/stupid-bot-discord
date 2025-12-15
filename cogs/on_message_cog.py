@@ -33,7 +33,7 @@ class OnMessageCog(commands.Cog):
             return
         if message.content.startswith(tuple(await self.bot.get_prefix(message))):
             return
-        if message.guild and block_manager.is_user_blocked(
+        if message.guild and await block_manager.is_user_blocked(
             message.guild.id, message.author.id
         ):
             return

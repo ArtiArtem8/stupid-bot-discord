@@ -8,7 +8,7 @@ from discord import DMChannel, Interaction
 from discord.ui import Modal, TextInput
 
 import config
-from utils import truncate_text
+from utils import SafeEmbed
 from utils.json_utils import get_json, save_json
 
 logger = logging.getLogger(__name__)
@@ -74,17 +74,17 @@ def _build_report_data(interaction: Interaction, reason: str) -> ReportDataDict:
 
 def _create_report_embed(report: ReportDataDict) -> discord.Embed:
     """Formats the report for Discord."""
-    embed = discord.Embed(
+    embed = SafeEmbed(
         title="Отчёт",
         color=config.Color.INFO,
         timestamp=datetime.now(),
     )
-    embed.add_field(
+    embed.safe_add_field(
         name="Описание",
-        value=truncate_text(report["reason"], width=config.MAX_EMBED_FIELD_LENGTH),
+        value=report["reason"],  # SafeEmbed automatically truncates
         inline=False,
     )
-    embed.add_field(
+    embed.safe_add_field(
         name="Отправитель",
         value=f"{report['user']['name']} (`{report['user']['id']}`)",
         inline=True,
@@ -97,7 +97,7 @@ def _create_report_embed(report: ReportDataDict) -> discord.Embed:
         locs.append(f"**Канал:** {report['channel']['name']}")
 
     if locs:
-        embed.add_field(name="Локация", value="\n".join(locs), inline=False)
+        embed.safe_add_field(name="Локация", value="\n".join(locs), inline=False)
 
     embed.set_footer(text=f"ID: {report['report_id']}")
     if report["user"]["avatar"]:
@@ -155,7 +155,7 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
                     interaction.message.id,
                 )
 
-        embed = discord.Embed(
+        embed = SafeEmbed(
             title="Спасибо за отчёт!",
             description=f"-# Ваш персональный ID: `{report_id}`",
             color=config.Color.SUCCESS,

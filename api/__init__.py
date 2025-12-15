@@ -1,18 +1,18 @@
 """API package."""
 
-from api.birthday_models import BirthdayGuildConfig, BirthdayUser
 from api.birthday import (
     birthday_manager,
     create_birthday_list_embed,
     parse_birthday,
     safe_fetch_member,
 )
+from api.birthday_models import BirthdayGuildConfig, BirthdayUser
 from api.blocking import (
     BlockedUser,
     BlockManager,
     block_manager,
 )
-from api.blocking_models import BlockHistoryEntry, NameHistoryEntry
+from api.blocking_models import BlockHistoryEntry, GuildData, NameHistoryEntry
 from api.music import (
     MusicPlayer,
     MusicResult,
@@ -37,6 +37,7 @@ __all__ = [
     "BlockHistoryEntry",
     "BlockManager",
     "BlockedUser",
+    "GuildData",
     "MusicPlayer",
     "MusicResult",
     "MusicResultStatus",

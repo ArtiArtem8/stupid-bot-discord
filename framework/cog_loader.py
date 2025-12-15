@@ -30,6 +30,7 @@ class CogLoader:
                 logger.info("Loaded: %s", module_name)
             except Exception:
                 logger.exception("Failed to load %s", module_name)
+                raise
 
     def start_watcher(self):
         if self.enable_watch:

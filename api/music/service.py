@@ -153,12 +153,10 @@ class MusicService:
             logger.debug("No channel found for track: %s", track.title)
             return
 
-        # Only show controller for tracks > 45s (prevent spam on short clips)
-        if track.length < 45_000:
+        if track.length < 45_000:  # TODO: detect if live stream
             logger.debug("Track too short: %s, %s", track.title, track.length)
             return
 
-        # Let Manager handle the heavy lifting (lock, cleanup, creation)
         await self.controller_manager.create_for_user(
             guild_id=player.guild.id,
             user_id=requester_info.user_id,

@@ -25,7 +25,8 @@ from discord.ext import commands
 import config
 from api.wolfram import WolframAPIError, WolframClient, WolframResult
 from framework import BaseCog, FeedbackType, FeedbackUI
-from utils import optimize_image, save_image, truncate_text
+from utils import SafeEmbed, optimize_image, save_image
+
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ class WolframCog(BaseCog):
         title_text = input_pod.get_joined_text() if input_pod else query
         title_text = title_text.replace("solve ", "").replace("plot ", "")
 
-        embed = discord.Embed(
+        embed = SafeEmbed(
             title="Expression:", description=f"`{title_text}`", color=config.Color.INFO
         )
         embed.set_author(name="StupidBot", icon_url=config.BOT_ICON)
@@ -179,11 +180,8 @@ class WolframCog(BaseCog):
                 continue
 
             inline = not pod.is_primary
-            text = truncate_text(text, width=1000)
-
-            embed.add_field(
-                name=f"{pod.title}:", value=f"```\n{text}\n```", inline=inline
-            )
+            # SafeEmbed handles truncation and code block wrapping
+            embed.add_code_field(name=f"{pod.title}:", value=text, inline=inline)
             fields_added += 1
 
             if fields_added >= 10:

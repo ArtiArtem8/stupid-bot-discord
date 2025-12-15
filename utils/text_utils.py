@@ -2,7 +2,7 @@ import math
 from collections.abc import Iterable
 from functools import lru_cache
 from string import ascii_lowercase, digits
-from typing import Any, Literal, Protocol
+from typing import Literal
 
 
 def random_answer(text: str, answers: list[str]) -> str:
@@ -50,24 +50,6 @@ def str_local(text: str) -> str:
     """
     mask = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя" + ascii_lowercase + digits
     return "".join(i for i in text.lower() if i in mask)
-
-
-def reverse_date(date_str: str) -> str:
-    """Reverses a date string in the format "DD-MM-YYYY".
-
-    Args:
-        date_str (str): The date string to reverse.
-
-    Returns:
-        str: The reversed date string if the input is valid, otherwise the same string.
-
-    """
-    try:
-        parts = date_str.split("-")
-        return "-".join(parts[::-1])
-    except Exception as err:
-        print("Error in reverse_date: ", err)
-        return date_str
 
 
 def format_list(strlist: list[str], cut: int, theme: bool = True) -> list[str]:
@@ -151,7 +133,6 @@ def truncate_sequence(
     *,
     separator: str = "\n",
     placeholder: str = "...",
-    reverse: bool = False,
 ) -> str:
     """Joins a sequence of strings and truncates the result at a boundary (separator)
     to fit strictly within a maximum length.
@@ -161,7 +142,6 @@ def truncate_sequence(
         max_length: The hard limit for the final string length.
         separator: The string used to join items. Defaults to newline.
         placeholder: Appended when truncation occurs. Defaults to "...".
-        reverse: If True, reverses the sequence before joining.
 
     Returns:
         A string guaranteed to be <= max_length.
@@ -171,8 +151,6 @@ def truncate_sequence(
         return ""
 
     item_list = list(items)
-    if reverse:
-        item_list.reverse()
     if not item_list:
         return ""
 
@@ -180,33 +158,30 @@ def truncate_sequence(
     if len(full_text) <= max_length:
         return full_text
 
-    if max_length <= len(placeholder):
-        return placeholder[:max_length]
+    budget = max_length - len(placeholder)
 
-    target_len = max_length - len(placeholder)
-    truncated = full_text[:target_len]
+    if not item_list:
+        return placeholder
 
-    last_sep_index = truncated.rfind(separator)
+    current_len = 0
+    valid_items: list[str] = []
 
-    if last_sep_index != -1:
-        return truncated[:last_sep_index] + separator + placeholder
+    for i, item in enumerate(item_list):
+        sep_cost = len(separator) if i > 0 else 0
+        item_cost = len(item)
+        total_cost = sep_cost + item_cost
 
-    return truncate_text(full_text, max_length, placeholder=placeholder, mode="end")
+        if current_len + total_cost > budget:
+            if i == 0:
+                return truncate_text(
+                    item, max_length, placeholder=placeholder, mode="end"
+                )
+            break
 
+        valid_items.append(item)
+        current_len += total_cost
 
-class ItemMapper[T](Protocol):
-    """Protocol for mapping an item to a string representation.
-
-    Arguments:
-        item: The generic item to be mapped.
-        index: The global index of the item (0-based) in the source sequence.
-
-    Returns:
-        A string representation of the item.
-
-    """
-
-    def __call__(self, item: T, index: int, *args: Any, **kwargs: Any) -> str: ...
+    return separator.join(valid_items) + placeholder
 
 
 class TextPaginator:

@@ -125,6 +125,7 @@ def format_time_russian(total_seconds: int, depth: int | None = 2) -> str:
 
 
 if __name__ == "__main__":
+    # Too subjective to test
     print(format_time_russian(-864685))
     print(format_time_russian(0, depth=None))
     print(format_time_russian(1))

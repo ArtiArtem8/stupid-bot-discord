@@ -78,7 +78,7 @@ class GenericBaseCog[BotT: commands.Bot](abc.ABC, commands.Cog, metaclass=CogABC
 
         if await maybe_coroutine(self.should_bypass_block, interaction):
             return True
-        if interaction.guild and block_manager.is_user_blocked(
+        if interaction.guild and await block_manager.is_user_blocked(
             interaction.guild.id, interaction.user.id
         ):
             logger.debug(

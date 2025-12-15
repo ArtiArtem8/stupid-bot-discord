@@ -15,11 +15,13 @@ from typing import NoReturn, override
 import discord
 from discord import app_commands
 from discord.ext import commands
+from discord.utils import format_dt
 
 import config
 from api import block_manager
 from framework import BaseCog, FeedbackType, FeedbackUI, handle_errors, is_owner_app
 from resources import ACTION_TITLES
+from utils import SafeEmbed, truncate_sequence, truncate_text
 
 logger = logging.getLogger(__name__)
 
@@ -53,14 +55,18 @@ def create_block_embed(
     """
     description = f"{user.mention} был {'за' if action == BLOCK else 'раз'}блокирован"
     title = ACTION_TITLES[action]
-    embed = discord.Embed(
+    embed = SafeEmbed(
         title=title,
         description=description,
         color=config.Color.INFO,
     )
 
     if reason:
-        embed.add_field(name="Причина", value=reason)
+        embed.safe_add_field(
+            name="Причина",
+            value=reason,
+            inline=False,
+        )
 
     return embed
 
@@ -123,7 +129,7 @@ class AdminCog(BaseCog):
     ):
         """Block a user from using the bot."""
         guild = await self._require_guild(interaction)
-        if block_manager.is_user_blocked(guild.id, user.id):
+        if await block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -131,7 +137,7 @@ class AdminCog(BaseCog):
                 ephemeral=True,
             )
             return
-        block_manager.block_user(guild.id, user, interaction.user.id, reason)
+        await block_manager.block_user(guild.id, user, interaction.user.id, reason)
         logger.info("Blocked user %d in guild %d", user.id, guild.id)
         embed = create_block_embed(user, BLOCK, reason)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
@@ -151,7 +157,7 @@ class AdminCog(BaseCog):
     ):
         """Unblock a user from using the bot."""
         guild = await self._require_guild(interaction)
-        if not block_manager.is_user_blocked(guild.id, user.id):
+        if not await block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -159,7 +165,7 @@ class AdminCog(BaseCog):
                 ephemeral=True,
             )
             return
-        block_manager.unblock_user(guild.id, user, interaction.user.id, reason)
+        await block_manager.unblock_user(guild.id, user, interaction.user.id, reason)
         logger.info("Unblocked user %d in guild %d", user.id, guild.id)
         embed = create_block_embed(user, UNBLOCK, reason)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
@@ -182,7 +188,7 @@ class AdminCog(BaseCog):
     ):
         """Display detailed block history for a user."""
         guild = await self._require_guild(interaction)
-        user_entry = block_manager.get_user(guild.id, user.id)
+        user_entry = await block_manager.get_user(guild.id, user.id)
 
         if not user_entry or not user_entry.block_history:
             logger.info(
@@ -201,28 +207,26 @@ class AdminCog(BaseCog):
             f"Displaying block history for user {user.id} "
             f"in guild {guild.name} ({guild.id})"
         )
-        # Build detailed embed
-        embed = discord.Embed(
+        embed = SafeEmbed(
             title="Полная история блокировок",
             color=config.Color.ERROR if user_entry.is_blocked else config.Color.SUCCESS,
         )
         embed.set_author(name=str(user), icon_url=user.display_avatar.url)
         embed.set_thumbnail(url=user.display_avatar.url)
 
-        # Current status
         if user_entry.is_blocked:
             last_block = user_entry.block_history[-1]
-            timestamp = int(last_block.timestamp.timestamp())
+            timestamp = format_dt(last_block.timestamp, "F")
             status_value = (
                 f"**Заблокирован**\n"
                 f"• Администратор: <@{last_block.admin_id}>\n"
+                f"• Дата: {timestamp}"
                 f"• Причина: {last_block.reason or 'Не указана'}\n"
-                f"• Дата: <t:{timestamp}:F>"
             )
         else:
             status_value = "Не заблокирован"
 
-        embed.add_field(
+        embed.safe_add_field(
             name="Текущий статус",
             value=status_value,
             inline=False,
@@ -240,48 +244,63 @@ class AdminCog(BaseCog):
             history_lines: list[str] = []
             for timestamp, action, entry in all_events:
                 icon = ("🔓", "🔒")[action == "BLOCK"]
-                ts = int(timestamp.timestamp())
+                truncated_reason = truncate_text(
+                    entry.reason or "Не указана", width=200, mode="middle"
+                )
                 history_lines.append(
-                    f"{icon} **{action}** <t:{ts}:R>\n"
+                    f"{icon} **{action}** {format_dt(timestamp, 'R')}\n"
                     f"• Админ: <@{entry.admin_id}>\n"
-                    f"• Причина: {entry.reason or 'Не указана'}\n"
+                    f"• Причина: {truncated_reason}"
                 )
 
-            embed.add_field(
+            history_value = truncate_sequence(
+                history_lines,
+                max_length=config.MAX_EMBED_FIELD_LENGTH,
+                separator="\n",
+                placeholder="...",
+            )
+            embed.safe_add_field(
                 name="Последние события",
-                value="\n".join(history_lines)[:1024],
+                value=history_value,
                 inline=False,
             )
 
         # Name history
-        if user_entry.name_history:
+        if user_entry.name_history[:21]:
             name_changes: list[str] = []
             for name_entry in sorted(
                 user_entry.name_history,
                 key=lambda x: x.timestamp,
                 reverse=True,
             )[:3]:
-                ts = int(name_entry.timestamp.timestamp())
-                name_changes.append(f"<t:{ts}:D>:\n• Имя: {name_entry.username}\n")
+                ts = format_dt(name_entry.timestamp, "D")
+                username_text = truncate_text(name_entry.username, width=200)
+                name_changes.append(f"{ts}:\n• Имя: {username_text}")
 
-            embed.add_field(
+            names_value = truncate_sequence(
+                name_changes,
+                max_length=config.MAX_EMBED_FIELD_LENGTH,
+                separator="\n",
+                placeholder="...",
+            )
+            embed.safe_add_field(
                 name="История имён",
-                value="\n".join(name_changes)[:1024],
+                value=names_value,
             )
 
         # Statistics
-        first_block_ts = int(user_entry.block_history[0].timestamp.timestamp())
+        first_block_ts = format_dt(user_entry.block_history[0].timestamp, "D")
         stats = [
             f"• Всего блокировок: {len(user_entry.block_history)}",
             f"• Всего разблокировок: {len(user_entry.unblock_history)}",
-            f"• Первая блокировка: <t:{first_block_ts}:D>",
+            f"• Первая блокировка: {first_block_ts}",
         ]
 
         if user_entry.unblock_history:
-            last_unblock_ts = int(user_entry.unblock_history[-1].timestamp.timestamp())
-            stats.append(f"• Последняя разблокировка: <t:{last_unblock_ts}:D>")
+            last_unblock_ts = format_dt(user_entry.unblock_history[-1].timestamp, "D")
+            stats.append(f"• Последняя разблокировка: {last_unblock_ts}")
 
-        embed.add_field(
+        embed.safe_add_field(
             name="Статистика",
             value="\n".join(stats),
             inline=False,
@@ -312,7 +331,7 @@ class AdminCog(BaseCog):
     ):
         """Display all currently blocked users with basic information."""
         guild = await self._require_guild(interaction)
-        all_users = block_manager.get_guild_users(guild.id)
+        all_users = await block_manager.get_guild_users(guild.id)
         blocked_users = [u for u in all_users if u.is_blocked]
 
         if not blocked_users:
@@ -325,7 +344,7 @@ class AdminCog(BaseCog):
             )
             return
         logger.info(f"Found {len(blocked_users)} blocked users in guild {guild.id} ")
-        embed = discord.Embed(
+        embed = SafeEmbed(
             title=f"Заблокированные пользователи ({len(blocked_users)})",
             color=config.Color.INFO,
         )
@@ -347,50 +366,27 @@ class AdminCog(BaseCog):
 
             if show_details:
                 last_block = user_entry.block_history[-1]
-                timestamp = int(last_block.timestamp.timestamp())
+                truncated_username = truncate_text(current_username, width=80)
+                truncated_reason = truncate_text(
+                    last_block.reason or "Не указана", width=200
+                )
+                ts = format_dt(last_block.timestamp, "R")
                 entry.extend(
                     [
-                        f"• Текущее имя: {current_username}",
-                        f"• Последняя блокировка: <t:{timestamp}:R>",
-                        f"• Причина: {last_block.reason or 'Не указана'}",
+                        f"• Текущее имя: {truncated_username}",
+                        f"• Последняя блокировка: {ts}",
+                        f"• Причина: {truncated_reason}",
                         f"• Администратор: <@{last_block.admin_id}>",
                     ]
                 )
 
             entries.append("\n".join(entry))
-
-        timestamp = int(blocked_users[0].block_history[-1].timestamp.timestamp())
-        embed.description = (
-            f"**Статистика блокировок:**\n"
-            f"• Всего заблокировано: {len(blocked_users)}\n"
-            f"• Не на сервере: {unresolved_count}\n"
-            f"• Последняя блокировка: <t:{timestamp}:R>"
+        embed.add_field_pages(
+            name="Заблокированные пользователи",
+            lines=entries,
+            page_size=15,
+            separator="\n",
         )
-
-        current_field: list[str] = []
-        current_length = 0
-
-        for entry in entries:
-            entry_length = len(entry) + 2
-            if current_length + entry_length > config.MAX_EMBED_FIELD_LENGTH:
-                embed.add_field(
-                    name="Заблокированные пользователи",
-                    value="\n\n".join(current_field),
-                    inline=False,
-                )
-                current_field = []
-                current_length = 0
-            current_field.append(entry)
-            current_length += entry_length
-
-        if current_field:
-            embed.add_field(
-                name="Заблокированные пользователи"
-                if not show_details
-                else "Детали блокировок",
-                value="\n\n".join(current_field),
-                inline=False,
-            )
 
         embed.set_footer(
             text="" if not show_details else "Детальная информация о блокировках"

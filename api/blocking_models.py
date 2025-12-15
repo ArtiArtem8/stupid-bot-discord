@@ -33,6 +33,12 @@ class BlockedUserDict(TypedDict):
     name_history: list[NameHistoryEntryDict]
 
 
+class GuildData(TypedDict):
+    """TypedDict for guild storage structure."""
+
+    users: dict[str, BlockedUserDict]
+
+
 @dataclass
 class BlockHistoryEntry:
     admin_id: int

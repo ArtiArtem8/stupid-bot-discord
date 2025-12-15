@@ -13,7 +13,8 @@ from api.birthday_models import (
 )
 
 # Import Repository
-from repositories.birthday_repository import SyncBirthdayRepository
+from repositories.birthday_repository import BirthdayRepository
+from utils import TextPaginator, truncate_text
 
 logger = logging.getLogger(__name__)
 
@@ -52,89 +53,94 @@ async def safe_fetch_member(
 
 def create_birthday_list_embed(
     guild_name: str,
-    entries: list[BirthdayListEntry],
+    entries: list["BirthdayListEntry"],
     max_field_length: int = 1024,
 ) -> discord.Embed:
-    embed = discord.Embed(
-        title=f"Дни рождения на сервере {guild_name}",
-        color=discord.Color.gold(),
-    )
+    title = truncate_text(f"Дни рождения на сервере {guild_name}", width=256)
+    embed = discord.Embed(title=title, color=discord.Color.gold())
+
+    if not entries:
+        embed.description = "Нет добавленных дней рождений."
+        embed.set_footer(text="Всего дней рождений: 0")
+        return embed
+
     lines: list[str] = []
     for i, entry in enumerate(entries, 1):
-        days_text = (
-            "сегодня" if entry["days_until"] == 0 else f"через {entry['days_until']} д."
-        )
-        line = f"{i}. **{entry['date']}** - {entry['name']} ({days_text})"
-        lines.append(line)
+        days_until = entry["days_until"]
+        days_text = "сегодня" if days_until == 0 else f"через {days_until} д."
 
-    current_chunk: list[str] = []
-    current_length = 0
-    for line in lines:
-        line_length = len(line) + 1
-        if current_length + line_length > max_field_length and current_chunk:
-            embed.add_field(
-                name="Ближайшие дни рождения",
-                value="\n".join(current_chunk),
-                inline=False,
-            )
-            current_chunk = []
-            current_length = 0
-        current_chunk.append(line)
-        current_length += line_length
+        safe_date = truncate_text(entry["date"], width=32)
+        safe_name = truncate_text(entry["name"], width=128)
 
-    if current_chunk:
-        embed.add_field(
-            name="Ближайшие дни рождения",
-            value="\n".join(current_chunk),
-            inline=False,
+        line = f"{i}. **{safe_date}** - {safe_name} ({days_text})"
+        lines.append(truncate_text(line, width=max_field_length, mode="end"))
+
+    paginator = TextPaginator(
+        lines,
+        page_size=20,
+        max_length=max_field_length,
+        separator="\n",
+    )
+
+    # Discord embed constraints: max 25 fields, and ~6000 total characters.
+    MAX_FIELDS = 25
+    MAX_TOTAL = 6000
+
+    for page_num, page_text in enumerate(paginator.pages, 1):
+        if len(embed.fields) >= MAX_FIELDS:
+            break
+
+        field_name = (
+            "Ближайшие дни рождения"
+            if page_num == 1
+            else f"Ближайшие дни рождения (стр. {page_num})"
         )
-    embed.set_footer(text=f"Всего дней рождений: {len(entries)}")
+        field_name = truncate_text(field_name, width=256)
+
+        projected_total = len(embed) + len(field_name) + len(page_text)
+        if projected_total > MAX_TOTAL:
+            break
+
+        embed.add_field(name=field_name, value=page_text, inline=False)
+
+    footer = f"Всего дней рождений: {len(entries)}"
+    embed.set_footer(text=truncate_text(footer, width=2048))
     return embed
 
 
 class BirthdayManager:
-    def __init__(self, repository: SyncBirthdayRepository) -> None:
+    def __init__(self, repository: BirthdayRepository) -> None:
         self.repo = repository
 
-    def get_guild_config(self, guild_id: int) -> BirthdayGuildConfig | None:
-        return self.repo.get_guild_config(guild_id)
+    async def get_guild_config(self, guild_id: int) -> BirthdayGuildConfig | None:
+        return await self.repo.get(guild_id)
 
-    def get_or_create_guild_config(
+    async def get_or_create_guild_config(
         self, guild_id: int, server_name: str, channel_id: int
     ) -> BirthdayGuildConfig:
-        existing = self.repo.get_guild_config(guild_id)
+        existing = await self.repo.get(guild_id)
         if existing is not None:
             return existing
         new_config = BirthdayGuildConfig(guild_id, server_name, channel_id)
-        # Note: repo.get_guild_config caches. save_guild_config saves.
-        # We need to explicitly save the new config?
-        # Original code did: self._cache[guild_id] = new_config.
-        # It did NOT save to file immediately in get_or_create?
-        # Original: self._cache[guild_id] = new_config. return new_config.
-        # No save_json called.
-        # So it's in-memory until save_guild_config is called.
-
-        # We must replicate this behavior via Repo.
-        # Repo.save usually writes to disk.
-        # If we want in-memory only, we bypass repo save?
-        # But if we rely on repo for cache, we need to put it in repo cache.
-        # I added save_guild_config to repo which writes.
-        # I should probably add `cache_only=True` or just save it. Saving it is safer.
-        # Let's save it.
-        self.repo.save_guild_config(new_config)
+        await self.repo.save(new_config)
         return new_config
 
-    def save_guild_config(self, guild_config: BirthdayGuildConfig) -> None:
-        self.repo.save_guild_config(guild_config)
+    async def save_guild_config(self, guild_config: BirthdayGuildConfig) -> None:
+        await self.repo.save(guild_config)
 
-    def delete_guild_config(self, guild_id: int) -> bool:
-        return self.repo.delete_guild_config(guild_id)
+    async def delete_guild_config(self, guild_id: int) -> bool:
+        # Check if exists first to return bool?
+        # Repository.delete typically returns None.
+        # The previous implementation returned bool if found.
+        # For compatibility, we can check existence first.
+        existing = await self.repo.get(guild_id)
+        if existing:
+            await self.repo.delete(guild_id)
+            return True
+        return False
 
-    def get_all_guild_ids(self) -> list[int]:
-        return self.repo.get_all_guild_ids()
-
-    def clear_cache(self) -> None:
-        self.repo.clear_cache()
+    async def get_all_guild_ids(self) -> list[int]:
+        return await self.repo.get_all_guild_ids()
 
 
-birthday_manager = BirthdayManager(SyncBirthdayRepository())
+birthday_manager = BirthdayManager(BirthdayRepository())

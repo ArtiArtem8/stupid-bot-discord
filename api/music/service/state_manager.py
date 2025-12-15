@@ -4,14 +4,14 @@ import logging
 import time
 from typing import TYPE_CHECKING, TypedDict
 
+import mafic
 from discord.utils import utcnow
 
 from api.music.models import MusicSession
+from api.music.player import MusicPlayer
 
 if TYPE_CHECKING:
-    import mafic
-
-    from api.music.player import MusicPlayer
+    pass
 
 logger = logging.getLogger(__name__)
 

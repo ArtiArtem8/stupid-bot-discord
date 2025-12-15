@@ -13,6 +13,7 @@ import discord
 import mafic
 from discord import Interaction, ui
 from discord.abc import PrivateChannel
+from discord.ext import commands
 from discord.utils import format_dt
 
 import config
@@ -28,8 +29,6 @@ from utils import TextPaginator, truncate_text
 from .ui import send_warning
 
 if TYPE_CHECKING:
-    from discord.ext.commands import Bot  # pyright: ignore[reportMissingTypeStubs]
-
     from api.music import MusicPlayer, Track
 
 logger = logging.getLogger(__name__)
@@ -236,7 +235,18 @@ class SessionSummaryView(ui.View):
 
 
 class TrackControllerManager:
-    def __init__(self, bot: Bot):
+    def __init__(self, bot: commands.Bot):
+        """Initialize the TrackControllerManager.
+
+        Args:
+            bot: The bot instance.
+
+        Attributes:
+            controllers: A dictionary mapping guild IDs to TrackControllerView instances.
+            _active_messages: A dictionary mapping channel IDs to tuples of message ID and user ID.
+            _locks: A defaultdict of asyncio.Lock instances, used to synchronize access to critical sections of code.
+
+        """
         self.bot = bot
         self.controllers: dict[int, TrackControllerView] = {}
         self._active_messages: dict[int, tuple[int, int]] = {}

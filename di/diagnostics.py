@@ -21,9 +21,8 @@ class Diagnostics:
         logger.info(f"Running diagnostics on {len(registrations)} services...")
 
         for interface, reg in registrations.items():
-            lifecycle = reg["lifecycle"]
             # We mostly care about validating Singletons at startup to fail fast
-            if lifecycle == Lifecycle.SINGLETON:
+            if reg.lifecycle is Lifecycle.SINGLETON:
                 try:
                     # Dry run resolution
                     # Note: This will instantiate them!

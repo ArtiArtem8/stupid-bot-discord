@@ -13,7 +13,7 @@ class UnitOfWork(ABC):
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: object | None,  # TracebackType is not directly available
+        exc_tb: object | None,
     ) -> None:
         """Exit the runtime context for the unit of work.
 
