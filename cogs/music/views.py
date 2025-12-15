@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     from api.music import MusicPlayer, Track
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 MUSIC_PLAYER_EMOJIS = {
     # Bar Components
     "bar_left_full": "<:whitelineleftrounded:1447917292766626005>",
@@ -271,7 +271,7 @@ class TrackControllerManager:
     ):
         """Creates a new controller, replacing any existing one safely."""
         async with self._locks[guild_id]:
-            LOGGER.debug(f"Manager: Setup controller for guild {guild_id}")
+            logger.debug(f"Manager: Setup controller for guild {guild_id}")
             target_id = TrackId.from_track(track)
 
             # 1. Wait for Player State Consistency
@@ -280,7 +280,7 @@ class TrackControllerManager:
                 current_id = (
                     TrackId.from_track(player.current) if player.current else "None"
                 )
-                LOGGER.debug(
+                logger.debug(
                     f"Manager: Aborting. Player state desynced. Expected: {target_id}, Got: {current_id}"
                 )
                 return
@@ -314,10 +314,10 @@ class TrackControllerManager:
                 self._active_messages[guild_id] = (channel.id, msg.id)  # type: ignore
 
                 view.start_updater()
-                LOGGER.debug(f"Manager: Controller active for {target_id.id}")
+                logger.debug(f"Manager: Controller active for {target_id.id}")
 
             except Exception as e:
-                LOGGER.exception(f"Failed to send controller: {e}")
+                logger.exception(f"Failed to send controller: {e}")
                 view.stop()
 
     async def destroy_for_guild(
@@ -330,7 +330,7 @@ class TrackControllerManager:
             current_view = self.controllers.get(guild_id)
 
             if requesting_view and current_view != requesting_view:
-                LOGGER.debug(
+                logger.debug(
                     f"Manager: Ignoring destroy request from stale view for guild {guild_id}"
                 )
                 return
@@ -346,7 +346,7 @@ class TrackControllerManager:
             try:
                 controller.stop()
             except Exception as e:
-                LOGGER.error(f"Error stopping controller: {e}")
+                logger.error(f"Error stopping controller: {e}")
 
         # 2. Delete Message
         message_info = self._active_messages.pop(guild_id, None)
@@ -355,7 +355,7 @@ class TrackControllerManager:
             try:
                 await self._safe_delete_message(chan_id, msg_id)
             except Exception as e:
-                LOGGER.warning(f"Failed to delete message: {e}")
+                logger.warning(f"Failed to delete message: {e}")
 
     async def _wait_for_sync(
         self, player: MusicPlayer, target_id: TrackId, timeout: float = 2.0
@@ -398,12 +398,12 @@ def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
         try:
             await func(self, interaction, button)
         except (mafic.PlayerNotConnected, mafic.PlayerException):
-            LOGGER.warning("Player error in %s", func.__name__)
+            logger.warning("Player error in %s", func.__name__)
             self.stop()
             if self.on_stop_callback:
                 await self.on_stop_callback(self)
         except Exception:
-            LOGGER.exception("Unhandled error in %s", func.__name__)
+            logger.exception("Unhandled error in %s", func.__name__)
             self.stop()
             if self.on_stop_callback:
                 await self.on_stop_callback(self)
@@ -528,7 +528,7 @@ class TrackControllerView(ui.View):
                 if not current_track:
                     failure_count += 1
                     if failure_count >= MAX_FAILURES:
-                        LOGGER.debug("View: Player empty. Requesting stop.")
+                        logger.debug("View: Player empty. Requesting stop.")
                         self.stop()
                         if self.on_stop_callback:
                             await self.on_stop_callback(self)
@@ -537,7 +537,7 @@ class TrackControllerView(ui.View):
 
                 current_id = TrackId.from_track(current_track)
                 if current_id != self.track_id:
-                    LOGGER.debug(
+                    logger.debug(
                         f"View: Track changed ({self.track_id} -> {current_id}). Requesting stop."
                     )
                     self.stop()
@@ -560,7 +560,7 @@ class TrackControllerView(ui.View):
                             time.monotonic() - self._pause_start_time
                             > self._max_pause_duration
                         ):
-                            LOGGER.debug("View: Paused too long. Requesting stop.")
+                            logger.debug("View: Paused too long. Requesting stop.")
                             self.stop()
                             if self.on_stop_callback:
                                 await self.on_stop_callback(self)
@@ -576,7 +576,7 @@ class TrackControllerView(ui.View):
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            LOGGER.exception(f"View Loop Error: {e}")
+            logger.exception(f"View Loop Error: {e}")
 
     def update_buttons_state(self):
         for child in self.children:
@@ -602,7 +602,7 @@ class TrackControllerView(ui.View):
             await self.message.edit(embed=self.make_embed(), view=self)
             self._last_update_time = now
         except discord.NotFound:
-            LOGGER.debug("View: Message deleted externally. Stopping.")
+            logger.debug("View: Message deleted externally. Stopping.")
             self.stop()
         except discord.HTTPException:
             pass

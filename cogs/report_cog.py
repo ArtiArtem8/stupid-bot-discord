@@ -10,6 +10,8 @@ This cog requires setting an owner ID to use this command :
   don't set both at the same time
 """
 
+import logging
+
 import discord
 from discord import Interaction, app_commands
 from discord.ext import commands
@@ -18,6 +20,8 @@ import config
 from api import ReportModal
 from framework import BaseCog, FeedbackType, FeedbackUI, is_owner_app
 from utils import get_json, save_json
+
+logger = logging.getLogger(__name__)
 
 
 def get_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:

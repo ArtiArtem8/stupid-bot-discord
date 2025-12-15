@@ -8,7 +8,7 @@ from framework.bot import StupidBot
 from utils import setup_logging
 
 tracemalloc.start()
-LOGGER = logging.getLogger("StupidBot")
+logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
@@ -33,20 +33,20 @@ async def main() -> None:
     setup_logging(config.ENCODING)
 
     if not config.DISCORD_BOT_TOKEN:
-        LOGGER.critical("DISCORD_BOT_TOKEN is missing in environment/config!")
+        logger.critical("DISCORD_BOT_TOKEN is missing in environment/config!")
         return
 
     bot = StupidBot(watch_cogs=args.watch)
 
-    LOGGER.info("Starting bot...")
+    logger.info("Starting bot...")
     try:
         async with bot:
             await bot.start(token=config.DISCORD_BOT_TOKEN)
     except (KeyboardInterrupt, SystemExit):
-        LOGGER.info("Keyboard Interrupt detected.")
+        logger.info("Keyboard Interrupt detected.")
     finally:
         uptime = bot.save_state()
-        LOGGER.info(f"Bot stopped. Final saved uptime: {uptime:.0f}s")
+        logger.info(f"Bot stopped. Final saved uptime: {uptime:.0f}s")
 
 
 if __name__ == "__main__":

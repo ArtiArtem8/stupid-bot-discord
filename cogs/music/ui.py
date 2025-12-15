@@ -7,7 +7,7 @@ from discord import Interaction
 
 from framework import FeedbackType, FeedbackUI
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 MAX_TIMEDELTA_DAYS = 999_999_999
 

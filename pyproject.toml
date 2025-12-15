@@ -68,5 +68,13 @@ fixture-parentheses = false
 [tool.ruff.lint.per-file-ignores]
 "main.py" = ["E402"] # Module level import not at top of file
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [dependency-groups]
-dev = ["monkeytype>=23.3.0", "ruff>=0.14.6"]
+dev = [
+    "monkeytype>=23.3.0",
+    "pytest>=9.0.2",
+    "ruff>=0.14.6",
+]

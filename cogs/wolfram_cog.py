@@ -13,6 +13,7 @@ Requirements:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Literal, override
 
@@ -25,6 +26,8 @@ import config
 from api.wolfram import WolframAPIError, WolframClient, WolframResult
 from framework import BaseCog, FeedbackType, FeedbackUI
 from utils import optimize_image, save_image, truncate_text
+
+logger = logging.getLogger(__name__)
 
 
 class WolframCog(BaseCog):
@@ -50,7 +53,7 @@ class WolframCog(BaseCog):
     async def cog_load(self) -> None:
         """Initialize persistent session."""
         self.client_session = aiohttp.ClientSession()
-        self.logger.info("WolframCog loaded.")
+        logger.info("WolframCog loaded.")
 
     @override
     async def cog_unload(self) -> None:
@@ -64,7 +67,7 @@ class WolframCog(BaseCog):
     async def cmd_solve(self, interaction: Interaction, problem: str) -> None:
         """Slash command handler for solving."""
         await interaction.response.defer(ephemeral=True)
-        self.logger.info("Solve: %s | User: %s", problem, interaction.user)
+        logger.info("Solve: %s | User: %s", problem, interaction.user)
         await self._handle_query(interaction, problem, mode="solve")
 
     @app_commands.command(name="plot", description="Plot a mathematical function")
@@ -72,7 +75,7 @@ class WolframCog(BaseCog):
     async def cmd_plot(self, interaction: Interaction, function: str) -> None:
         """Slash command handler for plotting."""
         await interaction.response.defer(ephemeral=True)
-        self.logger.info("Plot: %s | User: %s", function, interaction.user)
+        logger.info("Plot: %s | User: %s", function, interaction.user)
         await self._handle_query(interaction, function, mode="plot")
 
     async def _context_solve(
@@ -91,7 +94,7 @@ class WolframCog(BaseCog):
             )
             return
 
-        self.logger.info("Ctx Solve: %s | User: %s", content, interaction.user)
+        logger.info("Ctx Solve: %s | User: %s", content, interaction.user)
         await self._handle_query(interaction, content, mode="solve")
 
     async def _handle_query(
@@ -249,7 +252,7 @@ class WolframCog(BaseCog):
             )
 
         except Exception as e:
-            self.logger.error("Image pipeline failed: %s", e, exc_info=True)
+            logger.error("Image pipeline failed: %s", e, exc_info=True)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,

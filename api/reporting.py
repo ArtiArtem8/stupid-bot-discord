@@ -11,7 +11,7 @@ import config
 from utils import truncate_text
 from utils.json_utils import get_json, save_json
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class UserInfoDict(TypedDict):
@@ -112,7 +112,7 @@ async def submit_report(interaction: Interaction, reason: str) -> str:
     data = get_json(config.REPORT_FILE) or {}
     data.setdefault("reports", []).append(report)
     save_json(config.REPORT_FILE, data)
-    LOGGER.info("New report: %s", report["report_id"])
+    logger.info("New report: %s", report["report_id"])
 
     report_channel_id = data.get("report_channel_id")
     if report_channel_id:
@@ -150,7 +150,7 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
             try:
                 await interaction.message.edit(view=None)
             except discord.HTTPException:
-                LOGGER.warning(
+                logger.warning(
                     "Failed to remove report button from message %s",
                     interaction.message.id,
                 )

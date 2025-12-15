@@ -13,7 +13,7 @@ from framework.error_handler import CustomErrorCommandTree
 from framework.uptime_manager import UptimeManager
 from utils import format_time_russian
 
-LOGGER = logging.getLogger("StupidBot")
+logger = logging.getLogger("StupidBot")
 
 
 class DevServer:
@@ -57,8 +57,8 @@ class StupidBot(commands.Bot):
         FeedbackUI.configure(handle_report_button)
         await self.cog_loader.load_cogs()
         commands = await self.tree.sync()
-        LOGGER.info("Application commands synced")
-        LOGGER.debug("Synced commands: %s", commands)
+        logger.info("Application commands synced")
+        logger.debug("Synced commands: %s", commands)
         self.update_activity_task.start()
         self.autosave_task.start()
         self.cog_loader.start_watcher()
@@ -68,14 +68,14 @@ class StupidBot(commands.Bot):
 
         Logs the bot's username and ID, and starts the timer and autosave tasks.
         """
-        LOGGER.info("Bot is ready -------------------------")
-        LOGGER.info(
+        logger.info("Bot is ready -------------------------")
+        logger.info(
             "Logged in as %s (ID: %s) (API Version: %s)",
             self.user,
             self.user.id if self.user else "DISCONNECTED",
             discord.__version__,
         )
-        LOGGER.debug(
+        logger.debug(
             "bot's owner: %s (%s)",
             self.owner_id,
             self.owner_ids if self.owner_ids else "Not a group",
@@ -102,7 +102,7 @@ class StupidBot(commands.Bot):
     @tasks.loop(seconds=config.AUTOSAVE_UPTIME_INTERVAL)
     async def autosave_task(self):
         uptime = self.save_state()
-        LOGGER.debug("Autosaved uptime: %.0f seconds", uptime)
+        logger.debug("Autosaved uptime: %.0f seconds", uptime)
 
     @update_activity_task.before_loop
     @autosave_task.before_loop

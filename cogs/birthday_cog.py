@@ -33,12 +33,13 @@ from api import (
 from framework import BaseCog, FeedbackType, FeedbackUI
 from resources import BIRTHDAY_WISHES
 
+logger = logging.getLogger(__name__)
+
 
 async def safe_role_edit(
     member: discord.Member,
     role: discord.Role,
     operation: Literal["add", "remove"],
-    logger: logging.Logger,
 ) -> bool:
     """Safely add or remove a role.
 
@@ -245,9 +246,9 @@ class BirthdayCog(BaseCog):
 
         for user_id, user_data in config.users.items():
             if user_data.birth_day_month() != today_key:
-                member = await safe_fetch_member(guild, user_id, self.logger)
+                member = await safe_fetch_member(guild, user_id)
                 if member and role in member.roles:
-                    await safe_role_edit(member, role, "remove", self.logger)
+                    await safe_role_edit(member, role, "remove")
 
     async def _handle_birthday(
         self,
@@ -269,13 +270,13 @@ class BirthdayCog(BaseCog):
             guild_config: Guild configuration
 
         """
-        member = await safe_fetch_member(guild, user.user_id, self.logger)
+        member = await safe_fetch_member(guild, user.user_id)
         if not member:
             return
 
         try:
             if role and role not in member.roles:
-                await safe_role_edit(member, role, "add", self.logger)
+                await safe_role_edit(member, role, "add")
 
             wish = secrets.choice(BIRTHDAY_WISHES or ["С днём рождения!"])
             embed = discord.Embed(
@@ -291,7 +292,7 @@ class BirthdayCog(BaseCog):
             birthday_manager.save_guild_config(guild_config)
 
         except Exception as e:
-            self.logger.error(f"Error handling birthday for {user.user_id}: {e}")
+            logger.error(f"Error handling birthday for {user.user_id}: {e}")
 
     @app_commands.command(
         name="setbirthday",
@@ -343,7 +344,7 @@ class BirthdayCog(BaseCog):
                 ephemeral=True,
             )
         except Exception as e:
-            self.logger.error("Error saving birthday: %s", e)
+            logger.error("Error saving birthday: %s", e)
 
             await FeedbackUI.send(
                 interaction,
@@ -390,7 +391,7 @@ class BirthdayCog(BaseCog):
                 ephemeral=True,
             )
         except Exception as e:
-            self.logger.error("Error saving configuration: %s", e)
+            logger.error("Error saving configuration: %s", e)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
@@ -469,7 +470,7 @@ class BirthdayCog(BaseCog):
         today = date.today()
 
         entries = await config.get_sorted_birthday_list(
-            guild=guild, reference_date=today, logger=self.logger
+            guild=guild, reference_date=today, logger=logger
         )
 
         if not entries:

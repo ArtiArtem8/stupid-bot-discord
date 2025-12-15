@@ -16,7 +16,7 @@ import discord
 import mafic
 from discord.utils import utcnow
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 type Track = mafic.Track
 type Playlist = mafic.Playlist

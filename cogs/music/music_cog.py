@@ -11,7 +11,6 @@ from discord.ext import commands, tasks
 import config
 from api.music import (
     MusicResultStatus,
-    MusicService,
     MusicSession,
     QueueSnapshot,
     RepeatMode,
@@ -19,7 +18,19 @@ from api.music import (
     TrackInfo,
     VoiceCheckResult,
 )
+from api.music.healer import SessionHealer
+from api.music.models import ControllerManagerProtocol
+from api.music.service import (
+    ConnectionManager,
+    CoreMusicService,
+    MusicEventHandlers,
+    StateManager,
+    UIOrchestrator,
+)
+from api.music.service.event_handlers import HealerProtocol
+from di.container import Container
 from framework import BaseCog, FeedbackUI, handle_errors
+from repositories.volume_repository import VolumeRepository
 from utils import truncate_text
 
 from .ui import (
@@ -36,7 +47,7 @@ from .views import (
     TrackControllerManager,
 )
 
-LOGGER = logging.getLogger("MusicCog")
+logger = logging.getLogger(__name__)
 
 
 def _format_voice_result_message(
@@ -66,9 +77,28 @@ class MusicCog(BaseCog):
 
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
-        self.service = MusicService(bot)
+
+        # Dependency Injection Setup
+        self.container = Container()
+        self.container.register(commands.Bot, factory=lambda c: bot)
+        self.container.register(ConnectionManager)
+        self.container.register(StateManager)
+        self.container.register(VolumeRepository)
+
         self.track_controller_manager = TrackControllerManager(bot)
-        self.service.controller_manager = self.track_controller_manager
+        self.container.register(
+            ControllerManagerProtocol, factory=lambda c: self.track_controller_manager
+        )
+
+        self.container.register(UIOrchestrator)
+
+        # Register Healer (resolving dependencies automatically)
+        self.container.register(HealerProtocol, implementation=SessionHealer)
+
+        self.container.register(MusicEventHandlers)
+        self.container.register(CoreMusicService)
+
+        self.service = self.container.resolve(CoreMusicService)
 
     async def cog_load(self) -> None:
         if self.bot.is_ready():
@@ -103,7 +133,7 @@ class MusicCog(BaseCog):
             msg = await channel.send(embed=embed, view=view)
             view.message = msg
         except Exception:
-            LOGGER.exception("Failed to send session summary to channel %s", channel_id)
+            logger.exception("Failed to send session summary to channel %s", channel_id)
 
     def _create_session_summary_embed(self, session: MusicSession) -> discord.Embed:
         """Create session summary embed."""

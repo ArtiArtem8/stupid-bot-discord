@@ -5,9 +5,10 @@ import discord
 from discord import Interaction, app_commands
 from discord.utils import utcnow
 
+from api.exceptions import StupidBotError
 from framework import BlockedUserError, FeedbackType, FeedbackUI, NoGuildError
 
-LOGGER = logging.getLogger("StupidBot")
+logger = logging.getLogger(__name__)
 
 
 class CustomErrorCommandTree(app_commands.CommandTree):
@@ -37,6 +38,29 @@ class CustomErrorCommandTree(app_commands.CommandTree):
             return
         elif isinstance(error, app_commands.CheckFailure):
             return
+        elif isinstance(error, StupidBotError):
+            # Handle our custom domain exceptions
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.ERROR,
+                title="Ошибка",
+                description=error.user_message,
+                ephemeral=True,
+            )
+            return
+
+        # Unpack CommandInvokeError if it wraps a StupidBotError
+        original = getattr(error, "original", None)
+        if isinstance(original, StupidBotError):
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.ERROR,
+                title="Ошибка",
+                description=original.user_message,
+                ephemeral=True,
+            )
+            return
+
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.ERROR,
@@ -45,4 +69,4 @@ class CustomErrorCommandTree(app_commands.CommandTree):
             ephemeral=False,
             error_info=str(error),
         )
-        LOGGER.error(f"Unhandled app command error: {error}", exc_info=error)
+        logger.error(f"Unhandled app command error: {error}", exc_info=error)

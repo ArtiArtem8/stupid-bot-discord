@@ -14,6 +14,7 @@ from discord.ext import commands
 from discord.utils import utcnow
 
 import config
+from repositories.volume_repository import VolumeRepository
 from utils.json_utils import get_json, save_json
 
 from .healer import SessionHealer
@@ -32,8 +33,11 @@ from .models import (
     VoiceJoinResult,
 )
 from .player import MusicPlayer, music_player_factory
+from .service.connection_manager import ConnectionManager
+from .service.state_manager import StateManager
+from .service.ui_orchestrator import UIOrchestrator
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class EmptyTimerInfo(TypedDict):
@@ -44,7 +48,15 @@ class EmptyTimerInfo(TypedDict):
 class MusicService:
     """Service for managing music playback."""
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(
+        self,
+        bot: commands.Bot,
+        connection_manager: "ConnectionManager",
+        state_manager: "StateManager",
+        volume_repository: "VolumeRepository",
+        ui_orchestrator: "UIOrchestrator",
+        controller_manager: "ControllerManagerProtocol",
+    ) -> None:
         self.bot = bot
         self.pool = mafic.NodePool(bot)
         self.sessions: dict[int, MusicSession] = {}
@@ -52,12 +64,18 @@ class MusicService:
         self._initialized = False
 
         # Recover mechanic
-        self.healer = SessionHealer(self)
+        self.healer = SessionHealer(
+            bot=bot,
+            connection_manager=connection_manager,
+            state_manager=state_manager,
+            volume_repository=volume_repository,
+            ui_orchestrator=ui_orchestrator,
+        )
         self._healing_guilds: set[int] = set()
 
         # Auto-leave tracking
         self.empty_channel_timers: dict[int, EmptyTimerInfo] = {}
-        self.controller_manager: ControllerManagerProtocol
+        self.controller_manager = controller_manager
 
     async def initialize(self) -> None:
         """Initialize Lavalink node connection."""
@@ -75,10 +93,12 @@ class MusicService:
             self._initialized = True
             self._setup_event_listeners()
 
-            LOGGER.info("Mafic node pool initialized successfully")
+            self._setup_event_listeners()
+
+            logger.info("Mafic node pool initialized successfully")
 
         except Exception as e:
-            LOGGER.exception("Failed to initialize Mafic node")
+            logger.exception("Failed to initialize Mafic node")
             raise NodeNotConnectedError(f"Failed to connect: {e}") from e
 
     def _setup_event_listeners(self) -> None:
@@ -90,11 +110,11 @@ class MusicService:
         self.bot.add_listener(self._on_websocket_closed, "on_websocket_closed")
 
     async def _on_node_ready(self, node: mafic.Node[commands.Bot]) -> None:
-        LOGGER.info("Lavalink node '%s' is ready", node.label)
+        logger.info("Lavalink node '%s' is ready", node.label)
 
     async def _on_track_start(self, event: mafic.TrackStartEvent[MusicPlayer]) -> None:
         if event.player.guild.id in self._healing_guilds:
-            LOGGER.debug(
+            logger.debug(
                 "Ignoring track_start during healing for guild %s",
                 event.player.guild.id,
             )
@@ -104,7 +124,7 @@ class MusicService:
         track = event.track
         self.sessions.setdefault(guild_id, MusicSession(guild_id=guild_id))
         self._track_start_times[guild_id] = utcnow()
-        LOGGER.debug("Track started in guild %d: %s", guild_id, track.title)
+        logger.debug("Track started in guild %d: %s", guild_id, track.title)
 
         await self._spawn_controller(player, track)
 
@@ -112,7 +132,7 @@ class MusicService:
         """Helper to safely spawn a UI controller."""
         requester_info = player.get_requester(track)
         if not requester_info:
-            LOGGER.debug("No requester found for track: %s", track.title)
+            logger.debug("No requester found for track: %s", track.title)
             return
 
         # Determine best channel: Explicit > Most Used
@@ -125,17 +145,17 @@ class MusicService:
                 )
 
         if not channel_id:
-            LOGGER.debug("No channel found for track: %s", track.title)
+            logger.debug("No channel found for track: %s", track.title)
             return
 
         channel = self.bot.get_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
-            LOGGER.debug("No channel found for track: %s", track.title)
+            logger.debug("No channel found for track: %s", track.title)
             return
 
         # Only show controller for tracks > 45s (prevent spam on short clips)
         if track.length < 45_000:
-            LOGGER.debug("Track too short: %s, %s", track.title, track.length)
+            logger.debug("Track too short: %s, %s", track.title, track.length)
             return
 
         # Let Manager handle the heavy lifting (lock, cleanup, creation)
@@ -149,7 +169,7 @@ class MusicService:
 
     async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
         if event.player.guild.id in self._healing_guilds:
-            LOGGER.debug(
+            logger.debug(
                 "Ignoring track_end during healing for guild %s",
                 event.player.guild.id,
             )
@@ -158,12 +178,12 @@ class MusicService:
         track = event.track
         reason = event.reason
 
-        LOGGER.debug("Track ended: %s (Reason: %s)", track.title, reason)
+        logger.debug("Track ended: %s (Reason: %s)", track.title, reason)
 
         await self._record_history(player, track, reason)
 
         if event.reason is mafic.EndReason.FINISHED and player.queue.is_empty:
-            LOGGER.debug("Queue finished. destroying controller immediately.")
+            logger.debug("Queue finished. destroying controller immediately.")
             await self.controller_manager.destroy_for_guild(player.guild.id)
 
         if reason in (mafic.EndReason.FINISHED, mafic.EndReason.LOAD_FAILED):
@@ -195,7 +215,7 @@ class MusicService:
             skipped=skipped,
             timestamp=start_time,
         )
-        LOGGER.debug("Recorded history: %s (Skipped: %s)", track.title, skipped)
+        logger.debug("Recorded history: %s (Skipped: %s)", track.title, skipped)
 
     async def _on_websocket_closed(
         self, event: mafic.WebSocketClosedEvent[MusicPlayer]
@@ -207,7 +227,7 @@ class MusicService:
         - 4014: Disconnected can be normal move, but if by_discord=True often means kick
         """
         guild_id = event.player.guild.id
-        LOGGER.warning(
+        logger.warning(
             "Voice websocket closed for guild %s. Code: %s, Reason: %s",
             event.player.guild.id,
             event.code,
@@ -215,7 +235,7 @@ class MusicService:
         )
 
         if event.code == 4006:
-            LOGGER.warning(
+            logger.warning(
                 "Detected 4006 for guild %s. Initiating HEALING protocol.",
                 event.player.guild.id,
             )
@@ -253,7 +273,7 @@ class MusicService:
 
         if member.id == self.bot.user.id:
             if after.channel is None:
-                LOGGER.info(
+                logger.info(
                     "Bot was disconnected from guild %s. Cleaning up.", member.guild.id
                 )
                 # We do NOT call self.leave() here because we are already disconnected.
@@ -262,7 +282,7 @@ class MusicService:
                 return
 
             if before.channel is not None and before.channel != after.channel:
-                LOGGER.info(
+                logger.info(
                     "Bot moved from %s to %s in guild %s. Continuing playback.",
                     before.channel.name,
                     after.channel.name,
@@ -335,7 +355,7 @@ class MusicService:
 
         if effectively_empty:
             if guild_id not in self.empty_channel_timers:
-                LOGGER.info(
+                logger.info(
                     "Channel %s in guild %s is effectively empty (%s). Starting timer.",
                     channel.name,
                     guild_id,
@@ -347,7 +367,7 @@ class MusicService:
                 )
         else:
             if guild_id in self.empty_channel_timers:
-                LOGGER.info(
+                logger.info(
                     "Channel %s in guild %s is no longer empty. Cancelling timer.",
                     channel.name,
                     guild_id,
@@ -376,7 +396,7 @@ class MusicService:
             return
 
         try:
-            LOGGER.info(
+            logger.info(
                 "Auto-leaving guild %s (%s) due to inactivity (%s).",
                 guild.name,
                 guild_id,
@@ -385,7 +405,7 @@ class MusicService:
             await self.leave(guild)
             self.empty_channel_timers.pop(guild_id, None)
         except Exception as e:
-            LOGGER.error("Failed to auto-leave guild %s: %s", guild_id, e)
+            logger.error("Failed to auto-leave guild %s: %s", guild_id, e)
 
     def get_player(self, guild_id: int) -> MusicPlayer | None:
         guild = self.bot.get_guild(guild_id)
@@ -417,7 +437,7 @@ class MusicService:
         self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
     ) -> VoiceJoinResult:
         """Join a voice channel."""
-        LOGGER.debug("Joining channel: %s", channel)
+        logger.debug("Joining channel: %s", channel)
 
         voice_client = guild.voice_client
 
@@ -449,10 +469,10 @@ class MusicService:
             return VoiceCheckResult.SUCCESS, None
 
         except asyncio.TimeoutError:
-            LOGGER.warning("Voice connection timed out for guild %s", guild.id)
+            logger.warning("Voice connection timed out for guild %s", guild.id)
             return VoiceCheckResult.CONNECTION_FAILED, None
         except Exception:
-            LOGGER.exception("Failed to join voice channel")
+            logger.exception("Failed to join voice channel")
             return VoiceCheckResult.CONNECTION_FAILED, None
 
     async def leave(self, guild: discord.Guild) -> MusicResult[None]:
@@ -484,12 +504,12 @@ class MusicService:
 
             return MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
         except Exception as e:
-            LOGGER.exception("Error leaving voice")
+            logger.exception("Error leaving voice")
             return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
 
     async def end_session(self, guild_id: int) -> None:
         session = self.sessions.pop(guild_id, None)
-        LOGGER.debug("Ending session for guild %s, %s", guild_id, session)
+        logger.debug("Ending session for guild %s, %s", guild_id, session)
         self._track_start_times.pop(guild_id, None)
 
         if session and session.tracks:
@@ -564,7 +584,7 @@ class MusicService:
             )
 
         except Exception as e:
-            LOGGER.exception("Error in play")
+            logger.exception("Error in play")
             return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
 
     async def stop(
@@ -660,7 +680,7 @@ class MusicService:
             try:
                 await player.set_volume(volume)
             except Exception as e:
-                LOGGER.warning("Failed to apply volume: %s", e)
+                logger.warning("Failed to apply volume: %s", e)
                 return MusicResult(MusicResultStatus.ERROR, "Failed to apply volume")
         return MusicResult(MusicResultStatus.SUCCESS, "Volume set", data=volume)
 

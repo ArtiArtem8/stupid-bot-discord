@@ -16,7 +16,7 @@ from .queue import QueueManager, RepeatManager
 if TYPE_CHECKING:
     from discord.abc import Connectable
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class MusicPlayer(mafic.Player[discord.Client]):
@@ -58,7 +58,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 timeout=timeout,
             )
         except asyncio.TimeoutError:
-            LOGGER.warning(
+            logger.warning(
                 "Timed out moving to channel %s in guild %s",
                 channel.id,
                 self.guild.id,
@@ -69,7 +69,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
         self, track: Track, requester_id: int, channel_id: int | None = None
     ) -> None:
         """Associate a requester with a track."""
-        LOGGER.debug("Setting requester for track %s", track.id)
+        logger.debug("Setting requester for track %s", track.id)
         _id = TrackId.from_track(track).id
         self._requester_map[_id] = TrackRequester(
             user_id=requester_id,
@@ -101,27 +101,27 @@ class MusicPlayer(mafic.Player[discord.Client]):
         """
         current_or_prev = previous_track or self.current
 
-        LOGGER.debug(
+        logger.debug(
             "Advancing in guild %s, current track: %s", self.guild.id, current_or_prev
         )
-        LOGGER.debug("queue: %s, repeat mode: %s", self.queue, self.repeat.mode)
+        logger.debug("queue: %s, repeat mode: %s", self.queue, self.repeat.mode)
 
         if not force_skip and self.repeat.mode is RepeatMode.TRACK and current_or_prev:
-            LOGGER.debug("Repeating track %s", current_or_prev)
+            logger.debug("Repeating track %s", current_or_prev)
             await self.play(current_or_prev, start_time=0)
             return current_or_prev
 
         if not force_skip and self.repeat.mode is RepeatMode.QUEUE and current_or_prev:
-            LOGGER.debug("Adding track %s to queue", current_or_prev)
+            logger.debug("Adding track %s to queue", current_or_prev)
             self.queue.add(current_or_prev)
 
         next_track = self.queue.pop_next()
         if not next_track:
-            LOGGER.debug("No next track in queue, stopping")
+            logger.debug("No next track in queue, stopping")
             await self.stop()
             return None
 
-        LOGGER.debug("Playing next track: %s", next_track)
+        logger.debug("Playing next track: %s", next_track)
         await self.play(next_track, start_time=0)
         return next_track
 
@@ -161,7 +161,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 replace=replace,
             )
         except mafic.errors.HTTPNotFound as e:
-            LOGGER.exception("Failed to update player: %s", e)
+            logger.exception("Failed to update player: %s", e)
             await self.disconnect(force=True)
 
 

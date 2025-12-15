@@ -16,7 +16,7 @@ from .models import (
     VoiceJoinResult,
 )
 from .player import MusicPlayer
-from .service import MusicService
+from .service import CoreMusicService as MusicService
 
 __all__ = [
     "MusicPlayer",

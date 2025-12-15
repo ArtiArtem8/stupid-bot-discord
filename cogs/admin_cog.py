@@ -8,6 +8,7 @@ Provides:
 
 """
 
+import logging
 from enum import StrEnum
 from typing import NoReturn, override
 
@@ -19,6 +20,8 @@ import config
 from api import block_manager
 from framework import BaseCog, FeedbackType, FeedbackUI, handle_errors, is_owner_app
 from resources import ACTION_TITLES
+
+logger = logging.getLogger(__name__)
 
 
 class BlockAction(StrEnum):
@@ -129,7 +132,7 @@ class AdminCog(BaseCog):
             )
             return
         block_manager.block_user(guild.id, user, interaction.user.id, reason)
-        self.logger.info("Blocked user %d in guild %d", user.id, guild.id)
+        logger.info("Blocked user %d in guild %d", user.id, guild.id)
         embed = create_block_embed(user, BLOCK, reason)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
 
@@ -157,7 +160,7 @@ class AdminCog(BaseCog):
             )
             return
         block_manager.unblock_user(guild.id, user, interaction.user.id, reason)
-        self.logger.info("Unblocked user %d in guild %d", user.id, guild.id)
+        logger.info("Unblocked user %d in guild %d", user.id, guild.id)
         embed = create_block_embed(user, UNBLOCK, reason)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
 
@@ -182,7 +185,7 @@ class AdminCog(BaseCog):
         user_entry = block_manager.get_user(guild.id, user.id)
 
         if not user_entry or not user_entry.block_history:
-            self.logger.info(
+            logger.info(
                 f"No block history found for user {user.id} "
                 f"in guild {guild.name} ({guild.id})"
             )
@@ -194,7 +197,7 @@ class AdminCog(BaseCog):
             )
             return
 
-        self.logger.info(
+        logger.info(
             f"Displaying block history for user {user.id} "
             f"in guild {guild.name} ({guild.id})"
         )
@@ -290,7 +293,7 @@ class AdminCog(BaseCog):
 
         await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
-        self.logger.info(f"Displayed blockinfo for user {user.id} in guild {guild.id}")
+        logger.info(f"Displayed blockinfo for user {user.id} in guild {guild.id}")
 
     @app_commands.command(
         name="list-blocked", description="Показать всех заблокированных пользователей"
@@ -313,7 +316,7 @@ class AdminCog(BaseCog):
         blocked_users = [u for u in all_users if u.is_blocked]
 
         if not blocked_users:
-            self.logger.info(f"No blocked users found in guild {guild.id}")
+            logger.info(f"No blocked users found in guild {guild.id}")
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
@@ -321,9 +324,7 @@ class AdminCog(BaseCog):
                 ephemeral=ephemeral,
             )
             return
-        self.logger.info(
-            f"Found {len(blocked_users)} blocked users in guild {guild.id} "
-        )
+        logger.info(f"Found {len(blocked_users)} blocked users in guild {guild.id} ")
         embed = discord.Embed(
             title=f"Заблокированные пользователи ({len(blocked_users)})",
             color=config.Color.INFO,

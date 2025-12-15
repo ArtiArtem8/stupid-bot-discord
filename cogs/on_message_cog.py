@@ -17,13 +17,14 @@ from api import block_manager
 from resources import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
 from utils import truncate_text
 
+logger = logging.getLogger(__name__)
+
 
 class OnMessageCog(commands.Cog):
     """Log, auto-respond to greetings and common phrases."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.logger = logging.getLogger("OnMessageCog")
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):
@@ -39,7 +40,7 @@ class OnMessageCog(commands.Cog):
         try:
             await self.quest_process_message(message)
         except Exception as e:
-            self.logger.error("Failed to process message %s: %s", message.content, e)
+            logger.error("Failed to process message %s: %s", message.content, e)
 
     def _format_change(self, attr: str, before: Any, after: Any) -> str:
         """Smart diff formatting by type."""
@@ -89,7 +90,7 @@ class OnMessageCog(commands.Cog):
             changes.append(f"flags: {before_flags} -> {after_flags}")
 
         if changes:
-            self.logger.debug(
+            logger.debug(
                 "Message edited by %s in %s | Changes: %s",
                 after.author,
                 after.channel,
@@ -133,7 +134,7 @@ class OnMessageCog(commands.Cog):
         _, best_score, _ = max(fuzzy_results, key=lambda x: x[1])
 
         if best_score >= threshold:
-            self.logger.info(
+            logger.info(
                 '%s processed with message: "%s" in %s from %s',
                 str(fuzzy_results[:3]),
                 message.content,
@@ -164,11 +165,9 @@ class OnMessageCog(commands.Cog):
         if not data:
             return
         if log_data := summary_factory(data):
-            self.logger.info(f"{label}: %s", log_data)
-        if self.logger.isEnabledFor(logging.DEBUG) and (
-            log_data := debug_factory(data)
-        ):
-            self.logger.debug(f"Full {label.lower()}: %s", log_data)
+            logger.info(f"{label}: %s", log_data)
+        if logger.isEnabledFor(logging.DEBUG) and (log_data := debug_factory(data)):
+            logger.debug(f"Full {label.lower()}: %s", log_data)
 
     def _log_message(self, message: Message, *, is_edit: bool = False) -> None:
         """Log message with structured INFO summaries and lazy DEBUG details."""
@@ -181,7 +180,7 @@ class OnMessageCog(commands.Cog):
             "poll": message.poll,
         }
         if not is_edit:
-            self.logger.info(
+            logger.info(
                 '%s sent - "%s" in %s (%s)',
                 message.author,
                 message.content,
