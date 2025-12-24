@@ -18,6 +18,9 @@ dependencies = [
     "requests>=2.32.3",
 ]
 
+[tool.setuptools]
+packages = ["api", "cogs", "di", "events", "framework", "repositories", "utils"]
+
 [tool.ruff]
 line-length = 88
 target-version = "py312"
@@ -73,8 +76,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [dependency-groups]
-dev = [
-    "monkeytype>=23.3.0",
-    "pytest>=9.0.2",
-    "ruff>=0.14.6",
-]
+dev = ["monkeytype>=23.3.0", "pytest>=9.0.2", "ruff>=0.14.6"]
