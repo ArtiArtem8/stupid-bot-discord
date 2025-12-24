@@ -2,12 +2,13 @@ import asyncio
 import logging
 import os
 import time
+import typing
 
 from discord.ext import commands
 
 import config
 
-LOGGER = logging.getLogger("StupidBot")
+logger = logging.getLogger("StupidBot")
 
 
 class CogLoader:
@@ -22,22 +23,23 @@ class CogLoader:
                 continue
             rel_path = file_path.relative_to(config.BASE_DIR)
             module_name = ".".join(rel_path.parts).removesuffix(".py")
-            LOGGER.debug("Relative path: %s", rel_path)
+            logger.debug("Relative path: %s", rel_path)
             try:
-                LOGGER.debug("Loading: %s", module_name)
+                logger.debug("Loading: %s", module_name)
                 await self.bot.load_extension(module_name)
-                LOGGER.info("Loaded: %s", module_name)
+                logger.info("Loaded: %s", module_name)
             except Exception:
-                LOGGER.exception("Failed to load %s", module_name)
+                logger.exception("Failed to load %s", module_name)
+                raise
 
     def start_watcher(self):
         if self.enable_watch:
             self._watcher_task = self.bot.loop.create_task(self._cog_watcher())
-            LOGGER.info("Cog watcher enabled (argument provided).")
+            logger.info("Cog watcher enabled (argument provided).")
 
-    async def _cog_watcher(self):
+    async def _cog_watcher(self) -> typing.NoReturn:
         """Watch for file changes and reload cogs hot."""
-        LOGGER.info("Watching for changes...")
+        logger.info("Watching for changes...")
         last_check = time.time()
         while True:
             extensions: set[str] = set()
@@ -53,8 +55,8 @@ class CogLoader:
             for ext in extensions:
                 try:
                     await self.bot.reload_extension(ext)
-                    LOGGER.info("Reloaded %s", ext)
+                    logger.info("Reloaded %s", ext)
                 except Exception:
-                    LOGGER.exception(f"Failed to reload {ext}")
+                    logger.exception(f"Failed to reload {ext}")
             last_check = time.time()
             await asyncio.sleep(1)

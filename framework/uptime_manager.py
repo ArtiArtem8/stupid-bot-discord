@@ -5,7 +5,7 @@ from typing import TypedDict
 import config
 from utils import get_json, save_json
 
-LOGGER = logging.getLogger("StupidBot")
+logger = logging.getLogger(__name__)
 
 
 class UptimeData(TypedDict):
@@ -31,9 +31,9 @@ class UptimeManager:
 
         if disconnect_time < config.DISCONNECT_TIMER_THRESHOLD:
             self.start_time = time.time() - accumulated
-            LOGGER.info("Resuming uptime (Offline for %.0fs)", disconnect_time)
+            logger.info("Resuming uptime (Offline for %.0fs)", disconnect_time)
         else:
-            LOGGER.info(
+            logger.info(
                 "Offline time (%.0fs) exceeded threshold; Resetting uptime.",
                 disconnect_time,
             )
@@ -48,5 +48,5 @@ class UptimeManager:
         try:
             save_json(config.LAST_RUN_FILE, data, backup_amount=1)
         except Exception as e:
-            LOGGER.error("Failed to save state: %s", e)
+            logger.error("Failed to save state: %s", e)
         return current_uptime

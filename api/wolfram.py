@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from typing import Self
 
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class PodType(StrEnum):
@@ -153,10 +153,10 @@ class WolframClient:
                 xml_data = await resp.text()
                 return self._parse_xml(xml_data)
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            LOGGER.error("Wolfram network error: %s", e)
+            logger.error("Wolfram network error: %s", e)
             raise WolframAPIError(f"Network error: {e}") from e
         except Exception as e:
-            LOGGER.error("Wolfram query error: %s", e, exc_info=True)
+            logger.error("Wolfram query error: %s", e, exc_info=True)
             raise WolframAPIError(f"Processing error: {e}") from e
 
     def _parse_xml(self, xml_content: str) -> WolframResult:

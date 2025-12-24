@@ -1,5 +1,8 @@
+import math
+from collections.abc import Iterable
 from functools import lru_cache
 from string import ascii_lowercase, digits
+from typing import Literal
 
 
 def random_answer(text: str, answers: list[str]) -> str:
@@ -49,24 +52,6 @@ def str_local(text: str) -> str:
     return "".join(i for i in text.lower() if i in mask)
 
 
-def reverse_date(date_str: str) -> str:
-    """Reverses a date string in the format "DD-MM-YYYY".
-
-    Args:
-        date_str (str): The date string to reverse.
-
-    Returns:
-        str: The reversed date string if the input is valid, otherwise the same string.
-
-    """
-    try:
-        parts = date_str.split("-")
-        return "-".join(parts[::-1])
-    except Exception as err:
-        print("Error in reverse_date: ", err)
-        return date_str
-
-
 def format_list(strlist: list[str], cut: int, theme: bool = True) -> list[str]:
     """Format a list of strings into a single string with a given cut-off length (cut).
 
@@ -99,3 +84,156 @@ def format_list(strlist: list[str], cut: int, theme: bool = True) -> list[str]:
         else:
             strlist[v] += "," + char
     return strlist
+
+
+def truncate_text(
+    text: str,
+    width: int,
+    *,
+    placeholder: str = "...",
+    mode: Literal["end", "start", "middle"] = "end",
+) -> str:
+    """Truncates a string to a maximum width using a configurable strategy.
+
+    Args:
+        text: The source string to be shortened.
+        width: The maximum allowed length of the result.
+        placeholder: The string to append/insert where text is cut. Defaults to "...".
+        mode: The truncation strategy.
+            - "end": Truncates the tail (e.g., "filename...").
+            - "middle": Truncates the center (e.g., "file...ame").
+            - "start": Truncates the head (e.g., "...name").
+            Defaults to "end".
+
+    Returns:
+        The truncated string fitting strictly within the specified width.
+
+    """
+    if len(text) <= width:
+        return text
+
+    if width < len(placeholder):
+        return placeholder[:width]
+    content_len = width - len(placeholder)
+
+    if mode == "middle":
+        left_len = math.ceil(content_len / 2)
+        right_len = math.floor(content_len / 2)
+        right_part = text[-right_len:] if right_len > 0 else ""
+        return f"{text[:left_len]}{placeholder}{right_part}"
+
+    elif mode == "start":
+        return f"{placeholder}{text[-content_len:]}"
+    return f"{text[:content_len]}{placeholder}"
+
+
+def truncate_sequence(
+    items: Iterable[str],
+    max_length: int,
+    *,
+    separator: str = "\n",
+    placeholder: str = "...",
+) -> str:
+    """Joins a sequence of strings and truncates the result at a boundary (separator)
+    to fit strictly within a maximum length.
+
+    Args:
+        items: An iterable of strings to join.
+        max_length: The hard limit for the final string length.
+        separator: The string used to join items. Defaults to newline.
+        placeholder: Appended when truncation occurs. Defaults to "...".
+
+    Returns:
+        A string guaranteed to be <= max_length.
+
+    """
+    if max_length <= 0:
+        return ""
+
+    item_list = list(items)
+    if not item_list:
+        return ""
+
+    full_text = separator.join(item_list)
+    if len(full_text) <= max_length:
+        return full_text
+
+    budget = max_length - len(placeholder)
+
+    if not item_list:
+        return placeholder
+
+    current_len = 0
+    valid_items: list[str] = []
+
+    for i, item in enumerate(item_list):
+        sep_cost = len(separator) if i > 0 else 0
+        item_cost = len(item)
+        total_cost = sep_cost + item_cost
+
+        if current_len + total_cost > budget:
+            if i == 0:
+                return truncate_text(
+                    item, max_length, placeholder=placeholder, mode="end"
+                )
+            break
+
+        valid_items.append(item)
+        current_len += total_cost
+
+    return separator.join(valid_items) + placeholder
+
+
+class TextPaginator:
+    """Paginate pre-formatted strings.
+
+    Handles joining and strict length limits.
+    """
+
+    __slots__ = ("_pages", "_total_count")
+
+    def __init__(
+        self,
+        lines: Iterable[str],
+        *,
+        page_size: int = 25,
+        max_length: int = 1024,
+        separator: str = "\n",
+    ):
+        self._pages: list[str] = []
+        input_lines = list(lines)
+        self._total_count = len(input_lines)
+
+        current_page: list[str] = []
+        current_len = 0
+        sep_len = len(separator)
+
+        for line in input_lines:
+            if len(line) > max_length:
+                line = truncate_text(line, width=max_length)
+
+            line_len = len(line)
+            cost = sep_len + line_len if current_page else line_len
+
+            is_full_len = (current_len + cost) > max_length
+            is_full_count = len(current_page) >= page_size
+
+            if is_full_len or is_full_count:
+                if current_page:
+                    self._pages.append(separator.join(current_page))
+                current_page = [line]
+                current_len = line_len
+            else:
+                current_page.append(line)
+                current_len += cost
+
+        if current_page:
+            self._pages.append(separator.join(current_page))
+
+    @property
+    def pages(self) -> list[str]:
+        return self._pages
+
+    @property
+    def total_items(self) -> int:
+        return self._total_count

@@ -15,6 +15,7 @@ from discord.ui import Button, View
 from discord.utils import MISSING, format_dt, utcnow
 
 import config
+from utils import SafeEmbed
 
 type ReportCallback = Callable[[discord.Interaction, str | None], Awaitable[None]]
 
@@ -66,9 +67,9 @@ class FeedbackUI:
         title: str | None,
         description: str,
         feedback_type: FeedbackType,
-    ) -> discord.Embed:
+    ) -> SafeEmbed:
         """Create a standard embed for feedback."""
-        embed = discord.Embed(
+        embed = SafeEmbed(
             title=title,
             description=description,
             color=feedback_type.value,
@@ -159,7 +160,10 @@ class FeedbackUI:
         if delete_after:
             expire_at = utcnow() + timedelta(seconds=delete_after)
             timer = f"-# Удалится {format_dt(expire_at, style='R')}"
-            embed.add_field(name="", value=timer, inline=False)
+            if isinstance(embed, SafeEmbed):
+                embed.safe_add_field(name="", value=timer, inline=False)
+            else:
+                embed.add_field(name="", value=timer, inline=False)
 
         if interaction.response.is_done():
             msg = await interaction.followup.send(

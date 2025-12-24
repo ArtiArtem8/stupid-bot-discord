@@ -72,15 +72,20 @@
         "excludepodid",
         "fuzzywuzzy",
         "gock",
+        "grayline",
+        "graylineleftrounded",
+        "graylinerightrounded",
         "Isort",
         "jolen",
         "LANCZOS",
         "LAVALINK",
         "lavaplay",
         "listblocked",
+        "mafic",
         "Manipulatives",
         "Messageable",
         "monkeytype",
+        "musicalnote",
         "mypy",
         "pycache",
         "Pycodestyle",
@@ -91,8 +96,16 @@
         "strlist",
         "subpod",
         "subpods",
+        "whiteline",
+        "whitelinerightrounded",
         "wolframalpha",
         "youshallnotpass",
-        "ГГГГ"
-    ]
+        "ГГГГ",
+        "Залупливание"
+    ],
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
 }

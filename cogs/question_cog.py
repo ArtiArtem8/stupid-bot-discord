@@ -4,6 +4,7 @@ Provides a `/ask` command that gives random answers to user questions,
 with answer history tracking to prevent duplicate questions.
 """
 
+import logging
 import secrets
 
 from discord import Interaction, app_commands
@@ -14,6 +15,8 @@ from framework import BaseCog
 from resources import CAPABILITIES
 from utils import get_json, random_answer, save_json, str_local
 
+logger = logging.getLogger(__name__)
+
 
 class QuestionCog(BaseCog):
     def __init__(self, bot: commands.Bot):
@@ -22,27 +25,27 @@ class QuestionCog(BaseCog):
         self.answers = secrets.SystemRandom().sample(
             CAPABILITIES, min(len(CAPABILITIES), config.MAX_ANSWER_SAMPLE_SIZE)
         )
-        self.logger.info("Initial /ask answers: %s", self.answers)
+        logger.info("Initial /ask answers: %s", self.answers)
 
     @app_commands.command(
         name="ask",
         description="Магический шар, задай любой вопрос",
     )
     async def q(self, interaction: Interaction, *, text: str):
-        self.logger.info(
+        logger.info(
             "User %s(%s) asked: %s", interaction.user, interaction.user.id, text
         )
         prev_message = self._add_to_history(
             str(interaction.user.id), text, self.answers[0]
         )
         if prev_message:
-            self.logger.info("User already asked: %s -> %s", text, prev_message)
+            logger.info("User already asked: %s -> %s", text, prev_message)
             await interaction.response.send_message(prev_message)
             return
 
         self.answers.append(random_answer(text, answers=CAPABILITIES))
         reply = self.answers.pop(0)
-        self.logger.info(f"{reply} -> {self.answers[:2]}...{self.answers[-2:]}")
+        logger.info(f"{reply} -> {self.answers[:2]}...{self.answers[-2:]}")
 
         await interaction.response.send_message(reply)
 

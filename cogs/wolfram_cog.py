@@ -13,8 +13,8 @@ Requirements:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
-from textwrap import shorten
 from typing import Literal, override
 
 import aiohttp
@@ -25,7 +25,9 @@ from discord.ext import commands
 import config
 from api.wolfram import WolframAPIError, WolframClient, WolframResult
 from framework import BaseCog, FeedbackType, FeedbackUI
-from utils import optimize_image, save_image
+from utils import SafeEmbed, optimize_image, save_image
+
+logger = logging.getLogger(__name__)
 
 
 class WolframCog(BaseCog):
@@ -51,7 +53,7 @@ class WolframCog(BaseCog):
     async def cog_load(self) -> None:
         """Initialize persistent session."""
         self.client_session = aiohttp.ClientSession()
-        self.logger.info("WolframCog loaded.")
+        logger.info("WolframCog loaded.")
 
     @override
     async def cog_unload(self) -> None:
@@ -65,7 +67,7 @@ class WolframCog(BaseCog):
     async def cmd_solve(self, interaction: Interaction, problem: str) -> None:
         """Slash command handler for solving."""
         await interaction.response.defer(ephemeral=True)
-        self.logger.info("Solve: %s | User: %s", problem, interaction.user)
+        logger.info("Solve: %s | User: %s", problem, interaction.user)
         await self._handle_query(interaction, problem, mode="solve")
 
     @app_commands.command(name="plot", description="Plot a mathematical function")
@@ -73,7 +75,7 @@ class WolframCog(BaseCog):
     async def cmd_plot(self, interaction: Interaction, function: str) -> None:
         """Slash command handler for plotting."""
         await interaction.response.defer(ephemeral=True)
-        self.logger.info("Plot: %s | User: %s", function, interaction.user)
+        logger.info("Plot: %s | User: %s", function, interaction.user)
         await self._handle_query(interaction, function, mode="plot")
 
     async def _context_solve(
@@ -92,7 +94,7 @@ class WolframCog(BaseCog):
             )
             return
 
-        self.logger.info("Ctx Solve: %s | User: %s", content, interaction.user)
+        logger.info("Ctx Solve: %s | User: %s", content, interaction.user)
         await self._handle_query(interaction, content, mode="solve")
 
     async def _handle_query(
@@ -162,7 +164,7 @@ class WolframCog(BaseCog):
         title_text = input_pod.get_joined_text() if input_pod else query
         title_text = title_text.replace("solve ", "").replace("plot ", "")
 
-        embed = discord.Embed(
+        embed = SafeEmbed(
             title="Expression:", description=f"`{title_text}`", color=config.Color.INFO
         )
         embed.set_author(name="StupidBot", icon_url=config.BOT_ICON)
@@ -177,11 +179,8 @@ class WolframCog(BaseCog):
                 continue
 
             inline = not pod.is_primary
-            text = shorten(text, width=1000)
-
-            embed.add_field(
-                name=f"{pod.title}:", value=f"```\n{text}\n```", inline=inline
-            )
+            # SafeEmbed handles truncation and code block wrapping
+            embed.add_code_field(name=f"{pod.title}:", value=text, inline=inline)
             fields_added += 1
 
             if fields_added >= 10:
@@ -250,7 +249,7 @@ class WolframCog(BaseCog):
             )
 
         except Exception as e:
-            self.logger.error("Image pipeline failed: %s", e, exc_info=True)
+            logger.error("Image pipeline failed: %s", e, exc_info=True)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,

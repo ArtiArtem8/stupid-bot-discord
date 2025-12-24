@@ -100,7 +100,7 @@ WOLFRAM_PLOT_QUALITY = 90
 """JPEG quality (0-100)."""
 
 # Fuzzy matching and search
-FUZZY_THRESHOLD_DEFAULT = 95
+FUZZY_THRESHOLD_DEFAULT = 90
 """Minimum fuzzy match score to consider a match (0-100)."""
 FUZZY_MATCH_LIMIT = 10
 """Maximum number of fuzzy search results to return."""

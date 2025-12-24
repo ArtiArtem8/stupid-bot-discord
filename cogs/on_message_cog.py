@@ -6,16 +6,19 @@ Listens to messages and responds to greetings.
 import logging
 import secrets
 from collections.abc import Callable, Iterable, Sequence, Sized
-from textwrap import shorten
 from typing import Any
 
 from discord import Message
 from discord.ext import commands
 from rapidfuzz.process import extract
+from rapidfuzz.utils import default_process
 
 import config
 from api import block_manager
 from resources import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
+from utils import truncate_text
+
+logger = logging.getLogger(__name__)
 
 
 class OnMessageCog(commands.Cog):
@@ -23,7 +26,6 @@ class OnMessageCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.logger = logging.getLogger("OnMessageCog")
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):
@@ -32,14 +34,14 @@ class OnMessageCog(commands.Cog):
             return
         if message.content.startswith(tuple(await self.bot.get_prefix(message))):
             return
-        if message.guild and block_manager.is_user_blocked(
+        if message.guild and await block_manager.is_user_blocked(
             message.guild.id, message.author.id
         ):
             return
         try:
             await self.quest_process_message(message)
         except Exception as e:
-            self.logger.error("Failed to process message %s: %s", message.content, e)
+            logger.error("Failed to process message %s: %s", message.content, e)
 
     def _format_change(self, attr: str, before: Any, after: Any) -> str:
         """Smart diff formatting by type."""
@@ -49,7 +51,10 @@ class OnMessageCog(commands.Cog):
                 f"{type(before).__name__} -> {type(after).__name__}"
             )
         elif isinstance(before, str):
-            return f"{attr}: '{shorten(before, 100)}' -> '{shorten(after, 100)}'"
+            return (
+                f"{attr}: '{truncate_text(before, 100, mode='middle')}'"
+                f" -> '{truncate_text(after, 100, mode='middle')}'"
+            )
         elif isinstance(before, Sized):
             return f"{attr}: {len(before)} -> {len(after)}"
         elif isinstance(before, bool):
@@ -86,13 +91,14 @@ class OnMessageCog(commands.Cog):
             changes.append(f"flags: {before_flags} -> {after_flags}")
 
         if changes:
-            self.logger.info(
+            logger.debug(
                 "Message edited by %s in %s | Changes: %s",
                 after.author,
                 after.channel,
                 ", ".join(changes),
             )
-            self._log_message(after)
+
+            self._log_message(after, is_edit=True)
 
     async def quest_process_message(self, message: Message):
         if len(message.content) < 5:
@@ -125,11 +131,16 @@ class OnMessageCog(commands.Cog):
             A random answer if the message matches, None otherwise.
 
         """
-        fuzzy_results = extract(message.content, quests, limit=config.FUZZY_MATCH_LIMIT)
+        fuzzy_results = extract(
+            message.content,
+            quests,
+            limit=config.FUZZY_MATCH_LIMIT,
+            processor=default_process,
+        )
         _, best_score, _ = max(fuzzy_results, key=lambda x: x[1])
 
         if best_score >= threshold:
-            self.logger.info(
+            logger.info(
                 '%s processed with message: "%s" in %s from %s',
                 str(fuzzy_results[:3]),
                 message.content,
@@ -159,12 +170,12 @@ class OnMessageCog(commands.Cog):
         """
         if not data:
             return
+        if log_data := summary_factory(data):
+            logger.info(f"{label}: %s", log_data)
+        if logger.isEnabledFor(logging.DEBUG) and (log_data := debug_factory(data)):
+            logger.debug(f"Full {label.lower()}: %s", log_data)
 
-        self.logger.info(f"{label}: %s", summary_factory(data))
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"Full {label.lower()}: %s", debug_factory(data))
-
-    def _log_message(self, message: Message) -> None:
+    def _log_message(self, message: Message, *, is_edit: bool = False) -> None:
         """Log message with structured INFO summaries and lazy DEBUG details."""
         content_flags: dict[str, Any] = {
             "attachments": message.attachments,
@@ -174,30 +185,26 @@ class OnMessageCog(commands.Cog):
             "reference": message.reference,
             "poll": message.poll,
         }
-
-        self.logger.info(
-            '%s sent - "%s" in %s (%s)',
-            message.author,
-            message.content,
-            message.channel,
-            ", ".join(k for k, v in content_flags.items() if v),
-        )
+        if not is_edit:
+            logger.info(
+                '%s sent - "%s" in %s (%s)',
+                message.author,
+                message.content,
+                message.channel,
+                ", ".join(k for k, v in content_flags.items() if v),
+            )
 
         self._log_section(
             "Attachments",
             message.attachments,
-            summary_factory=lambda x: [
-                (a.filename, a.content_type, a.size, a.url) for a in x
-            ],
+            summary_factory=lambda x: [(a.content_type, a.url) for a in x],
             debug_factory=lambda x: {f"att_{i}": a.to_dict() for i, a in enumerate(x)},
         )
 
         self._log_section(
             "Embeds",
             message.embeds,
-            summary_factory=lambda x: [
-                (e.title or "No title", e.type, len(e.fields), e.color) for e in x
-            ],
+            summary_factory=lambda _: "",
             debug_factory=lambda x: {
                 f"embed_{i}": e.to_dict() for i, e in enumerate(x)
             },
@@ -206,7 +213,7 @@ class OnMessageCog(commands.Cog):
         self._log_section(
             "Stickers",
             message.stickers,
-            summary_factory=lambda x: [(s.id, s.name, s.format.name) for s in x],
+            summary_factory=lambda _: "",
             debug_factory=lambda x: [(s.id, s.name, s.format.name, s.url) for s in x],
         )
 
@@ -224,7 +231,7 @@ class OnMessageCog(commands.Cog):
         self._log_section(
             "Components",
             message.components,
-            summary_factory=lambda x: [type(c).__name__ for c in x],
+            summary_factory=lambda _: "",
             debug_factory=lambda x: {
                 f"component_{i}": c.to_dict() for i, c in enumerate(x)
             },
@@ -243,7 +250,7 @@ class OnMessageCog(commands.Cog):
         self._log_section(
             "Flags",
             message.flags.value,
-            summary_factory=lambda x: x,
+            summary_factory=lambda _: "",
             debug_factory=lambda x: f"{x} (0x{x:x})",
         )
 

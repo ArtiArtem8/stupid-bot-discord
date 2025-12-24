@@ -32,13 +32,15 @@ from api import (
 )
 from framework import BaseCog, FeedbackType, FeedbackUI
 from resources import BIRTHDAY_WISHES
+from utils import SafeEmbed
+
+logger = logging.getLogger(__name__)
 
 
 async def safe_role_edit(
     member: discord.Member,
     role: discord.Role,
     operation: Literal["add", "remove"],
-    logger: logging.Logger,
 ) -> bool:
     """Safely add or remove a role.
 
@@ -104,7 +106,7 @@ class ConfirmDeleteView(discord.ui.View):
             )
             return
 
-        config = birthday_manager.get_guild_config(self.guild_id)
+        config = await birthday_manager.get_guild_config(self.guild_id)
         if not config:
             await FeedbackUI.send(
                 interaction,
@@ -125,7 +127,7 @@ class ConfirmDeleteView(discord.ui.View):
 
         user.clear_birthday()
         try:
-            birthday_manager.save_guild_config(config)
+            await birthday_manager.save_guild_config(config)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.SUCCESS,
@@ -166,7 +168,7 @@ class BirthdayCog(BaseCog):
 
     Features:
     - User birthday registration
-    - Automatic daily birthday checks
+    - Automatic daily checks
     - Birthday role management
     - Birthday list display
 
@@ -185,7 +187,9 @@ class BirthdayCog(BaseCog):
     async def birthday_timer(self):
         """Main timer loop for birthday checks."""
         today = date.today()
-        for guild_id in birthday_manager.get_all_guild_ids():
+        # birthday_manager.get_all_guild_ids is now async
+        guild_ids = await birthday_manager.get_all_guild_ids()
+        for guild_id in guild_ids:
             await self._process_guild(guild_id, today)
 
     @birthday_timer.before_loop
@@ -204,7 +208,7 @@ class BirthdayCog(BaseCog):
         if not guild:
             return
 
-        config = birthday_manager.get_guild_config(guild_id)
+        config = await birthday_manager.get_guild_config(guild_id)
         if not config:
             return
 
@@ -245,9 +249,9 @@ class BirthdayCog(BaseCog):
 
         for user_id, user_data in config.users.items():
             if user_data.birth_day_month() != today_key:
-                member = await safe_fetch_member(guild, user_id, self.logger)
+                member = await safe_fetch_member(guild, user_id)
                 if member and role in member.roles:
-                    await safe_role_edit(member, role, "remove", self.logger)
+                    await safe_role_edit(member, role, "remove")
 
     async def _handle_birthday(
         self,
@@ -269,16 +273,16 @@ class BirthdayCog(BaseCog):
             guild_config: Guild configuration
 
         """
-        member = await safe_fetch_member(guild, user.user_id, self.logger)
+        member = await safe_fetch_member(guild, user.user_id)
         if not member:
             return
 
         try:
             if role and role not in member.roles:
-                await safe_role_edit(member, role, "add", self.logger)
+                await safe_role_edit(member, role, "add")
 
             wish = secrets.choice(BIRTHDAY_WISHES or ["С днём рождения!"])
-            embed = discord.Embed(
+            embed = SafeEmbed(
                 title=f"🎉 ПОЗДРАВЛЕНИЯ {user.name}",
                 description=f"{wish} {member.mention}",
                 color=discord.Color.gold(),
@@ -288,10 +292,10 @@ class BirthdayCog(BaseCog):
             await channel.send(embed=embed)
 
             user.add_congratulation(today)
-            birthday_manager.save_guild_config(guild_config)
+            await birthday_manager.save_guild_config(guild_config)
 
         except Exception as e:
-            self.logger.error(f"Error handling birthday for {user.user_id}: {e}")
+            logger.error(f"Error handling birthday for {user.user_id}: {e}")
 
     @app_commands.command(
         name="setbirthday",
@@ -323,7 +327,7 @@ class BirthdayCog(BaseCog):
                 ephemeral=True,
             )
         guild = await self._require_guild(interaction)
-        config = birthday_manager.get_or_create_guild_config(
+        config = await birthday_manager.get_or_create_guild_config(
             guild_id=guild.id,
             server_name=guild.name,
             channel_id=interaction.channel_id or 0,
@@ -334,7 +338,7 @@ class BirthdayCog(BaseCog):
         )
         user.birthday = normalized_date
         try:
-            birthday_manager.save_guild_config(config)
+            await birthday_manager.save_guild_config(config)
             msg = f"Ваш день рождения записан: {normalized_date}"
             await FeedbackUI.send(
                 interaction,
@@ -343,7 +347,7 @@ class BirthdayCog(BaseCog):
                 ephemeral=True,
             )
         except Exception as e:
-            self.logger.error("Error saving birthday: %s", e)
+            logger.error("Error saving birthday: %s", e)
 
             await FeedbackUI.send(
                 interaction,
@@ -371,7 +375,7 @@ class BirthdayCog(BaseCog):
         """Configure birthday system for the server."""
         guild = await self._require_guild(interaction)
 
-        config = birthday_manager.get_or_create_guild_config(
+        config = await birthday_manager.get_or_create_guild_config(
             guild_id=guild.id,
             server_name=guild.name,
             channel_id=channel.id,
@@ -379,7 +383,7 @@ class BirthdayCog(BaseCog):
         config.channel_id = channel.id
         config.birthday_role_id = role.id if role else None
         try:
-            birthday_manager.save_guild_config(config)
+            await birthday_manager.save_guild_config(config)
             response: str = f"Настройки обновлены:\n- Канал: {channel.mention}"
             if role:
                 response += f"\n- Роль: {role.mention}"
@@ -390,7 +394,7 @@ class BirthdayCog(BaseCog):
                 ephemeral=True,
             )
         except Exception as e:
-            self.logger.error("Error saving configuration: %s", e)
+            logger.error("Error saving configuration: %s", e)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
@@ -406,7 +410,7 @@ class BirthdayCog(BaseCog):
     async def remove_birthday(self, interaction: Interaction):
         """Remove your birthday from the system."""
         guild = await self._require_guild(interaction)
-        config = birthday_manager.get_guild_config(guild.id)
+        config = await birthday_manager.get_guild_config(guild.id)
 
         if not config:
             await FeedbackUI.send(
@@ -447,7 +451,7 @@ class BirthdayCog(BaseCog):
     async def list_birthdays(self, interaction: Interaction, ephemeral: bool = True):
         """Display all birthdays in the guild, sorted by closest to today."""
         guild = await self._require_guild(interaction)
-        config = birthday_manager.get_guild_config(guild.id)
+        config = await birthday_manager.get_guild_config(guild.id)
         if not config:
             await FeedbackUI.send(
                 interaction,
@@ -469,7 +473,7 @@ class BirthdayCog(BaseCog):
         today = date.today()
 
         entries = await config.get_sorted_birthday_list(
-            guild=guild, reference_date=today, logger=self.logger
+            guild=guild, reference_date=today, logger=logger
         )
 
         if not entries:

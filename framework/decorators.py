@@ -10,7 +10,7 @@ from discord import Interaction
 
 from framework.feedback_ui import FeedbackType, FeedbackUI
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 type AsyncFunc[T, **P] = Callable[P, Awaitable[T]]
 type CommandCallback[CogT, T, **P] = Callable[
@@ -49,22 +49,24 @@ def handle_errors[CogT, T, **P]() -> Callable[
             try:
                 return await func(self, interaction, *args, **kwargs)
             except discord.DiscordException as e:
-                LOGGER.exception(f"Discord error in {func.__name__}")
+                logger.exception(f"Discord error in {func.__name__}")
                 await FeedbackUI.send(
                     interaction,
                     title="Discord Ошибка",
                     feedback_type=FeedbackType.ERROR,
                     description=f"❌ {type(e).__name__}: {e}",
                     delete_after=600,
+                    error_info=str(e),
                 )
             except Exception as e:
-                LOGGER.exception(f"Unexpected error in {func.__name__}")
+                logger.exception(f"Unexpected error in {func.__name__}")
                 await FeedbackUI.send(
                     interaction,
                     feedback_type=FeedbackType.ERROR,
                     title="Внутренняя ошибка",
                     description=f"❌ {type(e).__name__}: {e}",
                     delete_after=600,
+                    error_info=str(e),
                 )
             return None
 

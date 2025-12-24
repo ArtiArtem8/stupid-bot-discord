@@ -10,14 +10,18 @@ This cog requires setting an owner ID to use this command :
   don't set both at the same time
 """
 
+import logging
+
 import discord
 from discord import Interaction, app_commands
 from discord.ext import commands
 
 import config
 from api import ReportModal
-from framework import BaseCog, FeedbackType, FeedbackUI
+from framework import BaseCog, FeedbackType, FeedbackUI, is_owner_app
 from utils import get_json, save_json
+
+logger = logging.getLogger(__name__)
 
 
 def get_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
@@ -60,7 +64,7 @@ class ReportCog(BaseCog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
     @app_commands.describe(channel="Report channel")
-    @commands.is_owner()
+    @is_owner_app()
     async def set_report_channel(
         self, interaction: Interaction, channel: discord.TextChannel
     ):

@@ -1,7 +1,6 @@
 import logging
 import uuid
 from datetime import datetime
-from textwrap import shorten
 from typing import Self, TypedDict
 
 import discord
@@ -9,9 +8,10 @@ from discord import DMChannel, Interaction
 from discord.ui import Modal, TextInput
 
 import config
+from utils import SafeEmbed
 from utils.json_utils import get_json, save_json
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class UserInfoDict(TypedDict):
@@ -74,17 +74,17 @@ def _build_report_data(interaction: Interaction, reason: str) -> ReportDataDict:
 
 def _create_report_embed(report: ReportDataDict) -> discord.Embed:
     """Formats the report for Discord."""
-    embed = discord.Embed(
+    embed = SafeEmbed(
         title="Отчёт",
         color=config.Color.INFO,
         timestamp=datetime.now(),
     )
-    embed.add_field(
+    embed.safe_add_field(
         name="Описание",
-        value=shorten(report["reason"], width=config.MAX_EMBED_FIELD_LENGTH),
+        value=report["reason"],
         inline=False,
     )
-    embed.add_field(
+    embed.safe_add_field(
         name="Отправитель",
         value=f"{report['user']['name']} (`{report['user']['id']}`)",
         inline=True,
@@ -97,7 +97,7 @@ def _create_report_embed(report: ReportDataDict) -> discord.Embed:
         locs.append(f"**Канал:** {report['channel']['name']}")
 
     if locs:
-        embed.add_field(name="Локация", value="\n".join(locs), inline=False)
+        embed.safe_add_field(name="Локация", value="\n".join(locs), inline=False)
 
     embed.set_footer(text=f"ID: {report['report_id']}")
     if report["user"]["avatar"]:
@@ -112,7 +112,7 @@ async def submit_report(interaction: Interaction, reason: str) -> str:
     data = get_json(config.REPORT_FILE) or {}
     data.setdefault("reports", []).append(report)
     save_json(config.REPORT_FILE, data)
-    LOGGER.info("New report: %s", report["report_id"])
+    logger.info("New report: %s", report["report_id"])
 
     report_channel_id = data.get("report_channel_id")
     if report_channel_id:
@@ -150,12 +150,12 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
             try:
                 await interaction.message.edit(view=None)
             except discord.HTTPException:
-                LOGGER.warning(
+                logger.warning(
                     "Failed to remove report button from message %s",
                     interaction.message.id,
                 )
 
-        embed = discord.Embed(
+        embed = SafeEmbed(
             title="Спасибо за отчёт!",
             description=f"-# Ваш персональный ID: `{report_id}`",
             color=config.Color.SUCCESS,

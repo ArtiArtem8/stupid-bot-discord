@@ -1,169 +1,139 @@
+from __future__ import annotations
+
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Self, TypedDict
+from typing import TYPE_CHECKING
 
 import discord
 from discord.utils import utcnow
 
 import config
-from utils.json_utils import get_json, save_json
+from api.blocking_models import (
+    BlockedUser,
+    NameHistoryEntry,
+)
+from repositories.blocking_repository import BlockingRepository
 
-LOGGER = logging.getLogger(__name__)
-
-
-def datetime_now_isoformat() -> str:
-    """Return current time in isoformat."""
-    return utcnow().isoformat()
-
-
-class BlockHistoryEntryDict(TypedDict):
-    admin_id: str
-    reason: str
-    timestamp: str
-
-
-class NameHistoryEntryDict(TypedDict):
-    username: str
-    timestamp: str
-
-
-class BlockedUserDict(TypedDict):
-    user_id: str
-    current_username: str
-    current_global_name: str | None
-    blocked: bool
-    block_history: list[BlockHistoryEntryDict]
-    unblock_history: list[BlockHistoryEntryDict]
-    name_history: list[NameHistoryEntryDict]
-
-
-@dataclass
-class BlockHistoryEntry:
-    admin_id: int
-    reason: str | None
-    timestamp: datetime
-
-    def to_dict(self) -> BlockHistoryEntryDict:
-        return {
-            "admin_id": str(self.admin_id),
-            "reason": self.reason or "",
-            "timestamp": self.timestamp.isoformat(),
-        }
-
-    @classmethod
-    def from_dict(cls, data: BlockHistoryEntryDict) -> Self:
-        return cls(
-            admin_id=int(data["admin_id"]),
-            reason=data["reason"],
-            timestamp=datetime.fromisoformat(
-                data.get("timestamp", datetime_now_isoformat())
-            ),
-        )
-
-
-@dataclass
-class NameHistoryEntry:
-    username: str
-    timestamp: datetime
-
-    def to_dict(self) -> NameHistoryEntryDict:
-        return {
-            "username": self.username,
-            "timestamp": self.timestamp.isoformat(),
-        }
-
-    @classmethod
-    def from_dict(cls, data: NameHistoryEntryDict) -> Self:
-        return cls(
-            username=data.get("username", ""),
-            timestamp=datetime.fromisoformat(
-                data.get("timestamp", datetime_now_isoformat())
-            ),
-        )
-
-
-@dataclass
-class BlockedUser:
-    user_id: int
-    current_username: str
-    current_global_name: str | None
-    block_history: list[BlockHistoryEntry] = field(
-        default_factory=list[BlockHistoryEntry]
+if TYPE_CHECKING:
+    from api.blocking_models import (
+        BlockedUserDict,
     )
-    unblock_history: list[BlockHistoryEntry] = field(
-        default_factory=list[BlockHistoryEntry]
-    )
-    name_history: list[NameHistoryEntry] = field(default_factory=list[NameHistoryEntry])
-    blocked: bool = False
 
-    @property
-    def is_blocked(self) -> bool:
-        return self.blocked
+logger = logging.getLogger(__name__)
 
-    def add_block_entry(self, admin_id: int, reason: str = "") -> None:
-        self.block_history.append(
-            BlockHistoryEntry(admin_id=admin_id, reason=reason, timestamp=utcnow())
-        )
-        self.blocked = True
-
-    def add_unblock_entry(self, admin_id: int, reason: str = "") -> None:
-        self.unblock_history.append(
-            BlockHistoryEntry(admin_id=admin_id, reason=reason, timestamp=utcnow())
-        )
-        self.blocked = False
-
-    def update_name_history(self, username: str, global_name: str | None) -> bool:
-        """Update name history if different from current. Returns True if updated."""
-        if self.current_username != username or (
-            self.current_global_name != global_name and global_name is not None
-        ):
-            self.name_history.append(
-                NameHistoryEntry(
-                    username=username,
-                    timestamp=utcnow(),
-                )
-            )
-            self.current_username = username
-            if global_name is not None:
-                self.current_global_name = global_name
-            return True
-        return False
-
-    def to_dict(self) -> BlockedUserDict:
-        return {
-            "user_id": str(self.user_id),
-            "current_username": self.current_username,
-            "current_global_name": self.current_global_name,
-            "blocked": self.blocked,
-            "block_history": [e.to_dict() for e in self.block_history],
-            "unblock_history": [e.to_dict() for e in self.unblock_history],
-            "name_history": [e.to_dict() for e in self.name_history],
-        }
-
-    @classmethod
-    def from_dict(cls, data: BlockedUserDict) -> Self:
-        return cls(
-            user_id=int(data.get("user_id", 0)),
-            current_username=data.get("current_username", ""),
-            current_global_name=data.get("current_global_name"),
-            blocked=data.get("blocked", False),
-            block_history=[
-                BlockHistoryEntry.from_dict(e) for e in data.get("block_history", [])
-            ],
-            unblock_history=[
-                BlockHistoryEntry.from_dict(e) for e in data.get("unblock_history", [])
-            ],
-            name_history=[
-                NameHistoryEntry.from_dict(e) for e in data.get("name_history", [])
-            ],
-        )
+__all__ = [
+    "BlockManager",
+    "BlockedUser",
+    "block_manager",
+]
 
 
 class BlockManager:
     """Manage blocked users across guilds."""
 
+    def __init__(self, repository: BlockingRepository) -> None:
+        self.repo = repository
+
+    async def _get_or_create_user(
+        self, guild_id: int, member: discord.Member
+    ) -> BlockedUser:
+        user_id = member.id
+        key = (guild_id, user_id)
+        user = await self.repo.get(key)
+        if user:
+            if user.update_name_history(member.display_name, member.name):
+                logger.info(
+                    "Updated name history for user %d in guild %d. Name: %s",
+                    user_id,
+                    guild_id,
+                    member.display_name,
+                )
+                await self.repo.save(user, key)
+            return user
+        new_user = BlockedUser(
+            user_id=user_id,
+            current_username=member.display_name,
+            current_global_name=member.name,
+        )
+        new_user.name_history.append(
+            NameHistoryEntry(
+                username=member.display_name,
+                timestamp=utcnow(),
+            )
+        )
+        await self.repo.save(new_user, key)  # Save Immediately
+        logger.info("Created block entry for %d in %d", user_id, guild_id)
+        return new_user
+
+    async def is_user_blocked(self, guild_id: int, user_id: int) -> bool:
+        """Check if a user is currently blocked in the guild."""
+        user = await self.repo.get((guild_id, user_id))
+        return user.is_blocked if user else False
+
+    async def get_guild_users(self, guild_id: int) -> list[BlockedUser]:
+        """Get list of all tracked users for a guild."""
+        return await self.repo.get_all_for_guild(guild_id)
+
+    async def get_user(self, guild_id: int, user_id: int) -> BlockedUser | None:
+        """Get a specific user (Read-only)."""
+        return await self.repo.get((guild_id, user_id))
+
+    async def block_user(
+        self, guild_id: int, target: discord.Member, admin_id: int, reason: str
+    ) -> BlockedUser:
+        """Block a user and save to disk."""
+        user = await self._get_or_create_user(guild_id, target)
+        if user.is_blocked:
+            return user
+        user.add_block_entry(admin_id, reason)
+        await self.repo.save(user, (guild_id, target.id))
+        return user
+
+    async def unblock_user(
+        self, guild_id: int, target: discord.Member, admin_id: int, reason: str
+    ) -> BlockedUser:
+        """Unblock a user and save to disk."""
+        user = await self._get_or_create_user(guild_id, target)
+        if not user.is_blocked:
+            return user
+        user.add_unblock_entry(admin_id, reason)
+        await self.repo.save(user, (guild_id, target.id))
+        return user
+
+
+class SyncBlockingRepository:
     def __init__(self) -> None:
+        self.file_path = config.BLOCKED_USERS_FILE
+
+    def get_all_grouped(self) -> dict[int, dict[int, BlockedUser]]:
+        from utils.json_utils import get_json
+
+        raw_data = get_json(self.file_path) or {}
+        result: dict[int, dict[int, BlockedUser]] = {}
+        for guild_id_str, guild_data in raw_data.items():
+            guild_id = int(guild_id_str)
+            users_data = guild_data.get("users", {})
+            result[guild_id] = {
+                int(uid): BlockedUser.from_dict(u_data)
+                for uid, u_data in users_data.items()
+            }
+        return result
+
+    def save_all_grouped(self, data: dict[int, dict[int, BlockedUser]]) -> None:
+        from utils.json_utils import save_json
+
+        output_data: dict[str, dict[str, dict[str, BlockedUserDict]]] = {}
+        for guild_id, users_map in data.items():
+            output_data[str(guild_id)] = {
+                "users": {str(uid): user.to_dict() for uid, user in users_map.items()}
+            }
+        save_json(self.file_path, output_data)
+
+
+class BlockManager_:
+    """Manage blocked users across guilds."""
+
+    def __init__(self, repository: SyncBlockingRepository) -> None:
+        self.repo = repository
         self._cache: dict[int, dict[int, BlockedUser]] = {}
         self._loaded = False
 
@@ -171,33 +141,14 @@ class BlockManager:
         """Lazy load the entire JSON file into cache."""
         if self._loaded:
             return
-
-        raw_data = get_json(config.BLOCKED_USERS_FILE) or {}
-        self._cache = {}
-        for guild_id_str, guild_data in raw_data.items():
-            guild_id = int(guild_id_str)
-            users_data = guild_data.get("users", {})
-            self._cache[guild_id] = {
-                int(uid): BlockedUser.from_dict(u_data)
-                for uid, u_data in users_data.items()
-            }
+        self._cache = self.repo.get_all_grouped()
         self._loaded = True
 
     def _save_cache(self):
-        """Dump the entire cache to JSON."""
-        output_data: dict[str, dict[str, dict[str, BlockedUserDict]]] = {}
-        for guild_id, users_map in self._cache.items():
-            output_data[str(guild_id)] = {
-                "users": {str(uid): user.to_dict() for uid, user in users_map.items()}
-            }
-
-        save_json(config.BLOCKED_USERS_FILE, output_data)
+        """Dump the entire cache."""
+        self.repo.save_all_grouped(self._cache)
 
     def _get_or_create_user(self, guild_id: int, member: discord.Member) -> BlockedUser:
-        """Get existing user entry or create a new one with name tracking.
-
-        Automatically updates name history if the user exists.
-        """
         self._ensure_loaded()
         if guild_id not in self._cache:
             self._cache[guild_id] = {}
@@ -206,7 +157,7 @@ class BlockManager:
         if user_id in guild_cache:
             user = guild_cache[user_id]
             if user.update_name_history(member.display_name, member.name):
-                LOGGER.info(
+                logger.info(
                     "Updated name history for user %d in guild %d. Name: %s",
                     user_id,
                     guild_id,
@@ -226,7 +177,7 @@ class BlockManager:
             )
         )
         guild_cache[user_id] = new_user
-        LOGGER.info("Created block entry for %d in %d", user_id, guild_id)
+        logger.info("Created block entry for %d in %d", user_id, guild_id)
         return new_user
 
     def is_user_blocked(self, guild_id: int, user_id: int) -> bool:
@@ -274,10 +225,11 @@ class BlockManager:
         return user
 
     def reload(self):
-        """Force reload from disk (useful if file edited manually)."""
+        """Force reload the entire cache."""
         self._loaded = False
         self._cache.clear()
         self._ensure_loaded()
 
 
-block_manager = BlockManager()
+# Global Instance
+block_manager = BlockManager(BlockingRepository())

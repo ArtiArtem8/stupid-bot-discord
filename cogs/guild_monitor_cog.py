@@ -1,5 +1,7 @@
 """Server monitoring cog for tracking and restoring member roles."""
 
+import logging
+
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -8,6 +10,8 @@ import config
 from api.guild_monitoring import monitor_manager
 from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackType, FeedbackUI
+
+logger = logging.getLogger(__name__)
 
 
 class ServerMonitorCog(BaseCog):
@@ -29,7 +33,7 @@ class ServerMonitorCog(BaseCog):
 
         count = monitor_manager.save_snapshot(member)
         if count > 0:
-            self.logger.info(
+            logger.info(
                 "Saved %d roles for %s (ID: %d) in guild %d",
                 count,
                 member,
@@ -50,7 +54,7 @@ class ServerMonitorCog(BaseCog):
 
         if restored:
             role_names = ", ".join(role.name for role in restored)
-            self.logger.info(
+            logger.info(
                 "Restored %d roles for %s (ID: %d) in guild %d: %s",
                 len(restored),
                 member,
@@ -59,7 +63,7 @@ class ServerMonitorCog(BaseCog):
                 role_names,
             )
             if skipped:
-                self.logger.warning(
+                logger.warning(
                     "Skipped %d roles for %s (deleted or unpermitted): %s",
                     len(skipped),
                     member,
@@ -86,7 +90,6 @@ class ServerMonitorCog(BaseCog):
         """Enable server monitoring."""
         guild = await self._require_guild(interaction)
 
-        # Validate permissions
         if not guild.me.guild_permissions.manage_roles:
             await FeedbackUI.send(
                 interaction,
@@ -107,9 +110,7 @@ class ServerMonitorCog(BaseCog):
             return
 
         monitor_manager.set_enabled(guild.id, True, ttl_days)
-        self.logger.info(
-            "Monitoring enabled for guild %d with TTL=%s", guild.id, ttl_days
-        )
+        logger.info("Monitoring enabled for guild %d with TTL=%s", guild.id, ttl_days)
 
         ttl_text = (
             "бесконечное хранение" if ttl_days is None else f"TTL: {ttl_days} дней"
@@ -142,7 +143,7 @@ class ServerMonitorCog(BaseCog):
             return
 
         monitor_manager.set_enabled(guild.id, False)
-        self.logger.info("Monitoring disabled for guild %d", guild.id)
+        logger.info("Monitoring disabled for guild %d", guild.id)
         msg = (
             "Сохранённые снимки ролей не удалены. "
             "Используйте `/monitor forget` для очистки."
@@ -189,7 +190,7 @@ class ServerMonitorCog(BaseCog):
             for snapshot in snapshots[:10]:
                 timestamp = discord.utils.format_dt(snapshot.left_at, style="R")
                 msg = (
-                    f"• **{snapshot.username}** — {len(snapshot.roles)} ролей, "
+                    f"- **{snapshot.username}** — {len(snapshot.roles)} ролей, "
                     f"вышел {timestamp}"
                 )
                 snapshot_lines.append(msg)
@@ -218,7 +219,7 @@ class ServerMonitorCog(BaseCog):
         deleted = monitor_manager.delete_snapshot(guild.id, user.id)
 
         if deleted:
-            self.logger.info(
+            logger.info(
                 "Deleted snapshot for user %d in guild %d by admin %d",
                 user.id,
                 guild.id,
@@ -278,10 +279,10 @@ class ServerMonitorCog(BaseCog):
 
         if skipped:
             description += (
-                f"\n\n⚠️ Пропущено {len(skipped)} ролей (удалены или недостаточно прав)"
+                f"\n\nПропущено {len(skipped)} ролей (удалены или недостаточно прав)"
             )
 
-        self.logger.info(
+        logger.info(
             "Restore for user %d in guild %d by admin %d: %d restored, %d skipped",
             user.id,
             guild.id,
@@ -301,21 +302,26 @@ class ServerMonitorCog(BaseCog):
     @tasks.loop(hours=24)
     async def cleanup_task(self) -> None:
         """Background task to clean up expired snapshots."""
-        self.logger.debug("Running cleanup task for expired snapshots")
+        logger.debug("Running cleanup task for expired snapshots")
 
         for guild in self.bot.guilds:
             try:
                 removed = monitor_manager.cleanup_expired(guild.id)
                 if removed > 0:
-                    self.logger.info(
+                    logger.info(
                         "Cleaned up %d expired snapshots in guild %d", removed, guild.id
                     )
             except Exception as e:
-                self.logger.error(
+                logger.error(
                     "Error cleaning up guild %d: %s", guild.id, e, exc_info=True
                 )
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Load the cog."""
+    """Setup.
+
+    Args:
+        bot: BOT ITSELF
+
+    """
     await bot.add_cog(ServerMonitorCog(bot))

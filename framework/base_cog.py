@@ -15,6 +15,8 @@ from discord.utils import maybe_coroutine
 from api.blocking import block_manager
 from framework.exceptions import BlockedUserError, NoGuildError
 
+logger = logging.getLogger(__name__)
+
 
 class CogABCMeta(commands.CogMeta, abc.ABCMeta):
     """Custom metaclass combining commands.CogMeta and abc.ABCMeta.
@@ -33,17 +35,16 @@ class GenericBaseCog[BotT: commands.Bot](abc.ABC, commands.Cog, metaclass=CogABC
 
     """
 
-    def __init__(self, bot: BotT, logger_name: str | None = None):
+    def __init__(self, bot: BotT):
         """Initialize the base cog.
 
         Args:
             bot: The bot instance.
-            logger_name: Custom logger name. Default to the class name.
 
         """
         super().__init__()
         self.bot = bot
-        self.logger = logging.getLogger(logger_name or self.__class__.__name__)
+        self._cog = self.__class__.__name__
 
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:
         """Return True to skip the blocked-user check for this interaction.
@@ -77,11 +78,12 @@ class GenericBaseCog[BotT: commands.Bot](abc.ABC, commands.Cog, metaclass=CogABC
 
         if await maybe_coroutine(self.should_bypass_block, interaction):
             return True
-        if interaction.guild and block_manager.is_user_blocked(
+        if interaction.guild and await block_manager.is_user_blocked(
             interaction.guild.id, interaction.user.id
         ):
-            self.logger.debug(
-                "Blocked user %s attempted command in guild %s (%s)",
+            logger.debug(
+                "[%s] Blocked user %s attempted command in guild %s (%s)",
+                self._cog,
                 interaction.user.id,
                 interaction.guild.id,
                 interaction.command.name if interaction.command else None,
@@ -103,8 +105,10 @@ class GenericBaseCog[BotT: commands.Bot](abc.ABC, commands.Cog, metaclass=CogABC
 
         """
         if not (guild := interaction.guild):
-            self.logger.debug(
-                "Command used outside guild by user %s", interaction.user.id
+            logger.debug(
+                "[%s] Command used outside guild by user %s",
+                self._cog,
+                interaction.user.id,
             )
             raise NoGuildError()
         return guild
@@ -135,8 +139,9 @@ class GenericBaseCog[BotT: commands.Bot](abc.ABC, commands.Cog, metaclass=CogABC
             context = f"guild {guild_name} (ID: {interaction.guild.id}), {channel_name}"
         else:
             context = "DM"
-        self.logger.info(
-            "Command '%s' invoked by %s (ID: %s) in %s",
+        logger.info(
+            "[%s] Command '%s' invoked by %s (ID: %s) in %s",
+            self._cog,
             command_name,
             user_display,
             user.id,
