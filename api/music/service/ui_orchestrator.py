@@ -54,9 +54,11 @@ class UIOrchestrator:
             logger.debug("No channel found for track: %s", track.title)
             return
 
-        # Only show controller for tracks > 45s
-        if track.length < 45_000:
-            logger.debug("Track too short: %s, %s", track.title, track.length)
+        # Only show controller for tracks > 45s and < 2**63 - 1 ms
+        if track.length <= 45_000 or track.stream:
+            logger.debug(
+                "Track too short or a stream: %s, %s", track.title, track.length
+            )
             return
 
         await self.controller.create_for_user(

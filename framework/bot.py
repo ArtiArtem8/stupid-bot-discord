@@ -41,6 +41,7 @@ class StupidBot(commands.Bot):
             command_prefix=config.BOT_PREFIX,
             intents=intents,
             tree_cls=CustomErrorCommandTree,
+            help_command=None,
         )
         self.owner_id = (
             int(config.DISCORD_BOT_OWNER_ID) if config.DISCORD_BOT_OWNER_ID else None

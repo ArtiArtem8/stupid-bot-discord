@@ -11,6 +11,7 @@ from typing import Any
 from discord import Message
 from discord.ext import commands
 from rapidfuzz.process import extract
+from rapidfuzz.utils import default_process
 
 import config
 from api import block_manager
@@ -130,7 +131,12 @@ class OnMessageCog(commands.Cog):
             A random answer if the message matches, None otherwise.
 
         """
-        fuzzy_results = extract(message.content, quests, limit=config.FUZZY_MATCH_LIMIT)
+        fuzzy_results = extract(
+            message.content,
+            quests,
+            limit=config.FUZZY_MATCH_LIMIT,
+            processor=default_process,
+        )
         _, best_score, _ = max(fuzzy_results, key=lambda x: x[1])
 
         if best_score >= threshold:

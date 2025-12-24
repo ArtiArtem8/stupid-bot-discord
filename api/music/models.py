@@ -126,6 +126,7 @@ class TrackInfo:
     skipped: bool = False
     requester_id: int | None = None
     channel_id: int | None = None
+    thumbnail_url: str | None = None
     timestamp: datetime = field(default_factory=utcnow)
 
 
@@ -134,13 +135,13 @@ class TrackId:
     id: str
 
     @classmethod
-    def from_track(cls, track: Track) -> Self:
+    def from_track(cls, track: mafic.Track) -> Self:
         """Create TrackId from a Track object."""
         _id = track.identifier
         return cls(_id)
 
     @classmethod
-    def from_any(cls, id: int | str | Track) -> Self:
+    def from_any(cls, id: int | str | mafic.Track) -> Self:
         """Universal constructor that accepts multiple types."""
         if isinstance(id, mafic.Track):
             return cls.from_track(id)
@@ -188,6 +189,7 @@ class MusicSession:
         channel_id: int | None,
         skipped: bool = False,
         timestamp: datetime | None = None,
+        thumbnail_url: str | None = None,
     ) -> None:
         """Add a track to the session."""
         track = TrackInfo(
@@ -196,34 +198,11 @@ class MusicSession:
             skipped=skipped,
             requester_id=requester_id,
             channel_id=channel_id,
-            timestamp=utcnow(),
+            thumbnail_url=thumbnail_url,
+            timestamp=utcnow(),  # Timestamp when the track has ended
         )
         self.tracks.append(track)
         self.participants.add(requester_id or 0)
-
-    # def get_user_tracks(self, user_id: int) -> list[TrackInfo]:
-    #     """Get all user tracks."""
-    #     return [t for t in self.tracks if t.requester_id == user_id]
-
-    # def get_channel_tracks(self, channel_id: int) -> list[TrackInfo]:
-    #     """Get all tracks from a channel."""
-    #     return [t for t in self.tracks if t.channel_id == channel_id]
-
-    # def get_user_stats(self, user_id: int) -> dict[str, int]:
-    #     """Get user statistics."""
-    #     user_tracks = self.get_user_tracks(user_id)
-    #     return {
-    #         "total": len(user_tracks),
-    #         "played": sum(1 for t in user_tracks if not t.skipped),
-    #         "skipped": sum(1 for t in user_tracks if t.skipped),
-    #     }
-
-    # def get_top_contributors(self, limit: int = 5) -> list[tuple[int, int]]:
-    #     """Get top contributors by track count."""
-    #     user_counts = Counter(
-    #         t.requester_id for t in self.tracks if t.requester_id is not None
-    #     )
-    #     return user_counts.most_common(limit)
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,20 +236,16 @@ class PlayerStateSnapshot:
     voice_channel_id: int
     text_channel_id: int | None
 
-    # Track State
     current_track: Track | None
     position: int
     is_paused: bool
     volume: int
 
-    # Queue State
     queue: list[Track]
     repeat_mode: RepeatMode
 
-    # Filters
     filters: mafic.Filter | None
 
-    # Requester Map (Crucial for history/permissions)
     requester_map: dict[str, TrackRequester]
     session: MusicSession | None
 

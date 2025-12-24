@@ -12,100 +12,122 @@ from typing import Any
 from config import BACKUP_DIR, ENCODING
 
 
-def _generate_backup_filename(filename: Path) -> str:
-    """Generates a name for a backup file, with folowing format:
-    `<filename>_<random_letters><timestamp>.<filename_extension>`.
+def _generate_backup_filename(filename: Path, dt: datetime | None = None) -> str:
+    """Generates a name for a backup file, with following format:
+    `<filename_stem>_<timestamp><random_suffix><extension>`.
     """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = dt or datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
     rand_suffix = "".join(secrets.choice(ascii_letters + digits) for _ in range(4))
     return f"{filename.stem}_{timestamp}{rand_suffix}{filename.suffix}"
 
 
-def _create_backup(filename: str | PathLike[str], max_backups: int = 3) -> None:
+def _create_backup(
+    filename: str | PathLike[str],
+    max_backups: int = 3,
+    backup_dir: Path | None = None,
+) -> None:
     """Creates a backup for the file, *that must exist!*."""
-    if not BACKUP_DIR.exists():
-        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    target_dir = backup_dir or BACKUP_DIR
+    if not target_dir.exists():
+        target_dir.mkdir(parents=True, exist_ok=True)
+
     filename = Path(filename)
-    backup_filename = _generate_backup_filename(filename)
-    backups = BACKUP_DIR.glob(f"{filename.stem}_*{filename.suffix}")
+    backup_name = _generate_backup_filename(filename)
+    backups = list(target_dir.glob(f"{filename.stem}_*{filename.suffix}"))
 
     sorted_backups = sorted(backups, reverse=True, key=lambda x: x.stat().st_mtime)
     for old in sorted_backups[max_backups:]:
-        old.unlink()
-    shutil.copy(filename, BACKUP_DIR / backup_filename)
+        try:
+            old.unlink()
+        except OSError:
+            pass
+
+    for i in range(3):
+        try:
+            shutil.copy(filename, target_dir / backup_name)
+            break
+        except OSError:
+            if i < 2:
+                time.sleep(0.1 * (i + 1))
 
 
-def get_json(filename: str | PathLike[str]) -> dict[str, Any] | None:
+def get_json(
+    filename: str | PathLike[str], encoding: str = ENCODING
+) -> dict[str, Any] | None:
     """Reads a JSON file and returns its content as a dictionary.
 
     If the file does not exist or the content is not a valid JSON, returns None.
     """
-    filename = Path(filename)
-    if not filename.exists():
+    path = Path(filename)
+    if not path.exists():
         return None
     try:
-        with open(filename, encoding=ENCODING) as data_file:
-            return json.load(data_file)
-    except json.JSONDecodeError:
+        with open(path, encoding=encoding) as data_file:
+            return json.load(fp=data_file)
+    except (json.JSONDecodeError, OSError):
         return None
 
 
 def save_json(
-    filename: str | PathLike[str], data: Mapping[str, Any], backup_amount: int = 3
+    filename: str | PathLike[str],
+    data: Mapping[str, Any],
+    backup_amount: int = 3,
+    backup_dir: Path | None = None,
+    encoding: str = ENCODING,
 ) -> None:
     """Saves a JSON file with the given data.
 
     Creates a backup of the file if it already exists and backup_amount > 0.
     """
-    filename = Path(filename)
-    filename.parent.mkdir(parents=True, exist_ok=True)
+    path = Path(filename)
+    path.parent.mkdir(parents=True, exist_ok=True)
 
-    if filename.exists() and backup_amount > 0:
-        _create_backup(filename, backup_amount)
+    if path.exists() and backup_amount > 0:
+        _create_backup(path, backup_amount, backup_dir=backup_dir)
 
-    temp_filename = filename.with_stem(f"{filename.stem}_temp")
+    temp_path = path.with_stem(f"{path.stem}_temp")
 
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            with open(temp_filename, "w", encoding=ENCODING) as outfile:
+            with open(temp_path, "w", encoding=encoding) as outfile:
                 json.dump(data, outfile, sort_keys=True, indent=4, ensure_ascii=False)
-            temp_filename.replace(filename)
-            break
+            temp_path.replace(path)
+            return
         except (PermissionError, OSError):
             if attempt == max_retries - 1:
                 raise
             time.sleep(0.1 * (attempt + 1))
             try:
-                if temp_filename.exists():
-                    temp_filename.unlink()
-            except (PermissionError, OSError):
+                if temp_path.exists():
+                    temp_path.unlink()
+            except OSError:
                 pass
 
 
 def clear_json(
-    filename: str | PathLike[str], default: str = "{}", backup_amount: int = 3
+    filename: str | PathLike[str],
+    default: str = "{}",
+    backup_amount: int = 3,
+    backup_dir: Path | None = None,
+    encoding: str = ENCODING,
 ) -> None:
     """Clears the content of a JSON file and replaces it with a default value.
 
     If the file does not exist, no action is taken. Optionally creates backups
     of the file before clearing, keeping the specified number of backups.
-
-    Args:
-        filename (str | PathLike): The path to the JSON file to be cleared.
-        default (str): The default JSON content to write. Must be a valid JSON string.
-        backup_amount (int): The number of backups to keep. If > 0, creates backups.
-
     """
-    filename = Path(filename)
+    path = Path(filename)
 
-    if not filename.exists():
-        return  # do nothing, clear nothing
+    if not path.exists():
+        return
 
     if backup_amount > 0:
-        _create_backup(filename, max_backups=backup_amount)
+        _create_backup(path, max_backups=backup_amount, backup_dir=backup_dir)
 
-    json.loads(default)  # validate
+    # Validate default is valid JSON
+    json.loads(default)
 
-    with open(filename, "w", encoding=ENCODING) as outfile:
+    with open(path, "w", encoding=encoding) as outfile:
         outfile.write(default)

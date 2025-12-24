@@ -34,6 +34,7 @@ class ConnectionManager:
         if self._initialized:
             return
 
+        logger.debug("Initializing Mafic node pool")
         try:
             await self.pool.create_node(
                 host=config.LAVALINK_HOST,
@@ -79,7 +80,6 @@ class ConnectionManager:
                 await voice_client.move_to(channel)
                 return VoiceCheckResult.MOVED_CHANNELS, old_channel
 
-            # Ensure node is initialized before connecting
             if not self.pool.nodes:
                 await self.initialize()
 
@@ -94,4 +94,6 @@ class ConnectionManager:
     async def disconnect(self, guild: discord.Guild, force: bool = False) -> None:
         """Disconnects the bot from the voice channel."""
         if guild.voice_client:
-            await guild.voice_client.disconnect(force=force)
+            logger.debug("Disconnecting from channel: %s", guild.voice_client.channel)
+            return await guild.voice_client.disconnect(force=force)
+        logger.debug("No voice client to disconnect in guild: %s", guild.id)

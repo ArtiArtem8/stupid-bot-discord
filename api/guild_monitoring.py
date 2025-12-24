@@ -284,7 +284,8 @@ class ServerMonitoringManager:
         if restored_roles:
             try:
                 await member.add_roles(
-                    *restored_roles, reason="Автовосстановление ролей"
+                    *restored_roles,
+                    reason="Автовосстановление ролей",
                 )
             except discord.Forbidden:
                 return ([], snapshot.roles)

@@ -90,7 +90,6 @@ class ServerMonitorCog(BaseCog):
         """Enable server monitoring."""
         guild = await self._require_guild(interaction)
 
-        # Validate permissions
         if not guild.me.guild_permissions.manage_roles:
             await FeedbackUI.send(
                 interaction,
@@ -191,7 +190,7 @@ class ServerMonitorCog(BaseCog):
             for snapshot in snapshots[:10]:
                 timestamp = discord.utils.format_dt(snapshot.left_at, style="R")
                 msg = (
-                    f"• **{snapshot.username}** — {len(snapshot.roles)} ролей, "
+                    f"- **{snapshot.username}** — {len(snapshot.roles)} ролей, "
                     f"вышел {timestamp}"
                 )
                 snapshot_lines.append(msg)
@@ -280,7 +279,7 @@ class ServerMonitorCog(BaseCog):
 
         if skipped:
             description += (
-                f"\n\n⚠️ Пропущено {len(skipped)} ролей (удалены или недостаточно прав)"
+                f"\n\nПропущено {len(skipped)} ролей (удалены или недостаточно прав)"
             )
 
         logger.info(

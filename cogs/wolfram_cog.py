@@ -27,7 +27,6 @@ from api.wolfram import WolframAPIError, WolframClient, WolframResult
 from framework import BaseCog, FeedbackType, FeedbackUI
 from utils import SafeEmbed, optimize_image, save_image
 
-
 logger = logging.getLogger(__name__)
 
 

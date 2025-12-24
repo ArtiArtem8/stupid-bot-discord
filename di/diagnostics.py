@@ -24,11 +24,9 @@ class Diagnostics:
             # We mostly care about validating Singletons at startup to fail fast
             if reg.lifecycle is Lifecycle.SINGLETON:
                 try:
+                    # ! DANGEROUS!
                     # Dry run resolution
                     # Note: This will instantiate them!
-                    # For production, we might want a 'dry_run=True' mode in resolve
-                    # that just checks graph connectivity without instantiation,
-                    # but instantiation is the ultimate test.
                     self._container.resolve(interface)
                 except Exception as e:
                     error_msg = f"Failed to resolve {interface.__name__}: {e!s}"
@@ -39,5 +37,4 @@ class Diagnostics:
 
     def print_graph(self) -> None:
         """Print the dependency graph (simplified)."""
-        # This would require inspecting implementation signatures recursively
         pass

@@ -81,33 +81,21 @@ class SessionHealer:
 
     async def cleanup_after_disconnect(self, guild_id: int) -> None:
         """Called when bot is seemingly disconnected but we want to cleanup properly."""
-        # Using connection manager logic or just minimal cleanup?
-        # Similar logic to original _cleanup_after_disconnect
-        # 1. Destroy Controller
-        await self.ui.controller.destroy_for_guild(
-            guild_id
-        )  # Access controller from UI orchestrator or inject?
-        # Note: UIOrchestrator has controller.
-
-        # 2. End Session
+        await self.ui.controller.destroy_for_guild(guild_id)
         session = self.state.end_session(guild_id)
         if session and session.tracks:
-            # Find the main channel for this session
             main_channel_id = (
                 max(session.channel_usage, key=lambda k: session.channel_usage[k])
                 if session.channel_usage
                 else None
             )
             if main_channel_id:
-                # Dispatch the event to the bot so the cog can handle it
                 self.bot.dispatch(
                     "music_session_end", guild_id, session, main_channel_id
                 )
 
-        # 3. Clear Timer
         self.state.cancel_timer(guild_id)
 
-        # 4. Clear internal
         player = self.connection.get_player(guild_id)
         if player:
             player.clear_queue()
@@ -130,7 +118,6 @@ class SessionHealer:
                 else None
             )
 
-        # Get requester map copy
         req_map = player._requester_map.copy()  # pyright: ignore[reportPrivateUsage]
         volume = await self.volume_repo.get_volume(guild_id=player.guild.id)
 
@@ -150,9 +137,8 @@ class SessionHealer:
         )
 
     async def _hard_disconnect(self, guild_id: int, player: MusicPlayer) -> None:
-        """Forcefully destroys the connection without triggering normal cleanup hooks."""
+        """Forcefully destroys the connection without normal cleanup hooks."""
         try:
-            # Tell Mafic/Lavalink to destroy the player
             if player.guild.voice_client:
                 await player.guild.voice_client.disconnect(force=True)
         except Exception:
@@ -175,9 +161,6 @@ class SessionHealer:
         if isinstance(vc_channel, (ForumChannel, TextChannel, CategoryChannel)):
             raise ValueError("Invalid channel type for restoration")
         try:
-            # We can use ConnectionManager join, OR raw connect.
-            # Raw connect is safer for restoration to avoid side effects of 'join' logic?
-            # Original used raw connect.
             await vc_channel.connect(cls=music_player_factory)
         except Exception as e:
             logger.error("Failed to reconnect to voice: %s", e)
@@ -187,7 +170,6 @@ class SessionHealer:
         if not player:
             raise RuntimeError("Player failed to reconnect")
 
-        # 2. Restore Internal State
         player.queue._queue.extend(snapshot.queue)  # pyright: ignore[reportPrivateUsage]
         player.repeat.mode = snapshot.repeat_mode
         player._requester_map = snapshot.requester_map  # pyright: ignore[reportPrivateUsage]
@@ -196,7 +178,6 @@ class SessionHealer:
         logger.debug(
             "Queue len: %s, Repeat mode: %s", len(player.queue), player.repeat.mode
         )
-        # 3. Restore Playback
         if snapshot.current_track:
             await player.play(
                 snapshot.current_track,
@@ -205,7 +186,6 @@ class SessionHealer:
                 pause=snapshot.is_paused,
             )
 
-        # 4. Restore Controller (UI)
         if snapshot.current_track:
             await self.ui.spawn_controller(player, snapshot.current_track)
         if session := snapshot.session:

@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Forward exports for backward compatibility if needed, though clean usage prefers models module
 __all__ = [
     "BlockManager",
     "BlockedUser",
@@ -61,11 +60,7 @@ class BlockManager:
                 timestamp=utcnow(),
             )
         )
-        # We don't save immediately on creation unless blocking,
-        # but to maintain logic of "get_or_create" usually implying persistence:
-        # The previous implementation put it in cache.
-        # To persist creation of a "clean" user record, we should save.
-        await self.repo.save(new_user, key)
+        await self.repo.save(new_user, key)  # Save Immediately
         logger.info("Created block entry for %d in %d", user_id, guild_id)
         return new_user
 
@@ -230,7 +225,7 @@ class BlockManager_:
         return user
 
     def reload(self):
-        """Force reload from disk (useful if file edited manually)."""
+        """Force reload the entire cache."""
         self._loaded = False
         self._cache.clear()
         self._ensure_loaded()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Collection
 from datetime import datetime
 
 import discord
@@ -20,6 +21,20 @@ logger = logging.getLogger(__name__)
 
 
 def parse_birthday(date_str: str) -> str:
+    """Parse a birthday date string into a standardized format.
+
+
+    Args:
+        date_str: A string representing a date in either DD-MM-YYYY or YYYY-MM-DD format
+
+    Returns:
+        A string representing the parsed date in DD-MM-YYYY format
+
+    Raises:
+        ValueError: If the date string is invalid or does not match either of the
+            supported formats
+
+    """
     for fmt in (config.DATE_FORMAT, "%Y-%m-%d"):
         try:
             dt = datetime.strptime(date_str, fmt)
@@ -32,6 +47,16 @@ def parse_birthday(date_str: str) -> str:
 async def safe_fetch_member(
     guild: discord.Guild, user_id: int
 ) -> discord.Member | None:
+    """Safely fetch a member from a guild.
+
+    Args:
+        guild: The guild to fetch the member from.
+        user_id: The ID of the member to fetch.
+
+    Returns:
+        The fetched member, or None if the member is not found or if there was an error.
+
+    """
     member = guild.get_member(user_id)
     if member:
         return member
@@ -53,9 +78,25 @@ async def safe_fetch_member(
 
 def create_birthday_list_embed(
     guild_name: str,
-    entries: list["BirthdayListEntry"],
+    entries: Collection["BirthdayListEntry"],
     max_field_length: int = 1024,
 ) -> discord.Embed:
+    """Create a Discord embed representing a list of birthdays.
+
+    Args:
+        guild_name: Name of the guild for which the embed is being generated.
+        entries: `BirthdayListEntry` objects, each representing a user's birthday.
+        max_field_length: Maximum length of a single field in the generated embed.
+
+    Returns:
+        A Discord embed containing the list of birthdays.
+
+    Note:
+        The generated embed is trimmed to Discord's constraints on embed length
+        (6000 characters) and field count (25 fields).
+        If the input list is too long, the generated embed may be truncated.
+
+    """
     title = truncate_text(f"Дни рождения на сервере {guild_name}", width=256)
     embed = discord.Embed(title=title, color=discord.Color.gold())
 
@@ -82,7 +123,6 @@ def create_birthday_list_embed(
         separator="\n",
     )
 
-    # Discord embed constraints: max 25 fields, and ~6000 total characters.
     MAX_FIELDS = 25
     MAX_TOTAL = 6000
 
@@ -129,10 +169,6 @@ class BirthdayManager:
         await self.repo.save(guild_config)
 
     async def delete_guild_config(self, guild_id: int) -> bool:
-        # Check if exists first to return bool?
-        # Repository.delete typically returns None.
-        # The previous implementation returned bool if found.
-        # For compatibility, we can check existence first.
         existing = await self.repo.get(guild_id)
         if existing:
             await self.repo.delete(guild_id)

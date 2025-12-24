@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import config
 from api.birthday_models import BirthdayGuildConfig, BirthdayGuildDict
@@ -9,9 +9,6 @@ from repositories.base_repository import BaseRepository
 from utils import AsyncJsonFileStore
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    pass
 
 type JsonDict = dict[str, Any]
 

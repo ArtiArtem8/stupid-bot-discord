@@ -122,7 +122,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         config.users = {1: leap_user}
 
         # Scenario 1: Non-leap year (2025)
-        # Birthday should map to Feb 28 or Mar 1 depending on logic (standard is usually Mar 1)
+        # Birthday should map to Feb 28 or Mar 1 depending on logic (std usually Mar 1)
         # Feb 28 2025 is NOT a leap day.
         # Note: Your utils.birthday_utils logic determines the exact day.
         # This test ensures it doesn't crash and returns a valid positive integer.

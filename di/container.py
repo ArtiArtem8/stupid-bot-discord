@@ -80,6 +80,7 @@ class Container:
     __slots__ = ("_injection_plans", "_instances", "_lock", "_registry")
 
     def __init__(self) -> None:
+        """Initialize the dependency injection container."""
         self._registry: dict[type[Any], ServiceRegistration[Any]] = {}
         self._instances: dict[type[Any], Any] = {}
         self._lock = threading.RLock()
@@ -319,9 +320,11 @@ class Container:
             self._instances.clear()
 
     def __enter__(self) -> Self:
+        """Context manager entry point. Returns the container instance."""
         return self
 
     def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        """Context manager exit point. Shuts down the container."""
         self.close()
 
     def service[T](

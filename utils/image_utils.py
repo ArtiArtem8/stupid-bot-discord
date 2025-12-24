@@ -27,33 +27,35 @@ def save_image(
         Path to saved image file
 
     """
+    fmt = format.upper()
     try:
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
 
         with Image.open(BytesIO(response.content)) as img:
             # Convert to RGB for JPEG/WEBP formats
-            if format in ("JPEG", "WEBP") and img.mode in ("RGBA", "P"):
+            if fmt in ("JPEG", "WEBP") and img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
 
             if resize:
                 resize = (resize[0], img.size[1] * resize[0] // img.size[0])
                 img = img.resize(resize, Image.Resampling.LANCZOS)
 
-            filename = generate_unique_filename(format.lower())
+            filename = generate_unique_filename(fmt.lower())
             output_path = save_to / filename
 
             save_args: dict[str, Any] = {
-                "format": format,
+                "format": fmt,
                 "quality": quality,
                 "optimize": True,
             }
 
-            if format == "WEBP":
+            if fmt == "WEBP":
                 save_args["method"] = 6  # Highest compression
-            elif format == "PNG":
+            elif fmt == "PNG":
                 save_args["compress_level"] = 9  # Max compression
 
+            save_to.mkdir(parents=True, exist_ok=True)
             img.save(output_path, **save_args)
             return output_path
 
@@ -137,19 +139,20 @@ def convert_image(
         Path to converted image
 
     """
+    fmt = output_format.upper()
     valid_formats = ("WEBP", "JPEG", "PNG")
-    if output_format.upper() not in valid_formats:
+    if fmt not in valid_formats:
         raise ValueError(f"Invalid format. Must be one of {valid_formats}")
 
     output_path = output_path or input_path.with_suffix(f".{output_format.lower()}")
 
     try:
         with Image.open(input_path) as img:
-            if output_format in ("JPEG", "WEBP") and img.mode in ("RGBA", "P"):
+            if fmt in ("JPEG", "WEBP") and img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
 
             save_args: dict[str, Any] = {
-                "format": output_format,
+                "format": fmt,
                 "quality": quality,
                 "optimize": True,
             }

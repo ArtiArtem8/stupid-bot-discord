@@ -31,7 +31,7 @@ from api.music.service.event_handlers import HealerProtocol
 from di.container import Container
 from framework import BaseCog, FeedbackUI, handle_errors
 from repositories.volume_repository import VolumeRepository
-from utils import truncate_text
+from utils import truncate_sequence, truncate_text
 
 from .ui import (
     format_duration,
@@ -86,9 +86,6 @@ class MusicCog(BaseCog):
         self.container.register(VolumeRepository)
         self.container.register(
             ControllerManagerProtocol, implementation=TrackControllerManager
-        )
-        self.track_controller_manager = self.container.resolve(
-            ControllerManagerProtocol
         )
         self.container.register(UIOrchestrator)
 
@@ -145,8 +142,12 @@ class MusicCog(BaseCog):
         stats_text = self._format_session_stats(session)
         embed.add_field(name="В общем:", value=stats_text, inline=True)
 
-        tracks_text = self._format_recent_tracks(session.tracks, max_tracks=30)
-        embed.add_field(name="Недавние треки:", value=tracks_text, inline=False)
+        tracks_text, text_lines = self._format_recent_tracks(session.tracks)
+        if text_lines == 1:
+            embed.set_thumbnail(url=session.tracks[-1].thumbnail_url)
+            embed.add_field(name="Трек:", value=tracks_text, inline=False)
+        else:
+            embed.add_field(name="Недавние треки:", value=tracks_text, inline=False)
 
         return embed
 
@@ -158,9 +159,12 @@ class MusicCog(BaseCog):
         stats_parts = [f"**Всего:** {total_tracks} шт."]
 
         if skipped_tracks:
-            stats_parts.append(f"(скипов: {skipped_tracks})")
+            stats_parts.append(f" (скипов: {skipped_tracks})")
 
-        stats_parts.append(f"\n**Заказчиков:** {len(session.participants)} чел.")
+        if len(session.participants) == 1:
+            stats_parts.append(f"\n**Заказчик:** <@{next(iter(session.participants))}>")
+        else:
+            stats_parts.append(f"\n**Заказчиков:** {len(session.participants)} чел.")
 
         return "".join(stats_parts)
 
@@ -175,12 +179,10 @@ class MusicCog(BaseCog):
         def key(t: TrackInfo):
             return (t.title, t.uri, t.skipped)
 
-        groups: list[TrackGroup] = []
-        for (title, uri, skipped), group in groupby(tracks, key):
-            count = sum(1 for _ in group)
-            groups.append(
-                TrackGroup(title=title, uri=uri, skipped=skipped, count=count)
-            )
+        groups = [
+            TrackGroup(title, uri, skipped, count=sum(1 for _ in group))
+            for (title, uri, skipped), group in groupby(tracks, key)
+        ]
         return groups
 
     def _format_track_group(self, group: TrackGroup) -> str:
@@ -192,26 +194,25 @@ class MusicCog(BaseCog):
         )
         return f"{status_marker}{track_str}{count_str}{status_marker}"
 
-    def _format_recent_tracks(
-        self, tracks: Sequence[TrackInfo], max_tracks: int = 30
-    ) -> str:
+    def _format_recent_tracks(self, tracks: Sequence[TrackInfo]) -> tuple[str, int]:
         """Format a list of recent tracks with grouping.
 
         Args:
             tracks: List of tracks from the session
-            max_tracks: Maximum number of tracks to display (before grouping)
 
         Returns:
             Formatted text for embed field (truncated)
 
         """
-        recent_tracks = tracks[-max_tracks:]
-        grouped = self._group_consecutive_tracks(recent_tracks)
+        grouped = self._group_consecutive_tracks(tracks)
         formatted_groups = [self._format_track_group(group) for group in grouped]
-        result = "\n".join(reversed(formatted_groups)) + "\n"
-        if len(result) >= config.MAX_EMBED_FIELD_LENGTH:
-            result = result[:1018].rsplit("\n", 1)[0] + "\n..."
-        return result or "*(пусто)*"
+        result = truncate_sequence(
+            reversed(formatted_groups),
+            max_length=config.MAX_EMBED_FIELD_LENGTH,
+            separator="\n",
+            placeholder="\n...",
+        )
+        return (result or "*(пусто)*", len(formatted_groups))
 
     @tasks.loop(seconds=config.MUSIC_AUTO_LEAVE_CHECK_INTERVAL)
     async def auto_leave_monitor(self) -> None:
@@ -311,7 +312,7 @@ class MusicCog(BaseCog):
             )
 
             await FeedbackUI.send(
-                interaction, embed=embed, delete_after=min(delay_sec, 600)
+                interaction, embed=embed, delete_after=min(delay_sec, 480)
             )
 
         elif data["type"] == "playlist":
@@ -331,7 +332,7 @@ class MusicCog(BaseCog):
             )
 
             await FeedbackUI.send(
-                interaction, embed=embed, delete_after=min(delay_sec, 900)
+                interaction, embed=embed, delete_after=min(delay_sec, 600)
             )
 
     @app_commands.command(

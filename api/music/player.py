@@ -69,7 +69,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
         self, track: Track, requester_id: int, channel_id: int | None = None
     ) -> None:
         """Associate a requester with a track."""
-        logger.debug("Setting requester for track %s", track.id)
+        logger.debug("Setting requester for track %s", track.identifier)
         _id = TrackId.from_track(track).id
         self._requester_map[_id] = TrackRequester(
             user_id=requester_id,
@@ -84,6 +84,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
         """Clear the queue and requester map."""
         self.queue.clear()
         self._requester_map.clear()
+        logger.debug("Cleared queue & map for guild %s", self.guild.id)
 
     def clear_state(self) -> None:
         """Clear queue and state."""
@@ -106,12 +107,12 @@ class MusicPlayer(mafic.Player[discord.Client]):
         )
         logger.debug("queue: %s, repeat mode: %s", self.queue, self.repeat.mode)
 
-        if not force_skip and self.repeat.mode is RepeatMode.TRACK and current_or_prev:
+        if not force_skip and current_or_prev and self.repeat.mode is RepeatMode.TRACK:
             logger.debug("Repeating track %s", current_or_prev)
             await self.play(current_or_prev, start_time=0)
             return current_or_prev
 
-        if not force_skip and self.repeat.mode is RepeatMode.QUEUE and current_or_prev:
+        if not force_skip and current_or_prev and self.repeat.mode is RepeatMode.QUEUE:
             logger.debug("Adding track %s to queue", current_or_prev)
             self.queue.add(current_or_prev)
 
@@ -131,7 +132,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
         """
         skipped_track = self.current
 
-        next_track = await self.advance(force_skip=True)
+        next_track = await self.advance(force_skip=True, previous_track=skipped_track)
 
         if not next_track:
             await self.stop()

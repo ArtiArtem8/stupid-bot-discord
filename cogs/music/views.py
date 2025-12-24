@@ -7,7 +7,7 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Coroutine
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Self, override
 
 import discord
 import mafic
@@ -170,7 +170,7 @@ class SessionPaginationAdapter(PaginationData):
             f"{f'(<@{t.requester_id}>)' if t.requester_id else ''}"
             for i, t in enumerate(self.session.tracks, 1)
         ]
-        # Result: [timestamp] • [index]. [title] [requester_id]
+        # Result: <timestamp> • <index>. <title> <requester_id>
         return TextPaginator(
             lines,
             page_size=self.page_size,
@@ -241,11 +241,6 @@ class TrackControllerManager:
         Args:
             bot: The bot instance.
 
-        Attributes:
-            controllers: A dictionary mapping guild IDs to TrackControllerView instances.
-            _active_messages: A dictionary mapping channel IDs to tuples of message ID and user ID.
-            _locks: A defaultdict of asyncio.Lock instances, used to synchronize access to critical sections of code.
-
         """
         self.bot = bot
         self.controllers: dict[int, TrackControllerView] = {}
@@ -267,8 +262,13 @@ class TrackControllerManager:
                 return
             partial_msg = channel.get_partial_message(message_id)
             await partial_msg.delete()
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            pass
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+            logger.debug(
+                "Failed to delete message %s in channel %s: %s",
+                message_id,
+                channel_id,
+                e,
+            )
 
     async def create_for_user(
         self,
@@ -284,23 +284,18 @@ class TrackControllerManager:
             logger.debug(f"Manager: Setup controller for guild {guild_id}")
             target_id = TrackId.from_track(track)
 
-            # 1. Wait for Player State Consistency
-            # We verify the player is actually playing the track we want to control
             if not await self._wait_for_sync(player, target_id, timeout=2.0):
                 current_id = (
                     TrackId.from_track(player.current) if player.current else "None"
                 )
                 logger.debug(
-                    f"Manager: Aborting. Player state desynced. Expected: {target_id}, Got: {current_id}"
+                    "Manager: Aborting. Player state desynced. "
+                    f"Expected: {target_id}, Got: {current_id}",
                 )
                 return
 
-            # 2. Cleanup Existing Controller (if any)
-            # We explicitly clean up here to ensure only one active controller exists
             await self._cleanup_existing(guild_id)
 
-            # 3. Create New View
-            # We define a callback for the view to request its own destruction
             async def on_view_stop_callback(view_ref: TrackControllerView):
                 await self.destroy_for_guild(guild_id, requesting_view=view_ref)
 
@@ -313,7 +308,6 @@ class TrackControllerManager:
             )
 
             try:
-                # 4. Send Message & Register
                 view.update_buttons_state()
                 msg = await channel.send(
                     embed=view.make_embed(), view=view, silent=True
@@ -341,16 +335,15 @@ class TrackControllerManager:
 
             if requesting_view and current_view != requesting_view:
                 logger.debug(
-                    f"Manager: Ignoring destroy request from stale view for guild {guild_id}"
+                    "Manager: Ignoring destroy request from stale view for guild %s",
+                    guild_id,
                 )
                 return
 
-            # Perform Cleanup
             await self._cleanup_existing(guild_id)
 
     async def _cleanup_existing(self, guild_id: int):
         """Internal helper to clean up resources. Assumes lock is held."""
-        # 1. Stop and remove View
         controller = self.controllers.pop(guild_id, None)
         if controller:
             try:
@@ -358,9 +351,9 @@ class TrackControllerManager:
             except Exception as e:
                 logger.error(f"Error stopping controller: {e}")
 
-        # 2. Delete Message
         message_info = self._active_messages.pop(guild_id, None)
         if message_info:
+            logger.debug("Manager: Cleaning up message for guild %s", guild_id)
             chan_id, msg_id = message_info
             try:
                 await self._safe_delete_message(chan_id, msg_id)
@@ -429,7 +422,7 @@ class TrackControllerView(ui.View):
         player: MusicPlayer,
         guild_id: int,
         track_id: TrackId,
-        on_stop_callback: Callable[[TrackControllerView], Awaitable[None]] | None,
+        on_stop_callback: Callable[[Self], Awaitable[None]] | None,
     ):
         super().__init__(timeout=None)
         self.user_id = user_id
@@ -451,8 +444,10 @@ class TrackControllerView(ui.View):
         self._last_update_time: float = 0
         self._min_update_delay: float = 1.0
 
+    @override
     def stop(self):
         """Stops the updater loop and interaction."""
+        logger.debug("Stopping %s", self.__class__.__name__)
         self._running = False
         if self._task:
             self._task.cancel()
@@ -548,7 +543,9 @@ class TrackControllerView(ui.View):
                 current_id = TrackId.from_track(current_track)
                 if current_id != self.track_id:
                     logger.debug(
-                        f"View: Track changed ({self.track_id} -> {current_id}). Requesting stop."
+                        "View: Track changed (%s -> %s). Requesting stop.",
+                        self.track_id,
+                        current_id,
                     )
                     self.stop()
                     if self.on_stop_callback:
@@ -601,6 +598,8 @@ class TrackControllerView(ui.View):
     async def _safe_update(self, force: bool = False):
         """Updates the message with rate limiting."""
         if not self.message:
+            logger.debug("View: Message not found. Stopping.")
+            self.stop()
             return
 
         now = time.monotonic()

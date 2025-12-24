@@ -397,7 +397,7 @@ class AdminCog(BaseCog):
     @app_commands.command(
         name="del", description="Удалить сообщение по ID (только владелец)."
     )
-    @commands.is_owner()
+    @is_owner_app()
     @app_commands.describe(message_id="ID сообщения для удаления")
     @app_commands.default_permissions(administrator=True)
     async def delete_message(self, interaction: discord.Interaction, message_id: str):

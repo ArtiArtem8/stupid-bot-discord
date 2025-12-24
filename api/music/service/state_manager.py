@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import logging
 import time
 from typing import TYPE_CHECKING, TypedDict
@@ -26,13 +27,7 @@ class StateManager:
 
     def __init__(self) -> None:
         self.sessions: dict[int, MusicSession] = {}
-        self._track_start_times: dict[
-            int, float
-        ] = {}  # Using float timestamp or datetime? Original used datetime
-        # Original: self._track_start_times: dict[int, datetime] = {}
-        self._track_start_times_dt: dict[
-            int, object
-        ] = {}  # Using generic object to avoid circular import if needed, but datetime is fine.
+        self._track_start_times_dt: dict[int, datetime.datetime] = {}
 
         # Auto-leave tracking
         self.empty_channel_timers: dict[int, EmptyTimerInfo] = {}
@@ -78,11 +73,10 @@ class StateManager:
             requester_id=requester_info.user_id if requester_info else None,
             channel_id=requester_info.channel_id if requester_info else None,
             skipped=skipped,
-            timestamp=start_time,  # type: ignore
+            timestamp=start_time,
+            thumbnail_url=track.artwork_url,
         )
         logger.debug("Recorded history: %s (Skipped: %s)", track.title, skipped)
-
-    # --- Timer Logic ---
 
     def is_timer_active(self, guild_id: int) -> bool:
         return guild_id in self.empty_channel_timers

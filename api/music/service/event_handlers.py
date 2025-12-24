@@ -39,14 +39,33 @@ class MusicEventHandlers:
         self.ui = ui_orchestrator
         self.healer = healer
         self._healing_guilds: set[int] = set()
+        self._setup_done = False
 
     def setup(self) -> None:
         """Register event listeners."""
+        if self._setup_done:
+            logger.warning("MusicEventHandlers setup called multiple times.")
+            return
+
         self.bot.add_listener(self._on_track_start, "on_track_start")
         self.bot.add_listener(self._on_track_end, "on_track_end")
         self.bot.add_listener(self.on_node_ready, "on_node_ready")
         self.bot.add_listener(self._on_voice_state_update, "on_voice_state_update")
         self.bot.add_listener(self._on_websocket_closed, "on_websocket_closed")
+        self._setup_done = True
+
+    def cleanup(self) -> None:
+        """Remove event listeners."""
+        if not self._setup_done:
+            return
+
+        self.bot.remove_listener(self._on_track_start, "on_track_start")
+        self.bot.remove_listener(self._on_track_end, "on_track_end")
+        self.bot.remove_listener(self.on_node_ready, "on_node_ready")
+        self.bot.remove_listener(self._on_voice_state_update, "on_voice_state_update")
+        self.bot.remove_listener(self._on_websocket_closed, "on_websocket_closed")
+        self._setup_done = False
+        logger.info("MusicEventHandlers listeners removed.")
 
     async def on_node_ready(self, node: mafic.Node[commands.Bot]) -> None:
         logger.info("Lavalink node '%s' is ready", node.label)
@@ -84,8 +103,16 @@ class MusicEventHandlers:
 
         self.state.record_history(player, track, reason)
 
-        if event.reason is mafic.EndReason.FINISHED and player.queue.is_empty:
-            logger.debug("Queue finished. destroying controller immediately.")
+        if (
+            event.reason in (mafic.EndReason.FINISHED, mafic.EndReason.STOPPED)
+            and player.queue.is_empty
+            and not player.current
+        ):
+            logger.debug(
+                "Playback ended (Reason: %s) with empty queue. "
+                "Destroying controller immediately.",
+                event.reason,
+            )
             await self.ui.controller.destroy_for_guild(player.guild.id)
 
         if reason in (mafic.EndReason.FINISHED, mafic.EndReason.LOAD_FAILED):

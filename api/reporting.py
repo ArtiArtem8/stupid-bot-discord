@@ -81,7 +81,7 @@ def _create_report_embed(report: ReportDataDict) -> discord.Embed:
     )
     embed.safe_add_field(
         name="Описание",
-        value=report["reason"],  # SafeEmbed automatically truncates
+        value=report["reason"],
         inline=False,
     )
     embed.safe_add_field(

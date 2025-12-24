@@ -131,7 +131,6 @@ class BirthdayGuildConfig:
             "Server_name": self.server_name,
             "Channel_id": str(self.channel_id),
             "Users": {str(uid): u.to_dict() for uid, u in self.users.items()},
-            # Convert Role ID to string for JSON, handle None
             "Birthday_role": str(self.birthday_role_id)
             if self.birthday_role_id is not None
             else None,
@@ -156,19 +155,15 @@ class BirthdayGuildConfig:
             if not user_data.has_birthday():
                 continue
 
-            # Calculate days until birthday
             days_until = calculate_days_until_birthday(
                 user_data.birthday, reference_date
             )
             if days_until is None:
                 continue
-
-            # Format the birthday date
             formatted_date = format_birthday_date(user_data.birthday)
             if not formatted_date:
                 continue
 
-            # Get the member name (either from Discord or fallback to stored name)
             member = guild.get_member(user_id)
             display_name = member.display_name if member else user_data.name
 
@@ -180,7 +175,6 @@ class BirthdayGuildConfig:
             }
             entries.append(entry)
 
-        # Sort by days until birthday (closest first)
         entries.sort(key=lambda x: x["days_until"])
         return entries
 

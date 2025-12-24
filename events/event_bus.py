@@ -2,14 +2,15 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from .base_event import BaseEvent
 
 logger = logging.getLogger(__name__)
 
-EventHandler = Callable[[BaseEvent], Coroutine[Any, Any, None]]
+
+type EventHandler = Callable[[BaseEvent], Awaitable[None]]
 
 
 class EventBus:

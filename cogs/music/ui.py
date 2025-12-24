@@ -13,7 +13,12 @@ MAX_TIMEDELTA_DAYS = 999_999_999
 
 
 def format_duration(ms: int | float) -> str:
-    """Helper to convert milliseconds to timedelta stripping microseconds."""
+    """Helper to convert milliseconds to timedelta stripping microseconds.
+
+    Note:
+        Lavalink returns 2**63 - 1 ms for live streams.
+
+    """
     try:
         total = timedelta(seconds=ms / 1_000.0)
     except OverflowError:
