@@ -1,7 +1,6 @@
 import secrets
 from io import BytesIO
 from pathlib import Path
-from typing import Any
 
 import requests
 from PIL import Image, UnidentifiedImageError
@@ -44,8 +43,7 @@ def save_image(
             filename = generate_unique_filename(fmt.lower())
             output_path = save_to / filename
 
-            save_args: dict[str, Any] = {
-                "format": fmt,
+            save_args: dict[str, int | bool] = {
                 "quality": quality,
                 "optimize": True,
             }
@@ -56,7 +54,7 @@ def save_image(
                 save_args["compress_level"] = 9  # Max compression
 
             save_to.mkdir(parents=True, exist_ok=True)
-            img.save(output_path, **save_args)
+            img.save(output_path, format=fmt, **save_args)
             return output_path
 
     except Exception as e:
@@ -102,7 +100,7 @@ def optimize_image(
             if max_size:
                 img.thumbnail(max_size, Image.Resampling.LANCZOS)
 
-            save_args: dict[str, Any] = {
+            save_args: dict[str, int | bool] = {
                 "quality": quality,
                 "optimize": True,
             }
@@ -112,7 +110,7 @@ def optimize_image(
             elif img.format == "WEBP":
                 save_args["method"] = 6
 
-            img.save(output_path, **save_args)
+            img.save(output_path, format=img.format, **save_args)
             return output_path
 
     except UnidentifiedImageError as e:
@@ -151,13 +149,12 @@ def convert_image(
             if fmt in ("JPEG", "WEBP") and img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
 
-            save_args: dict[str, Any] = {
-                "format": fmt,
+            save_args: dict[str, int | bool] = {
                 "quality": quality,
                 "optimize": True,
             }
 
-            img.save(output_path, **save_args)
+            img.save(output_path, format=fmt, **save_args)
             return output_path
 
     except UnidentifiedImageError as e:

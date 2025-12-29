@@ -150,22 +150,54 @@ class BirthdayGuildConfig:
             List of birthday entries sorted by days until birthday
 
         """
+        logger.info(
+            "Generating sorted birthday list for guild %s (%d) with reference date %s",
+            guild.name,
+            guild.id,
+            reference_date,
+        )
+
         entries: list[BirthdayListEntry] = []
         for user_id, user_data in self.users.items():
             if not user_data.has_birthday():
+                logger.debug("Skipping user %d: No birthday set", user_id)
                 continue
 
             days_until = calculate_days_until_birthday(
                 user_data.birthday, reference_date
             )
             if days_until is None:
+                logger.warning(
+                    "Skipping user %d: Failed to calculate days until birthday for %s",
+                    user_id,
+                    user_data.birthday,
+                )
                 continue
+
             formatted_date = format_birthday_date(user_data.birthday)
             if not formatted_date:
+                logger.warning(
+                    "Skipping user %d: Failed to format birthday date %s",
+                    user_id,
+                    user_data.birthday,
+                )
                 continue
 
             member = guild.get_member(user_id)
-            display_name = member.display_name if member else user_data.name
+            if member:
+                display_name = member.display_name
+                logger.debug(
+                    "Found member %d in guild: using display name '%s'",
+                    user_id,
+                    display_name,
+                )
+            else:
+                display_name = user_data.name
+                logger.debug(
+                    "Member %d not found in guild: falling back to stored name '%s'",
+                    user_id,
+                    display_name,
+                )
 
             entry: BirthdayListEntry = {
                 "days_until": days_until,
@@ -176,6 +208,11 @@ class BirthdayGuildConfig:
             entries.append(entry)
 
         entries.sort(key=lambda x: x["days_until"])
+        logger.info(
+            "Generated birthday list for guild %s: %d entries found",
+            guild.name,
+            len(entries),
+        )
         return entries
 
     @classmethod

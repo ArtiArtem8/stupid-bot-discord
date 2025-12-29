@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING, Literal, Protocol, Self, TypedDict
 if TYPE_CHECKING:
     import discord
 
-    from .player import MusicPlayer, Track
+    from .player import MusicPlayer
+
 import discord
 import mafic
 from discord.utils import utcnow
@@ -217,6 +218,10 @@ class MusicResult[T]:
     def is_success(self) -> bool:
         """Check if the operation was successful."""
         return self.status is MusicResultStatus.SUCCESS
+
+
+PLAYER_FAIL_RESULT = MusicResult(MusicResultStatus.FAILURE, "No player", data=None)
+"""Predefined result for when a music player is not found for the guild."""
 
 
 @dataclass(frozen=True, slots=True)

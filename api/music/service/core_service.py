@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from api.music import RepeatMode
 from api.music.models import (
+    PLAYER_FAIL_RESULT,
     MusicResult,
     MusicResultStatus,
     PlayResponseData,
@@ -82,8 +83,6 @@ class CoreMusicService:
             if player:
                 vol = await self.volume_repo.get_volume(guild.id)
                 await player.set_volume(vol)
-            # EventHandlers listening to VoiceStateUpdate which happens on connect.
-            pass
 
         return result, old_channel
 
@@ -176,9 +175,8 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
-        player = self.connection.get_player(guild_id)
-        if not player:
-            return MusicResult(MusicResultStatus.FAILURE, "No player")
+        if not (player := self.connection.get_player(guild_id)):
+            return PLAYER_FAIL_RESULT
 
         player.clear_queue()
         await player.stop()
@@ -196,9 +194,8 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[SkipTrackData]:
-        player = self.connection.get_player(guild_id)
-        if not player:
-            return MusicResult(MusicResultStatus.FAILURE, "No player")
+        if not (player := self.connection.get_player(guild_id)):
+            return PLAYER_FAIL_RESULT
 
         current = player.current
         up_next = player.queue.next
@@ -218,16 +215,14 @@ class CoreMusicService:
         )
 
     async def pause(self, guild_id: int) -> MusicResult[None]:
-        player = self.connection.get_player(guild_id)
-        if not player:
-            return MusicResult(MusicResultStatus.FAILURE, "No player")
+        if not (player := self.connection.get_player(guild_id)):
+            return PLAYER_FAIL_RESULT
         await player.pause()
         return MusicResult(MusicResultStatus.SUCCESS, "Paused")
 
     async def resume(self, guild_id: int) -> MusicResult[None]:
-        player = self.connection.get_player(guild_id)
-        if not player:
-            return MusicResult(MusicResultStatus.FAILURE, "No player")
+        if not (player := self.connection.get_player(guild_id)):
+            return PLAYER_FAIL_RESULT
         await player.resume()
         return MusicResult(MusicResultStatus.SUCCESS, "Resumed")
 
@@ -237,9 +232,8 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
-        player = self.connection.get_player(guild_id)
-        if not player:
-            return MusicResult(MusicResultStatus.FAILURE, "No player")
+        if not (player := self.connection.get_player(guild_id)):
+            return PLAYER_FAIL_RESULT
         player.queue.shuffle()
 
         if text_channel_id and requester_id:
@@ -297,9 +291,8 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RepeatModeData]:
-        player = self.connection.get_player(guild_id)
-        if not player:
-            return MusicResult(MusicResultStatus.FAILURE, "No player")
+        if not (player := self.connection.get_player(guild_id)):
+            return PLAYER_FAIL_RESULT
 
         previous = player.repeat.mode
         if mode is None:

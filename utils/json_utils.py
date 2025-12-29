@@ -34,8 +34,7 @@ def _create_backup(
 
     filename = Path(filename)
     backup_name = _generate_backup_filename(filename)
-    backups = list(target_dir.glob(f"{filename.stem}_*{filename.suffix}"))
-
+    backups = target_dir.glob(f"{filename.stem}_*{filename.suffix}")
     sorted_backups = sorted(backups, reverse=True, key=lambda x: x.stat().st_mtime)
     for old in sorted_backups[max_backups:]:
         try:
@@ -95,7 +94,7 @@ def save_json(
                 json.dump(data, outfile, sort_keys=True, indent=4, ensure_ascii=False)
             temp_path.replace(path)
             return
-        except (PermissionError, OSError):
+        except OSError:
             if attempt == max_retries - 1:
                 raise
             time.sleep(0.1 * (attempt + 1))

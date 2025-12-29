@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 class HealerProtocol(Protocol):
     async def capture_and_heal(self, guild_id: int) -> None: ...
-    async def cleanup_after_disconnect(self, guild_id: int) -> None: ...
+    async def cleanup_after_disconnect(
+        self, guild_id: int, is_healing: bool = False
+    ) -> None: ...
 
 
 class MusicEventHandlers:
@@ -110,7 +112,7 @@ class MusicEventHandlers:
         ):
             logger.debug(
                 "Playback ended (Reason: %s) with empty queue. "
-                "Destroying controller immediately.",
+                + "Destroying controller immediately.",
                 event.reason,
             )
             await self.ui.controller.destroy_for_guild(player.guild.id)
@@ -160,11 +162,14 @@ class MusicEventHandlers:
             return
 
         if member.id == self.bot.user.id:
+            guild_id = member.guild.id
             if after.channel is None:
                 logger.info(
-                    "Bot was disconnected from guild %s. Cleaning up.", member.guild.id
+                    "Bot was disconnected from guild %s. Cleaning up.", guild_id
                 )
-                await self.healer.cleanup_after_disconnect(member.guild.id)
+                await self.healer.cleanup_after_disconnect(
+                    guild_id, is_healing=guild_id in self._healing_guilds
+                )
                 return
 
             if before.channel is not None and before.channel != after.channel:
@@ -172,10 +177,10 @@ class MusicEventHandlers:
                     "Bot moved from %s to %s in guild %s. Continuing playback.",
                     before.channel.name,
                     after.channel.name,
-                    member.guild.id,
+                    guild_id,
                 )
-                if self.state.is_timer_active(member.guild.id):
-                    await self._update_channel_timer(member.guild.id, after.channel)
+                if self.state.is_timer_active(guild_id):
+                    await self._update_channel_timer(guild_id, after.channel)
                 return
 
         guild = member.guild

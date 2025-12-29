@@ -1,9 +1,0 @@
-discord.py==2.5.2  
-python-dotenv==1.1.0 
-requests==2.32.3
-fuzzywuzzy==0.18.0
-python-Levenshtein==0.27.1
-wolframalpha==4.3.1  
-pillow==11.2.1
-lavaplay.py==1.0.15a0
-PyNaCl==1.5.0

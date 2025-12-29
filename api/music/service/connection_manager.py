@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import discord
 import mafic
@@ -14,9 +14,6 @@ from api.music.models import (
     VoiceJoinResult,
 )
 from api.music.player import MusicPlayer, music_player_factory
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +48,14 @@ class ConnectionManager:
             raise NodeNotConnectedError(f"Failed to connect: {e}") from e
 
     def get_player(self, guild_id: int) -> MusicPlayer | None:
-        """Retrieve the music player for a guild."""
+        """Retrieve the music player for a guild.
+
+        Returns None if the guild is not connected or does not have a music player.
+
+        Returns:
+            MusicPlayer | None
+
+        """
         guild = self.bot.get_guild(guild_id)
         if guild and isinstance(guild.voice_client, MusicPlayer):
             return guild.voice_client

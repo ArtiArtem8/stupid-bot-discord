@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Iterable, Self, TypedDict, Unpack, override
+from typing import TYPE_CHECKING, Self, TypedDict, Unpack, override
 
 import discord
 
@@ -16,10 +17,10 @@ from utils.text_utils import TextPaginator, truncate_text
 class EmbedKwargs(TypedDict, total=False):
     colour: int | Colour | None
     color: int | Colour | None
-    title: Any | None
+    title: str | None
     type: EmbedType
-    url: Any | None
-    description: Any | None
+    url: str | None
+    description: str | None
     timestamp: datetime | None
 
 
@@ -147,14 +148,26 @@ class SafeEmbed(discord.Embed):
 
     def add_field_if(
         self,
-        condition: bool | Any,
+        condition: object,
         *,
         name: str,
         value: str,
         inline: bool = False,
         strict: bool = True,
     ) -> Self:
-        """Adds a field only if the condition is truthy."""
+        """Conditionally adds a field to the embed if the condition is truthy.
+
+        Args:
+            condition: The condition to check. If truthy, the field will be added.
+            name: The name/title of the embed field.
+            value: The content/value of the embed field.
+            inline: Whether the field should be displayed inline. Defaults to False.
+            strict: Whether to apply strict validation when adding the field.
+
+        Returns:
+            Self: Returns the embed object for method chaining.
+
+        """
         if condition:
             return self.safe_add_field(
                 name=name, value=value, inline=inline, strict=strict

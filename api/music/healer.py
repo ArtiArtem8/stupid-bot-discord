@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING
 
 from discord import (
     CategoryChannel,
@@ -16,15 +15,13 @@ from discord.abc import Connectable
 from discord.ext import commands
 
 from api.music.service.connection_manager import ConnectionManager
+from api.music.service.event_handlers import HealerProtocol
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from repositories.volume_repository import VolumeRepository
 
 from .models import PlayerStateSnapshot
 from .player import MusicPlayer, music_player_factory
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +33,7 @@ def _get_voice_channel_id(
     return channel.id if isinstance(channel, VoiceChannel | StageChannel) else None
 
 
-class SessionHealer:
+class SessionHealer(HealerProtocol):
     def __init__(
         self,
         bot: commands.Bot,
@@ -52,7 +49,7 @@ class SessionHealer:
         self.ui = ui_orchestrator
 
         self.snapshots: dict[int, PlayerStateSnapshot] = {}
-        self._locks = defaultdict(asyncio.Lock)
+        self._locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     async def capture_and_heal(self, guild_id: int) -> None:
         """Main entry point to attempt a session recovery."""
@@ -79,11 +76,13 @@ class SessionHealer:
                 # Fallback: Clean up if healing failed
                 self.snapshots.pop(guild_id, None)
 
-    async def cleanup_after_disconnect(self, guild_id: int) -> None:
+    async def cleanup_after_disconnect(
+        self, guild_id: int, is_healing: bool = False
+    ) -> None:
         """Called when bot is seemingly disconnected but we want to cleanup properly."""
         await self.ui.controller.destroy_for_guild(guild_id)
         session = self.state.end_session(guild_id)
-        if session and session.tracks:
+        if session and session.tracks and not is_healing:
             main_channel_id = (
                 max(session.channel_usage, key=lambda k: session.channel_usage[k])
                 if session.channel_usage
@@ -143,7 +142,6 @@ class SessionHealer:
                 await player.guild.voice_client.disconnect(force=True)
         except Exception:
             logger.exception("Failed to hard disconnect for guild %s", guild_id)
-            pass
 
     async def _restore_session(self, snapshot: PlayerStateSnapshot) -> None:
         """Rebuilds the player from the snapshot."""

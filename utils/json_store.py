@@ -4,12 +4,11 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from os import PathLike
 from pathlib import Path
-from typing import Any
 
 from config import ENCODING
 from utils.json_utils import get_json, save_json
 
-type JsonDict = dict[str, Any]
+type JsonDict = dict[str, object]
 type Updater = Callable[[JsonDict], None | Awaitable[None]]
 
 
@@ -31,7 +30,7 @@ class AsyncJsonFileStore:
         data = await asyncio.to_thread(get_json, self.path, encoding=self.encoding)
         return data or {}
 
-    async def write(self, data: Mapping[str, Any]) -> None:
+    async def write(self, data: Mapping[str, object]) -> None:
         await asyncio.to_thread(
             save_json,
             self.path,

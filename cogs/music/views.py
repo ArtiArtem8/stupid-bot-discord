@@ -23,6 +23,7 @@ from api.music import (
     RepeatMode,
     TrackId,
 )
+from api.music.models import ControllerManagerProtocol
 from framework import PRIMARY, BasePaginator, PaginationData
 from utils import TextPaginator, truncate_text
 
@@ -163,11 +164,13 @@ class SessionPaginationAdapter(PaginationData):
 
     def _build_paginator(self) -> TextPaginator:
         lines = [
-            f"{format_dt(t.timestamp, 'T')} • {i}. "
-            f"{'~~' if t.skipped else ''}"
-            f"[{truncate_text(t.title, 45)}]({t.uri})"
-            f"{'~~' if t.skipped else ''} "
-            f"{f'(<@{t.requester_id}>)' if t.requester_id else ''}"
+            (
+                f"{format_dt(t.timestamp, 'T')} • {i}. "
+                f"{'~~' if t.skipped else ''}"
+                f"[{truncate_text(t.title, 45)}]({t.uri})"
+                f"{'~~' if t.skipped else ''} "
+                f"{f'(<@{t.requester_id}>)' if t.requester_id else ''}"
+            )
             for i, t in enumerate(self.session.tracks, 1)
         ]
         # Result: <timestamp> • <index>. <title> <requester_id>
@@ -234,7 +237,7 @@ class SessionSummaryView(ui.View):
                 pass
 
 
-class TrackControllerManager:
+class TrackControllerManager(ControllerManagerProtocol):
     def __init__(self, bot: commands.Bot):
         """Initialize the TrackControllerManager.
 
@@ -270,6 +273,7 @@ class TrackControllerManager:
                 e,
             )
 
+    @override
     async def create_for_user(
         self,
         *,
@@ -290,7 +294,7 @@ class TrackControllerManager:
                 )
                 logger.debug(
                     "Manager: Aborting. Player state desynced. "
-                    f"Expected: {target_id}, Got: {current_id}",
+                    + f"Expected: {target_id}, Got: {current_id}",
                 )
                 return
 
@@ -315,7 +319,7 @@ class TrackControllerManager:
 
                 view.message = msg
                 self.controllers[guild_id] = view
-                self._active_messages[guild_id] = (channel.id, msg.id)  # type: ignore
+                self._active_messages[guild_id] = (channel.id, msg.id)  # pyright: ignore[reportAttributeAccessIssue]
 
                 view.start_updater()
                 logger.debug(f"Manager: Controller active for {target_id.id}")
@@ -324,6 +328,7 @@ class TrackControllerManager:
                 logger.exception(f"Failed to send controller: {e}")
                 view.stop()
 
+    @override
     async def destroy_for_guild(
         self, guild_id: int, requesting_view: TrackControllerView | None = None
     ):

@@ -1,7 +1,7 @@
 # repositories/blocking_repository.py
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, NoReturn, cast, overload
+from typing import TYPE_CHECKING, Any, Never, cast, overload, override
 
 import config
 from api.blocking_models import BlockedUser, GuildData
@@ -55,6 +55,7 @@ class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
 
         return guild_data["users"]
 
+    @override
     async def get(self, key: BlockedUserKey) -> BlockedUser | None:
         """Get a single user by (guild_id, user_id)."""
         guild_id, user_id = key
@@ -67,6 +68,7 @@ class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
             return BlockedUser.from_dict(raw_user)
         return None
 
+    @override
     async def get_all(self) -> list[BlockedUser]:
         """Get all users from all guilds."""
         data = await self._store.read()
@@ -86,9 +88,10 @@ class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
         return all_users
 
     @overload
-    async def save(self, entity: BlockedUser) -> None: ...
+    async def save(self, entity: BlockedUser) -> Never: ...
     @overload
-    async def save(self, entity: BlockedUser, key: BlockedUserKey) -> NoReturn: ...
+    async def save(self, entity: BlockedUser, key: BlockedUserKey) -> None: ...
+    @override
     async def save(
         self, entity: BlockedUser, key: BlockedUserKey | None = None
     ) -> None:
@@ -106,6 +109,7 @@ class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
 
         await self._store.update(_updater)
 
+    @override
     async def delete(self, key: BlockedUserKey) -> None:
         """Delete a user by (guild_id, user_id)."""
         guild_id, user_id = key

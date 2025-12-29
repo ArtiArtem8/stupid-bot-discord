@@ -12,7 +12,6 @@ dependencies = [
     "discord-py[voice]>=2.5.2",
     "mafic>=2.10.1",
     "pillow>=12",
-    "PyNaCl>=1.5.0",
     "python-dotenv>=1.1.0",
     "rapidfuzz>=3.14.1",
     "requests>=2.32.3",
@@ -68,12 +67,26 @@ known-first-party = ["cogs", "utils"]
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
 
-[tool.ruff.lint.per-file-ignores]
-"main.py" = ["E402"] # Module level import not at top of file
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = ["ignore:.*audioop.*:DeprecationWarning:discord.player"]
 pythonpath = ["."]
+
+[tool.pyright]
+exclude = ["**/Lib/**"]
+reportUnannotatedClassAttribute = "none"
+reportUnusedCallResult = "none"
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportMissingTypeStubs = "none"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportPrivateUsage = "none"
+reportUnusedExpression = "none"
+reportUnknownArgumentType = "none"
+reportMissingParameterType = "none"
 
 [dependency-groups]
 dev = ["monkeytype>=23.3.0", "pytest>=9.0.2", "ruff>=0.14.6"]

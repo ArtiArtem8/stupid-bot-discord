@@ -11,6 +11,10 @@ tracemalloc.start()
 logger = logging.getLogger("StupidBot")
 
 
+class Arguments(argparse.Namespace):
+    watch: bool = False
+
+
 async def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Run the Discord bot.")
@@ -20,7 +24,7 @@ async def main() -> None:
         action="store_true",
         help="Enables watcher that will reload cogs on code changes.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(namespace=Arguments())
 
     for dir in [
         config.DATA_DIR,
@@ -44,6 +48,7 @@ async def main() -> None:
             await bot.start(token=config.DISCORD_BOT_TOKEN)
     except (KeyboardInterrupt, SystemExit):
         logger.info("Keyboard Interrupt detected.")
+        raise
     finally:
         uptime = bot.save_state()
         logger.info(f"Bot stopped. Final saved uptime: {uptime:.0f}s")

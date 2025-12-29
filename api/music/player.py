@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, override
 
 import discord
 import mafic
-from discord.utils import MISSING
+from discord.utils import MISSING  # pyright: ignore[reportAny]
 
 from .models import RepeatMode, Track, TrackId, TrackRequester
 from .queue import QueueManager, RepeatManager

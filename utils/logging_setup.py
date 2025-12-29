@@ -1,11 +1,10 @@
 # ruff: noqa: E501
 import logging.config
-from typing import Any
 
 
 def setup_logging(encoding: str = "utf-8") -> None:
     """Initialize logging configuration."""
-    LOGGING_CONFIG: dict[str, Any] = {
+    LOGGING_CONFIG = {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {

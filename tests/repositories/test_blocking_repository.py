@@ -499,7 +499,7 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(guild_users[other_user_id]["current_username"], "user_two")
 
     async def test_missing_fields_defaults(self) -> None:
-        """Test handling of users with missing optional fields (backward compatibility)."""
+        """Test handling of users with missing optional fields."""
         incomplete_data = {
             "999": {
                 "users": {

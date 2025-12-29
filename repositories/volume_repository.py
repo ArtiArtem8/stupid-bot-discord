@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import override
 
 import config
 from repositories.base_repository import BaseRepository
@@ -17,6 +18,7 @@ class VolumeRepository(BaseRepository[VolumeData, int]):
     def __init__(self, store: AsyncJsonFileStore | None = None) -> None:
         self._store = store or AsyncJsonFileStore(config.MUSIC_VOLUME_FILE)
 
+    @override
     async def get(self, key: int) -> VolumeData | None:
         data = await self._store.read()
         raw = data.get(str(key))
@@ -24,18 +26,21 @@ class VolumeRepository(BaseRepository[VolumeData, int]):
             return None
         return VolumeData(guild_id=key, volume=int(raw))
 
+    @override
     async def get_all(self) -> list[VolumeData]:
         data = await self._store.read()
         return [
             VolumeData(guild_id=int(gid), volume=int(vol)) for gid, vol in data.items()
         ]
 
+    @override
     async def save(self, entity: VolumeData, key: int | None = None) -> None:
         def _upd(d: dict[str, object]) -> None:
             d[str(entity.guild_id)] = entity.volume
 
         await self._store.update(_upd)
 
+    @override
     async def delete(self, key: int) -> None:
         def _upd(d: dict[str, object]) -> None:
             d.pop(str(key), None)
