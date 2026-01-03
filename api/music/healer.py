@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
+from typing import override
 
 from discord import (
     CategoryChannel,
@@ -30,7 +31,7 @@ def _get_voice_channel_id(
     channel: VoiceChannel | StageChannel | Connectable | None,
 ) -> int | None:
     """Extract channel ID if it's a voice/stage channel."""
-    return channel.id if isinstance(channel, VoiceChannel | StageChannel) else None
+    return channel.id if isinstance(channel, (VoiceChannel, StageChannel)) else None
 
 
 class SessionHealer(HealerProtocol):
@@ -51,6 +52,7 @@ class SessionHealer(HealerProtocol):
         self.snapshots: dict[int, PlayerStateSnapshot] = {}
         self._locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
+    @override
     async def capture_and_heal(self, guild_id: int) -> None:
         """Main entry point to attempt a session recovery."""
         async with self._locks[guild_id]:
@@ -76,6 +78,7 @@ class SessionHealer(HealerProtocol):
                 # Fallback: Clean up if healing failed
                 self.snapshots.pop(guild_id, None)
 
+    @override
     async def cleanup_after_disconnect(
         self, guild_id: int, is_healing: bool = False
     ) -> None:

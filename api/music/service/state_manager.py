@@ -3,16 +3,13 @@ from __future__ import annotations
 import datetime
 import logging
 import time
-from typing import TYPE_CHECKING, TypedDict
+from typing import TypedDict
 
 import mafic
 from discord.utils import utcnow
 
 from api.music.models import MusicSession
 from api.music.player import MusicPlayer
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +57,7 @@ class StateManager:
             return
 
         skipped = False
-        if reason == mafic.EndReason.STOPPED:
-            skipped = True
-        elif reason == mafic.EndReason.REPLACED:
+        if reason is mafic.EndReason.STOPPED or reason is mafic.EndReason.REPLACED:
             skipped = True
 
         requester_info = player.get_requester(track)

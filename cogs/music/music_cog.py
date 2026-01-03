@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Sequence
 from itertools import groupby
+from typing import override
 
 import discord
 from discord import Interaction, Member, app_commands
@@ -39,6 +40,7 @@ from .ui import (
     send_info,
     send_success,
     send_warning,
+    send_warning_no_player,
 )
 from .views import (
     QueuePaginationAdapter,
@@ -59,7 +61,8 @@ def _format_voice_result_message(
         VoiceCheckResult.ALREADY_CONNECTED: "Уже подключён к {0}",
         VoiceCheckResult.CHANNEL_EMPTY: "Голосовой канал {0} пуст!",
         VoiceCheckResult.CONNECTION_FAILED: "Ошибка подключения к {0}",
-        VoiceCheckResult.INVALID_CHANNEL_TYPE: "Неверный тип голосового канала",
+        VoiceCheckResult.INVALID_CHANNEL_TYPE: "Неверный тип голосового канала"
+        + "\n*Попробуйте сменить регион этого канала!*",
         VoiceCheckResult.MOVED_CHANNELS: "Переместился {1} -> {0}",
         VoiceCheckResult.SUCCESS: "Успешно подключился к {0}",
         VoiceCheckResult.USER_NOT_IN_VOICE: "Вы должны быть в голосовом канале!",
@@ -96,11 +99,13 @@ class MusicCog(BaseCog):
 
         self.service = self.container.resolve(CoreMusicService)
 
+    @override
     async def cog_load(self) -> None:
         if self.bot.is_ready():
             await self.service.initialize()
         self.auto_leave_monitor.start()
 
+    @override
     async def cog_unload(self) -> None:
         if self.auto_leave_monitor.is_running():
             self.auto_leave_monitor.cancel()
@@ -279,7 +284,7 @@ class MusicCog(BaseCog):
         if not result.is_success or isinstance(result.data, tuple):
             if isinstance(result.data, tuple):
                 check, from_ch = result.data
-                await send_warning(
+                await send_info(
                     interaction, _format_voice_result_message(check, channel, from_ch)
                 )
             else:
@@ -290,9 +295,7 @@ class MusicCog(BaseCog):
         duration_ms = await self.service.get_queue_duration(guild.id)
 
         if not data:
-            await send_warning(
-                interaction, "Ничего не нашлось. Попробуйте ещё раз.", ephemeral=True
-            )
+            await send_info(interaction, "Ничего не нашлось. Попробуйте ещё раз.")
             return
         delay_sec = (duration_ms / 1000) + 60
 
@@ -348,7 +351,7 @@ class MusicCog(BaseCog):
         if res.is_success:
             await send_info(interaction, "Остановлено")
         else:
-            await send_warning(interaction, "Нет проигрывателя")
+            await send_warning_no_player(interaction)
 
     @app_commands.command(name="skip", description="Пропустить текущий трек")
     @app_commands.guild_only()
@@ -359,7 +362,7 @@ class MusicCog(BaseCog):
             guild.id, interaction.user.id, interaction.channel_id
         )
         if res.status is MusicResultStatus.FAILURE:
-            await send_warning(interaction, "Нет проигрывателя")
+            await send_warning_no_player(interaction)
             return
 
         if not res.is_success or not res.data:
@@ -437,7 +440,7 @@ class MusicCog(BaseCog):
             case MusicResultStatus.SUCCESS:
                 await send_info(interaction, "Отключился", title="До свидания ❤️")
             case MusicResultStatus.FAILURE:
-                await send_warning(interaction, "Нет проигрывателя")
+                await send_warning_no_player(interaction)
             case MusicResultStatus.ERROR:
                 await send_error(interaction, res.message)
 
@@ -452,7 +455,7 @@ class MusicCog(BaseCog):
         if res.is_success:
             await send_success(interaction, "Перемешано")
         else:
-            await send_warning(interaction, "Нет проигрывателя")
+            await send_warning_no_player(interaction)
 
     @app_commands.command(
         name="rotate", description="Переместить тек. трек в конец очереди"
@@ -465,7 +468,7 @@ class MusicCog(BaseCog):
             guild.id, interaction.user.id, interaction.channel_id
         )
         if not res.is_success:
-            await send_warning(interaction, "Нет проигрывателя")
+            await send_warning_no_player(interaction)
             return
         if not res.data or not res.data["skipped"]:
             await send_warning(interaction, "Нечего перемещать", ephemeral=True)
@@ -509,7 +512,7 @@ class MusicCog(BaseCog):
 
         data = result.data
         if not result.is_success or not data:
-            return await send_warning(interaction, "Нет проигрывателя")
+            return await send_warning_no_player(interaction)
 
         new_mode = data.get("mode")
 
@@ -540,7 +543,7 @@ class MusicCog(BaseCog):
         if res.is_success:
             await send_info(interaction, "Воспроизведение приостановлено")
         else:
-            await send_warning(interaction, "Нет проигрывателя")
+            await send_warning_no_player(interaction)
 
     @app_commands.command(name="resume", description="Продолжить")
     @app_commands.guild_only()
@@ -551,7 +554,7 @@ class MusicCog(BaseCog):
         if res.is_success:
             await send_info(interaction, "Воспроизведение продолжено")
         else:
-            await send_warning(interaction, "Нет проигрывателя")
+            await send_warning_no_player(interaction)
 
     @app_commands.command(
         name="reconnect", description="Переподключиться в случае ошибок"

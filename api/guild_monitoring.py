@@ -1,5 +1,6 @@
 """Server monitoring manager for tracking and restoring member roles."""
 
+# TODO: REFACTOR
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -93,7 +94,7 @@ class ServerMonitoringManager:
         data = get_json(self._get_guild_file(guild_id))
         if data is None:
             return self._get_default_config()
-        return cast(GuildDataDict, data)
+        return cast(GuildDataDict, data)  # pyright: ignore[reportInvalidCast]
 
     def _save_guild_data(self, guild_id: int, data: GuildDataDict) -> None:
         """Save guild data to disk."""

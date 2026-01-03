@@ -81,16 +81,19 @@ class ConnectionManager:
         try:
             if voice_client and isinstance(voice_client, MusicPlayer):
                 old_channel = cast(discord.abc.GuildChannel, voice_client.channel)
-                await voice_client.move_to(channel)
+                await voice_client.move_to(channel, timeout=2.0)
                 return VoiceCheckResult.MOVED_CHANNELS, old_channel
 
             if not self.pool.nodes:
                 await self.initialize()
 
-            await channel.connect(cls=music_player_factory)
+            await channel.connect(cls=music_player_factory, timeout=2.0)
 
             return VoiceCheckResult.SUCCESS, None
 
+        except TimeoutError:
+            logger.exception("Timeout Error while joining voice channel")
+            return VoiceCheckResult.INVALID_CHANNEL_TYPE, None
         except Exception:
             logger.exception("Failed to join voice channel")
             return VoiceCheckResult.CONNECTION_FAILED, None

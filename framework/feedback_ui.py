@@ -12,7 +12,7 @@ from typing import Self, overload
 
 import discord
 from discord.ui import Button, View
-from discord.utils import MISSING, format_dt, utcnow
+from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAny]
 
 import config
 from utils import SafeEmbed
@@ -41,9 +41,7 @@ class ReportButtonView(View):
         self.error_info = error_info
 
     @discord.ui.button(label="Сообщить о проблеме", style=discord.ButtonStyle.danger)
-    async def report(
-        self, interaction: discord.Interaction, button: Button[Self]
-    ) -> None:
+    async def report(self, interaction: discord.Interaction, _: Button[Self]) -> None:
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "Это не ваше сообщение.", ephemeral=True

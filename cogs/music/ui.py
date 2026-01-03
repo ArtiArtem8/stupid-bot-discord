@@ -59,6 +59,11 @@ async def send_warning(
     )
 
 
+async def send_warning_no_player(interaction: Interaction) -> None:
+    """Send a warning feedback about there is no player."""
+    await send_warning(interaction, "Нет проигрывателя")
+
+
 async def send_info(
     interaction: Interaction,
     message: str,
