@@ -6,12 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum, auto
-from typing import TYPE_CHECKING, Literal, Protocol, Self, TypedDict
-
-if TYPE_CHECKING:
-    import discord
-
-    from .player import MusicPlayer
+from typing import Literal, Self, TypedDict
 
 import discord
 import mafic
@@ -253,23 +248,3 @@ class PlayerStateSnapshot:
 
     requester_map: dict[str, TrackRequester]
     session: MusicSession | None
-
-
-class ControllerManagerProtocol(Protocol):
-    """Protocol for controller management."""
-
-    async def create_for_user(
-        self,
-        *,
-        guild_id: int,
-        user_id: int,
-        channel: discord.abc.Messageable,
-        player: MusicPlayer,
-        track: Track,
-    ) -> None:
-        """Create a controller for a user."""
-        ...
-
-    async def destroy_for_guild(self, guild_id: int) -> None:
-        """Destroy controller for a guild."""
-        ...

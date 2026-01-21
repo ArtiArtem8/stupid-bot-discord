@@ -6,6 +6,7 @@ from typing import override
 import config
 from repositories.base_repository import BaseRepository
 from utils import AsyncJsonFileStore
+from utils.json_types import JsonObject
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,25 +25,30 @@ class VolumeRepository(BaseRepository[VolumeData, int]):
         raw = data.get(str(key))
         if raw is None:
             return None
+        if not isinstance(raw, (int, str, float, bool)):
+            return None
         return VolumeData(guild_id=key, volume=int(raw))
 
     @override
     async def get_all(self) -> list[VolumeData]:
         data = await self._store.read()
-        return [
-            VolumeData(guild_id=int(gid), volume=int(vol)) for gid, vol in data.items()
-        ]
+        results: list[VolumeData] = []
+        for gid, vol in data.items():
+            if not gid.isdigit() or not isinstance(vol, (int, str, float, bool)):
+                continue
+            results.append(VolumeData(guild_id=int(gid), volume=int(vol)))
+        return results
 
     @override
     async def save(self, entity: VolumeData, key: int | None = None) -> None:
-        def _upd(d: dict[str, object]) -> None:
+        def _upd(d: JsonObject) -> None:
             d[str(entity.guild_id)] = entity.volume
 
         await self._store.update(_upd)
 
     @override
     async def delete(self, key: int) -> None:
-        def _upd(d: dict[str, object]) -> None:
+        def _upd(d: JsonObject) -> None:
             d.pop(str(key), None)
 
         await self._store.update(_upd)

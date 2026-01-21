@@ -16,9 +16,12 @@ from .models import (
     VoiceJoinResult,
 )
 from .player import MusicPlayer
+from .protocols import ControllerManagerProtocol, HealerProtocol
 from .service import CoreMusicService as MusicService
 
 __all__ = [
+    "ControllerManagerProtocol",
+    "HealerProtocol",
     "MusicPlayer",
     "MusicResult",
     "MusicResultStatus",

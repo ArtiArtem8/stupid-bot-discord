@@ -18,9 +18,16 @@ from api.music import (
     TrackGroup,
     TrackInfo,
     VoiceCheckResult,
+    VoiceJoinResult,
 )
 from api.music.healer import SessionHealer
-from api.music.models import ControllerManagerProtocol
+from api.music.models import (
+    MusicResult,
+    PlaylistResponseData,
+    PlayResponseData,
+    TrackResponseData,
+)
+from api.music.protocols import ControllerManagerProtocol, HealerProtocol
 from api.music.service import (
     ConnectionManager,
     CoreMusicService,
@@ -28,7 +35,6 @@ from api.music.service import (
     StateManager,
     UIOrchestrator,
 )
-from api.music.service.event_handlers import HealerProtocol
 from di.container import Container
 from framework import BaseCog, FeedbackUI, handle_errors
 from repositories.volume_repository import VolumeRepository
@@ -260,18 +266,17 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def play(self, interaction: Interaction, query: str) -> None:
         guild = await self._require_guild(interaction)
-        if (
-            not isinstance(interaction.user, Member)
-            or not interaction.user.voice
-            or not interaction.user.voice.channel
-        ):
-            return await send_warning(
-                interaction, "Зайдите в голосовой канал!", ephemeral=True
-            )
+        channel = await self._get_voice_channel_for_play(interaction)
+        if not channel:
+            return
 
         await interaction.response.defer()
 
-        channel = interaction.user.voice.channel
+        join_result, from_channel = await self.service.join(guild, channel)
+        if not await self._handle_join_for_play(
+            interaction, join_result, channel, from_channel
+        ):
+            return
 
         result = await self.service.play(
             guild,
@@ -281,62 +286,115 @@ class MusicCog(BaseCog):
             interaction.channel_id,
         )
 
-        if not result.is_success or isinstance(result.data, tuple):
-            if isinstance(result.data, tuple):
-                check, from_ch = result.data
-                await send_info(
-                    interaction, _format_voice_result_message(check, channel, from_ch)
-                )
-            else:
-                await send_error(interaction, result.message)
-            return
-
-        data = result.data
-        duration_ms = await self.service.get_queue_duration(guild.id)
-
+        data = await self._resolve_play_response_data(interaction, result, channel)
         if not data:
-            await send_info(interaction, "Ничего не нашлось. Попробуйте ещё раз.")
             return
+
+        duration_ms = await self.service.get_queue_duration(guild.id)
         delay_sec = (duration_ms / 1000) + 60
 
-        if data["type"] == "track":
-            track = data["track"]
-            embed = discord.Embed(
-                title="Сейчас играет" if not data["playing"] else "Добавлено в очередь",
-                description=f"[{track.title}]({track.uri})",
-                color=config.Color.INFO,
-            )
-            if track.artwork_url:
-                embed.set_thumbnail(url=track.artwork_url)
-            embed.add_field(name="Длительность", value=format_duration(track.length))
-            embed.set_footer(
-                text=f"Запросил: {interaction.user.display_name}",
-                icon_url=interaction.user.display_avatar.url,
-            )
+        await self._send_play_feedback(interaction, data, delay_sec)
 
-            await FeedbackUI.send(
-                interaction, embed=embed, delete_after=min(delay_sec, 480)
+    async def _get_voice_channel_for_play(
+        self, interaction: Interaction
+    ) -> discord.VoiceChannel | discord.StageChannel | None:
+        if (
+            not isinstance(interaction.user, Member)
+            or not interaction.user.voice
+            or not interaction.user.voice.channel
+        ):
+            await send_warning(
+                interaction, "Зайдите в голосовой канал!", ephemeral=True
             )
+            return None
+        return interaction.user.voice.channel
 
-        elif data["type"] == "playlist":
-            playlist = data["playlist"]
-            embed = discord.Embed(
-                title=f"Добавлен плейлист **{playlist.name}**",
-                description=f"Треков: {len(playlist.tracks)}",
-                color=config.Color.INFO,
-            )
-            duration = sum(t.length for t in playlist.tracks)
-            embed.add_field(name="Длительность", value=format_duration(duration))
-            if playlist.tracks:
-                embed.set_thumbnail(url=playlist.tracks[0].artwork_url or "")
-            embed.set_footer(
-                text=f"Запросил: {interaction.user.display_name}",
-                icon_url=interaction.user.display_avatar.url,
-            )
+    async def _handle_join_for_play(
+        self,
+        interaction: Interaction,
+        result: VoiceCheckResult,
+        channel: discord.abc.GuildChannel,
+        from_channel: discord.abc.GuildChannel | None,
+    ) -> bool:
+        if result.status is MusicResultStatus.SUCCESS:
+            return True
+        message = _format_voice_result_message(result, channel, from_channel)
+        if result.status is MusicResultStatus.ERROR:
+            await send_error(interaction, message)
+        else:
+            await send_warning(interaction, message, ephemeral=True)
+        return False
 
-            await FeedbackUI.send(
-                interaction, embed=embed, delete_after=min(delay_sec, 600)
-            )
+    async def _resolve_play_response_data(
+        self,
+        interaction: Interaction,
+        result: MusicResult[PlayResponseData | VoiceJoinResult],
+        channel: discord.abc.GuildChannel,
+    ) -> PlayResponseData | None:
+        if isinstance(result.data, tuple):
+            check, from_channel = result.data
+            await self._handle_join_for_play(interaction, check, channel, from_channel)
+            return None
+        if result.status is MusicResultStatus.ERROR:
+            await send_error(interaction, result.message)
+            return None
+        if not result.data:
+            await send_info(interaction, "Ничего не нашлось. Попробуйте ещё раз.")
+            return None
+        return result.data
+
+    def _build_track_embed(
+        self, interaction: Interaction, data: TrackResponseData
+    ) -> discord.Embed:
+        track = data["track"]
+        title = "Сейчас играет" if not data["playing"] else "Добавлено в очередь"
+        embed = discord.Embed(
+            title=title,
+            description=f"[{track.title}]({track.uri})",
+            color=config.Color.INFO,
+        )
+        if track.artwork_url:
+            embed.set_thumbnail(url=track.artwork_url)
+        embed.add_field(name="Длительность", value=format_duration(track.length))
+        embed.set_footer(
+            text=f"Запросил: {interaction.user.display_name}",
+            icon_url=interaction.user.display_avatar.url,
+        )
+        return embed
+
+    def _build_playlist_embed(
+        self, interaction: Interaction, data: PlaylistResponseData
+    ) -> discord.Embed:
+        playlist = data["playlist"]
+        embed = discord.Embed(
+            title=f"Добавлен плейлист **{playlist.name}**",
+            description=f"Треков: {len(playlist.tracks)}",
+            color=config.Color.INFO,
+        )
+        duration = sum(t.length for t in playlist.tracks)
+        embed.add_field(name="Длительность", value=format_duration(duration))
+        if playlist.tracks:
+            embed.set_thumbnail(url=playlist.tracks[0].artwork_url or "")
+        embed.set_footer(
+            text=f"Запросил: {interaction.user.display_name}",
+            icon_url=interaction.user.display_avatar.url,
+        )
+        return embed
+
+    async def _send_play_feedback(
+        self, interaction: Interaction, data: PlayResponseData, delay_sec: float
+    ) -> None:
+        match data["type"]:
+            case "track":
+                embed = self._build_track_embed(interaction, data)
+                await FeedbackUI.send(
+                    interaction, embed=embed, delete_after=min(delay_sec, 480)
+                )
+            case "playlist":
+                embed = self._build_playlist_embed(interaction, data)
+                await FeedbackUI.send(
+                    interaction, embed=embed, delete_after=min(delay_sec, 600)
+                )
 
     @app_commands.command(
         name="stop", description="Остановить воспроизведение и очистить очередь"

@@ -5,24 +5,24 @@ import logging
 import unittest
 from collections.abc import Callable
 from datetime import date
-from typing import Any
 from unittest.mock import Mock
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
 from repositories.birthday_repository import BirthdayRepository
 from utils import calculate_days_until_birthday
+from utils.json_types import JsonObject
 
 
 class FakeAsyncJsonFileStore:
     """In-memory async store to avoid filesystem in tests."""
 
-    def __init__(self, initial_data: dict[str, Any] | None = None) -> None:
+    def __init__(self, initial_data: JsonObject | None = None) -> None:
         self._data = copy.deepcopy(initial_data or {})
 
-    async def read(self) -> dict[str, Any]:
+    async def read(self) -> JsonObject:
         return copy.deepcopy(self._data)
 
-    async def update(self, updater: Callable[[Any], None]) -> None:
+    async def update(self, updater: Callable[[JsonObject], None]) -> None:
         data = copy.deepcopy(self._data)
         updater(data)
         self._data = data
@@ -131,7 +131,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
             mock_guild, ref_date_non_leap, mock_logger
         )
         self.assertEqual(len(entries_2025), 1)
-        self.assertTrue(entries_2025[0]["days_until"] > 0)
+        self.assertGreater(entries_2025[0]["days_until"], 0)
         # In 2025 (non-leap), Feb 29 doesn't exist.
         # Most simple algos push it to Mar 1 (Day 60). Jan 1 is Day 1. Diff ~59 days.
 
@@ -214,6 +214,11 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
 class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
     """Test cases for BirthdayRepository CRUD operations."""
 
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.store = FakeAsyncJsonFileStore()
+        self.repo = BirthdayRepository(self.store)  # type: ignore
+
     def setUp(self):
         self.store = FakeAsyncJsonFileStore()
         self.repo = BirthdayRepository(self.store)  # type: ignore
@@ -270,7 +275,7 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_all_handles_corrupt_data(self):
         """Test that get_all skips invalid entries without crashing."""
-        bad_data: dict[str, Any] = {
+        bad_data: JsonObject = {
             "1": {"Server_name": "Valid", "Channel_id": "1", "Users": {}},
             "2": "Not a dict",
             "not_an_int": {},

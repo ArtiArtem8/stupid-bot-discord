@@ -7,9 +7,9 @@ from datetime import datetime
 from os import PathLike
 from pathlib import Path
 from string import ascii_letters, digits
-from typing import Any
 
 from config import BACKUP_DIR, ENCODING
+from utils.json_types import JsonObject, JsonValue, is_json_object
 
 
 def _generate_backup_filename(filename: Path, dt: datetime | None = None) -> str:
@@ -53,7 +53,7 @@ def _create_backup(
 
 def get_json(
     filename: str | PathLike[str], encoding: str = ENCODING
-) -> dict[str, Any] | None:
+) -> JsonObject | None:
     """Reads a JSON file and returns its content as a dictionary.
 
     If the file does not exist or the content is not a valid JSON, returns None.
@@ -63,14 +63,17 @@ def get_json(
         return None
     try:
         with open(path, encoding=encoding) as data_file:
-            return json.load(fp=data_file)
+            payload = json.load(fp=data_file)
+            if is_json_object(payload):
+                return payload
+            return None
     except (json.JSONDecodeError, OSError):
         return None
 
 
 def save_json(
     filename: str | PathLike[str],
-    data: Mapping[str, Any],
+    data: Mapping[str, JsonValue],
     backup_amount: int = 3,
     backup_dir: Path | None = None,
     encoding: str = ENCODING,

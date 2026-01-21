@@ -7,7 +7,7 @@ import discord
 import mafic
 from discord.ext import commands
 
-from api.music.models import ControllerManagerProtocol
+from api.music.protocols import ControllerManagerProtocol
 from api.music.service.state_manager import StateManager
 
 if TYPE_CHECKING:

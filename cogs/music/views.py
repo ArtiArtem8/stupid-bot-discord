@@ -23,7 +23,7 @@ from api.music import (
     RepeatMode,
     TrackId,
 )
-from api.music.models import ControllerManagerProtocol
+from api.music.protocols import ControllerManagerProtocol
 from framework import PRIMARY, BasePaginator, PaginationData
 from utils import TextPaginator, truncate_text
 

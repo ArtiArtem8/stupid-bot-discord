@@ -3,6 +3,7 @@
 Detects old-style prefix commands and suggests modern slash command alternatives.
 """
 
+import asyncio
 import logging
 import time
 from collections.abc import Iterable
@@ -40,17 +41,21 @@ class PrefixBlockerCog(commands.Cog):
         self._app_cmd_cache: dict[
             int | None, tuple[float, dict[str, app_commands.AppCommand]]
         ] = {}
+        self._lock = asyncio.Lock()
 
     def _is_guild_command(self, cmd: CMD) -> bool:
         """Determine if a command is guild-only based on available attributes."""
         if cmd.guild_only:
             return True
 
-        if cmd.allowed_contexts:
-            if cmd.allowed_contexts.guild and not (
+        if (
+            cmd.allowed_contexts
+            and cmd.allowed_contexts.guild
+            and not (
                 cmd.allowed_contexts.dm_channel or cmd.allowed_contexts.private_channel
-            ):
-                return True
+            )
+        ):
+            return True
 
         return False
 
@@ -113,25 +118,28 @@ class PrefixBlockerCog(commands.Cog):
         """Fetch current AppCommands.
         Cached to avoid extra HTTP traffic.
         """
-        now = time.time()
-        ttl = 600
-        cached = self._app_cmd_cache.get(guild_id)
-        if cached and cached[0] > now:
-            return cached[1]
+        async with self._lock:
+            now = time.time()
+            ttl = 600
+            cached = self._app_cmd_cache.get(guild_id)
+            if cached and cached[0] > now:
+                return cached[1]
 
-        global_cmds = await self.bot.tree.fetch_commands(guild=None)
-        mapping: dict[str, app_commands.AppCommand] = {c.name: c for c in global_cmds}
+            global_cmds = await self.bot.tree.fetch_commands(guild=None)
+            mapping: dict[str, app_commands.AppCommand] = {
+                c.name: c for c in global_cmds
+            }
 
-        # Also fetch guild commands if requested
-        if guild_id is not None and self.bot.get_guild(guild_id) is not None:
-            guild = self.bot.get_guild(guild_id)
-            if guild is not None:
-                guild_cmds = await self.bot.tree.fetch_commands(guild=guild)
-                for c in guild_cmds:
-                    mapping[c.name] = c
+            # Also fetch guild commands if requested
+            if guild_id is not None and self.bot.get_guild(guild_id) is not None:
+                guild = self.bot.get_guild(guild_id)
+                if guild is not None:
+                    guild_cmds = await self.bot.tree.fetch_commands(guild=guild)
+                    for c in guild_cmds:
+                        mapping[c.name] = c
 
-        self._app_cmd_cache[guild_id] = (now + ttl, mapping)
-        return mapping
+            self._app_cmd_cache[guild_id] = (now + ttl, mapping)
+            return mapping
 
     async def _format_clickable(
         self, *, key: str, root_name: str, message: Message

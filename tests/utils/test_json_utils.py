@@ -5,10 +5,10 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
 from unittest.mock import patch
 
 import utils.json_utils as json_utils
+from utils.json_types import JsonObject
 
 
 class TestGenerateBackupFilename(unittest.TestCase):
@@ -46,7 +46,7 @@ class TestGetJson(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_get_json_valid_returns_dict(self) -> None:
-        payload: dict[str, Any] = {"a": 1, "b": {"c": True}}
+        payload: JsonObject = {"a": 1, "b": {"c": True}}
         self._path.write_text(json.dumps(payload), encoding="utf-8")
 
         result = json_utils.get_json(self._path)
@@ -66,7 +66,7 @@ class TestSaveJson(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_save_json_creates_parent_dirs_and_writes(self) -> None:
-        payload: dict[str, Any] = {"x": 1}
+        payload: JsonObject = {"x": 1}
 
         json_utils.save_json(
             self._path, payload, backup_amount=0, backup_dir=self._backup_dir

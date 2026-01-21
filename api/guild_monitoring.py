@@ -10,6 +10,7 @@ import discord
 from discord.utils import utcnow
 
 import config
+from utils.json_types import JsonObject
 from utils.json_utils import get_json, save_json
 
 
@@ -98,7 +99,7 @@ class ServerMonitoringManager:
 
     def _save_guild_data(self, guild_id: int, data: GuildDataDict) -> None:
         """Save guild data to disk."""
-        save_json(self._get_guild_file(guild_id), data)
+        save_json(self._get_guild_file(guild_id), cast(JsonObject, cast(object, data)))
 
     def is_enabled(self, guild_id: int) -> bool:
         """Check if monitoring is enabled for a guild."""

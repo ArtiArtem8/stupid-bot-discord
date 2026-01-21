@@ -15,8 +15,8 @@ from discord import (
 from discord.abc import Connectable
 from discord.ext import commands
 
+from api.music.protocols import HealerProtocol
 from api.music.service.connection_manager import ConnectionManager
-from api.music.service.event_handlers import HealerProtocol
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from repositories.volume_repository import VolumeRepository

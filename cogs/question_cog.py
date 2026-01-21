@@ -14,6 +14,7 @@ import config
 from framework import BaseCog
 from resources import CAPABILITIES
 from utils import get_json, random_answer, save_json, str_local
+from utils.json_types import JsonObject
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,18 @@ class QuestionCog(BaseCog):
             The existing answer if the user already asked the question, None otherwise.
 
         """
-        data = get_json(config.ANSWER_FILE) or {}
+        data: JsonObject = get_json(config.ANSWER_FILE) or {}
         filtered_text = str_local(question)
-        if existing := data.get(user_id, {}).get(filtered_text, None):
-            return existing
+        user_history = data.get(user_id)
+        if isinstance(user_history, dict):
+            existing = user_history.get(filtered_text)
+            if isinstance(existing, str):
+                return existing
+        else:
+            user_history = {}
+            data[user_id] = user_history
 
-        data.setdefault(user_id, {})[filtered_text] = answer
+        user_history[filtered_text] = answer
         save_json(config.ANSWER_FILE, data, backup_amount=2)
         return None
 

@@ -6,10 +6,11 @@ from os import PathLike
 from pathlib import Path
 
 from config import ENCODING
+from utils.json_types import JsonObject, JsonValue
 from utils.json_utils import get_json, save_json
 
-type JsonDict = dict[str, object]
-type Updater = Callable[[JsonDict], None | Awaitable[None]]
+type JsonDict = JsonObject
+type Updater = Callable[[JsonObject], None | Awaitable[None]]
 
 
 @dataclass(slots=True)
@@ -26,11 +27,11 @@ class AsyncJsonFileStore:
         hash=False,
     )
 
-    async def read(self) -> JsonDict:
+    async def read(self) -> JsonObject:
         data = await asyncio.to_thread(get_json, self.path, encoding=self.encoding)
         return data or {}
 
-    async def write(self, data: Mapping[str, object]) -> None:
+    async def write(self, data: Mapping[str, JsonValue]) -> None:
         await asyncio.to_thread(
             save_json,
             self.path,
@@ -40,7 +41,7 @@ class AsyncJsonFileStore:
             encoding=self.encoding,
         )
 
-    async def update(self, updater: Updater) -> JsonDict:
+    async def update(self, updater: Updater) -> JsonObject:
         """Lock + read + mutate + write, returning the final data."""
         async with self._lock:
             data = await self.read()

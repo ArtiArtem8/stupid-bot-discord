@@ -67,7 +67,6 @@ known-first-party = ["cogs", "utils"]
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
 
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["ignore:.*audioop.*:DeprecationWarning:discord.player"]
@@ -82,7 +81,7 @@ reportUnknownVariableType = "none"
 reportMissingTypeStubs = "none"
 
 [[tool.pyright.executionEnvironments]]
-root = "tests"
+root = "."
 reportPrivateUsage = "none"
 reportUnusedExpression = "none"
 reportUnknownArgumentType = "none"

@@ -4,7 +4,6 @@ This provides centralized functionality like blocked user checks and guild
 validation, reducing repetition across cogs.
 """
 
-import abc
 import logging
 from typing import override
 
@@ -18,16 +17,8 @@ from framework.exceptions import BlockedUserError, NoGuildError
 logger = logging.getLogger(__name__)
 
 
-class CogABCMeta(commands.CogMeta, abc.ABCMeta):
-    """Custom metaclass combining commands.CogMeta and abc.ABCMeta.
-
-    Allows BaseCog to inherit from both commands.Cog and abc.ABC without
-    metaclass conflicts.
-    """
-
-
-class GenericBaseCog[BotT: commands.Bot](abc.ABC, commands.Cog, metaclass=CogABCMeta):
-    """Abstract base class for StupidBot cogs.
+class GenericBaseCog[BotT: commands.Bot](commands.Cog):
+    """Base helper class for StupidBot cogs.
 
     Provides:
     - Centralized interaction_check for blocked users (raises BlockedUserError).
@@ -46,7 +37,7 @@ class GenericBaseCog[BotT: commands.Bot](abc.ABC, commands.Cog, metaclass=CogABC
         self.bot = bot
         self._cog = self.__class__.__name__
 
-    def should_bypass_block(self, interaction: discord.Interaction) -> bool:
+    def should_bypass_block(self, interaction: discord.Interaction) -> bool:  # pyright: ignore[reportUnusedParameter]
         """Return True to skip the blocked-user check for this interaction.
 
         This function **can** be a coroutine

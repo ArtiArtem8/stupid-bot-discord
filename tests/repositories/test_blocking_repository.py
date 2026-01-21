@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import copy
 import unittest
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Mapping
+from typing import Mapping
 
 from api.blocking_models import BlockHistoryEntry, NameHistoryEntry
 from repositories.blocking_repository import (
     BlockedUser,
     BlockingRepository,
 )
+from utils.json_types import JsonObject
 
-JsonDict = Dict[str, Any]
+type JsonDict = JsonObject
 
 
 class FakeAsyncJsonFileStore:
@@ -26,7 +28,7 @@ class FakeAsyncJsonFileStore:
         # Return a copy to simulate real file reads (no external mutation)
         return copy.deepcopy(self._data)
 
-    async def update(self, updater: Any) -> None:
+    async def update(self, updater: Callable[[JsonDict], None]) -> None:
         self.update_calls += 1
         data = copy.deepcopy(self._data)
         updater(data)
@@ -39,6 +41,11 @@ class FakeAsyncJsonFileStore:
 
 
 class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.store = FakeAsyncJsonFileStore()
+        self.repo = BlockingRepository(self.store)  # type: ignore
+
     async def asyncSetUp(self) -> None:
         self.store = FakeAsyncJsonFileStore()
         self.repo = BlockingRepository(self.store)  # type: ignore
@@ -317,9 +324,15 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
 
 
 class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.store = FakeAsyncJsonFileStore()
+        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.raw_data_fixture: JsonDict = {}
+
     def setUp(self) -> None:
         # Anonymized data fixture based on provided structure
-        self.raw_data_fixture: Mapping[str, Any] = {
+        self.raw_data_fixture = {
             "111111111111111111": {  # Guild ID
                 "users": {
                     "222222222222222222": {  # User 1 (Blocked)

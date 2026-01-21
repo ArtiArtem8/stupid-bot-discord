@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import copy
 import unittest
-from typing import Any
+from collections.abc import Callable
 
 import config
 from repositories.volume_repository import VolumeData, VolumeRepository
+from utils.json_types import JsonObject
 
 config.MUSIC_DEFAULT_VOLUME = 100
 config.MUSIC_VOLUME_FILE = "mock_volume.json"
@@ -14,23 +15,28 @@ config.MUSIC_VOLUME_FILE = "mock_volume.json"
 class FakeAsyncJsonFileStore:
     """In-memory async store for testing."""
 
-    def __init__(self, initial_data: dict[str, Any] | None = None) -> None:
+    def __init__(self, initial_data: JsonObject | None = None) -> None:
         self._data = copy.deepcopy(initial_data or {})
 
-    async def read(self) -> dict[str, Any]:
+    async def read(self) -> JsonObject:
         return copy.deepcopy(self._data)
 
-    async def update(self, updater: Any) -> None:
+    async def update(self, updater: Callable[[JsonObject], None]) -> None:
         data = copy.deepcopy(self._data)
         updater(data)
         self._data = data
 
     @property
-    def data(self) -> dict[str, Any]:
+    def data(self) -> JsonObject:
         return copy.deepcopy(self._data)
 
 
 class TestVolumeRepository(unittest.IsolatedAsyncioTestCase):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.store = FakeAsyncJsonFileStore()
+        self.repo = VolumeRepository(store=self.store)  # type: ignore
+
     def setUp(self) -> None:
         self.store = FakeAsyncJsonFileStore()
         self.repo = VolumeRepository(store=self.store)  # type: ignore

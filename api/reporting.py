@@ -1,7 +1,7 @@
 import logging
 import uuid
 from datetime import datetime
-from typing import Self, TypedDict
+from typing import Self, TypedDict, cast
 
 import discord
 from discord import DMChannel, Interaction
@@ -9,6 +9,7 @@ from discord.ui import Modal, TextInput
 
 import config
 from utils import SafeEmbed
+from utils.json_types import JsonObject
 from utils.json_utils import get_json, save_json
 
 logger = logging.getLogger(__name__)
@@ -109,13 +110,17 @@ async def submit_report(interaction: Interaction, reason: str) -> str:
     """Main entry point: Saves report and notifies devs."""
     report = _build_report_data(interaction, reason)
 
-    data = get_json(config.REPORT_FILE) or {}
-    data.setdefault("reports", []).append(report)
+    data: JsonObject = get_json(config.REPORT_FILE) or {}
+    reports = data.get("reports")
+    if not isinstance(reports, list):
+        reports = []
+        data["reports"] = reports
+    reports.append(cast(JsonObject, cast(object, report)))
     save_json(config.REPORT_FILE, data)
     logger.info("New report: %s", report["report_id"])
 
     report_channel_id = data.get("report_channel_id")
-    if report_channel_id:
+    if isinstance(report_channel_id, int):
         channel = interaction.client.get_channel(report_channel_id)
         if isinstance(channel, discord.abc.Messageable):
             await channel.send(embed=_create_report_embed(report))

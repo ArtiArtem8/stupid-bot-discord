@@ -7,13 +7,13 @@ import discord
 import mafic
 from discord.ext import commands
 
-from api.music import RepeatMode
 from api.music.models import (
     PLAYER_FAIL_RESULT,
     MusicResult,
     MusicResultStatus,
     PlayResponseData,
     QueueSnapshot,
+    RepeatMode,
     RepeatModeData,
     RotateTrackData,
     SkipTrackData,

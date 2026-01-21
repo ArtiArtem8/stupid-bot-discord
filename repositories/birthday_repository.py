@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import cast, override
 
 import config
 from api.birthday_models import BirthdayGuildConfig, BirthdayGuildDict
 from repositories.base_repository import BaseRepository
 from utils import AsyncJsonFileStore
+from utils.json_types import JsonObject
 
 logger = logging.getLogger(__name__)
-
-type JsonDict = dict[str, Any]
 
 
 class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
@@ -19,6 +18,7 @@ class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
     def __init__(self, store: AsyncJsonFileStore | None = None) -> None:
         self._store = store or AsyncJsonFileStore(config.BIRTHDAY_FILE)
 
+    @override
     async def get(self, key: int) -> BirthdayGuildConfig | None:
         """Get guild config by guild_id."""
         data = await self._store.read()
@@ -31,9 +31,11 @@ class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
         if not isinstance(guild_data, dict):
             return None
 
-        # Safe cast assuming schema validity
-        return BirthdayGuildConfig.from_dict(key, cast(BirthdayGuildDict, guild_data))
+        return BirthdayGuildConfig.from_dict(
+            key, cast(BirthdayGuildDict, cast(object, guild_data))
+        )
 
+    @override
     async def get_all(self) -> list[BirthdayGuildConfig]:
         """Get all guild configs."""
         data = await self._store.read()
@@ -45,7 +47,7 @@ class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
 
             try:
                 config = BirthdayGuildConfig.from_dict(
-                    int(guild_key), cast(BirthdayGuildDict, guild_data)
+                    int(guild_key), cast(BirthdayGuildDict, cast(object, guild_data))
                 )
                 results.append(config)
             except Exception:
@@ -54,19 +56,21 @@ class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
 
         return results
 
+    @override
     async def save(self, entity: BirthdayGuildConfig, key: int | None = None) -> None:
         """Save a guild config."""
         guild_id = key if key is not None else entity.guild_id
 
-        def _updater(data: JsonDict) -> None:
-            data[str(guild_id)] = entity.to_dict()
+        def _updater(data: JsonObject) -> None:
+            data[str(guild_id)] = cast(JsonObject, cast(object, entity.to_dict()))
 
         await self._store.update(_updater)
 
+    @override
     async def delete(self, key: int) -> None:
         """Delete a guild config by guild_id."""
 
-        def _updater(data: JsonDict) -> None:
+        def _updater(data: JsonObject) -> None:
             data.pop(str(key), None)
 
         await self._store.update(_updater)

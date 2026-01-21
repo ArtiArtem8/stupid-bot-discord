@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 import discord
 import mafic
 from discord.ext import commands
 
+from api.music.protocols import HealerProtocol
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
@@ -15,13 +16,6 @@ if TYPE_CHECKING:
     from api.music.player import MusicPlayer
 
 logger = logging.getLogger(__name__)
-
-
-class HealerProtocol(Protocol):
-    async def capture_and_heal(self, guild_id: int) -> None: ...
-    async def cleanup_after_disconnect(
-        self, guild_id: int, is_healing: bool = False
-    ) -> None: ...
 
 
 class MusicEventHandlers:

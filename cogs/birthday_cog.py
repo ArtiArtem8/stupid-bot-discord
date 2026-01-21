@@ -13,7 +13,7 @@ Configuration:
 import logging
 import secrets
 from datetime import date
-from typing import Literal, Self
+from typing import Literal, Self, override
 
 import discord
 from discord import Interaction, app_commands
@@ -60,8 +60,6 @@ async def safe_role_edit(
                 await member.add_roles(role, reason="День рождения")
             case "remove":
                 await member.remove_roles(role, reason="День рождения прошел")
-            case _:
-                raise ValueError(f"Invalid operation: {operation}")
         return True
 
     except Forbidden:
@@ -96,7 +94,7 @@ class ConfirmDeleteView(discord.ui.View):
         self.guild_id = guild_id
 
     @discord.ui.button(label="Да", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: Interaction, button: Button[Self]):
+    async def confirm(self, interaction: Interaction, _: Button[Self]):
         if interaction.user.id != self.user_id:
             await FeedbackUI.send(
                 interaction,
@@ -146,7 +144,7 @@ class ConfirmDeleteView(discord.ui.View):
             )
 
     @discord.ui.button(label="Нет", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: Interaction, button: Button[Self]) -> None:
+    async def cancel(self, interaction: Interaction, _: Button[Self]) -> None:
         if interaction.user.id != self.user_id:
             await FeedbackUI.send(
                 interaction,
@@ -180,6 +178,7 @@ class BirthdayCog(BaseCog):
         super().__init__(bot)
         self.birthday_timer.start()
 
+    @override
     async def cog_unload(self):
         self.birthday_timer.cancel()
 

@@ -105,14 +105,14 @@ class AdminCog(BaseCog):
     @app_commands.command(name="error-test", description="Тестирование ошибок")
     @is_owner_app()
     @app_commands.default_permissions(administrator=True)
-    async def error(self, interaction: discord.Interaction) -> NoReturn:
+    async def error(self, _: discord.Interaction) -> NoReturn:
         raise RuntimeError("Test error")
 
     @app_commands.command(name="error-test-handled", description="Тестирование ошибок")
     @is_owner_app()
     @app_commands.default_permissions(administrator=True)
     @handle_errors()
-    async def error_handled(self, interaction: discord.Interaction) -> NoReturn:
+    async def error_handled(self, _: discord.Interaction) -> NoReturn:
         raise RuntimeError("Test handled error")
 
     @app_commands.command(
@@ -193,7 +193,7 @@ class AdminCog(BaseCog):
         if not user_entry or not user_entry.block_history:
             logger.info(
                 f"No block history found for user {user.id} "
-                f"in guild {guild.name} ({guild.id})"
+                + f"in guild {guild.name} ({guild.id})"
             )
             await FeedbackUI.send(
                 interaction,
@@ -205,7 +205,7 @@ class AdminCog(BaseCog):
 
         logger.info(
             f"Displaying block history for user {user.id} "
-            f"in guild {guild.name} ({guild.id})"
+            + f"in guild {guild.name} ({guild.id})"
         )
         embed = SafeEmbed(
             title="Полная история блокировок",
@@ -249,8 +249,8 @@ class AdminCog(BaseCog):
                 )
                 history_lines.append(
                     f"{icon} **{action}** {format_dt(timestamp, 'R')}\n"
-                    f"• Админ: <@{entry.admin_id}>\n"
-                    f"• Причина: {truncated_reason}"
+                    + f"• Админ: <@{entry.admin_id}>\n"
+                    + f"• Причина: {truncated_reason}"
                 )
 
             history_value = truncate_sequence(
@@ -349,7 +349,6 @@ class AdminCog(BaseCog):
             color=config.Color.INFO,
         )
 
-        unresolved_count = 0
         entries: list[str] = []
 
         for user_entry in blocked_users:
@@ -357,7 +356,6 @@ class AdminCog(BaseCog):
             if user is None:
                 user_info = f"Пользователь покинул сервер `{user_entry.user_id}`"
                 current_username = user_entry.current_username
-                unresolved_count += 1
             else:
                 user_info = f"{user.mention} `{user.id}`"
                 current_username = user.display_name
@@ -403,7 +401,13 @@ class AdminCog(BaseCog):
     async def delete_message(self, interaction: discord.Interaction, message_id: str):
         """Silently deletes a message by ID."""
         try:
-            msg = await interaction.channel.fetch_message(int(message_id))  # type: ignore
+            channel = interaction.channel
+            if channel is None or not isinstance(channel, discord.abc.Messageable):
+                await interaction.response.send_message(
+                    "Невозможно удалить сообщение в этом канале.", ephemeral=True
+                )
+                return
+            msg = await channel.fetch_message(int(message_id))
 
             await msg.delete()
             await interaction.response.send_message(
