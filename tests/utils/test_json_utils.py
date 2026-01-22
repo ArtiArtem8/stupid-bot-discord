@@ -1,3 +1,7 @@
+"""Tests for JSON file helpers.
+Covers load/save behaviors, backups, and clear/reset logic.
+"""
+
 from __future__ import annotations
 
 import json
@@ -5,6 +9,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import override
 from unittest.mock import patch
 
 import utils.json_utils as json_utils
@@ -26,11 +31,13 @@ class TestGenerateBackupFilename(unittest.TestCase):
 
 
 class TestGetJson(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self._tmp: TemporaryDirectory[str] = TemporaryDirectory()
         self._root: Path = Path(self._tmp.name)
         self._path: Path = self._root / "data.json"
 
+    @override
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
@@ -56,12 +63,14 @@ class TestGetJson(unittest.TestCase):
 
 
 class TestSaveJson(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self._tmp: TemporaryDirectory[str] = TemporaryDirectory()
         self._root: Path = Path(self._tmp.name)
         self._path: Path = self._root / "nested" / "repo.json"
         self._backup_dir: Path = self._root / "backups"
 
+    @override
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
@@ -113,6 +122,7 @@ class TestSaveJson(unittest.TestCase):
 
 
 class TestCreateBackup(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self._tmp: TemporaryDirectory[str] = TemporaryDirectory()
         self._root: Path = Path(self._tmp.name)
@@ -121,6 +131,7 @@ class TestCreateBackup(unittest.TestCase):
 
         self._file.write_text(json.dumps({"v": 1}), encoding="utf-8")
 
+    @override
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
@@ -128,7 +139,7 @@ class TestCreateBackup(unittest.TestCase):
         with patch(
             "utils.json_utils._generate_backup_filename", return_value="repo_BAK.json"
         ):
-            json_utils._create_backup(  # pyright: ignore[reportPrivateUsage]
+            json_utils._create_backup(
                 self._file, max_backups=3, backup_dir=self._backup_dir
             )
 
@@ -147,7 +158,7 @@ class TestCreateBackup(unittest.TestCase):
         with patch(
             "utils.json_utils._generate_backup_filename", return_value="repo_NEW.json"
         ):
-            json_utils._create_backup(  # pyright: ignore[reportPrivateUsage]
+            json_utils._create_backup(
                 self._file, max_backups=3, backup_dir=self._backup_dir
             )
 
@@ -157,12 +168,14 @@ class TestCreateBackup(unittest.TestCase):
 
 
 class TestClearJson(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self._tmp: TemporaryDirectory[str] = TemporaryDirectory()
         self._root: Path = Path(self._tmp.name)
         self._file: Path = self._root / "repo.json"
         self._backup_dir: Path = self._root / "backups"
 
+    @override
     def tearDown(self) -> None:
         self._tmp.cleanup()
 

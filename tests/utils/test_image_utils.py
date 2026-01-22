@@ -1,9 +1,13 @@
+"""Tests for image utility helpers.
+Covers download/convert/optimize flows and error handling.
+"""
+
 import shutil
 import tempfile
 import unittest
 from io import BytesIO
 from pathlib import Path
-from typing import cast
+from typing import cast, override
 from unittest.mock import MagicMock, Mock, patch
 
 import requests
@@ -19,10 +23,12 @@ from utils.image_utils import generate_unique_filename
 
 
 class TestImageUtils(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         """Create a temporary directory for test outputs."""
         self.test_dir = Path(tempfile.mkdtemp())
 
+    @override
     def tearDown(self) -> None:
         """Remove the temporary directory after tests."""
         shutil.rmtree(self.test_dir)

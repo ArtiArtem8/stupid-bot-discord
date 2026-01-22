@@ -1,5 +1,6 @@
 import logging
 import time
+from typing import override
 
 import discord
 from discord import Intents
@@ -54,6 +55,7 @@ class StupidBot(commands.Bot):
         """Saves the current uptime state to file."""
         return self.uptime_manager.save_state()
 
+    @override
     async def setup_hook(self) -> None:
         FeedbackUI.configure(handle_report_button)
         await self.cog_loader.load_cogs()

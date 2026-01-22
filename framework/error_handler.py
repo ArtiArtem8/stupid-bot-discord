@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from typing import override
 
 import discord
 from discord import Interaction, app_commands
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class CustomErrorCommandTree(app_commands.CommandTree):
+    @override
     async def on_error(
         self, interaction: Interaction, error: app_commands.AppCommandError
     ):

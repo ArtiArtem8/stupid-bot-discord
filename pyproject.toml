@@ -48,17 +48,18 @@ select = [
     "RUF", # Ruff-specific rules
 ]
 ignore = [
+    "C901",
     "D100",
     "D101",
     "D102",
     "D104",
     "D107",
-    "D205",
     "D203",
+    "D205",
     "D213",
     "D401",
-    "C901",
     "RUF001",
+    "S101",
 ]
 
 [tool.ruff.lint.isort]
@@ -81,11 +82,19 @@ reportUnknownVariableType = "none"
 reportMissingTypeStubs = "none"
 
 [[tool.pyright.executionEnvironments]]
-root = "."
+root = "tests"
+extraPaths = ["."]
 reportPrivateUsage = "none"
-reportUnusedExpression = "none"
-reportUnknownArgumentType = "none"
-reportMissingParameterType = "none"
+reportOptionalMemberAccess = "none"
+reportUninitializedInstanceVariable = "none"
+reportArgumentType = "none"
+reportAny = "none"
+reportExplicitAny = "none"
+
+[[tool.pyright.executionEnvironments]]
+root = "."
+enableExperimentalFeatures = true
+
 
 [dependency-groups]
 dev = ["monkeytype>=23.3.0", "pytest>=9.0.2", "ruff>=0.14.6"]

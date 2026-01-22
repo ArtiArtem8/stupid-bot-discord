@@ -1,10 +1,16 @@
+"""Tests for music state manager sessions and timers.
+Covers session lifecycle, timer control, and expiry detection.
+"""
+
 import time
 import unittest
+from typing import override
 
 from api.music.service.state_manager import StateManager
 
 
 class TestStateManager(unittest.TestCase):
+    @override
     def setUp(self):
         self.manager = StateManager()
 
@@ -22,9 +28,9 @@ class TestStateManager(unittest.TestCase):
 
         sess = self.manager.end_session(123)
         self.assertIsNotNone(sess)
-        self.assertEqual(sess.guild_id, 123)  # type: ignore
+        self.assertEqual(sess.guild_id, 123)
         self.assertIsNone(self.manager.get_session(123))
-        self.assertNotIn(123, self.manager._track_start_times_dt)  # pyright: ignore[reportPrivateUsage]
+        self.assertNotIn(123, self.manager._track_start_times_dt)
 
     def test_timers(self):
         self.manager.start_timer(123, "empty")
@@ -36,9 +42,6 @@ class TestStateManager(unittest.TestCase):
 
     def test_get_expired_timers(self):
         self.manager.start_timer(123, "test")
-        # Manipulation of time logic requires mocking time.monotonic OR sleeping.
-
-        # We can mock the timestamp stored
         self.manager.empty_channel_timers[123]["timestamp"] = time.monotonic() - 100
 
         expired = self.manager.get_expired_timers(timeout_duration=50)

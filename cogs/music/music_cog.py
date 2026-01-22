@@ -123,7 +123,7 @@ class MusicCog(BaseCog):
 
     @commands.Cog.listener()
     async def on_music_session_end(
-        self, guild_id: int, session: MusicSession, channel_id: int
+        self, _guild_id: int, session: MusicSession, channel_id: int
     ) -> None:
         """Handle music session end event."""
         channel = self.bot.get_channel(channel_id)
@@ -322,7 +322,7 @@ class MusicCog(BaseCog):
         if result.status is MusicResultStatus.ERROR:
             await send_error(interaction, message)
         else:
-            await send_warning(interaction, message, ephemeral=True)
+            await send_info(interaction, message)
         return False
 
     async def _resolve_play_response_data(
@@ -574,13 +574,15 @@ class MusicCog(BaseCog):
 
         new_mode = data.get("mode")
 
-        msg = (
-            "Повтор **отключён**"
-            if new_mode is RepeatMode.OFF
-            else "Повтор очереди **включён**"
-            if new_mode is RepeatMode.QUEUE
-            else "Повтор трека **включён**"
-        )
+        match new_mode:
+            case RepeatMode.OFF:
+                msg = "Повтор **отключён**"
+            case RepeatMode.QUEUE:
+                msg = "Повтор очереди **включён**"
+            case RepeatMode.TRACK:
+                msg = "Повтор трека **включён**"
+            case _:
+                msg = "Режим повтора **неизвестен**"
         color = (
             config.Color.WARNING if new_mode is RepeatMode.OFF else config.Color.SUCCESS
         )

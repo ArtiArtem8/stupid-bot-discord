@@ -1,6 +1,11 @@
+"""Tests for text utility helpers.
+Covers formatting, truncation, pagination, and deterministic answers.
+"""
+
 from __future__ import annotations
 
 import unittest
+from typing import override
 
 from utils.text_utils import (
     TextPaginator,
@@ -13,6 +18,7 @@ from utils.text_utils import (
 
 
 class TestTextUtils(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         str_local.cache_clear()
 

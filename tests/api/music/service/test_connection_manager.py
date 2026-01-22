@@ -1,5 +1,9 @@
+"""Tests for music connection manager behaviors.
+Covers node initialization, player retrieval, and join logic outcomes.
+"""
+
 import unittest
-from typing import Any
+from typing import Any, override
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
@@ -9,6 +13,7 @@ from api.music.service.connection_manager import ConnectionManager
 
 
 class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self):
         self.bot = MagicMock()
         self.bot.get_guild = MagicMock()
@@ -20,18 +25,16 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool_instance.create_node = AsyncMock()
         mock_pool_class.return_value = mock_pool_instance
 
-        # Create a new manager with the patched NodePool
         manager = ConnectionManager(self.bot)
 
         await manager.initialize()
 
-        self.assertTrue(manager._initialized)  # pyright: ignore[reportPrivateUsage]
+        self.assertTrue(manager._initialized)
         mock_pool_instance.create_node.assert_called_once()
 
     async def test_get_player_returns_player(self):
         guild_mock = MagicMock()
 
-        # Create a proper mock player
         class DummyPlayer:
             pass
 
@@ -47,12 +50,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
     async def test_join_already_connected(self):
         guild = MagicMock()
 
-        # Create proper voice channel mocks
         vc = MagicMock(spec=discord.VoiceClient)
         channel_mock = MagicMock(spec=discord.VoiceChannel)
         channel_mock.id = 100
 
-        # Use type() to set read-only property
         type(vc).channel = PropertyMock(return_value=channel_mock)
         guild.voice_client = vc
 

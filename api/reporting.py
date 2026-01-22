@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import logging
 import uuid
 from datetime import datetime
-from typing import Self, TypedDict, cast
+from typing import Self, TypedDict, cast, override
 
 import discord
 from discord import DMChannel, Interaction
@@ -9,7 +11,7 @@ from discord.ui import Modal, TextInput
 
 import config
 from utils import SafeEmbed
-from utils.json_types import JsonObject
+from utils.json_types import JsonObject, JsonValue
 from utils.json_utils import get_json, save_json
 
 logger = logging.getLogger(__name__)
@@ -115,7 +117,7 @@ async def submit_report(interaction: Interaction, reason: str) -> str:
     if not isinstance(reports, list):
         reports = []
         data["reports"] = reports
-    reports.append(cast(JsonObject, cast(object, report)))
+    reports.append(cast(JsonValue, cast(object, report)))
     save_json(config.REPORT_FILE, data)
     logger.info("New report: %s", report["report_id"])
 
@@ -148,6 +150,7 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
         if error_info:
             self.reason.default = error_info
 
+    @override
     async def on_submit(self, interaction: Interaction):
         report_id = await submit_report(interaction, self.reason.value)
 

@@ -1,3 +1,7 @@
+"""Pytest fixtures for shared test resources.
+Covers DI container, event bus, and session event loop setup.
+"""
+
 import asyncio
 from collections.abc import Generator
 

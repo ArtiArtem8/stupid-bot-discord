@@ -67,6 +67,7 @@ class QueuePaginationAdapter(PaginationData):
         self.snapshot = snapshot
         self._paginator = self._build_paginator(snapshot)
 
+    @override
     async def get_page_count(self) -> int:
         return max(1, len(self._paginator.pages))
 
@@ -78,6 +79,7 @@ class QueuePaginationAdapter(PaginationData):
             separator="\n",
         )
 
+    @override
     def make_embed(self, page: int) -> discord.Embed:
         embed = discord.Embed(title="Очередь воспроизведения", color=config.Color.INFO)
         current = self.snapshot.current
@@ -115,6 +117,7 @@ class QueuePaginationAdapter(PaginationData):
         )
         return embed
 
+    @override
     async def on_unauthorized(self, interaction: Interaction) -> None:
         await send_warning(
             interaction, "Попрошу не трогать, это не ваше сообщение.", ephemeral=True
@@ -159,13 +162,14 @@ class SessionPaginationAdapter(PaginationData):
         self.page_size = page_size
         self._paginator = self._build_paginator()
 
+    @override
     async def get_page_count(self) -> int:
         return max(1, len(self._paginator.pages))
 
     def _build_paginator(self) -> TextPaginator:
         lines = [
             (
-                f"{format_dt(t.timestamp, 'T')} • {i}. "
+                f"{format_dt(t.end_timestamp, 'T')} • {i}. "
                 f"{'~~' if t.skipped else ''}"
                 f"[{truncate_text(t.title, 45)}]({t.uri})"
                 f"{'~~' if t.skipped else ''} "
@@ -181,6 +185,7 @@ class SessionPaginationAdapter(PaginationData):
             separator="\n",
         )
 
+    @override
     def make_embed(self, page: int) -> discord.Embed:
         description = (
             self._paginator.pages[page]
@@ -201,6 +206,7 @@ class SessionPaginationAdapter(PaginationData):
         )
         return embed
 
+    @override
     async def on_unauthorized(self, interaction: Interaction) -> None:
         await send_warning(interaction, "Как ты этого добился?", ephemeral=True)
 
@@ -215,7 +221,7 @@ class SessionSummaryView(ui.View):
 
     @ui.button(label="История", style=discord.ButtonStyle.primary)
     async def view_full_button(
-        self, interaction: Interaction, button: ui.Button[Self]
+        self, interaction: Interaction, _: ui.Button[Self]
     ) -> None:
         total_tracks = len(self.session.tracks)
         if total_tracks == 0:
@@ -229,6 +235,7 @@ class SessionSummaryView(ui.View):
         await paginator.prepare()
         await paginator.send(interaction, ephemeral=True, silent=True)
 
+    @override
     async def on_timeout(self) -> None:
         if self.message:
             try:

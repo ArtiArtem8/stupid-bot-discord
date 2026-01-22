@@ -68,7 +68,7 @@ class StateManager:
             requester_id=requester_info.user_id if requester_info else None,
             channel_id=requester_info.channel_id if requester_info else None,
             skipped=skipped,
-            timestamp=start_time,
+            start_timestamp=start_time,
             thumbnail_url=track.artwork_url,
         )
         logger.debug("Recorded history: %s (Skipped: %s)", track.title, skipped)

@@ -123,7 +123,8 @@ class TrackInfo:
     requester_id: int | None = None
     channel_id: int | None = None
     thumbnail_url: str | None = None
-    timestamp: datetime = field(default_factory=utcnow)
+    start_timestamp: datetime | None = None
+    end_timestamp: datetime = field(default_factory=utcnow)
 
 
 @dataclass(slots=True, frozen=True)
@@ -184,7 +185,7 @@ class MusicSession:
         requester_id: int | None,
         channel_id: int | None,
         skipped: bool = False,
-        timestamp: datetime | None = None,
+        start_timestamp: datetime | None = None,
         thumbnail_url: str | None = None,
     ) -> None:
         """Add a track to the session."""
@@ -195,7 +196,8 @@ class MusicSession:
             requester_id=requester_id,
             channel_id=channel_id,
             thumbnail_url=thumbnail_url,
-            timestamp=utcnow(),  # Timestamp when the track has ended
+            start_timestamp=start_timestamp,
+            end_timestamp=utcnow(),  # Timestamp when the track has ended
         )
         self.tracks.append(track)
         self.participants.add(requester_id or 0)

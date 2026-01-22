@@ -3,7 +3,7 @@
 import functools
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
-from typing import Any, Concatenate, cast
+from typing import Concatenate, cast
 
 import discord
 from discord import Interaction
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 type AsyncFunc[T, **P] = Callable[P, Awaitable[T]]
 type CommandCallback[CogT, T, **P] = Callable[
     Concatenate[CogT, Interaction, P],
-    Coroutine[Any, Any, T],
+    Coroutine[object, object, T],
 ]
 
 

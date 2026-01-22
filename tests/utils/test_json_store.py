@@ -1,7 +1,5 @@
-"""Tests for utils/json_store.py module.
-
-This module tests the AsyncJsonFileStore class which provides
-thread-safe async read/write operations for JSON files with backup support.
+"""Tests for async JSON store utilities.
+Covers read/write/update flows, backups, and type aliases.
 """
 
 from __future__ import annotations
@@ -12,14 +10,27 @@ import random
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import override
 from unittest.mock import patch
 
 from utils.json_store import AsyncJsonFileStore, JsonDict, Updater
+from utils.json_types import JsonObject, JsonValue, is_json_object
+
+
+def _as_json_object(value: JsonValue) -> JsonObject:
+    assert is_json_object(value)
+    return value
+
+
+def _as_json_array(value: JsonValue) -> list[JsonValue]:
+    assert isinstance(value, list)
+    return value
 
 
 class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
     """Test cases for AsyncJsonFileStore class."""
 
+    @override
     def setUp(self) -> None:
         """Set up test fixtures with temporary directory."""
         self.temp_dir_obj = TemporaryDirectory()
@@ -29,6 +40,7 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
         self.test_file = self.temp_dir / f"test_data_{uuid}.json"
         self.backup_dir = self.temp_dir / "backups"
 
+    @override
     def tearDown(self) -> None:
         """Clean up temporary directory."""
         self.temp_dir_obj.cleanup()
@@ -77,8 +89,9 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
         await store.write(test_data)
 
         self.assertTrue(self.test_file.exists())
-        with open(self.test_file, encoding="utf-8") as f:
-            saved_data = json.load(f)
+        saved_data = json.loads(
+            await asyncio.to_thread(self.test_file.read_text, encoding="utf-8")
+        )
         self.assertEqual(saved_data, test_data)
 
     async def test_write_overwrites_existing_file(self) -> None:
@@ -96,8 +109,9 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
 
         await store.write(new_data)
 
-        with open(self.test_file, encoding="utf-8") as f:
-            saved_data = json.load(f)
+        saved_data = json.loads(
+            await asyncio.to_thread(self.test_file.read_text, encoding="utf-8")
+        )
         self.assertEqual(saved_data, new_data)
         self.assertNotEqual(saved_data, initial_data)
 
@@ -123,8 +137,9 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(backups), 1)
 
         # Verify backup contains old data
-        with open(backups[0], encoding="utf-8") as f:
-            backup_data = json.load(f)
+        backup_data = json.loads(
+            await asyncio.to_thread(backups[0].read_text, encoding="utf-8")
+        )
         self.assertEqual(backup_data, initial_data)
 
     async def test_write_respects_backup_amount(self) -> None:
@@ -219,7 +234,9 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
         )
 
         def updater(data: JsonDict) -> None:
-            data["count"] = data.get("count", 0) + 5
+            current = data.get("count")
+            current_value = current if isinstance(current, int) else 0
+            data["count"] = current_value + 5
             data["new_field"] = "added"
 
         result = await store.update(updater)
@@ -239,9 +256,10 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
         await store.write({"counter": 0})
 
         async def increment_updater(data: JsonDict) -> None:
-            current = data.get("counter", 0)
+            current = data.get("counter")
+            current_value = current if isinstance(current, int) else 0
             await asyncio.sleep(0.01)  # Simulate work
-            data["counter"] = current + 1
+            data["counter"] = current_value + 1
 
         # Run multiple concurrent updates
         await asyncio.gather(
@@ -366,10 +384,15 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
         result = await store.read()
 
         self.assertEqual(result, complex_data)
-        self.assertEqual(len(result["users"]), 2)
-        self.assertEqual(result["users"][0]["name"], "Alice")
-        self.assertEqual(result["metadata"]["config"]["timeout"], 30)
-        self.assertTrue(result["flags"]["enabled"])
+        users = _as_json_array(result["users"])
+        first_user = _as_json_object(users[0])
+        metadata = _as_json_object(result["metadata"])
+        config = _as_json_object(metadata["config"])
+        flags = _as_json_object(result["flags"])
+        self.assertEqual(len(users), 2)
+        self.assertEqual(first_user["name"], "Alice")
+        self.assertEqual(config["timeout"], 30)
+        self.assertTrue(flags["enabled"])
 
     async def test_update_with_exception_in_updater(self) -> None:
         """Test that exceptions in updater are propagated."""
@@ -378,7 +401,7 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
             backup_dir=self.backup_dir,
         )
 
-        def failing_updater(data: JsonDict) -> None:
+        def failing_updater(_: JsonDict) -> None:
             raise ValueError("Intentional error")
 
         with self.assertRaises(ValueError) as context:
@@ -397,7 +420,7 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
             backup_dir=self.backup_dir,
         )
 
-        self.assertIsNot(store1._lock, store2._lock)  # pyright: ignore[reportPrivateUsage]
+        self.assertIsNot(store1._lock, store2._lock)
 
     async def test_dataclass_slots_optimization(self) -> None:
         """Test that dataclass uses slots for memory optimization."""

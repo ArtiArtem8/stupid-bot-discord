@@ -26,7 +26,7 @@ class BirthdayUserDict(TypedDict):
 
     name: str
     birthday: str
-    was_congrats: list[str]
+    was_congrats: NotRequired[list[str]]
 
 
 class BirthdayGuildDict(TypedDict):

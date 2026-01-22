@@ -1,3 +1,7 @@
+"""Tests for birthday repository storage and queries.
+Covers guild config persistence, sorting helpers, and invalid data handling.
+"""
+
 from __future__ import annotations
 
 import copy
@@ -5,6 +9,7 @@ import logging
 import unittest
 from collections.abc import Callable
 from datetime import date
+from typing import override
 from unittest.mock import Mock
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
@@ -66,7 +71,6 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         entries = await config.get_sorted_birthday_list(
             mock_guild, ref_date, mock_logger
         )
-
         self.assertEqual(len(entries), 3)
         self.assertEqual(entries[0]["name"], "Alice")
         self.assertEqual(entries[1]["name"], "Bob")
@@ -214,14 +218,10 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
 class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
     """Test cases for BirthdayRepository CRUD operations."""
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.store = FakeAsyncJsonFileStore()
-        self.repo = BirthdayRepository(self.store)  # type: ignore
-
+    @override
     def setUp(self):
         self.store = FakeAsyncJsonFileStore()
-        self.repo = BirthdayRepository(self.store)  # type: ignore
+        self.repo = BirthdayRepository(self.store)
 
     async def test_save_and_get_guild(self):
         """Test saving a guild config and retrieving it."""
@@ -237,7 +237,7 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
         loaded = await self.repo.get(123)
 
         self.assertIsNotNone(loaded)
-        assert loaded is not None  # noqa: S101
+        assert loaded is not None
         self.assertEqual(loaded.server_name, "MyServer")
         self.assertEqual(loaded.channel_id, 456)
         self.assertEqual(loaded.birthday_role_id, 789)
@@ -281,7 +281,7 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
             "not_an_int": {},
             "3": {},  # Missing required fields (should trigger exception)
         }
-        self.repo = BirthdayRepository(FakeAsyncJsonFileStore(bad_data))  # type: ignore
+        self.repo = BirthdayRepository(FakeAsyncJsonFileStore(bad_data))
 
         # Suppress logging during this test
         logging.disable(logging.ERROR)
@@ -293,7 +293,3 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
         # Only guild "1" is valid
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].guild_id, 1)
-
-
-if __name__ == "__main__":
-    unittest.main()

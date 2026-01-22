@@ -1,12 +1,12 @@
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from os import PathLike
 from pathlib import Path
 
 from config import ENCODING
-from utils.json_types import JsonObject, JsonValue
+from utils.json_types import JsonEncodableObject, JsonObject
 from utils.json_utils import get_json, save_json
 
 type JsonDict = JsonObject
@@ -31,7 +31,7 @@ class AsyncJsonFileStore:
         data = await asyncio.to_thread(get_json, self.path, encoding=self.encoding)
         return data or {}
 
-    async def write(self, data: Mapping[str, JsonValue]) -> None:
+    async def write(self, data: JsonEncodableObject) -> None:
         await asyncio.to_thread(
             save_json,
             self.path,

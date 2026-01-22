@@ -1,7 +1,12 @@
+"""Tests for safe embed utilities and limits.
+Covers truncation, field limits, and fluent helper behavior.
+"""
+
 from __future__ import annotations
 
 import unittest
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from utils.embeds import EmbedLimits, SafeEmbed
 from utils.text_utils import truncate_text

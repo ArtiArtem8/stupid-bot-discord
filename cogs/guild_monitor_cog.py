@@ -1,6 +1,7 @@
 """Server monitoring cog for tracking and restoring member roles."""
 
 import logging
+from typing import override
 
 import discord
 from discord import app_commands
@@ -21,6 +22,7 @@ class ServerMonitorCog(BaseCog):
         super().__init__(bot)
         self.cleanup_task.start()
 
+    @override
     async def cog_unload(self) -> None:
         """Stop background tasks on unload."""
         self.cleanup_task.cancel()

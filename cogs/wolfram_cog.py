@@ -191,7 +191,7 @@ class WolframCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description="No displayable results found.\n"
-                "All results were filtered out.",
+                + "All results were filtered out.",
                 title=f"Query: `{query}`",
                 ephemeral=True,
             )

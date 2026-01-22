@@ -7,9 +7,20 @@ import config
 from api.birthday_models import BirthdayGuildConfig, BirthdayGuildDict
 from repositories.base_repository import BaseRepository
 from utils import AsyncJsonFileStore
-from utils.json_types import JsonObject
+from utils.json_types import JsonObject, JsonValue
 
 logger = logging.getLogger(__name__)
+
+
+def _decode_guild_config(guild_id: int, raw: object) -> BirthdayGuildConfig | None:
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return BirthdayGuildConfig.from_dict(
+            guild_id, cast(BirthdayGuildDict, cast(object, raw))
+        )
+    except (KeyError, ValueError, TypeError):
+        return None
 
 
 class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
@@ -27,13 +38,8 @@ class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
         if guild_key not in data:
             return None
 
-        guild_data = data[guild_key]
-        if not isinstance(guild_data, dict):
-            return None
-
-        return BirthdayGuildConfig.from_dict(
-            key, cast(BirthdayGuildDict, cast(object, guild_data))
-        )
+        guild_data = data.get(str(key))
+        return _decode_guild_config(key, guild_data)
 
     @override
     async def get_all(self) -> list[BirthdayGuildConfig]:
@@ -42,17 +48,15 @@ class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
         results: list[BirthdayGuildConfig] = []
 
         for guild_key, guild_data in data.items():
-            if not guild_key.isdigit() or not isinstance(guild_data, dict):
+            if not guild_key.isdigit():
                 continue
-
-            try:
-                config = BirthdayGuildConfig.from_dict(
-                    int(guild_key), cast(BirthdayGuildDict, cast(object, guild_data))
+            cfg = _decode_guild_config(int(guild_key), guild_data)
+            if cfg is None:
+                logger.warning(
+                    "Skipping invalid birthday config for guild %s", guild_key
                 )
-                results.append(config)
-            except Exception:
-                logger.error("Failed to load guild config %s", guild_key)
                 continue
+            results.append(cfg)
 
         return results
 
@@ -62,7 +66,7 @@ class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
         guild_id = key if key is not None else entity.guild_id
 
         def _updater(data: JsonObject) -> None:
-            data[str(guild_id)] = cast(JsonObject, cast(object, entity.to_dict()))
+            data[str(guild_id)] = cast(JsonValue, cast(object, entity.to_dict()))
 
         await self._store.update(_updater)
 

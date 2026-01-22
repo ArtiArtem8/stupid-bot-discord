@@ -2,14 +2,18 @@ import json
 import secrets
 import shutil
 import time
-from collections.abc import Mapping
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
 from string import ascii_letters, digits
 
 from config import BACKUP_DIR, ENCODING
-from utils.json_types import JsonObject, JsonValue, is_json_object
+from utils.json_types import (
+    JsonEncodableObject,
+    JsonObject,
+    freeze_json_object,
+    is_json_object,
+)
 
 
 def _generate_backup_filename(filename: Path, dt: datetime | None = None) -> str:
@@ -63,17 +67,15 @@ def get_json(
         return None
     try:
         with open(path, encoding=encoding) as data_file:
-            payload = json.load(fp=data_file)
-            if is_json_object(payload):
-                return payload
-            return None
+            payload: object = json.load(fp=data_file)  # pyright: ignore[reportAny]
+            return payload if is_json_object(payload) else None
     except (json.JSONDecodeError, OSError):
         return None
 
 
 def save_json(
     filename: str | PathLike[str],
-    data: Mapping[str, JsonValue],
+    data: JsonEncodableObject,
     backup_amount: int = 3,
     backup_dir: Path | None = None,
     encoding: str = ENCODING,
@@ -82,6 +84,7 @@ def save_json(
 
     Creates a backup of the file if it already exists and backup_amount > 0.
     """
+    payload = freeze_json_object(data)
     path = Path(filename)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -94,7 +97,9 @@ def save_json(
     for attempt in range(max_retries):
         try:
             with open(temp_path, "w", encoding=encoding) as outfile:
-                json.dump(data, outfile, sort_keys=True, indent=4, ensure_ascii=False)
+                json.dump(
+                    payload, outfile, sort_keys=True, indent=4, ensure_ascii=False
+                )
             temp_path.replace(path)
             return
         except OSError:

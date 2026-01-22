@@ -55,11 +55,14 @@ class ManagedView(discord.ui.View):
         *,
         ephemeral: bool = False,
         silent: bool = False,
-        **kwargs: Any,
+        **kwargs: Any,  # pyright: ignore[reportExplicitAny, reportAny]
     ) -> None:
         """Send the view and track the message."""
         response = await interaction.response.send_message(
-            view=self, ephemeral=ephemeral, silent=silent, **kwargs
+            view=self,
+            ephemeral=ephemeral,
+            silent=silent,
+            **kwargs,  # pyright: ignore[reportAny]
         )
         if isinstance(response.resource, discord.InteractionMessage):
             self._message = response.resource
@@ -198,7 +201,7 @@ class BasePaginator(ManagedView):
         *,
         ephemeral: bool = False,
         silent: bool = False,
-        **kwargs: Any,
+        **kwargs: Any,  # pyright: ignore[reportExplicitAny, reportAny]
     ) -> None:
         """Send the paginated message."""
         await super().send(

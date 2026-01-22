@@ -1,4 +1,6 @@
-"""Tests for birthday utility functions."""
+"""Tests for birthday utility helpers.
+Covers date parsing, leap-year handling, and birthday checks.
+"""
 
 import unittest
 from datetime import date

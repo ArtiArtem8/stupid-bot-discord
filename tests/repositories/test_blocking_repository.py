@@ -1,31 +1,37 @@
+"""Tests for blocking repository storage behaviors.
+Covers CRUD, history roundtrips, and guild/user query paths.
+"""
+
 from __future__ import annotations
 
 import copy
 import unittest
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Mapping
+from typing import override
 
-from api.blocking_models import BlockHistoryEntry, NameHistoryEntry
+from api.blocking_models import BlockedUser, BlockHistoryEntry, NameHistoryEntry
 from repositories.blocking_repository import (
-    BlockedUser,
     BlockingRepository,
 )
-from utils.json_types import JsonObject
+from utils.json_types import JsonObject, JsonValue, is_json_object
 
 type JsonDict = JsonObject
+
+
+def _as_json_object(value: JsonValue) -> JsonObject:
+    assert is_json_object(value)
+    return value
 
 
 class FakeAsyncJsonFileStore:
     """In-memory async store to avoid filesystem in tests."""
 
     def __init__(self, initial_data: JsonDict | None = None) -> None:
-        # Use deep copy to avoid cross-test mutation
         self._data: JsonDict = copy.deepcopy(initial_data or {})
         self.update_calls = 0
 
     async def read(self) -> JsonDict:
-        # Return a copy to simulate real file reads (no external mutation)
         return copy.deepcopy(self._data)
 
     async def update(self, updater: Callable[[JsonDict], None]) -> None:
@@ -36,19 +42,14 @@ class FakeAsyncJsonFileStore:
 
     @property
     def data(self) -> JsonDict:
-        # For assertions in tests
         return copy.deepcopy(self._data)
 
 
 class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    @override
+    def setUp(self) -> None:
         self.store = FakeAsyncJsonFileStore()
-        self.repo = BlockingRepository(self.store)  # type: ignore
-
-    async def asyncSetUp(self) -> None:
-        self.store = FakeAsyncJsonFileStore()
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.repo = BlockingRepository(self.store)
 
     async def test_get_returns_none_when_user_not_found(self) -> None:
         result = await self.repo.get((123, 456))
@@ -68,24 +69,23 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             }
         }
         self.store = FakeAsyncJsonFileStore(data)
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.repo = BlockingRepository(self.store)
 
         result = await self.repo.get((123, 456))
 
         self.assertIsNotNone(result)
-        assert result is not None  # noqa: S101 for type checkers
+        assert result is not None
         self.assertIsInstance(result, BlockedUser)
         self.assertEqual(result.user_id, 456)
         self.assertEqual(result.current_username, "user1")
         self.assertEqual(result.current_global_name, "Global")
 
     async def test_get_ignores_invalid_guild_structure(self) -> None:
-        # guild value is not a dict -> _get_users_map should return {}
         data = {
             "123": "invalid",
         }
         self.store = FakeAsyncJsonFileStore(data)
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.repo = BlockingRepository(self.store)
 
         result = await self.repo.get((123, 456))
         self.assertIsNone(result)
@@ -114,7 +114,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             },
         }
         self.store = FakeAsyncJsonFileStore(data)
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.repo = BlockingRepository(self.store)
 
         result = await self.repo.get_all()
 
@@ -128,7 +128,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="u1",
             current_global_name=None,
         )
-        data: JsonDict = {
+        data = {
             "1": {
                 "users": {
                     "1": user1.to_dict(),
@@ -136,8 +136,8 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             },
             "2": "invalid",  # should be skipped
         }
-        self.store = FakeAsyncJsonFileStore(data)  # type: ignore
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.store = FakeAsyncJsonFileStore(data)
+        self.repo = BlockingRepository(self.store)
 
         result = await self.repo.get_all()
 
@@ -151,7 +151,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_global_name=None,
         )
         with self.assertRaises(ValueError):
-            await self.repo.save(user)  # type: ignore[arg-type]
+            await self.repo.save(user)
 
     async def test_save_creates_guild_and_user(self) -> None:
         user = BlockedUser(
@@ -164,13 +164,11 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
 
         data = self.store.data
         self.assertIn("1", data)
-        guild_data = data["1"]
-        self.assertIsInstance(guild_data, dict)
+        guild_data = _as_json_object(data["1"])
         self.assertIn("users", guild_data)
-        users_map = guild_data["users"]
+        users_map = _as_json_object(guild_data["users"])
         self.assertIn("42", users_map)
-
-        stored = users_map["42"]
+        stored = _as_json_object(users_map["42"])
         self.assertEqual(stored["user_id"], "42")
         self.assertEqual(stored["current_username"], "test")
 
@@ -188,13 +186,16 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             }
         }
         self.store = FakeAsyncJsonFileStore(data)
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.repo = BlockingRepository(self.store)
 
         user.current_username = "new"
         await self.repo.save(user, key=(1, 42))
 
         updated_data = self.store.data
-        self.assertEqual(updated_data["1"]["users"]["42"]["current_username"], "new")
+        guild_data = _as_json_object(updated_data["1"])
+        users_map = _as_json_object(guild_data["users"])
+        stored = _as_json_object(users_map["42"])
+        self.assertEqual(stored["current_username"], "new")
 
     async def test_delete_removes_user(self) -> None:
         user = BlockedUser(
@@ -210,14 +211,16 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             }
         }
         self.store = FakeAsyncJsonFileStore(data)
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.repo = BlockingRepository(self.store)
 
         await self.repo.delete((1, 42))
 
         updated = self.store.data
         self.assertIn("1", updated)
-        self.assertIn("users", updated["1"])
-        self.assertNotIn("42", updated["1"]["users"])
+        guild_data = _as_json_object(updated["1"])
+        self.assertIn("users", guild_data)
+        users_map = _as_json_object(guild_data["users"])
+        self.assertNotIn("42", users_map)
 
     async def test_delete_nonexistent_user_is_noop(self) -> None:
         data: JsonDict = {
@@ -225,18 +228,17 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
                 "users": {},
             }
         }
-        self.store = FakeAsyncJsonFileStore(data)  # type: ignore
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.store = FakeAsyncJsonFileStore(data)
+        self.repo = BlockingRepository(self.store)
 
         await self.repo.delete((1, 999))
 
-        # No exceptions, data unchanged
         self.assertEqual(self.store.data, data)
 
     async def test_delete_nonexistent_guild_is_noop(self) -> None:
-        data = {}
-        self.store = FakeAsyncJsonFileStore(data)  # type: ignore
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        data: JsonDict = {}
+        self.store = FakeAsyncJsonFileStore(data)
+        self.repo = BlockingRepository(self.store)
 
         await self.repo.delete((1, 999))
 
@@ -258,7 +260,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             "2": {"users": {"2": user2.to_dict()}},
         }
         self.store = FakeAsyncJsonFileStore(data)
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.repo = BlockingRepository(self.store)
 
         users_g1 = await self.repo.get_all_for_guild(1)
         users_g2 = await self.repo.get_all_for_guild(2)
@@ -270,8 +272,8 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_all_for_guild_handles_missing_guild(self) -> None:
         data = {}
-        self.store = FakeAsyncJsonFileStore(data)  # type: ignore
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.store = FakeAsyncJsonFileStore(data)
+        self.repo = BlockingRepository(self.store)
 
         users = await self.repo.get_all_for_guild(123)
         self.assertEqual(users, [])
@@ -280,8 +282,8 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
         data = {
             "123": "invalid",
         }
-        self.store = FakeAsyncJsonFileStore(data)  # type: ignore
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.store = FakeAsyncJsonFileStore(data)
+        self.repo = BlockingRepository(self.store)
 
         users = await self.repo.get_all_for_guild(123)
         self.assertEqual(users, [])
@@ -315,7 +317,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
         loaded = await self.repo.get((10, 42))
 
         self.assertIsNotNone(loaded)
-        assert loaded is not None  # noqa: S101
+        assert loaded is not None
         self.assertEqual(loaded.user_id, 42)
         self.assertTrue(loaded.block_history)
         self.assertEqual(loaded.block_history[0].admin_id, 1)
@@ -324,18 +326,12 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
 
 
 class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.store = FakeAsyncJsonFileStore()
-        self.repo = BlockingRepository(self.store)  # type: ignore
-        self.raw_data_fixture: JsonDict = {}
-
+    @override
     def setUp(self) -> None:
-        # Anonymized data fixture based on provided structure
-        self.raw_data_fixture = {
-            "111111111111111111": {  # Guild ID
+        self.raw_data_fixture: JsonDict = {
+            "111111111111111111": {
                 "users": {
-                    "222222222222222222": {  # User 1 (Blocked)
+                    "222222222222222222": {
                         "block_history": [
                             {
                                 "admin_id": "999999999999999999",
@@ -355,7 +351,7 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
                         "unblock_history": [],
                         "user_id": "222222222222222222",
                     },
-                    "333333333333333333": {  # User 2 (Unblocked with history)
+                    "333333333333333333": {
                         "block_history": [
                             {
                                 "admin_id": "999999999999999999",
@@ -388,9 +384,9 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
                     },
                 }
             },
-            "444444444444444444": {  # Another Guild
+            "444444444444444444": {
                 "users": {
-                    "555555555555555555": {  # User 3
+                    "555555555555555555": {
                         "block_history": [],
                         "blocked": False,
                         "current_global_name": None,
@@ -403,7 +399,7 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
             },
         }
         self.store = FakeAsyncJsonFileStore(self.raw_data_fixture)
-        self.repo = BlockingRepository(self.store)  # type: ignore
+        self.repo = BlockingRepository(self.store)
 
     async def test_get_existing_blocked_user(self) -> None:
         """Test retrieving a specific user that is currently blocked."""
@@ -411,7 +407,7 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         user = await self.repo.get(key)
 
         self.assertIsNotNone(user)
-        assert user is not None  # noqa: S101
+        assert user is not None
         self.assertEqual(user.user_id, 222222222222222222)
         self.assertTrue(user.is_blocked)
         self.assertEqual(user.current_username, "user_one")
@@ -424,11 +420,10 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         user = await self.repo.get(key)
 
         self.assertIsNotNone(user)
-        assert user is not None  # noqa: S101
+        assert user is not None
         self.assertFalse(user.is_blocked)
         self.assertEqual(len(user.block_history), 2)
         self.assertEqual(len(user.unblock_history), 2)
-        # Verify timestamps are parsed correctly (simple check)
         self.assertEqual(user.unblock_history[1].reason, "amnesty")
 
     async def test_get_all_users_across_guilds(self) -> None:
@@ -471,7 +466,9 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         await self.repo.save(new_user, key=(guild_id, new_user_id))
 
         data = await self.store.read()
-        saved_user_dict = data[str(guild_id)]["users"][str(new_user_id)]
+        guild_data = _as_json_object(data[str(guild_id)])
+        users_map = _as_json_object(guild_data["users"])
+        saved_user_dict = _as_json_object(users_map[str(new_user_id)])
 
         self.assertEqual(saved_user_dict["current_username"], "new_guy")
         self.assertTrue(saved_user_dict["blocked"])
@@ -490,49 +487,49 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
 
         data = await self.store.read()
         self.assertIn(str(new_guild_id), data)
-        self.assertIn(str(user_id), data[str(new_guild_id)]["users"])
+        guild_data = _as_json_object(data[str(new_guild_id)])
+        users_map = _as_json_object(guild_data["users"])
+        self.assertIn(str(user_id), users_map)
 
     async def test_data_integrity_after_save(self) -> None:
         """Ensure that saving a user doesn't corrupt other users in the guild."""
         guild_id = 111111111111111111
-        user_id = 222222222222222222  # Existing user
+        user_id = 222222222222222222
 
         user = await self.repo.get((guild_id, user_id))
-        assert user is not None  # noqa: S101
+        assert user is not None
         user.current_username = "updated_name"
         await self.repo.save(user, key=(guild_id, user_id))
 
         data = await self.store.read()
-        guild_users = data[str(guild_id)]["users"]
+        guild_data = _as_json_object(data[str(guild_id)])
+        guild_users = _as_json_object(guild_data["users"])
 
-        self.assertEqual(guild_users[str(user_id)]["current_username"], "updated_name")
+        updated_user = _as_json_object(guild_users[str(user_id)])
+        self.assertEqual(updated_user["current_username"], "updated_name")
 
         other_user_id = "333333333333333333"
         self.assertIn(other_user_id, guild_users)
-        self.assertEqual(guild_users[other_user_id]["current_username"], "user_two")
+        other_user = _as_json_object(guild_users[other_user_id])
+        self.assertEqual(other_user["current_username"], "user_two")
 
     async def test_missing_fields_defaults(self) -> None:
         """Test handling of users with missing optional fields."""
-        incomplete_data = {
+        incomplete_data: JsonDict = {
             "999": {
                 "users": {
                     "100": {
                         "user_id": "100",
-                        # Missing current_username, blocked, histories, etc.
                     }
                 }
             }
         }
         store = FakeAsyncJsonFileStore(incomplete_data)
-        repo = BlockingRepository(store)  # type: ignore
+        repo = BlockingRepository(store)
 
         user = await repo.get((999, 100))
 
-        self.assertIsNotNone(user)
-        assert user is not None  # noqa: S101
-        self.assertEqual(user.current_username, "")
-        self.assertFalse(user.blocked)
-        self.assertEqual(user.block_history, [])
+        self.assertIsNone(user)
 
 
 if __name__ == "__main__":

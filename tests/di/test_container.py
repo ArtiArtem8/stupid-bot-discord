@@ -1,9 +1,13 @@
+"""Tests for dependency injection container behavior.
+Covers registration, resolution, lifecycles, and concurrency safety.
+"""
+
 from __future__ import annotations
 
 import threading
 import time
 import unittest
-from typing import Protocol
+from typing import Protocol, override
 
 from di.container import (
     CircularDependencyError,
@@ -83,6 +87,7 @@ class SimpleService:
 
 
 class TestContainerRegistration(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.container = Container()
 
@@ -115,7 +120,7 @@ class TestContainerRegistration(unittest.TestCase):
 
     def test_registration_with_non_class_implementation_raises_error(self) -> None:
         with self.assertRaises(RegistrationError) as ctx:
-            self.container.register(IRepository, "not_a_class")  # type: ignore
+            self.container.register(IRepository, "not_a_class")
         self.assertIn("must be a class", str(ctx.exception))
 
     def test_transient_lifecycle_registration(self) -> None:
@@ -138,6 +143,7 @@ class TestContainerRegistration(unittest.TestCase):
 
 
 class TestContainerResolution(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.container = Container()
         SimpleService.instance_count = 0
@@ -163,7 +169,7 @@ class TestContainerResolution(unittest.TestCase):
     def test_resolve_with_factory(self) -> None:
         call_count = 0
 
-        def factory(c: Container) -> MemoryRepository:
+        def factory(_: Container) -> MemoryRepository:
             nonlocal call_count
             call_count += 1
             return MemoryRepository()
@@ -202,6 +208,7 @@ class TestContainerResolution(unittest.TestCase):
 
 
 class TestOptionalDependencies(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.container = Container()
 
@@ -219,8 +226,8 @@ class TestOptionalDependencies(unittest.TestCase):
         self.assertFalse(service.has_repo())
 
     def test_resolve_optional_type_directly_returns_none(self) -> None:
-        result = self.container.resolve(IRepository | None)  # type: ignore
-        self.assertIsNone(result)  # type: ignore
+        result = self.container.resolve(IRepository | None)
+        self.assertIsNone(result)
 
     def test_default_parameter_used_when_dependency_not_found(self) -> None:
         self.container.register(DefaultValueService)
@@ -229,6 +236,7 @@ class TestOptionalDependencies(unittest.TestCase):
 
 
 class TestCircularDependencies(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.container = Container()
 
@@ -246,6 +254,7 @@ class TestCircularDependencies(unittest.TestCase):
 
 
 class TestThreadSafety(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.container = Container()
         SimpleService.instance_count = 0
@@ -314,7 +323,7 @@ class TestThreadSafety(unittest.TestCase):
             # Resolve it
             instance = self.container.resolve(service_type)
             with lock:
-                results.append(instance.value == index)  # type: ignore
+                results.append(instance.value == index)  # pyright: ignore[reportUnknownArgumentType, reportAttributeAccessIssue]
 
         threads = [
             threading.Thread(target=register_and_resolve, args=(i,)) for i in range(5)
@@ -328,6 +337,7 @@ class TestThreadSafety(unittest.TestCase):
 
 
 class TestContainerUtilities(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.container = Container()
 
@@ -359,7 +369,7 @@ class TestContainerUtilities(unittest.TestCase):
 
     def test_is_registered_handles_optional_types(self) -> None:
         self.container.register(MemoryRepository)
-        self.assertTrue(self.container.is_registered(MemoryRepository | None))  # type: ignore
+        self.assertTrue(self.container.is_registered(MemoryRepository | None))
 
     def test_clear_removes_all_registrations_and_instances(self) -> None:
         self.container.register(MemoryRepository, lifecycle=Lifecycle.SINGLETON)
@@ -408,6 +418,7 @@ class TestContainerUtilities(unittest.TestCase):
 
 
 class TestFactoryWithContainerAccess(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.container = Container()
 
@@ -428,7 +439,7 @@ class TestFactoryWithContainerAccess(unittest.TestCase):
     def test_factory_respects_lifecycle(self) -> None:
         call_count = 0
 
-        def factory(c: Container) -> SimpleService:
+        def factory(_: Container) -> SimpleService:
             nonlocal call_count
             call_count += 1
             return SimpleService()
@@ -448,6 +459,7 @@ class TestFactoryWithContainerAccess(unittest.TestCase):
 
 
 class TestEdgeCases(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.container = Container()
 

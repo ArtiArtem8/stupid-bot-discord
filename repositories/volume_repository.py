@@ -21,20 +21,31 @@ class VolumeRepository(BaseRepository[VolumeData, int]):
 
     @override
     async def get(self, key: int) -> VolumeData | None:
+        """Get guild config by guild_id."""
         data = await self._store.read()
         raw = data.get(str(key))
         if raw is None:
             return None
-        if not isinstance(raw, (int, str, float, bool)):
+        if isinstance(raw, bool):
             return None
-        return VolumeData(guild_id=key, volume=int(raw))
+        if not isinstance(raw, (int, float, str)):
+            return None
+        try:
+            vol = int(raw)
+        except (ValueError, TypeError):
+            return None
+        return VolumeData(guild_id=key, volume=vol)
 
     @override
     async def get_all(self) -> list[VolumeData]:
         data = await self._store.read()
         results: list[VolumeData] = []
         for gid, vol in data.items():
-            if not gid.isdigit() or not isinstance(vol, (int, str, float, bool)):
+            if (
+                not gid.isdigit()
+                or not isinstance(vol, (int, str, float))
+                or isinstance(vol, bool)
+            ):
                 continue
             results.append(VolumeData(guild_id=int(gid), volume=int(vol)))
         return results
@@ -54,5 +65,6 @@ class VolumeRepository(BaseRepository[VolumeData, int]):
         await self._store.update(_upd)
 
     async def get_volume(self, guild_id: int) -> int:
+        """Get the volume for a guild, or the default if not set."""
         entity = await self.get(guild_id)
         return entity.volume if entity else config.MUSIC_DEFAULT_VOLUME

@@ -6,7 +6,6 @@ Listens to messages and responds to greetings.
 import logging
 import secrets
 from collections.abc import Callable, Iterable, Sequence, Sized
-from typing import Any
 
 from discord import Message
 from discord.ext import commands
@@ -43,19 +42,19 @@ class OnMessageCog(commands.Cog):
         except Exception as e:
             logger.error("Failed to process message %s: %s", message.content, e)
 
-    def _format_change(self, attr: str, before: Any, after: Any) -> str:
+    def _format_change(self, attr: str, before: object, after: object) -> str:
         """Smart diff formatting by type."""
         if type(before) is not type(after):
             return (
                 f"{attr} (type changed): "
                 f"{type(before).__name__} -> {type(after).__name__}"
             )
-        elif isinstance(before, str):
+        elif isinstance(before, str) and isinstance(after, str):
             return (
                 f"{attr}: '{truncate_text(before, 100, mode='middle')}'"
                 f" -> '{truncate_text(after, 100, mode='middle')}'"
             )
-        elif isinstance(before, Sized):
+        elif isinstance(before, Sized) and isinstance(after, Sized):
             return f"{attr}: {len(before)} -> {len(after)}"
         elif isinstance(before, bool):
             return f"{attr}: {before} -> {after}"
@@ -177,7 +176,7 @@ class OnMessageCog(commands.Cog):
 
     def _log_message(self, message: Message, *, is_edit: bool = False) -> None:
         """Log message with structured INFO summaries and lazy DEBUG details."""
-        content_flags: dict[str, Any] = {
+        content_flags: dict[str, object] = {
             "attachments": message.attachments,
             "embeds": message.embeds,
             "stickers": message.stickers,
