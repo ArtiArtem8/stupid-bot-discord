@@ -7,14 +7,14 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Coroutine
-from typing import TYPE_CHECKING, Any, Self, override
+from typing import TYPE_CHECKING, Self, override
 
 import discord
 import mafic
 from discord import Interaction, ui
 from discord.abc import PrivateChannel
 from discord.ext import commands
-from discord.utils import format_dt
+from discord.utils import escape_markdown, format_dt
 
 import config
 from api.music import (
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from api.music import MusicPlayer, Track
 
 logger = logging.getLogger(__name__)
+
 MUSIC_PLAYER_EMOJIS = {
     # Bar Components
     "bar_left_full": "<:whitelineleftrounded:1447917292766626005>",
@@ -87,7 +88,7 @@ class QueuePaginationAdapter(PaginationData):
         if current:
             embed.add_field(
                 name="Сейчас играет",
-                value=f"[{current.title}]({current.uri})",
+                value=f"[{escape_markdown(current.title)}]({current.uri})",
                 inline=False,
             )
             if current.artwork_url:
@@ -171,7 +172,7 @@ class SessionPaginationAdapter(PaginationData):
             (
                 f"{format_dt(t.end_timestamp, 'T')} • {i}. "
                 f"{'~~' if t.skipped else ''}"
-                f"[{truncate_text(t.title, 45)}]({t.uri})"
+                f"[{escape_markdown(truncate_text(t.title, 45))}]({t.uri})"
                 f"{'~~' if t.skipped else ''} "
                 f"{f'(<@{t.requester_id}>)' if t.requester_id else ''}"
             )
@@ -392,7 +393,7 @@ class TrackControllerManager(ControllerManagerProtocol):
 
 type ButtonCallback = Callable[
     ["TrackControllerView", Interaction, ui.Button["TrackControllerView"]],
-    Coroutine[Any, Any, None],
+    Coroutine[object, object, None],
 ]
 
 
@@ -461,7 +462,7 @@ class TrackControllerView(ui.View):
         """Stops the updater loop and interaction."""
         logger.debug("Stopping %s", self.__class__.__name__)
         self._running = False
-        if self._task:
+        if self._task and self._task is not asyncio.current_task():
             self._task.cancel()
         super().stop()
 
@@ -543,59 +544,86 @@ class TrackControllerView(ui.View):
                 current_track = self.player.current
 
                 if not current_track:
-                    failure_count += 1
-                    if failure_count >= MAX_FAILURES:
-                        logger.debug("View: Player empty. Requesting stop.")
-                        self.stop()
-                        if self.on_stop_callback:
-                            await self.on_stop_callback(self)
+                    failure_count = await self._handle_missing_track(
+                        failure_count, MAX_FAILURES
+                    )
+                    if failure_count is None:
                         return
                     continue
 
-                current_id = TrackId.from_track(current_track)
-                if current_id != self.track_id:
-                    logger.debug(
-                        "View: Track changed (%s -> %s). Requesting stop.",
-                        self.track_id,
-                        current_id,
-                    )
-                    self.stop()
-                    if self.on_stop_callback:
-                        await self.on_stop_callback(self)
+                if await self._handle_track_change(current_track):
                     return
 
                 failure_count = 0
 
-                is_paused = self.player.paused
-
-                if is_paused:
-                    if not self._is_paused_cache:
-                        self._is_paused_cache = True
-                        self._pause_start_time = time.monotonic()
-                        self._frozen_position = self.player.position or 0
-                        await self._safe_update(force=True)
-                    else:
-                        if self._pause_start_time and (
-                            time.monotonic() - self._pause_start_time
-                            > self._max_pause_duration
-                        ):
-                            logger.debug("View: Paused too long. Requesting stop.")
-                            self.stop()
-                            if self.on_stop_callback:
-                                await self.on_stop_callback(self)
-                            return
-                else:
-                    if self._is_paused_cache:
-                        self._is_paused_cache = False
-                        self._pause_start_time = None
-                        await self._safe_update(force=True)
-                    else:
-                        await self._safe_update()
+                if await self._handle_pause_state():
+                    return
 
         except asyncio.CancelledError:
-            pass
+            logger.debug("View Loop Cancelled")
+            raise
         except Exception as e:
             logger.exception(f"View Loop Error: {e}")
+
+    async def _request_stop(self) -> None:
+        self.stop()
+        if self.on_stop_callback:
+            await self.on_stop_callback(self)
+
+    async def _handle_missing_track(
+        self, failure_count: int, max_failures: int
+    ) -> int | None:
+        failure_count += 1
+        if failure_count >= max_failures:
+            logger.debug("View: Player empty. Requesting stop.")
+            await self._request_stop()
+            return None
+        return failure_count
+
+    async def _handle_track_change(self, current_track: Track) -> bool:
+        current_id = TrackId.from_track(current_track)
+        if current_id == self.track_id:
+            return False
+
+        logger.debug(
+            "View: Track changed (%s -> %s). Requesting stop.",
+            self.track_id,
+            current_id,
+        )
+        await self._request_stop()
+        return True
+
+    async def _handle_pause_state(self) -> bool:
+        if self.player.paused:
+            return await self._handle_paused_state()
+        return await self._handle_resumed_state()
+
+    async def _handle_paused_state(self) -> bool:
+        if not self._is_paused_cache:
+            self._is_paused_cache = True
+            self._pause_start_time = time.monotonic()
+            self._frozen_position = self.player.position or 0
+            await self._safe_update(force=True)
+            return False
+
+        if self._pause_start_time and (
+            time.monotonic() - self._pause_start_time > self._max_pause_duration
+        ):
+            logger.debug("View: Paused too long. Requesting stop.")
+            await self._request_stop()
+            return True
+
+        return False
+
+    async def _handle_resumed_state(self) -> bool:
+        if self._is_paused_cache:
+            self._is_paused_cache = False
+            self._pause_start_time = None
+            await self._safe_update(force=True)
+            return False
+
+        await self._safe_update()
+        return False
 
     def update_buttons_state(self):
         for child in self.children:

@@ -88,7 +88,7 @@ class VoiceCheckResult(StrEnum):
     ALREADY_CONNECTED = auto()
     CHANNEL_EMPTY = auto()
     CONNECTION_FAILED = auto()
-    INVALID_CHANNEL_TYPE = auto()
+    TIMEOUT = auto()
     MOVED_CHANNELS = auto()
     SUCCESS = auto()
     USER_NOT_IN_VOICE = auto()
@@ -161,6 +161,18 @@ class TrackGroup:
     uri: str
     skipped: bool
     count: int
+
+
+@dataclass(frozen=True, slots=True)
+class TrackExceptionPayload:
+    """Payload for track exception events dispatched to the bot layer."""
+
+    guild_id: int
+    track: Track
+    reason: str
+    severity: str | None
+    requester_id: int | None
+    channel_id: int | None
 
 
 @dataclass

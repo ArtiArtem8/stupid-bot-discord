@@ -57,7 +57,11 @@ class StateManager:
             return
 
         skipped = False
-        if reason is mafic.EndReason.STOPPED or reason is mafic.EndReason.REPLACED:
+        if (
+            reason is mafic.EndReason.STOPPED
+            or reason is mafic.EndReason.REPLACED
+            or reason is mafic.EndReason.LOAD_FAILED
+        ):
             skipped = True
 
         requester_info = player.get_requester(track)

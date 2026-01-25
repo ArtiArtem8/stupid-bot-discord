@@ -11,6 +11,7 @@ from api.music.protocols import ControllerManagerProtocol
 from api.music.service.state_manager import StateManager
 
 if TYPE_CHECKING:
+    from api.music.models import TrackRequester
     from api.music.player import MusicPlayer
 
 logger = logging.getLogger(__name__)
@@ -29,14 +30,15 @@ class UIOrchestrator:
         self.controller = controller_manager
         self.state = state_manager
 
-    async def spawn_controller(self, player: MusicPlayer, track: mafic.Track) -> None:
-        """Helper to safely spawn a UI controller."""
+    def _resolve_channel(
+        self, player: MusicPlayer, track: mafic.Track
+    ) -> tuple[discord.abc.Messageable, TrackRequester] | None:
+        """Resolve the best messageable channel for a track."""
         requester_info = player.get_requester(track)
         if not requester_info:
             logger.debug("No requester found for track: %s", track.title)
-            return
+            return None
 
-        # Determine best channel: Explicit > Most Used
         channel_id = requester_info.channel_id
         if not channel_id:
             session = self.state.get_session(player.guild.id)
@@ -47,12 +49,22 @@ class UIOrchestrator:
 
         if not channel_id:
             logger.debug("No channel found for track: %s", track.title)
-            return
+            return None
 
         channel = self.bot.get_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             logger.debug("No channel found for track: %s", track.title)
+            return None
+
+        return channel, requester_info
+
+    async def spawn_controller(self, player: MusicPlayer, track: mafic.Track) -> None:
+        """Helper to safely spawn a UI controller."""
+        resolved = self._resolve_channel(player, track)
+        if not resolved:
             return
+
+        channel, requester_info = resolved
 
         # Only show controller for tracks > 45s and < 2**63 - 1 ms
         if track.length <= 45_000 or track.stream:

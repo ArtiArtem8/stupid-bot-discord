@@ -1,5 +1,6 @@
 """Music Cog Controller."""
 
+import asyncio
 import logging
 from collections.abc import Sequence
 from itertools import groupby
@@ -25,6 +26,7 @@ from api.music.models import (
     MusicResult,
     PlaylistResponseData,
     PlayResponseData,
+    TrackExceptionPayload,
     TrackResponseData,
 )
 from api.music.protocols import ControllerManagerProtocol, HealerProtocol
@@ -67,7 +69,7 @@ def _format_voice_result_message(
         VoiceCheckResult.ALREADY_CONNECTED: "Уже подключён к {0}",
         VoiceCheckResult.CHANNEL_EMPTY: "Голосовой канал {0} пуст!",
         VoiceCheckResult.CONNECTION_FAILED: "Ошибка подключения к {0}",
-        VoiceCheckResult.INVALID_CHANNEL_TYPE: "Неверный тип голосового канала"
+        VoiceCheckResult.TIMEOUT: "Время подключения к {0} **истекло**"
         + "\n*Попробуйте сменить регион этого канала!*",
         VoiceCheckResult.MOVED_CHANNELS: "Переместился {1} -> {0}",
         VoiceCheckResult.SUCCESS: "Успешно подключился к {0}",
@@ -86,6 +88,8 @@ class MusicCog(BaseCog):
 
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
+
+        self._recent_track_exceptions: dict[int, set[str]] = {}
 
         # Dependency Injection Setup
         self.container = Container()
@@ -141,6 +145,47 @@ class MusicCog(BaseCog):
             view.message = msg
         except Exception:
             logger.exception("Failed to send session summary to channel %s", channel_id)
+
+    @commands.Cog.listener()
+    async def on_music_track_exception(self, payload: TrackExceptionPayload) -> None:
+        """Handle dispatched track exception payloads."""
+        track_id = payload.track.identifier
+        if payload.guild_id not in self._recent_track_exceptions:
+            self._recent_track_exceptions[payload.guild_id] = set()
+        if track_id in self._recent_track_exceptions[payload.guild_id]:
+            logger.warning(
+                "Duplicate track exception for guild %s, track %s",
+                payload.guild_id,
+                track_id,
+            )
+            return
+        self._recent_track_exceptions[payload.guild_id].add(track_id)
+
+        channel_id = payload.channel_id
+        if not channel_id:
+            return
+        channel = self.bot.get_channel(channel_id)
+        if not channel or not isinstance(channel, discord.abc.Messageable):
+            return
+
+        reason = payload.reason
+        if payload.severity:
+            reason = f"{reason} (severity: {payload.severity})"
+
+        embed = discord.Embed(
+            title="Не удалось воспроизвести трек",
+            description=(
+                f"[{payload.track.title}]({payload.track.uri})\n**Причина:** {reason}"
+            ),
+            color=config.Color.WARNING,
+        )
+        if payload.track.artwork_url:
+            embed.set_thumbnail(url=payload.track.artwork_url)
+
+        try:
+            await channel.send(embed=embed, delete_after=60)
+        except Exception:
+            logger.exception("Failed to send track exception message to %s", channel_id)
 
     def _create_session_summary_embed(self, session: MusicSession) -> discord.Embed:
         """Create session summary embed."""
@@ -200,9 +245,8 @@ class MusicCog(BaseCog):
         """Format one group of tracks for display."""
         status_marker = "~~" if group.skipped else ""
         count_str = f" **×{group.count}**" if group.count > 1 else ""
-        track_str = (
-            f"[{truncate_text(group.title, 45, placeholder='...')}]({group.uri})"
-        )
+        truncated_title = truncate_text(group.title, 45, placeholder="...")
+        track_str = f"[{discord.utils.escape_markdown(truncated_title)}]({group.uri})"
         return f"{status_marker}{track_str}{count_str}{status_marker}"
 
     def _format_recent_tracks(self, tracks: Sequence[TrackInfo]) -> tuple[str, int]:
@@ -212,7 +256,7 @@ class MusicCog(BaseCog):
             tracks: List of tracks from the session
 
         Returns:
-            Formatted text for embed field (truncated)
+            Tuple of (formatted text for embed field, number of track groups)
 
         """
         grouped = self._group_consecutive_tracks(tracks)
@@ -238,25 +282,20 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def join(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
-        if not isinstance(interaction.user, Member):
-            return await send_warning(interaction, "Вы не участник сервера.")
 
-        if not interaction.user.voice or not interaction.user.voice.channel:
-            return await send_warning(
-                interaction, "Вы должны быть в голосовом канале!", ephemeral=True
-            )
+        channel = await self._get_voice_channel_for_play(interaction)
+        if not channel:
+            return
 
-        channel = interaction.user.voice.channel
-        check_result, from_channel = await self.service.join(guild, channel)
-
-        msg = _format_voice_result_message(check_result, channel, from_channel)
-
-        if check_result.status is MusicResultStatus.ERROR:
-            await send_error(interaction, msg)
-        elif check_result.status is MusicResultStatus.FAILURE:
-            await send_warning(interaction, msg, ephemeral=True)
-        else:
-            await send_info(interaction, msg, delete_after=60)
+        check_result, from_channel = await self._join_voice(interaction, guild, channel)
+        await self._send_join_feedback(
+            interaction,
+            result=check_result,
+            channel=channel,
+            from_channel=from_channel,
+            delete_after=60,
+            warn_on_failure=True,
+        )
 
     @app_commands.command(
         name="play", description="Воспроизведение музыки с YT, SoundCloud, Y.Music и VK"
@@ -270,13 +309,12 @@ class MusicCog(BaseCog):
         if not channel:
             return
 
-        await interaction.response.defer()
-
-        join_result, from_channel = await self.service.join(guild, channel)
+        join_result, from_channel = await self._join_voice(interaction, guild, channel)
         if not await self._handle_join_for_play(
             interaction, join_result, channel, from_channel
         ):
             return
+        await interaction.response.defer()
 
         result = await self.service.play(
             guild,
@@ -304,10 +342,46 @@ class MusicCog(BaseCog):
             or not interaction.user.voice.channel
         ):
             await send_warning(
-                interaction, "Зайдите в голосовой канал!", ephemeral=True
+                interaction, "Вы должны быть в голосовом канале!", ephemeral=True
             )
             return None
         return interaction.user.voice.channel
+
+    async def _join_voice(
+        self,
+        interaction: Interaction,
+        guild: discord.Guild,
+        channel: discord.VoiceChannel | discord.StageChannel,
+    ) -> tuple[VoiceCheckResult, discord.abc.GuildChannel | None]:
+        join_task = asyncio.create_task(self.service.join(guild, channel))
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(join_task),
+                timeout=2.0,
+            )
+        except asyncio.TimeoutError:
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+            return await join_task
+
+    async def _resolve_play_response_data(
+        self,
+        interaction: Interaction,
+        result: MusicResult[PlayResponseData | VoiceJoinResult],
+        channel: discord.abc.GuildChannel,
+    ) -> PlayResponseData | None:
+        data = result.data
+        if isinstance(data, tuple):
+            check, from_channel = data
+            await self._handle_join_for_play(interaction, check, channel, from_channel)
+            return None
+        if result.status is MusicResultStatus.ERROR:
+            await send_error(interaction, result.message)
+            return None
+        if not data:
+            await send_info(interaction, "Ничего не нашлось. Попробуйте ещё раз.")
+            return None
+        return data
 
     async def _handle_join_for_play(
         self,
@@ -318,30 +392,38 @@ class MusicCog(BaseCog):
     ) -> bool:
         if result.status is MusicResultStatus.SUCCESS:
             return True
-        message = _format_voice_result_message(result, channel, from_channel)
-        if result.status is MusicResultStatus.ERROR:
-            await send_error(interaction, message)
-        else:
-            await send_info(interaction, message)
+        await self._send_join_feedback(
+            interaction,
+            result=result,
+            channel=channel,
+            from_channel=from_channel,
+            delete_after=60,
+        )
         return False
 
-    async def _resolve_play_response_data(
+    async def _send_join_feedback(
         self,
         interaction: Interaction,
-        result: MusicResult[PlayResponseData | VoiceJoinResult],
+        result: VoiceCheckResult,
         channel: discord.abc.GuildChannel,
-    ) -> PlayResponseData | None:
-        if isinstance(result.data, tuple):
-            check, from_channel = result.data
-            await self._handle_join_for_play(interaction, check, channel, from_channel)
-            return None
+        from_channel: discord.abc.GuildChannel | None,
+        *,
+        delete_after: float | None = None,
+        warn_on_failure: bool = False,
+    ) -> None:
+        msg = _format_voice_result_message(result, channel, from_channel)
         if result.status is MusicResultStatus.ERROR:
-            await send_error(interaction, result.message)
-            return None
-        if not result.data:
-            await send_info(interaction, "Ничего не нашлось. Попробуйте ещё раз.")
-            return None
-        return result.data
+            await send_error(interaction, msg)
+            return
+        if result.status is MusicResultStatus.FAILURE:
+            if warn_on_failure:
+                await send_warning(
+                    interaction, msg, ephemeral=True, delete_after=delete_after
+                )
+            else:
+                await send_info(interaction, msg, delete_after=delete_after)
+            return
+        await send_info(interaction, msg, delete_after=delete_after)
 
     def _build_track_embed(
         self, interaction: Interaction, data: TrackResponseData

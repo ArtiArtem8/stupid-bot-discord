@@ -48,6 +48,7 @@ async def send_warning(
     message: str,
     title: str | None = None,
     ephemeral: bool = True,
+    delete_after: float | None = None,
 ) -> None:
     """Send a warning feedback."""
     await FeedbackUI.send(
@@ -56,6 +57,7 @@ async def send_warning(
         description=message,
         ephemeral=ephemeral,
         title=title,
+        delete_after=delete_after,
     )
 
 
