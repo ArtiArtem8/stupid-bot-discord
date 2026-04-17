@@ -339,7 +339,6 @@ class ServerMonitoringManager:
         Checks:
         - Role still exists
         - Role is not managed
-        - Bot has permission to assign it (hierarchy)
 
         Args:
             guild: The guild.

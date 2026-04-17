@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum, auto
-from typing import Literal, Self, TypedDict
+from typing import Literal, Self, TypedDict, TypeVar
 
 import discord
 import mafic
@@ -229,8 +229,17 @@ class MusicResult[T]:
         return self.status is MusicResultStatus.SUCCESS
 
 
-PLAYER_FAIL_RESULT = MusicResult(MusicResultStatus.FAILURE, "No player", data=None)
-"""Predefined result for when a music player is not found for the guild."""
+T = TypeVar("T")
+
+
+def player_fail_result(
+    guild_id: int | None = None, *, context: str | None = None
+) -> MusicResult[T]:
+    """Create a standardized failure result when a music player is missing."""
+    if guild_id is not None:
+        suffix = f" ({context})" if context else ""
+        logger.debug("No player for guild_id=%s%s", guild_id, suffix)
+    return MusicResult(MusicResultStatus.FAILURE, "No player")
 
 
 @dataclass(frozen=True, slots=True)

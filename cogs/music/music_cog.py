@@ -314,7 +314,10 @@ class MusicCog(BaseCog):
             interaction, join_result, channel, from_channel
         ):
             return
-        await interaction.response.defer()
+
+        if not interaction.response.is_done():
+            # NOTE: defer() might be called in _join_voice
+            await interaction.response.defer()
 
         result = await self.service.play(
             guild,

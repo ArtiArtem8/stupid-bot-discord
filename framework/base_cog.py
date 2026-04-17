@@ -45,7 +45,7 @@ class GenericBaseCog[BotT: commands.Bot](commands.Cog):
         return False
 
     @override
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:  # pyright: ignore[reportIncompatibleMethodOverride]
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Centralized check for blocked users.
 
         Runs before every app command interaction. If the user is blocked in the

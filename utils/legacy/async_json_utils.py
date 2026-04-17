@@ -36,7 +36,7 @@ async def _create_backup_async(filename: Path, max_backups: int = 3) -> None:
             try:
                 stat_res = await asyncio.to_thread(backup.stat)
                 existing_backups.append((backup, stat_res))
-            except (FileNotFoundError, OSError):
+            except OSError:
                 continue
 
     existing_backups.sort(key=lambda x: x[1].st_mtime, reverse=True)
@@ -44,11 +44,11 @@ async def _create_backup_async(filename: Path, max_backups: int = 3) -> None:
     for backup, _ in existing_backups[max_backups:]:
         try:
             await asyncio.to_thread(backup.unlink)
-        except (FileNotFoundError, OSError):
+        except OSError:
             continue
     try:
         await asyncio.to_thread(shutil.copy, filename, BACKUP_DIR / backup_filename)
-    except (FileNotFoundError, OSError) as e:
+    except OSError as e:
         print(f"Warning: Could not create backup: {e}")
 
 
@@ -71,8 +71,6 @@ async def save_json_async(
     filename: str | Path, data: dict[str, Any], backup_amount: int = 3
 ) -> None:
     """Atomic async JSON save with backups."""
-    if not isinstance(data, dict):
-        raise TypeError("Data must be dict")
     path = Path(filename)
     await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
 
@@ -94,14 +92,14 @@ async def save_json_async(
             try:
                 await asyncio.to_thread(temp_path.replace, path)
                 break  # Success, exit the retry loop
-            except (PermissionError, OSError):
+            except OSError:
                 if attempt == max_retries - 1:
                     raise
                 await asyncio.sleep(0.001 * (attempt + 1))
     except Exception as e:
         try:
             await asyncio.to_thread(temp_path.unlink)
-        except (FileNotFoundError, OSError):
+        except OSError:
             pass
         raise e
 
@@ -129,5 +127,5 @@ async def clear_json_async(
     try:
         async with aiofiles.open(path, "w", encoding=ENCODING) as f:
             await f.write(default)
-    except (FileNotFoundError, OSError) as e:
+    except OSError as e:
         print(f"Warning: Could not clear file: {e}")

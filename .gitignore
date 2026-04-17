@@ -177,5 +177,6 @@ backups/*
 data/*
 temp/*
 client_secrets.json
+events/*
 test.py
 token.json
