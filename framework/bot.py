@@ -12,7 +12,7 @@ from framework import FeedbackUI
 from framework.cog_loader import CogLoader
 from framework.error_handler import CustomErrorCommandTree
 from framework.uptime_manager import UptimeManager
-from utils import format_time_russian
+from utils import format_duration_ru
 
 logger = logging.getLogger("StupidBot")
 
@@ -88,10 +88,10 @@ class StupidBot(commands.Bot):
     async def update_activity_task(self) -> None:
         """Task to periodically update the bot's activity with its uptime.
 
-        The uptime is formatted using :func:`format_time_russian` and the
+        The uptime is formatted using :func:`format_duration_ru` and the
         """
         uptime = time.time() - self.uptime_manager.start_time
-        formatted_time = format_time_russian(int(uptime), depth=1)
+        formatted_time = format_duration_ru(int(uptime), depth=2)
         activity_str = f"жизнь уже {formatted_time}."
 
         if activity_str == self.uptime_manager.last_activity_str:

@@ -13,8 +13,6 @@ load_dotenv()
 # --- Environment variables ---
 # Required
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
-if not DISCORD_BOT_TOKEN:
-    raise ValueError("DISCORD_BOT_TOKEN not found in environment variables")
 # Optional
 DISCORD_BOT_OWNER_ID = os.environ.get("DISCORD_BOT_OWNER_ID")
 # Wolfram Alpha API (https://developer.wolframalpha.com/access)

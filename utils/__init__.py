@@ -9,7 +9,7 @@ from utils.image_utils import convert_image, optimize_image, save_image
 from utils.json_store import AsyncJsonFileStore
 from utils.json_utils import clear_json, get_json, save_json
 from utils.logging_setup import setup_logging
-from utils.russian_time_utils import format_time_russian
+from utils.russian_time_utils import format_duration_ru
 from utils.text_utils import (
     TextPaginator,
     format_list,
@@ -28,8 +28,8 @@ __all__ = [
     "clear_json",
     "convert_image",
     "format_birthday_date",
+    "format_duration_ru",
     "format_list",
-    "format_time_russian",
     "get_json",
     "is_birthday_today",
     "is_leap",
