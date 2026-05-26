@@ -7,7 +7,8 @@ from __future__ import annotations
 import threading
 import time
 import unittest
-from typing import Protocol, override
+from collections.abc import Callable
+from typing import Protocol, cast, override
 
 from di.container import (
     CircularDependencyError,
@@ -18,14 +19,13 @@ from di.container import (
 )
 
 
-# Test Services and Interfaces
 class IRepository(Protocol):
     def get_data(self) -> str: ...
 
 
 class MemoryRepository:
     def __init__(self) -> None:
-        self.call_count = 0
+        self.call_count: int = 0
 
     def get_data(self) -> str:
         self.call_count += 1
@@ -38,7 +38,7 @@ class IService(Protocol):
 
 class ConcreteService:
     def __init__(self, repo: IRepository) -> None:
-        self.repo = repo
+        self.repo: IRepository = repo
 
     def execute(self) -> str:
         return self.repo.get_data()
@@ -46,7 +46,7 @@ class ConcreteService:
 
 class OptionalDependencyService:
     def __init__(self, repo: IRepository | None = None) -> None:
-        self.repo = repo
+        self.repo: IRepository | None = repo
 
     def has_repo(self) -> bool:
         return self.repo is not None
@@ -54,43 +54,83 @@ class OptionalDependencyService:
 
 class DefaultValueService:
     def __init__(self, value: str = "default") -> None:
-        self.value = value
+        self.value: str = value
 
 
 class ComplexService:
     def __init__(
-        self, service: IService, repo: IRepository, name: str = "complex"
+        self,
+        service: IService,
+        repo: IRepository,
+        name: str = "complex",
     ) -> None:
-        self.service = service
-        self.repo = repo
-        self.name = name
+        self.service: IService = service
+        self.repo: IRepository = repo
+        self.name: str = name
 
 
-# Circular dependency services
 class ServiceA:
     def __init__(self, b: ServiceB) -> None:
-        self.b = b
+        self.b: ServiceB = b
 
 
 class ServiceB:
     def __init__(self, a: ServiceA) -> None:
-        self.a = a
+        self.a: ServiceA = a
 
 
-# Service with no dependencies
 class SimpleService:
-    instance_count = 0
+    instance_count: int = 0
 
     def __init__(self) -> None:
         SimpleService.instance_count += 1
-        self.id = SimpleService.instance_count
+        self.id: int = SimpleService.instance_count
 
 
-class TestContainerRegistration(unittest.TestCase):
+class ValueService:
+    value: int = -1
+
+
+def make_value_service(index: int) -> type[ValueService]:
+    """Create a value service class with a fixed integer value.
+
+    Args:
+        index: The integer value to assign to the generated service.
+
+    Returns:
+        A dynamically created subclass of ValueService with the value set.
+
+    """
+
+    class DynamicValueService(ValueService):
+        def __init__(self) -> None:
+            self.value: int = index
+
+    DynamicValueService.__name__ = f"Service{index}"
+    return DynamicValueService
+
+
+class InvalidRegisterCall(Protocol):
+    def __call__(
+        self,
+        interface: object,
+        implementation: type[object],
+        *,
+        factory: Callable[[Container], IRepository],
+    ) -> None: ...
+
+
+class ContainerTestCase(unittest.TestCase):
+    def __init__(self, methodName: str = "runTest") -> None:
+        super().__init__(methodName)
+        self.container: Container = Container()
+
     @override
     def setUp(self) -> None:
         self.container = Container()
 
+
+class TestContainerRegistration(ContainerTestCase):
     def test_self_binding_registration(self) -> None:
         self.container.register(MemoryRepository)
         self.assertTrue(self.container.is_registered(MemoryRepository))
@@ -102,7 +142,7 @@ class TestContainerRegistration(unittest.TestCase):
     def test_factory_registration(self) -> None:
         self.container.register(
             IRepository,
-            factory=lambda c: MemoryRepository(),
+            factory=lambda _container: MemoryRepository(),
         )
         repo = self.container.resolve(IRepository)
         self.assertIsInstance(repo, MemoryRepository)
@@ -110,17 +150,23 @@ class TestContainerRegistration(unittest.TestCase):
     def test_registration_with_both_implementation_and_factory_raises_error(
         self,
     ) -> None:
+        invalid_register = cast(InvalidRegisterCall, self.container.register)
+
         with self.assertRaises(RegistrationError) as ctx:
-            self.container.register(  # pyright: ignore[reportCallIssue]
+            invalid_register(
                 IRepository,
                 MemoryRepository,
-                factory=lambda _: MemoryRepository(),  # pyright: ignore[reportUnknownLambdaType]
+                factory=lambda _container: MemoryRepository(),
             )
+
         self.assertIn("Cannot provide both", str(ctx.exception))
 
     def test_registration_with_non_class_implementation_raises_error(self) -> None:
+        invalid_implementation = cast(type[object], "not_a_class")
+
         with self.assertRaises(RegistrationError) as ctx:
-            self.container.register(IRepository, "not_a_class")
+            self.container.register(IRepository, invalid_implementation)
+
         self.assertIn("must be a class", str(ctx.exception))
 
     def test_transient_lifecycle_registration(self) -> None:
@@ -142,10 +188,10 @@ class TestContainerRegistration(unittest.TestCase):
         self.assertIs(repo1, repo2)
 
 
-class TestContainerResolution(unittest.TestCase):
+class TestContainerResolution(ContainerTestCase):
     @override
     def setUp(self) -> None:
-        self.container = Container()
+        super().setUp()
         SimpleService.instance_count = 0
 
     def test_resolve_simple_service(self) -> None:
@@ -163,7 +209,7 @@ class TestContainerResolution(unittest.TestCase):
 
     def test_resolve_unregistered_service_raises_error(self) -> None:
         with self.assertRaises(DependencyNotFoundError) as ctx:
-            self.container.resolve(IRepository)
+            _ = self.container.resolve(IRepository)
         self.assertIn("not registered", str(ctx.exception))
 
     def test_resolve_with_factory(self) -> None:
@@ -207,11 +253,7 @@ class TestContainerResolution(unittest.TestCase):
         self.assertEqual(service.name, "complex")
 
 
-class TestOptionalDependencies(unittest.TestCase):
-    @override
-    def setUp(self) -> None:
-        self.container = Container()
-
+class TestOptionalDependencies(ContainerTestCase):
     def test_optional_dependency_with_registered_service(self) -> None:
         self.container.register(IRepository, MemoryRepository)
         self.container.register(OptionalDependencyService)
@@ -225,8 +267,8 @@ class TestOptionalDependencies(unittest.TestCase):
         service = self.container.resolve(OptionalDependencyService)
         self.assertFalse(service.has_repo())
 
-    def test_resolve_optional_type_directly_returns_none(self) -> None:
-        result = self.container.resolve(IRepository | None)
+    def test_resolve_optional_returns_none_for_unregistered_service(self) -> None:
+        result = self.container.resolve_optional(IRepository)
         self.assertIsNone(result)
 
     def test_default_parameter_used_when_dependency_not_found(self) -> None:
@@ -235,17 +277,13 @@ class TestOptionalDependencies(unittest.TestCase):
         self.assertEqual(service.value, "default")
 
 
-class TestCircularDependencies(unittest.TestCase):
-    @override
-    def setUp(self) -> None:
-        self.container = Container()
-
+class TestCircularDependencies(ContainerTestCase):
     def test_circular_dependency_detection(self) -> None:
         self.container.register(ServiceA)
         self.container.register(ServiceB)
 
         with self.assertRaises(CircularDependencyError) as ctx:
-            self.container.resolve(ServiceA)
+            _ = self.container.resolve(ServiceA)
 
         error_msg = str(ctx.exception)
         self.assertIn("Circular dependency detected", error_msg)
@@ -253,14 +291,13 @@ class TestCircularDependencies(unittest.TestCase):
         self.assertIn("ServiceB", error_msg)
 
 
-class TestThreadSafety(unittest.TestCase):
+class TestThreadSafety(ContainerTestCase):
     @override
     def setUp(self) -> None:
-        self.container = Container()
+        super().setUp()
         SimpleService.instance_count = 0
 
     def test_concurrent_singleton_resolution(self) -> None:
-        """Test that singleton resolution is thread-safe."""
         self.container.register(SimpleService, lifecycle=Lifecycle.SINGLETON)
 
         instances: list[SimpleService] = []
@@ -272,19 +309,17 @@ class TestThreadSafety(unittest.TestCase):
                 instances.append(instance)
 
         threads = [threading.Thread(target=resolve_service) for _ in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
 
-        # All instances should be the same object
         self.assertEqual(len(instances), 10)
         self.assertEqual(SimpleService.instance_count, 1)
         for instance in instances:
             self.assertIs(instance, instances[0])
 
     def test_concurrent_transient_resolution(self) -> None:
-        """Test that transient resolution is thread-safe."""
         self.container.register(SimpleService, lifecycle=Lifecycle.TRANSIENT)
 
         instances: list[SimpleService] = []
@@ -296,51 +331,42 @@ class TestThreadSafety(unittest.TestCase):
                 instances.append(instance)
 
         threads = [threading.Thread(target=resolve_service) for _ in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
 
-        # All instances should be different
         self.assertEqual(len(instances), 10)
         self.assertEqual(SimpleService.instance_count, 10)
         unique_instances = {id(instance) for instance in instances}
         self.assertEqual(len(unique_instances), 10)
 
     def test_concurrent_registration_and_resolution(self) -> None:
-        """Test that registration and resolution can happen concurrently."""
         results: list[bool] = []
         lock = threading.Lock()
 
         def register_and_resolve(index: int) -> None:
-            # Stagger registrations
             time.sleep(0.001 * index)
 
-            # Register unique service
-            service_type = type(f"Service{index}", (), {"value": index})
+            service_type = make_value_service(index)
             self.container.register(service_type)
-
-            # Resolve it
             instance = self.container.resolve(service_type)
+
             with lock:
-                results.append(instance.value == index)  # pyright: ignore[reportUnknownArgumentType, reportAttributeAccessIssue]
+                results.append(instance.value == index)
 
         threads = [
             threading.Thread(target=register_and_resolve, args=(i,)) for i in range(5)
         ]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
 
         self.assertTrue(all(results))
 
 
-class TestContainerUtilities(unittest.TestCase):
-    @override
-    def setUp(self) -> None:
-        self.container = Container()
-
+class TestContainerUtilities(ContainerTestCase):
     def test_get_registrations(self) -> None:
         self.container.register(MemoryRepository)
         self.container.register(IService, ConcreteService)
@@ -375,9 +401,7 @@ class TestContainerUtilities(unittest.TestCase):
         self.container.register(MemoryRepository, lifecycle=Lifecycle.SINGLETON)
         self.container.register(ConcreteService)
 
-        # Resolve to create instance
-        self.container.resolve(MemoryRepository)
-
+        _ = self.container.resolve(MemoryRepository)
         self.container.clear()
 
         self.assertEqual(len(self.container.get_registrations()), 0)
@@ -403,7 +427,7 @@ class TestContainerUtilities(unittest.TestCase):
     def test_container_context_manager_cleanup(self) -> None:
         class Database:
             def __init__(self) -> None:
-                self.closed = False
+                self.closed: bool = False
 
             def close(self) -> None:
                 self.closed = True
@@ -413,17 +437,11 @@ class TestContainerUtilities(unittest.TestCase):
             db = container.resolve(Database)
             self.assertFalse(db.closed)
 
-        # After exiting context, db should be closed
         self.assertTrue(db.closed)
 
 
-class TestFactoryWithContainerAccess(unittest.TestCase):
-    @override
-    def setUp(self) -> None:
-        self.container = Container()
-
+class TestFactoryWithContainerAccess(ContainerTestCase):
     def test_factory_can_resolve_dependencies(self) -> None:
-        """Test that factory functions can use container to resolve dependencies."""
         self.container.register(MemoryRepository)
 
         def create_service(c: Container) -> ConcreteService:
@@ -444,7 +462,6 @@ class TestFactoryWithContainerAccess(unittest.TestCase):
             call_count += 1
             return SimpleService()
 
-        # Singleton factory
         self.container.register(
             SimpleService,
             factory=factory,
@@ -458,11 +475,7 @@ class TestFactoryWithContainerAccess(unittest.TestCase):
         self.assertEqual(call_count, 1)
 
 
-class TestEdgeCases(unittest.TestCase):
-    @override
-    def setUp(self) -> None:
-        self.container = Container()
-
+class TestEdgeCases(ContainerTestCase):
     def test_resolve_service_with_no_init_parameters(self) -> None:
         class NoInitService:
             pass
@@ -478,8 +491,8 @@ class TestEdgeCases(unittest.TestCase):
                 repo: IRepository | None = None,
                 service: IService | None = None,
             ) -> None:
-                self.repo = repo
-                self.service = service
+                self.repo: IRepository | None = repo
+                self.service: IService | None = service
 
         self.container.register(IRepository, MemoryRepository)
         self.container.register(MultiOptionalService)
@@ -489,7 +502,6 @@ class TestEdgeCases(unittest.TestCase):
         self.assertIsNone(service.service)
 
     def test_registration_lifecycle_persists(self) -> None:
-        """Test that lifecycle setting is stored correctly in registration."""
         self.container.register(MemoryRepository, lifecycle=Lifecycle.TRANSIENT)
 
         registrations = self.container.get_registrations()
@@ -499,4 +511,4 @@ class TestEdgeCases(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

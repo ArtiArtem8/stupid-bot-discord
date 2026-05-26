@@ -25,8 +25,7 @@ class TestGenerateBackupFilename(unittest.TestCase):
 
         # Force suffix to "AAAA"
         with patch("utils.json_utils.secrets.choice", side_effect=["A", "A", "A", "A"]):
-            name = json_utils._generate_backup_filename(target, dt=fixed_dt)  # pyright: ignore[reportPrivateUsage]
-
+            name = json_utils._generate_backup_filename(target, dt=fixed_dt)
         self.assertEqual(name, "repo_20250102_030405AAAA.json")
 
 

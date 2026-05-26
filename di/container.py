@@ -1,14 +1,27 @@
+from __future__ import annotations
+
 import inspect
 import logging
 import threading
+from _thread import RLock as RLockType
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
-from types import NoneType, UnionType
-from typing import Any, Self, Union, get_args, get_origin, get_type_hints, overload
+from types import NoneType, TracebackType, UnionType
+from typing import (
+    Protocol,
+    Self,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+    overload,
+    override,
+    runtime_checkable,
+)
 
-type InjectionPlan = dict[str, type[Any]]
-
+type ServiceKey = type[object]
+type InjectionPlan = dict[str, object]
 
 logger = logging.getLogger(__name__)
 
@@ -21,70 +34,104 @@ class Lifecycle(Enum):
 class ContainerError(Exception):
     """Base class for container errors."""
 
-    pass
-
 
 class DependencyNotFoundError(ContainerError):
     """Raised when a dependency cannot be resolved."""
-
-    pass
 
 
 class CircularDependencyError(ContainerError):
     """Raised when a circular dependency is detected."""
 
-    pass
-
 
 class RegistrationError(ContainerError):
-    """Raised when there is an issue with service registration."""
-
-    pass
+    """Raised when a service registration is invalid."""
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
-class ServiceRegistration[T]:
+class ServiceRegistration:
     """Immutable record of a registered service."""
 
     lifecycle: Lifecycle
-    implementation: type[T] | None = None
-    factory: Callable[[Any], T] | None = None
+    implementation: ServiceKey | None = None
+    factory: Callable[[Container], object] | None = None
 
 
-def _get_type_name(type_hint: Any) -> str:
-    """Returns a human-readable type name."""
-    if type_hint is None or type_hint is type(None):
+@runtime_checkable
+class SupportsClose(Protocol):
+    def close(self) -> None: ...
+
+
+@runtime_checkable
+class SupportsDispose(Protocol):
+    def dispose(self) -> None: ...
+
+
+def _get_type_name(type_hint: object) -> str:
+    """Return a human-readable type name for diagnostics."""
+    if type_hint is None or type_hint is NoneType:
         return "None"
     if isinstance(type_hint, type):
         return type_hint.__name__
-    # Handle Optional/Union types nicely
-    origin = get_origin(type_hint)
-    args = get_args(type_hint)
 
-    if origin in (Union, UnionType):
+    origin = cast(object, get_origin(type_hint))
+    args = cast(tuple[object, ...], get_args(type_hint))
+
+    if origin is UnionType:
         return " | ".join(_get_type_name(arg) for arg in args)
 
     return str(type_hint).replace("typing.", "")
 
 
-class Container:
-    """A lightweight Dependency Injection container.
+def _unwrap_optional_type(type_hint: object) -> tuple[bool, ServiceKey | None]:
+    """Return (is_optional, service_key) for T or T | None annotations."""
+    if isinstance(type_hint, type):
+        return False, type_hint
 
-    Supports:
-    - Singleton and Transient life-cycles.
-    - Type-safe resolution.
-    - Factory-based registration.
-    - Circular dependency detection.
+    origin = cast(object, get_origin(type_hint))
+    if origin is not UnionType:
+        return False, None
+
+    args = cast(tuple[object, ...], get_args(type_hint))
+    if NoneType not in args:
+        return False, None
+
+    non_none_args = [arg for arg in args if arg is not NoneType]
+    if len(non_none_args) != 1:
+        return False, None
+
+    inner = non_none_args[0]
+    if not isinstance(inner, type):
+        return False, None
+
+    return True, inner
+
+
+def _get_init_type_hints(implementation: ServiceKey) -> dict[str, object]:
+    try:
+        return cast(dict[str, object], get_type_hints(implementation.__init__))
+    except Exception:
+        return {}
+
+
+class Container:
+    """A lightweight dependency injection container.
+
+    Supports singleton/transient lifecycles, factory registrations,
+    constructor injection, and circular dependency detection.
     """
 
-    __slots__ = ("_injection_plans", "_instances", "_lock", "_registry")
+    __slots__: tuple[str, ...] = (
+        "_injection_plans",
+        "_instances",
+        "_lock",
+        "_registry",
+    )
 
     def __init__(self) -> None:
-        """Initialize the dependency injection container."""
-        self._registry: dict[type[Any], ServiceRegistration[Any]] = {}
-        self._instances: dict[type[Any], Any] = {}
-        self._lock = threading.RLock()
-        self._injection_plans: dict[type[Any], InjectionPlan] = {}
+        self._registry: dict[ServiceKey, ServiceRegistration] = {}
+        self._instances: dict[ServiceKey, object] = {}
+        self._lock: RLockType = threading.RLock()
+        self._injection_plans: dict[ServiceKey, InjectionPlan] = {}
 
     @overload
     def register[T](
@@ -93,175 +140,175 @@ class Container:
         *,
         lifecycle: Lifecycle = Lifecycle.SINGLETON,
     ) -> None: ...
+
     @overload
     def register[T](
         self,
         interface: type[T],
-        implementation: type[T],
+        implementation: ServiceKey,
         *,
         lifecycle: Lifecycle = Lifecycle.SINGLETON,
     ) -> None: ...
+
     @overload
     def register[T](
         self,
         interface: type[T],
         *,
-        factory: Callable[[Self], T],
+        factory: Callable[[Container], T],
         lifecycle: Lifecycle = Lifecycle.SINGLETON,
     ) -> None: ...
+
     def register[T](
         self,
         interface: type[T],
-        implementation: type[T] | None = None,
-        factory: Callable[[Self], T] | None = None,
+        implementation: object | None = None,
+        factory: Callable[[Container], T] | None = None,
         lifecycle: Lifecycle = Lifecycle.SINGLETON,
     ) -> None:
         """Register a dependency.
 
-        Supports three registration patterns:
-        1. Self-binding: `register(ConcreteService)`
-        2. Implementation binding: `register(IService, ConcreteService)`
-        3. Factory binding: `register(IService, factory=lambda c: ConcreteService())`
-
-        Args:
-            interface: The abstract base class or interface type
-            implementation: The concrete class implementation
-            factory: A callable that accepts the container and returns an instance
-            lifecycle: The lifecycle strategy (SINGLETON or TRANSIENT)
-
-        Raises:
-            RegistrationError: If both implementation and factory are provided
-
+        Supported patterns:
+        - ``register(ConcreteService)``
+        - ``register(IService, ConcreteService)``
+        - ``register(IService, factory=lambda c: ConcreteService())``
         """
-        if implementation and factory:
+        if implementation is not None and factory is not None:
             raise RegistrationError("Cannot provide both implementation and factory.")
 
+        implementation_type: ServiceKey | None
         if implementation is None and factory is None:
-            implementation = interface
-
-        if implementation and not inspect.isclass(implementation):
+            implementation_type = interface
+        elif implementation is None:
+            implementation_type = None
+        elif inspect.isclass(implementation):
+            implementation_type = implementation
+        else:
             raise RegistrationError(
                 f"Implementation must be a class, got {type(implementation)}"
             )
+
+        stored_factory = cast(Callable[[Container], object] | None, factory)
         with self._lock:
             self._registry[interface] = ServiceRegistration(
                 lifecycle=lifecycle,
-                implementation=implementation,
-                factory=factory,
+                implementation=implementation_type,
+                factory=stored_factory,
             )
 
     def resolve[T](self, interface: type[T]) -> T:
-        """Resolves the dependency with thread safety and cycle detection."""
-        return self._resolve_impl(interface, set())
+        """Resolve a required dependency."""
+        return cast(T, self._resolve_required_key(interface, set()))
 
-    def _resolve_impl[T](
-        self, interface: type[T], resolution_stack: set[type[Any]]
-    ) -> T:
-        is_optional, actual_interface = self._unwrap_optional(interface)
-        if actual_interface in resolution_stack:
+    def resolve_optional[T](self, interface: type[T]) -> T | None:
+        """Resolve a dependency, returning None when it is not registered."""
+        try:
+            return self.resolve(interface)
+        except DependencyNotFoundError:
+            return None
+
+    def _resolve_required_key(
+        self,
+        interface: ServiceKey,
+        resolution_stack: set[ServiceKey],
+    ) -> object:
+        if interface in resolution_stack:
             stack = " -> ".join(_get_type_name(t) for t in resolution_stack)
-            interface_type = _get_type_name(actual_interface)
             raise CircularDependencyError(
-                f"Circular dependency detected: {stack} -> {interface_type}"
+                f"Circular dependency detected: {stack} -> {_get_type_name(interface)}"
             )
 
-        if actual_interface in self._instances:
-            return self._instances[actual_interface]
+        if interface in self._instances:
+            return self._instances[interface]
 
         with self._lock:
-            if actual_interface in self._instances:
-                return self._instances[actual_interface]
+            if interface in self._instances:
+                return self._instances[interface]
 
-            if actual_interface not in self._registry:
-                if is_optional:
-                    return None  # pyright: ignore[reportReturnType]
-                interface_type = _get_type_name(actual_interface)
-                logger.debug("Dependency not found: %s out of %s", interface_type, self)
+            registration = self._registry.get(interface)
+            if registration is None:
+                logger.debug(
+                    "Dependency not found: %s out of %s",
+                    _get_type_name(interface),
+                    self,
+                )
                 raise DependencyNotFoundError(
-                    f"Service - {interface_type} not registered."
+                    f"Service - {_get_type_name(interface)} not registered."
                 )
 
-            registration = self._registry[actual_interface]
-
-            # Prepare stack for recursion
-            resolution_stack.add(actual_interface)
+            resolution_stack.add(interface)
             try:
                 instance = self._create_instance(registration, resolution_stack)
             finally:
-                resolution_stack.remove(actual_interface)
+                resolution_stack.remove(interface)
 
             if registration.lifecycle is Lifecycle.SINGLETON:
-                self._instances[actual_interface] = instance
+                self._instances[interface] = instance
 
             return instance
 
-    def _unwrap_optional(self, interface: type[Any]) -> tuple[bool, type[Any]]:
-        """Extract the actual type from Optional[T] or T | None.
+    def _resolve_dependency(
+        self,
+        type_hint: object,
+        resolution_stack: set[ServiceKey],
+    ) -> object:
+        is_optional, service_key = _unwrap_optional_type(type_hint)
+        if service_key is None:
+            raise DependencyNotFoundError(
+                f"Cannot resolve non-class dependency: {_get_type_name(type_hint)}"
+            )
 
-        Multi-type unions like `A | B | None` are NOT unwrapped
-        and will require explicit registration.
-
-        Returns:
-        (is_optional, actual_type)
-
-        """
-        origin = get_origin(interface)
-        if origin not in (Union, UnionType):
-            return False, interface
-
-        args = get_args(interface)
-        if NoneType not in args:
-            return False, interface
-
-        non_none_args = [arg for arg in args if arg is not NoneType]
-        if len(non_none_args) == 1:
-            return True, non_none_args[0]
-
-        return False, interface
+        try:
+            return self._resolve_required_key(service_key, resolution_stack)
+        except DependencyNotFoundError:
+            if is_optional:
+                return None
+            raise
 
     def _create_instance(
-        self, registration: ServiceRegistration[Any], stack: set[type[Any]]
-    ) -> Any:
-        if registration.factory:
+        self,
+        registration: ServiceRegistration,
+        stack: set[ServiceKey],
+    ) -> object:
+        if registration.factory is not None:
             return registration.factory(self)
 
-        if registration.implementation:
+        if registration.implementation is not None:
             return self._inject_dependencies(registration.implementation, stack)
 
-        interface_name = next(iter(stack)) if stack else "Unknown"
+        interface_name = next(iter(stack), None)
         raise RegistrationError(
             f"Invalid registration state for {_get_type_name(interface_name)}"
         )
 
     def _inject_dependencies[T](
-        self, implementation: type[T], stack: set[type[Any]]
+        self,
+        implementation: type[T],
+        stack: set[ServiceKey],
     ) -> T:
         if implementation not in self._injection_plans:
             self._analyze_dependencies(implementation)
 
         signature = inspect.signature(implementation.__init__)
-        dependencies = {}
+        dependencies: dict[str, object] = {}
         plan = self._injection_plans[implementation]
 
         for param_name, param_type in plan.items():
             try:
-                dependencies[param_name] = self._resolve_impl(param_type, stack)
+                dependencies[param_name] = self._resolve_dependency(param_type, stack)
             except DependencyNotFoundError:
                 param = signature.parameters[param_name]
-                if param.default is not inspect.Parameter.empty:
-                    dependencies[param_name] = param.default
+                default_value = cast(object, param.default)
+                if default_value is not inspect.Parameter.empty:
+                    dependencies[param_name] = default_value
                 else:
                     raise
 
         return implementation(**dependencies)
 
-    def _analyze_dependencies(self, implementation: type[Any]) -> None:
-        """Introspects __init__ once and caches the type hints."""
-        try:
-            type_hints = get_type_hints(implementation.__init__)
-        except Exception:
-            type_hints = {}
-
+    def _analyze_dependencies(self, implementation: ServiceKey) -> None:
+        """Introspect __init__ once and cache dependency annotations."""
+        type_hints = _get_init_type_hints(implementation)
         signature = inspect.signature(implementation.__init__)
         plan: InjectionPlan = {}
 
@@ -269,62 +316,68 @@ class Container:
             if name == "self":
                 continue
 
-            dep_type = type_hints.get(name, param.annotation)
-
-            if dep_type is inspect.Parameter.empty:
-                continue
+            dep_type = type_hints.get(name)
+            if dep_type is None:
+                annotation = cast(object, param.annotation)
+                if annotation is inspect.Parameter.empty:
+                    continue
+                dep_type = annotation
 
             plan[name] = dep_type
 
         self._injection_plans[implementation] = plan
 
-    def get_registrations(self) -> dict[type[Any], ServiceRegistration[Any]]:
-        """Get a snapshot of all registered services for diagnostics.
-
-        Returns:
-            A copy of the service registry
-
-        """
+    def get_registrations(self) -> dict[ServiceKey, ServiceRegistration]:
+        """Return a snapshot of all registered services for diagnostics."""
         with self._lock:
             return self._registry.copy()
 
-    def is_registered(self, interface: type[Any]) -> bool:
-        """Check if a service is registered without resolving it."""
+    def is_registered(self, interface: object) -> bool:
+        """Return whether a service key or optional service key is registered."""
+        _, service_key = _unwrap_optional_type(interface)
+        if service_key is None:
+            return False
+
         with self._lock:
-            _, actual = self._unwrap_optional(interface)
-            return actual in self._registry
+            return service_key in self._registry
 
     def clear(self) -> None:
-        """Clear all registrations and cached instances.
-
-        Useful for testing or resetting the container state.
-        """
+        """Clear all registrations, cached instances, and injection plans."""
         with self._lock:
             self._registry.clear()
             self._instances.clear()
             self._injection_plans.clear()
 
     def close(self) -> None:
-        """Shuts down the container and closes all Singletons."""
+        """Close all singleton instances that expose `close()` or `dispose()`."""
         with self._lock:
             for instance in reversed(list(self._instances.values())):
-                closer = getattr(instance, "close", None) or getattr(
-                    instance, "dispose", None
-                )
-                if callable(closer):
-                    try:
-                        closer()
-                    except Exception as e:
-                        print(f"Error closing {type(instance).__name__}: {e}")
+                try:
+                    if isinstance(instance, SupportsClose):
+                        instance.close()
+                    elif isinstance(instance, SupportsDispose):
+                        instance.dispose()
+                except Exception as e:
+                    logger.warning(
+                        "Error closing %s: %s",
+                        type(instance).__name__,
+                        e,
+                        exc_info=True,
+                    )
 
             self._instances.clear()
 
     def __enter__(self) -> Self:
-        """Context manager entry point. Returns the container instance."""
+        """Enter the runtime context and return this container."""
         return self
 
-    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
-        """Context manager exit point. Shuts down the container."""
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Exit the runtime context by closing the container."""
         self.close()
 
     def service[T](
@@ -332,25 +385,17 @@ class Container:
         interface: type[T] | None = None,
         lifecycle: Lifecycle = Lifecycle.SINGLETON,
     ) -> Callable[[type[T]], type[T]]:
-        """Decorator to register a class immediately."""
+        """Decorator that registers a class immediately."""
 
         def decorator(cls: type[T]) -> type[T]:
-            # Use the class itself as the interface if none provided
             register_interface = interface or cls
             self.register(register_interface, implementation=cls, lifecycle=lifecycle)
             return cls
 
         return decorator
 
+    @override
     def __repr__(self) -> str:
-        """Returns a string representation of the container.
-
-        Includes the number of registered services and their names.
-
-        Example:
-            Container(services=5, registered=['Service1', 'Service2', ...])
-
-        """
         with self._lock:
             service_names = [_get_type_name(t) for t in self._registry.keys()]
             return (

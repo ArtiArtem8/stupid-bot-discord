@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import threading
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -164,6 +165,49 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
             self.backup_dir.glob(f"{self.test_file.stem}_*{self.test_file.suffix}")
         )
         self.assertLessEqual(len(backups), 3)
+
+    async def test_concurrent_writes_are_serialized_before_saving(self) -> None:
+        """Concurrent writes must not overlap on the shared staging file."""
+        store = AsyncJsonFileStore(
+            path=self.test_file,
+            backup_amount=0,
+            backup_dir=self.backup_dir,
+        )
+        first_save_started = threading.Event()
+        release_first_save = threading.Event()
+        overlapping_save_started = threading.Event()
+        guard = threading.Lock()
+        active_saves = 0
+
+        def save_with_temp_file_collision(*_: object, **_d: object) -> None:
+            nonlocal active_saves
+            with guard:
+                active_saves += 1
+                overlaps = active_saves > 1
+            try:
+                if overlaps:
+                    overlapping_save_started.set()
+                    raise PermissionError("simulated shared temporary-file collision")
+                first_save_started.set()
+                release_first_save.wait(timeout=2)
+            finally:
+                with guard:
+                    active_saves -= 1
+
+        with patch(
+            "utils.json_store.save_json", side_effect=save_with_temp_file_collision
+        ):
+            first_write = asyncio.create_task(store.write({"version": 1}))
+            try:
+                self.assertTrue(await asyncio.to_thread(first_save_started.wait, 1))
+                second_write = asyncio.create_task(store.write({"version": 2}))
+                overlapped = await asyncio.to_thread(overlapping_save_started.wait, 0.2)
+            finally:
+                release_first_save.set()
+
+            await asyncio.gather(first_write, second_write)
+
+        self.assertFalse(overlapped)
 
     async def test_write_no_backup_when_backup_amount_zero(self) -> None:
         """Test that no backups are created when backup_amount is 0."""

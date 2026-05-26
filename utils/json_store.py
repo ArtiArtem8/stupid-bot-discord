@@ -32,6 +32,10 @@ class AsyncJsonFileStore:
         return data or {}
 
     async def write(self, data: JsonEncodableObject) -> None:
+        async with self._lock:
+            await self._write_unlocked(data)
+
+    async def _write_unlocked(self, data: JsonEncodableObject) -> None:
         await asyncio.to_thread(
             save_json,
             self.path,
@@ -48,5 +52,5 @@ class AsyncJsonFileStore:
             result = updater(data)
             if inspect.isawaitable(result):
                 await result
-            await self.write(data)
+            await self._write_unlocked(data)
             return data

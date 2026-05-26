@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Never, TypeGuard, cast, overload, override
+from collections.abc import Mapping
+from typing import TypeGuard, cast, override
 
 import config
 from api.blocking_models import (
     BlockedUser,
     BlockedUserDict,
     BlockHistoryEntryDict,
-    GuildData,
     NameHistoryEntryDict,
 )
 from repositories.base_repository import BaseRepository
@@ -20,55 +20,89 @@ type BlockedUserKey = tuple[int, int]  # (guild_id, user_id)
 logger = logging.getLogger(__name__)
 
 
-def _is_block_history_entry_dict(value: object) -> TypeGuard[BlockHistoryEntryDict]:
+def _as_str_mapping(value: object) -> Mapping[str, object] | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    mapping = cast(Mapping[object, object], value)
+    if not all(isinstance(key, str) for key in mapping.keys()):
+        return None
+
+    return cast(Mapping[str, object], mapping)
+
+
+def _as_json_object(value: object) -> JsonObject | None:
     if not isinstance(value, dict):
+        return None
+
+    mapping = cast(dict[object, object], value)
+    if not all(isinstance(key, str) for key in mapping.keys()):
+        return None
+
+    return cast(JsonObject, mapping)
+
+
+def _as_object_list(value: object) -> list[object] | None:
+    if not isinstance(value, list):
+        return None
+    return cast(list[object], value)
+
+
+def _is_block_history_entry_dict(value: object) -> TypeGuard[BlockHistoryEntryDict]:
+    data = _as_str_mapping(value)
+    if data is None:
         return False
+
     return (
-        isinstance(value.get("admin_id"), str)
-        and isinstance(value.get("reason"), str)
-        and isinstance(value.get("timestamp"), str)
+        isinstance(data.get("admin_id"), str)
+        and isinstance(data.get("reason"), str)
+        and isinstance(data.get("timestamp"), str)
     )
 
 
 def _is_name_history_entry_dict(value: object) -> TypeGuard[NameHistoryEntryDict]:
-    if not isinstance(value, dict):
+    data = _as_str_mapping(value)
+    if data is None:
         return False
-    return isinstance(value.get("username"), str) and isinstance(
-        value.get("timestamp"), str
+
+    return isinstance(data.get("username"), str) and isinstance(
+        data.get("timestamp"), str
     )
 
 
 def _is_blocked_user_dict(value: object) -> TypeGuard[BlockedUserDict]:
-    if not isinstance(value, dict):
+    data = _as_str_mapping(value)
+    if data is None:
         return False
 
-    if not isinstance(value.get("user_id"), str):
-        return False
-    if not isinstance(value.get("current_username"), str):
+    if not isinstance(data.get("user_id"), str):
         return False
 
-    cgn = value.get("current_global_name")
+    if not isinstance(data.get("current_username"), str):
+        return False
+
+    cgn = data.get("current_global_name")
     if cgn is not None and not isinstance(cgn, str):
         return False
 
-    if not isinstance(value.get("blocked"), bool):
+    if not isinstance(data.get("blocked"), bool):
         return False
 
-    bh = value.get("block_history")
-    uh = value.get("unblock_history")
-    nh = value.get("name_history")
+    bh = _as_object_list(data.get("block_history"))
+    if bh is None:
+        return False
+    uh = _as_object_list(data.get("unblock_history"))
+    if uh is None:
+        return False
+    nh = _as_object_list(data.get("name_history"))
+    if nh is None:
+        return False
 
-    if not isinstance(bh, list) or not all(
-        _is_block_history_entry_dict(cast(object, x)) for x in bh
-    ):
+    if not all(_is_block_history_entry_dict(item) for item in bh):
         return False
-    if not isinstance(uh, list) or not all(
-        _is_block_history_entry_dict(cast(object, x)) for x in uh
-    ):
+    if not all(_is_block_history_entry_dict(item) for item in uh):
         return False
-    if not isinstance(nh, list) or not all(
-        _is_name_history_entry_dict(cast(object, x)) for x in nh
-    ):
+    if not all(_is_name_history_entry_dict(item) for item in nh):
         return False
 
     return True
@@ -84,51 +118,29 @@ class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
     def __init__(self, store: AsyncJsonFileStore | None = None) -> None:
         self._store = store or AsyncJsonFileStore(config.BLOCKED_USERS_FILE)
 
-    def _get_users_map_raw(
-        self, data: JsonObject, guild_id: int
-    ) -> dict[str, JsonValue] | None:
+    def _get_users_map_raw(self, data: JsonObject, guild_id: int) -> JsonObject:
         """Safely extract the users map for a guild from the JSON data."""
-        raw_guild = data.get(str(guild_id))
-        if not isinstance(raw_guild, dict):
+        raw_guild = _as_json_object(data.get(str(guild_id)))
+        if raw_guild is None:
             return {}
 
-        raw_users = raw_guild.get("users")
-        if not isinstance(raw_users, dict):
+        raw_users = _as_json_object(raw_guild.get("users"))
+        if raw_users is None:
             return {}
 
         return raw_users
 
-    def _ensure_guild_data(
-        self, data: JsonObject, guild_id: int
-    ) -> dict[str, BlockedUserDict]:
-        """Ensure guild data structure exists and return the users map."""
+    def _ensure_users_map_raw(self, data: JsonObject, guild_id: int) -> JsonObject:
+        """Ensure that the guild/users object exists and return the users map."""
         guild_key = str(guild_id)
 
-        # 1. Get or create guild dict
-        raw_guild_data = data.get(guild_key)
-        if not isinstance(raw_guild_data, dict):
-            raw_guild_data = {"users": {}}
-            data[guild_key] = cast(JsonObject, cast(object, raw_guild_data))
-
-        guild_data = cast(GuildData, cast(object, raw_guild_data))
-
-        if "users" not in guild_data:
-            guild_data["users"] = {}
-
-        return guild_data["users"]
-
-    def _ensure_users_map_raw(
-        self, data: JsonObject, guild_id: int
-    ) -> dict[str, JsonValue]:
-        guild_key = str(guild_id)
-
-        raw_guild = data.get(guild_key)
-        if not isinstance(raw_guild, dict):
-            raw_guild = cast(JsonObject, {"users": {}})
+        raw_guild = _as_json_object(data.get(guild_key))
+        if raw_guild is None:
+            raw_guild = {}
             data[guild_key] = raw_guild
 
-        raw_users = raw_guild.get("users")
-        if not isinstance(raw_users, dict):
+        raw_users = _as_json_object(raw_guild.get("users"))
+        if raw_users is None:
             raw_users = {}
             raw_guild["users"] = raw_users
 
@@ -141,8 +153,6 @@ class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
         data = await self._store.read()
 
         users_map = self._get_users_map_raw(data, guild_id)
-        if users_map is None:
-            return None
         raw_user = users_map.get(str(user_id))
 
         return _try_decode_user(raw_user)
@@ -153,16 +163,17 @@ class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
         data = await self._store.read()
         all_users: list[BlockedUser] = []
 
-        for guild_id, guild_raw in data.items():
-            if not isinstance(guild_raw, dict):
+        for guild_id, guild_value in data.items():
+            guild_data = _as_json_object(guild_value)
+            if guild_data is None:
                 continue
 
-            users_raw = guild_raw.get("users")
-            if not isinstance(users_raw, dict):
+            users_data = _as_json_object(guild_data.get("users"))
+            if users_data is None:
                 continue
 
-            for user_raw in users_raw.values():
-                user = _try_decode_user(user_raw)
+            for user_value in users_data.values():
+                user = _try_decode_user(user_value)
                 if user is not None:
                     all_users.append(user)
                 else:
@@ -172,10 +183,6 @@ class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
 
         return all_users
 
-    @overload
-    async def save(self, entity: BlockedUser) -> Never: ...
-    @overload
-    async def save(self, entity: BlockedUser, key: BlockedUserKey) -> None: ...
     @override
     async def save(
         self, entity: BlockedUser, key: BlockedUserKey | None = None
@@ -201,8 +208,6 @@ class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
 
         def _updater(data: JsonObject) -> None:
             users_map = self._get_users_map_raw(data, guild_id)
-            if users_map is None:
-                return
             users_map.pop(str(user_id), None)
 
         await self._store.update(_updater)
@@ -211,8 +216,6 @@ class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
         """Get all users for a single guild."""
         data = await self._store.read()
         users_map = self._get_users_map_raw(data, guild_id)
-        if users_map is None:
-            return []
 
         return [
             user

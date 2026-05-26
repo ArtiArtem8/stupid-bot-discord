@@ -16,8 +16,6 @@ from repositories.blocking_repository import (
 )
 from utils.json_types import JsonObject, JsonValue, is_json_object
 
-type JsonDict = JsonObject
-
 
 def _as_json_object(value: JsonValue) -> JsonObject:
     assert is_json_object(value)
@@ -27,21 +25,21 @@ def _as_json_object(value: JsonValue) -> JsonObject:
 class FakeAsyncJsonFileStore:
     """In-memory async store to avoid filesystem in tests."""
 
-    def __init__(self, initial_data: JsonDict | None = None) -> None:
-        self._data: JsonDict = copy.deepcopy(initial_data or {})
+    def __init__(self, initial_data: JsonObject | None = None) -> None:
+        self._data: JsonObject = copy.deepcopy(initial_data or {})
         self.update_calls = 0
 
-    async def read(self) -> JsonDict:
+    async def read(self) -> JsonObject:
         return copy.deepcopy(self._data)
 
-    async def update(self, updater: Callable[[JsonDict], None]) -> None:
+    async def update(self, updater: Callable[[JsonObject], None]) -> None:
         self.update_calls += 1
         data = copy.deepcopy(self._data)
         updater(data)
         self._data = data
 
     @property
-    def data(self) -> JsonDict:
+    def data(self) -> JsonObject:
         return copy.deepcopy(self._data)
 
 
@@ -223,7 +221,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("42", users_map)
 
     async def test_delete_nonexistent_user_is_noop(self) -> None:
-        data: JsonDict = {
+        data: JsonObject = {
             "1": {
                 "users": {},
             }
@@ -236,7 +234,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.data, data)
 
     async def test_delete_nonexistent_guild_is_noop(self) -> None:
-        data: JsonDict = {}
+        data: JsonObject = {}
         self.store = FakeAsyncJsonFileStore(data)
         self.repo = BlockingRepository(self.store)
 
@@ -271,7 +269,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(users_g2[0].user_id, 2)
 
     async def test_get_all_for_guild_handles_missing_guild(self) -> None:
-        data = {}
+        data: dict[None, None] = {}
         self.store = FakeAsyncJsonFileStore(data)
         self.repo = BlockingRepository(self.store)
 
@@ -328,7 +326,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
 class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
     @override
     def setUp(self) -> None:
-        self.raw_data_fixture: JsonDict = {
+        self.raw_data_fixture: JsonObject = {
             "111111111111111111": {
                 "users": {
                     "222222222222222222": {
@@ -515,7 +513,7 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_fields_defaults(self) -> None:
         """Test handling of users with missing optional fields."""
-        incomplete_data: JsonDict = {
+        incomplete_data: JsonObject = {
             "999": {
                 "users": {
                     "100": {
