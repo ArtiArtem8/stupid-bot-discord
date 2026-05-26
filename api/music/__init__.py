@@ -1,6 +1,7 @@
 """Music API package."""
 
 from .models import (
+    ControllerDestroyReason,
     MusicResult,
     MusicResultStatus,
     MusicSession,
@@ -20,6 +21,7 @@ from .protocols import ControllerManagerProtocol, HealerProtocol
 from .service import CoreMusicService as MusicService
 
 __all__ = [
+    "ControllerDestroyReason",
     "ControllerManagerProtocol",
     "HealerProtocol",
     "MusicPlayer",

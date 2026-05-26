@@ -5,20 +5,26 @@ description = "A feature-rich Discord bot built with discord.py"
 authors = [
     { name = "ArtiArtem", email = "ArtiArtem8@users.noreply.github.com" },
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "aiofiles>=24.1.0",
     "defusedxml>=0.7.1",
-    "discord-py[voice]>=2.5.2",
-    "mafic>=2.10.1",
+    "discord-py[voice]>=2.7.0",
+    "mafic>=2.11.0",
     "pillow>=12",
     "python-dotenv>=1.1.0",
     "rapidfuzz>=3.14.1",
     "requests>=2.32.3",
 ]
 
+[dependency-groups]
+dev = ["monkeytype>=23.3.0", "pytest>=9.0.2", "ruff>=0.14.6"]
+
 [tool.setuptools]
 packages = ["api", "cogs", "di", "events", "framework", "repositories", "utils"]
+
+[tool.uv]
+environments = ["python_version == '3.12'"]
 
 [tool.ruff]
 line-length = 88
@@ -74,11 +80,10 @@ filterwarnings = ["ignore:.*audioop.*:DeprecationWarning:discord.player"]
 pythonpath = ["."]
 
 [tool.pyright]
-exclude = ["**/Lib/**"]
+exclude = ["**/.venv/**"]
 reportUnannotatedClassAttribute = "none"
 reportUnusedCallResult = "none"
 reportUnknownMemberType = "none"
-reportUnknownVariableType = "none"
 reportMissingTypeStubs = "none"
 
 [[tool.pyright.executionEnvironments]]
@@ -94,7 +99,3 @@ reportExplicitAny = "none"
 [[tool.pyright.executionEnvironments]]
 root = "."
 enableExperimentalFeatures = true
-
-
-[dependency-groups]
-dev = ["monkeytype>=23.3.0", "pytest>=9.0.2", "ruff>=0.14.6"]

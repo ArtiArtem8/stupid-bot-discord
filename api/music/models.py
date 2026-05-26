@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum, auto
-from typing import Literal, Self, TypedDict, TypeVar
+from typing import Literal, NotRequired, Self, TypedDict, TypeVar
 
 import discord
 import mafic
@@ -32,6 +32,7 @@ class PlaylistResponseData(TypedDict):
 
     type: Literal["playlist"]
     playlist: Playlist
+    connection: NotRequired[VoiceJoinResult]
 
 
 class TrackResponseData(TypedDict):
@@ -40,6 +41,7 @@ class TrackResponseData(TypedDict):
     type: Literal["track"]
     track: Track
     playing: bool
+    connection: NotRequired[VoiceJoinResult]
 
 
 type PlayResponseData = PlaylistResponseData | TrackResponseData
@@ -111,6 +113,22 @@ class VoiceCheckResult(StrEnum):
 
 
 type VoiceJoinResult = tuple[VoiceCheckResult, discord.abc.GuildChannel | None]
+
+
+class ControllerDestroyReason(StrEnum):
+    """Reasons that an active controller is no longer valid."""
+
+    TRACK_END = "track_end"
+    TRACK_CHANGED = "track_changed"
+    TRACK_EXCEPTION = "track_exception"
+    TRACK_STUCK = "track_stuck"
+    VOICE_DISCONNECT = "voice_disconnect"
+    PLAYER_ERROR = "player_error"
+    MESSAGE_DELETED = "message_deleted"
+    MANUAL_STOP = "manual_stop"
+    SKIP = "skip"
+    TIMEOUT = "timeout"
+    STALE_VIEW = "stale_view"
 
 
 @dataclass(slots=True)

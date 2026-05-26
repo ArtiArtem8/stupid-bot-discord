@@ -1,6 +1,5 @@
 """Music Cog Controller."""
 
-import asyncio
 import logging
 from collections.abc import Sequence
 from itertools import groupby
@@ -42,6 +41,7 @@ from framework import BaseCog, FeedbackUI, handle_errors
 from repositories.volume_repository import VolumeRepository
 from utils import truncate_sequence, truncate_text
 
+from .responder import MusicInteractionResponder
 from .ui import (
     format_duration,
     send_error,
@@ -93,7 +93,7 @@ class MusicCog(BaseCog):
 
         # Dependency Injection Setup
         self.container = Container()
-        self.container.register(commands.Bot, factory=lambda c: bot)
+        self.container.register(commands.Bot, factory=lambda _c: bot)
         self.container.register(ConnectionManager)
         self.container.register(StateManager)
         self.container.register(VolumeRepository)
@@ -168,14 +168,11 @@ class MusicCog(BaseCog):
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
 
-        reason = payload.reason
-        if payload.severity:
-            reason = f"{reason} (severity: {payload.severity})"
-
         embed = discord.Embed(
             title="Не удалось воспроизвести трек",
             description=(
-                f"[{payload.track.title}]({payload.track.uri})\n**Причина:** {reason}"
+                f"[{payload.track.title}]({payload.track.uri})\n"
+                "**Причина:** Источник временно недоступен или не ответил."
             ),
             color=config.Color.WARNING,
         )
@@ -287,7 +284,9 @@ class MusicCog(BaseCog):
         if not channel:
             return
 
-        check_result, from_channel = await self._join_voice(interaction, guild, channel)
+        check_result, from_channel = await self._join_for_join_command(
+            interaction, guild, channel
+        )
         await self._send_join_feedback(
             interaction,
             result=check_result,
@@ -305,26 +304,23 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def play(self, interaction: Interaction, query: str) -> None:
         guild = await self._require_guild(interaction)
+        responder = MusicInteractionResponder(interaction)
+        if not query.strip():
+            await responder.send_private_failure("Укажите название или ссылку на трек.")
+            return
+
         channel = await self._get_voice_channel_for_play(interaction)
         if not channel:
             return
 
-        join_result, from_channel = await self._join_voice(interaction, guild, channel)
-        if not await self._handle_join_for_play(
-            interaction, join_result, channel, from_channel
-        ):
-            return
-
-        if not interaction.response.is_done():
-            # NOTE: defer() might be called in _join_voice
-            await interaction.response.defer()
-
-        result = await self.service.play(
-            guild,
-            channel,
-            query,
-            interaction.user.id,
-            interaction.channel_id,
+        result = await responder.await_with_defer_budget(
+            self.service.play(
+                guild,
+                channel,
+                query.strip(),
+                interaction.user.id,
+                interaction.channel_id,
+            )
         )
 
         data = await self._resolve_play_response_data(interaction, result, channel)
@@ -344,28 +340,22 @@ class MusicCog(BaseCog):
             or not interaction.user.voice
             or not interaction.user.voice.channel
         ):
-            await send_warning(
-                interaction, "Вы должны быть в голосовом канале!", ephemeral=True
+            await MusicInteractionResponder(interaction).send_private_failure(
+                "Вы должны быть в голосовом канале!"
             )
             return None
         return interaction.user.voice.channel
 
-    async def _join_voice(
+    async def _join_for_join_command(
         self,
         interaction: Interaction,
         guild: discord.Guild,
         channel: discord.VoiceChannel | discord.StageChannel,
     ) -> tuple[VoiceCheckResult, discord.abc.GuildChannel | None]:
-        join_task = asyncio.create_task(self.service.join(guild, channel))
-        try:
-            return await asyncio.wait_for(
-                asyncio.shield(join_task),
-                timeout=2.0,
-            )
-        except asyncio.TimeoutError:
-            if not interaction.response.is_done():
-                await interaction.response.defer()
-            return await join_task
+        """Join on behalf of `/join`; `/play` delegates connection to the service."""
+        return await MusicInteractionResponder(interaction).await_with_defer_budget(
+            self.service.join(guild, channel)
+        )
 
     async def _resolve_play_response_data(
         self,
@@ -379,6 +369,12 @@ class MusicCog(BaseCog):
             await self._handle_join_for_play(interaction, check, channel, from_channel)
             return None
         if result.status is MusicResultStatus.ERROR:
+            await send_error(interaction, result.message)
+            return None
+        if (
+            result.status is MusicResultStatus.FAILURE
+            and result.message != "Nothing found"
+        ):
             await send_error(interaction, result.message)
             return None
         if not data:

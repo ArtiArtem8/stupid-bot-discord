@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import logging
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -10,7 +12,7 @@ import mafic
 from discord.ext import commands
 from mafic.typings import LavalinkException
 
-from api.music.models import TrackExceptionPayload, TrackId
+from api.music.models import ControllerDestroyReason, TrackExceptionPayload, TrackId
 from api.music.protocols import HealerProtocol
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.state_manager import StateManager
@@ -20,6 +22,9 @@ if TYPE_CHECKING:
     from api.music.player import MusicPlayer
 
 logger = logging.getLogger(__name__)
+
+VOICE_TRANSITION_WINDOW_SECONDS = 5.0
+VOICE_TRANSITION_VALIDATION_DELAY_SECONDS = 2.0
 
 
 @dataclass(slots=True)
@@ -51,6 +56,8 @@ class MusicEventHandlers:
         self.healer = healer
         self._healing_guilds: set[int] = set()
         self._load_failures: dict[int, LoadFailureState] = {}
+        self._recent_voice_transitions: dict[int, float] = {}
+        self._voice_transition_validation_tasks: dict[int, asyncio.Task[None]] = {}
         self._setup_done = False
 
     def setup(self) -> None:
@@ -62,6 +69,7 @@ class MusicEventHandlers:
         self.bot.add_listener(self._on_track_start, "on_track_start")
         self.bot.add_listener(self._on_track_end, "on_track_end")
         self.bot.add_listener(self._on_track_exception, "on_track_exception")
+        self.bot.add_listener(self._on_track_stuck, "on_track_stuck")
         self.bot.add_listener(self.on_node_ready, "on_node_ready")
         self.bot.add_listener(self._on_voice_state_update, "on_voice_state_update")
         self.bot.add_listener(self._on_websocket_closed, "on_websocket_closed")
@@ -75,9 +83,14 @@ class MusicEventHandlers:
         self.bot.remove_listener(self._on_track_start, "on_track_start")
         self.bot.remove_listener(self._on_track_end, "on_track_end")
         self.bot.remove_listener(self._on_track_exception, "on_track_exception")
+        self.bot.remove_listener(self._on_track_stuck, "on_track_stuck")
         self.bot.remove_listener(self.on_node_ready, "on_node_ready")
         self.bot.remove_listener(self._on_voice_state_update, "on_voice_state_update")
         self.bot.remove_listener(self._on_websocket_closed, "on_websocket_closed")
+        for task in self._voice_transition_validation_tasks.values():
+            task.cancel()
+        self._voice_transition_validation_tasks.clear()
+        self._recent_voice_transitions.clear()
         self._setup_done = False
         logger.info("MusicEventHandlers listeners removed.")
 
@@ -142,6 +155,21 @@ class MusicEventHandlers:
         )
         self.bot.dispatch("music_track_exception", payload)
 
+    async def _on_track_stuck(self, event: mafic.TrackStuckEvent[MusicPlayer]) -> None:
+        """Remove stale controls when Lavalink reports a stalled track.
+
+        This handler intentionally does not auto-advance: Lavalink may emit
+        track_end afterwards, and that event remains the single transition path.
+        """
+        logger.warning(
+            "Track stuck in guild %s: %s", event.player.guild.id, event.track.title
+        )
+        await self.ui.controller.destroy_for_guild(
+            event.player.guild.id,
+            ControllerDestroyReason.TRACK_STUCK,
+            expected_track_id=TrackId.from_track(event.track),
+        )
+
     async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
         if event.player.guild.id in self._healing_guilds:
             logger.debug(
@@ -169,17 +197,11 @@ class MusicEventHandlers:
                     severity=None,
                 )
 
-        if (
-            event.reason in (mafic.EndReason.FINISHED, mafic.EndReason.STOPPED)
-            and player.queue.is_empty
-            and not player.current
-        ):
-            logger.debug(
-                "Playback ended (Reason: %s) with empty queue. "
-                + "Destroying controller immediately.",
-                event.reason,
-            )
-            await self.ui.controller.destroy_for_guild(player.guild.id)
+        await self.ui.controller.destroy_for_guild(
+            player.guild.id,
+            ControllerDestroyReason.TRACK_END,
+            expected_track_id=TrackId.from_track(track),
+        )
 
         if reason in (mafic.EndReason.FINISHED, mafic.EndReason.LOAD_FAILED):
             await player.advance(previous_track=track)
@@ -225,7 +247,11 @@ class MusicEventHandlers:
 
         state.handled = True
 
-        await self.ui.controller.destroy_for_guild(guild_id)
+        await self.ui.controller.destroy_for_guild(
+            guild_id,
+            ControllerDestroyReason.TRACK_EXCEPTION,
+            expected_track_id=TrackId.from_track(track),
+        )
 
         if not state.notified:
             state.notified = True
@@ -247,16 +273,91 @@ class MusicEventHandlers:
                 event.player.guild.id,
             )
             await self.heal(guild_id)
+            return
 
-        elif event.code == 4014 and event.by_discord:
+        if self._has_recent_voice_transition(guild_id):
+            msg = (
+                "Deferring websocket cleanup during voice transition for guild %s "
+                "(code=%s, reason=%s, by_discord=%s)."
+            )
+            logger.debug(
+                msg,
+                guild_id,
+                event.code,
+                event.reason,
+                event.by_discord,
+            )
+            self._schedule_voice_transition_validation(guild_id, event.player)
+            return
+
+        await self.ui.controller.destroy_for_guild(
+            guild_id, ControllerDestroyReason.VOICE_DISCONNECT
+        )
+
+        if event.code == 4014 and event.by_discord:
             await self.healer.cleanup_after_disconnect(event.player.guild.id)
+
+    def _has_recent_voice_transition(self, guild_id: int) -> bool:
+        transition_at = self._recent_voice_transitions.get(guild_id)
+        if transition_at is None:
+            return False
+        if time.monotonic() - transition_at <= VOICE_TRANSITION_WINDOW_SECONDS:
+            return True
+        self._recent_voice_transitions.pop(guild_id, None)
+        return False
+
+    def _schedule_voice_transition_validation(
+        self, guild_id: int, event_player: MusicPlayer
+    ) -> None:
+        previous = self._voice_transition_validation_tasks.get(guild_id)
+        if previous and not previous.done():
+            previous.cancel()
+
+        task = asyncio.create_task(
+            self._validate_voice_transition_recovery(guild_id, event_player)
+        )
+        self._voice_transition_validation_tasks[guild_id] = task
+
+    async def _validate_voice_transition_recovery(
+        self, guild_id: int, event_player: MusicPlayer
+    ) -> None:
+        try:
+            await asyncio.sleep(VOICE_TRANSITION_VALIDATION_DELAY_SECONDS)
+            player = self.connection.get_player(guild_id) or event_player
+            if player.connected and player.channel and player.current:
+                logger.debug(
+                    "Voice transition recovered in guild %s; preserving controller.",
+                    guild_id,
+                )
+                return
+
+            logger.warning(
+                "Voice transition did not recover in guild %s; destroying controller.",
+                guild_id,
+            )
+            await self.ui.controller.destroy_for_guild(
+                guild_id, ControllerDestroyReason.VOICE_DISCONNECT
+            )
+        except asyncio.CancelledError:
+            logger.debug(
+                "Voice transition validation cancelled for guild %s",
+                guild_id,
+            )
+            raise
+        finally:
+            self._recent_voice_transitions.pop(guild_id, None)
+            current_task = asyncio.current_task()
+            if self._voice_transition_validation_tasks.get(guild_id) is current_task:
+                self._voice_transition_validation_tasks.pop(guild_id, None)
 
     async def heal(self, guild_id: int) -> None:
         if guild_id in self._healing_guilds:
             return
         self._healing_guilds.add(guild_id)
         try:
-            await self.ui.controller.destroy_for_guild(guild_id)
+            await self.ui.controller.destroy_for_guild(
+                guild_id, ControllerDestroyReason.PLAYER_ERROR
+            )
             self.state.cancel_timer(guild_id)
             await self.healer.capture_and_heal(guild_id)
         finally:
@@ -284,6 +385,7 @@ class MusicEventHandlers:
             return True
 
         if before.channel is not None and before.channel != after.channel:
+            self._recent_voice_transitions[guild_id] = time.monotonic()
             logger.info(
                 "Bot moved from %s to %s in guild %s. Continuing playback.",
                 before.channel.name,

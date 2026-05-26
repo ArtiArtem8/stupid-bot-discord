@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -7,17 +8,22 @@ import discord
 import mafic
 from discord.ext import commands
 
+from api.music.errors import classify_music_exception
 from api.music.models import (
-    PLAYER_FAIL_RESULT,
+    ControllerDestroyReason,
     MusicResult,
     MusicResultStatus,
+    NodeNotConnectedError,
     PlayResponseData,
     QueueSnapshot,
     RepeatMode,
     RepeatModeData,
     RotateTrackData,
     SkipTrackData,
+    TrackId,
+    VoiceCheckResult,
     VoiceJoinResult,
+    player_fail_result,
 )
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.event_handlers import MusicEventHandlers
@@ -82,15 +88,36 @@ class CoreMusicService:
             player = self.connection.get_player(guild.id)
             if player:
                 vol = await self.volume_repo.get_volume(guild.id)
-                await player.set_volume(vol)
+                await self._apply_volume(player, vol)
 
         return result, old_channel
+
+    async def _apply_volume(self, player: MusicPlayer, volume: int) -> None:
+        """Apply volume with a short retry while the voice connection stabilizes."""
+        retry_delays = (0.0, 0.3, 0.6)
+        for delay in retry_delays:
+            if delay:
+                await asyncio.sleep(delay)
+            try:
+                if player.connected:
+                    await player.set_volume(volume)
+                    return
+            except mafic.PlayerNotConnected:
+                continue
+
+        logger.warning(
+            "Failed to apply volume %s for guild %s (player not connected)",
+            volume,
+            player.guild.id,
+        )
 
     async def leave(self, guild: discord.Guild) -> MusicResult[None]:
         """Leave voice channel."""
         player = self.connection.get_player(guild.id)
 
-        await self.ui.controller.destroy_for_guild(guild.id)
+        await self.ui.controller.destroy_for_guild(
+            guild.id, ControllerDestroyReason.VOICE_DISCONNECT
+        )
         await self.end_session(guild.id)
         self.state.cancel_timer(guild.id)
 
@@ -111,17 +138,26 @@ class CoreMusicService:
         requester_id: int,
         text_channel_id: int | None = None,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        check_result, old_channel = await self.join(guild, voice_channel)
-        if check_result.status is MusicResultStatus.ERROR:
+        connection_result = await self.join(guild, voice_channel)
+        check_result, _old_channel = connection_result
+        playable_results = {
+            VoiceCheckResult.SUCCESS,
+            VoiceCheckResult.ALREADY_CONNECTED,
+            VoiceCheckResult.MOVED_CHANNELS,
+        }
+        if check_result not in playable_results:
             return MusicResult(
                 check_result.status,
                 "Connection failed",
-                data=(check_result, old_channel),
+                data=connection_result,
             )
 
         player = self.connection.get_player(guild.id)
         if not player:
-            return MusicResult(MusicResultStatus.ERROR, "Player not available")
+            return MusicResult(
+                MusicResultStatus.ERROR,
+                "Плеер потерял соединение. Попробуй запустить трек ещё раз.",
+            )
 
         if text_channel_id:
             session = self.state.get_or_create_session(guild.id)
@@ -146,7 +182,11 @@ class CoreMusicService:
                 return MusicResult(
                     MusicResultStatus.SUCCESS,
                     "Playlist added",
-                    data={"type": "playlist", "playlist": result},
+                    data={
+                        "type": "playlist",
+                        "playlist": result,
+                        "connection": connection_result,
+                    },
                 )
 
             track = result[0]
@@ -162,12 +202,32 @@ class CoreMusicService:
             return MusicResult(
                 MusicResultStatus.SUCCESS,
                 "Track processed",
-                data={"type": "track", "track": track, "playing": is_playing_before},
+                data={
+                    "type": "track",
+                    "track": track,
+                    "playing": is_playing_before,
+                    "connection": connection_result,
+                },
             )
 
-        except Exception as e:
+        except (
+            mafic.TrackLoadException,
+            mafic.PlayerNotConnected,
+            mafic.PlayerException,
+            NodeNotConnectedError,
+        ) as exc:
+            logger.warning("Expected play failure for query '%s': %s", query, exc)
+            safe_error = classify_music_exception(exc)
+            status = (
+                MusicResultStatus.FAILURE
+                if isinstance(exc, mafic.TrackLoadException)
+                else MusicResultStatus.ERROR
+            )
+            return MusicResult(status, safe_error.message)
+        except Exception as exc:
             logger.exception("Error in play")
-            return MusicResult(MusicResultStatus.ERROR, f"Error: {e}")
+            safe_error = classify_music_exception(exc)
+            return MusicResult(MusicResultStatus.ERROR, safe_error.message)
 
     async def stop(
         self,
@@ -176,11 +236,13 @@ class CoreMusicService:
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
         if not (player := self.connection.get_player(guild_id)):
-            return PLAYER_FAIL_RESULT
+            return player_fail_result(guild_id, context="stop")
 
         player.clear_queue()
         await player.stop()
-        await self.ui.controller.destroy_for_guild(guild_id)
+        await self.ui.controller.destroy_for_guild(
+            guild_id, ControllerDestroyReason.MANUAL_STOP
+        )
 
         if text_channel_id and requester_id:
             msg_session = self.state.get_or_create_session(guild_id)
@@ -195,12 +257,18 @@ class CoreMusicService:
         text_channel_id: int | None = None,
     ) -> MusicResult[SkipTrackData]:
         if not (player := self.connection.get_player(guild_id)):
-            return PLAYER_FAIL_RESULT
+            return player_fail_result(guild_id, context="skip")
 
         current = player.current
         up_next = player.queue.next
 
         await player.skip()
+        if current:
+            await self.ui.controller.destroy_for_guild(
+                guild_id,
+                ControllerDestroyReason.SKIP,
+                expected_track_id=TrackId.from_track(current),
+            )
         await player.resume()
 
         if text_channel_id and requester_id:
@@ -216,13 +284,13 @@ class CoreMusicService:
 
     async def pause(self, guild_id: int) -> MusicResult[None]:
         if not (player := self.connection.get_player(guild_id)):
-            return PLAYER_FAIL_RESULT
+            return player_fail_result(guild_id, context="pause")
         await player.pause()
         return MusicResult(MusicResultStatus.SUCCESS, "Paused")
 
     async def resume(self, guild_id: int) -> MusicResult[None]:
         if not (player := self.connection.get_player(guild_id)):
-            return PLAYER_FAIL_RESULT
+            return player_fail_result(guild_id, context="resume")
         await player.resume()
         return MusicResult(MusicResultStatus.SUCCESS, "Resumed")
 
@@ -233,7 +301,7 @@ class CoreMusicService:
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
         if not (player := self.connection.get_player(guild_id)):
-            return PLAYER_FAIL_RESULT
+            return player_fail_result(guild_id, context="shuffle")
         player.queue.shuffle()
 
         if text_channel_id and requester_id:
@@ -292,7 +360,7 @@ class CoreMusicService:
         text_channel_id: int | None = None,
     ) -> MusicResult[RepeatModeData]:
         if not (player := self.connection.get_player(guild_id)):
-            return PLAYER_FAIL_RESULT
+            return player_fail_result(guild_id, context="set_repeat")
 
         previous = player.repeat.mode
         if mode is None:

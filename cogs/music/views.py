@@ -18,6 +18,7 @@ from discord.utils import escape_markdown, format_dt
 
 import config
 from api.music import (
+    ControllerDestroyReason,
     MusicSession,
     QueueSnapshot,
     RepeatMode,
@@ -27,6 +28,7 @@ from api.music.protocols import ControllerManagerProtocol
 from framework import PRIMARY, BasePaginator, PaginationData
 from utils import TextPaginator, truncate_text
 
+from .responder import MusicInteractionResponder
 from .ui import send_warning
 
 if TYPE_CHECKING:
@@ -306,10 +308,14 @@ class TrackControllerManager(ControllerManagerProtocol):
                 )
                 return
 
-            await self._cleanup_existing(guild_id)
+            await self._cleanup_existing(
+                guild_id, ControllerDestroyReason.TRACK_CHANGED
+            )
 
-            async def on_view_stop_callback(view_ref: TrackControllerView):
-                await self.destroy_for_guild(guild_id, requesting_view=view_ref)
+            async def on_view_stop_callback(
+                view_ref: TrackControllerView, reason: ControllerDestroyReason
+            ) -> None:
+                await self.destroy_for_guild(guild_id, reason, requesting_view=view_ref)
 
             view = TrackControllerView(
                 user_id=user_id,
@@ -338,8 +344,13 @@ class TrackControllerManager(ControllerManagerProtocol):
 
     @override
     async def destroy_for_guild(
-        self, guild_id: int, requesting_view: TrackControllerView | None = None
-    ):
+        self,
+        guild_id: int,
+        reason: ControllerDestroyReason,
+        requesting_view: TrackControllerView | None = None,
+        *,
+        expected_track_id: TrackId | None = None,
+    ) -> None:
         """Destroys the controller for a guild.
         If requesting_view is provided, only destroys if current active view.
         """
@@ -348,21 +359,41 @@ class TrackControllerManager(ControllerManagerProtocol):
 
             if requesting_view and current_view != requesting_view:
                 logger.debug(
-                    "Manager: Ignoring destroy request from stale view for guild %s",
+                    "Manager: Ignoring %s destroy request from stale view for guild %s",
+                    reason.value,
+                    guild_id,
+                )
+                return
+            if (
+                expected_track_id
+                and current_view
+                and current_view.track_id != expected_track_id
+            ):
+                logger.debug(
+                    "Manager: Ignoring %s destroy for old track %s in guild %s",
+                    reason.value,
+                    expected_track_id.id,
                     guild_id,
                 )
                 return
 
-            await self._cleanup_existing(guild_id)
+            await self._cleanup_existing(guild_id, reason)
 
-    async def _cleanup_existing(self, guild_id: int):
+    async def _cleanup_existing(
+        self, guild_id: int, reason: ControllerDestroyReason
+    ) -> None:
         """Internal helper to clean up resources. Assumes lock is held."""
+        logger.debug(
+            "Manager: Destroying controller for guild %s (reason=%s)",
+            guild_id,
+            reason.value,
+        )
         controller = self.controllers.pop(guild_id, None)
         if controller:
             try:
                 controller.stop()
-            except Exception as e:
-                logger.error(f"Error stopping controller: {e}")
+            except Exception:
+                logger.exception("Error stopping controller")
 
         message_info = self._active_messages.pop(guild_id, None)
         if message_info:
@@ -371,7 +402,7 @@ class TrackControllerManager(ControllerManagerProtocol):
             try:
                 await self._safe_delete_message(chan_id, msg_id)
             except Exception as e:
-                logger.warning(f"Failed to delete message: {e}")
+                logger.warning("Failed to delete message: %s", e)
 
     async def _wait_for_sync(
         self, player: MusicPlayer, target_id: TrackId, timeout: float = 2.0
@@ -417,12 +448,12 @@ def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
             logger.warning("Player error in %s", func.__name__)
             self.stop()
             if self.on_stop_callback:
-                await self.on_stop_callback(self)
+                await self.on_stop_callback(self, ControllerDestroyReason.PLAYER_ERROR)
         except Exception:
             logger.exception("Unhandled error in %s", func.__name__)
             self.stop()
             if self.on_stop_callback:
-                await self.on_stop_callback(self)
+                await self.on_stop_callback(self, ControllerDestroyReason.PLAYER_ERROR)
 
     return wrapper
 
@@ -435,7 +466,8 @@ class TrackControllerView(ui.View):
         player: MusicPlayer,
         guild_id: int,
         track_id: TrackId,
-        on_stop_callback: Callable[[Self], Awaitable[None]] | None,
+        on_stop_callback: Callable[[Self, ControllerDestroyReason], Awaitable[None]]
+        | None,
     ):
         super().__init__(timeout=None)
         self.user_id = user_id
@@ -563,12 +595,12 @@ class TrackControllerView(ui.View):
             logger.debug("View Loop Cancelled")
             raise
         except Exception as e:
-            logger.exception(f"View Loop Error: {e}")
+            logger.exception("View Loop Error: %s", e)
 
-    async def _request_stop(self) -> None:
+    async def _request_stop(self, reason: ControllerDestroyReason) -> None:
         self.stop()
         if self.on_stop_callback:
-            await self.on_stop_callback(self)
+            await self.on_stop_callback(self, reason)
 
     async def _handle_missing_track(
         self, failure_count: int, max_failures: int
@@ -576,7 +608,7 @@ class TrackControllerView(ui.View):
         failure_count += 1
         if failure_count >= max_failures:
             logger.debug("View: Player empty. Requesting stop.")
-            await self._request_stop()
+            await self._request_stop(ControllerDestroyReason.TRACK_END)
             return None
         return failure_count
 
@@ -590,7 +622,7 @@ class TrackControllerView(ui.View):
             self.track_id,
             current_id,
         )
-        await self._request_stop()
+        await self._request_stop(ControllerDestroyReason.TRACK_CHANGED)
         return True
 
     async def _handle_pause_state(self) -> bool:
@@ -610,7 +642,7 @@ class TrackControllerView(ui.View):
             time.monotonic() - self._pause_start_time > self._max_pause_duration
         ):
             logger.debug("View: Paused too long. Requesting stop.")
-            await self._request_stop()
+            await self._request_stop(ControllerDestroyReason.TIMEOUT)
             return True
 
         return False
@@ -652,15 +684,25 @@ class TrackControllerView(ui.View):
             self._last_update_time = now
         except discord.NotFound:
             logger.debug("View: Message deleted externally. Stopping.")
-            self.stop()
-        except discord.HTTPException:
-            pass
+            await self._request_stop(ControllerDestroyReason.MESSAGE_DELETED)
+        except discord.HTTPException as exc:
+            logger.debug("View: Could not update controller message: %s", exc)
 
     async def _check_owner(self, interaction: Interaction) -> bool:
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "Not your controller.", ephemeral=True
+            await MusicInteractionResponder(interaction).send_private_failure(
+                "Это не ваш контроллер."
             )
+            return False
+        return True
+
+    async def _prepare_action(self, interaction: Interaction) -> bool:
+        if not await self._check_owner(interaction):
+            return False
+        await MusicInteractionResponder(interaction).acknowledge_component()
+        current = self.player.current
+        if not current or TrackId.from_track(current) != self.track_id:
+            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
             return False
         return True
 
@@ -671,12 +713,11 @@ class TrackControllerView(ui.View):
     )
     @handle_view_errors
     async def restart(self, interaction: Interaction, _: ui.Button[Self]):
-        if not await self._check_owner(interaction):
+        if not await self._prepare_action(interaction):
             return
         if self._is_paused_cache:
             self._frozen_position = 0
         await self.player.seek(0)
-        await interaction.response.defer()
         await self._safe_update(force=True)
 
     @ui.button(
@@ -686,7 +727,7 @@ class TrackControllerView(ui.View):
     )
     @handle_view_errors
     async def back10(self, interaction: Interaction, _: ui.Button[Self]):
-        if not await self._check_owner(interaction):
+        if not await self._prepare_action(interaction):
             return
         pos = (
             self._frozen_position
@@ -697,7 +738,6 @@ class TrackControllerView(ui.View):
         await self.player.seek(new)
         if self._is_paused_cache:
             self._frozen_position = new
-        await interaction.response.defer()
         await self._safe_update(force=True)
 
     @ui.button(
@@ -707,7 +747,7 @@ class TrackControllerView(ui.View):
     )
     @handle_view_errors
     async def pause_resume(self, interaction: Interaction, _: ui.Button[Self]):
-        if not await self._check_owner(interaction):
+        if not await self._prepare_action(interaction):
             return
         if self.player.paused:
             await self.player.resume()
@@ -717,7 +757,6 @@ class TrackControllerView(ui.View):
             self._is_paused_cache = True
             self._frozen_position = self.player.position or 0
             self._pause_start_time = time.monotonic()
-        await interaction.response.defer()
         await self._safe_update(force=True)
 
     @ui.button(
@@ -727,7 +766,7 @@ class TrackControllerView(ui.View):
     )
     @handle_view_errors
     async def forward10(self, interaction: Interaction, _: ui.Button[Self]):
-        if not await self._check_owner(interaction):
+        if not await self._prepare_action(interaction):
             return
         if not self.player.current:
             return
@@ -740,7 +779,6 @@ class TrackControllerView(ui.View):
         await self.player.seek(new)
         if self._is_paused_cache:
             self._frozen_position = new
-        await interaction.response.defer()
         await self._safe_update(force=True)
 
     @ui.button(
@@ -750,7 +788,7 @@ class TrackControllerView(ui.View):
     )
     @handle_view_errors
     async def skip(self, interaction: Interaction, _: ui.Button[Self]):
-        if not await self._check_owner(interaction):
+        if not await self._prepare_action(interaction):
             return
         await self.player.skip()
-        await interaction.response.defer()
+        await self._request_stop(ControllerDestroyReason.SKIP)

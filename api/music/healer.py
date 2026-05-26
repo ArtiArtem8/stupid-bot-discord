@@ -21,7 +21,7 @@ from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from repositories.volume_repository import VolumeRepository
 
-from .models import PlayerStateSnapshot
+from .models import ControllerDestroyReason, PlayerStateSnapshot
 from .player import MusicPlayer, music_player_factory
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,9 @@ class SessionHealer(HealerProtocol):
         self, guild_id: int, is_healing: bool = False
     ) -> None:
         """Called when bot is seemingly disconnected but we want to cleanup properly."""
-        await self.ui.controller.destroy_for_guild(guild_id)
+        await self.ui.controller.destroy_for_guild(
+            guild_id, ControllerDestroyReason.VOICE_DISCONNECT
+        )
         session = self.state.end_session(guild_id)
         if session and session.tracks and not is_healing:
             main_channel_id = (
@@ -188,6 +190,7 @@ class SessionHealer(HealerProtocol):
             )
 
         if snapshot.current_track:
+            # track_start is ignored during healing; restore the controller explicitly.
             await self.ui.spawn_controller(player, snapshot.current_track)
         if session := snapshot.session:
             self.state.sessions.setdefault(snapshot.guild_id, session)

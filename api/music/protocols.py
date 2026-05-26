@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     import discord
 
-    from .models import Track
+    from .models import ControllerDestroyReason, Track, TrackId
     from .player import MusicPlayer
 
 
@@ -26,7 +26,13 @@ class ControllerManagerProtocol(Protocol):
         """Create a controller for a user."""
         ...
 
-    async def destroy_for_guild(self, guild_id: int) -> None:
+    async def destroy_for_guild(
+        self,
+        guild_id: int,
+        reason: ControllerDestroyReason,
+        *,
+        expected_track_id: TrackId | None = None,
+    ) -> None:
         """Destroy controller for a guild."""
         ...
 
