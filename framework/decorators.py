@@ -49,22 +49,24 @@ def handle_errors[CogT, T, **P]() -> Callable[
             try:
                 return await func(self, interaction, *args, **kwargs)
             except discord.DiscordException as e:
-                logger.exception(f"Discord error in {func.__name__}")
+                logger.exception("Discord error in %s", func.__name__)
                 await FeedbackUI.send(
                     interaction,
                     title="Discord Ошибка",
                     feedback_type=FeedbackType.ERROR,
-                    description=f"❌ {type(e).__name__}: {e}",
+                    description=(
+                        "Не удалось выполнить действие в Discord. Попробуйте ещё раз."
+                    ),
                     delete_after=600,
                     error_info=str(e),
                 )
             except Exception as e:
-                logger.exception(f"Unexpected error in {func.__name__}")
+                logger.exception("Unexpected error in %s", func.__name__)
                 await FeedbackUI.send(
                     interaction,
                     feedback_type=FeedbackType.ERROR,
                     title="Внутренняя ошибка",
-                    description=f"❌ {type(e).__name__}: {e}",
+                    description="Внутренняя ошибка. Детали записаны в лог.",
                     delete_after=600,
                     error_info=str(e),
                 )

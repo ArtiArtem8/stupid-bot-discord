@@ -164,6 +164,14 @@ class FeedbackUI:
                 embed.add_field(name="", value=timer, inline=False)
 
         if interaction.response.is_done():
+            if (
+                interaction.response.type
+                is discord.InteractionResponseType.deferred_channel_message
+            ):
+                msg = await interaction.edit_original_response(embed=embed, view=view)
+                if delete_after:
+                    await msg.delete(delay=delete_after)
+                return
             msg = await interaction.followup.send(
                 embed=embed,
                 view=view,

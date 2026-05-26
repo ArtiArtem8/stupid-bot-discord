@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import asdict, dataclass
 
 
 @dataclass
@@ -10,5 +9,5 @@ class BaseEvent:
     def event_name(self) -> str:
         return self.__class__.__name__
 
-    def to_dict(self) -> dict[str, Any]:
-        return self.__dict__
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)

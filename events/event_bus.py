@@ -2,15 +2,23 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
-from typing import Any
+from collections.abc import Awaitable
+from typing import Protocol, TypedDict
 
 from .base_event import BaseEvent
 
 logger = logging.getLogger(__name__)
 
 
-type EventHandler = Callable[[BaseEvent], Awaitable[None]]
+class EventHandler(Protocol):
+    __name__: str
+
+    def __call__(self, event: BaseEvent, /) -> Awaitable[None]: ...
+
+
+class EventMetrics(TypedDict):
+    counts: dict[str, int]
+    avg_latency_ms: dict[str, float]
 
 
 class EventBus:
@@ -69,7 +77,13 @@ class EventBus:
             )
             self._metrics[f"handler_error.{handler.__name__}"] += 1
 
-    def get_metrics(self) -> dict[str, Any]:
-        """Return a snapshot of current metrics."""
-        avg_latencies = {k: sum(v) / len(v) for k, v in self._latencies.items() if v}
-        return {"counts": dict(self._metrics), "avg_latency_ms": avg_latencies}
+    def get_metrics(self) -> EventMetrics:
+        avg_latencies = {
+            name: sum(values) / len(values)
+            for name, values in self._latencies.items()
+            if values
+        }
+        return {
+            "counts": dict(self._metrics),
+            "avg_latency_ms": avg_latencies,
+        }

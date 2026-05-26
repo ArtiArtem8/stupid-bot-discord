@@ -69,6 +69,6 @@ class UptimeManager:
         state = UptimeData(last_shutdown=time.time(), accumulated_uptime=current_uptime)
         try:
             save_json(config.LAST_RUN_FILE, state.to_json(), backup_amount=1)
-        except Exception as e:
-            logger.error("Failed to save state: %s", e)
+        except Exception:
+            logger.exception("Failed to save state")
         return current_uptime
