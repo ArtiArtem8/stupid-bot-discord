@@ -9,7 +9,6 @@ import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any
 
 import discord
 from discord import Message, app_commands
@@ -19,7 +18,9 @@ from rapidfuzz import fuzz, process
 from rapidfuzz.utils import default_process
 
 type CMD = (
-    app_commands.ContextMenu | app_commands.Command[Any, ..., Any] | app_commands.Group
+    app_commands.ContextMenu
+    | app_commands.Command[app_commands.Group | commands.Cog, ..., object]
+    | app_commands.Group
 )
 
 
@@ -96,7 +97,7 @@ class PrefixBlockerCog(commands.Cog):
         return cutoff
 
     def _flatten_commands(
-        self, cmds: Iterable[CMD], *, in_guild: bool
+        self, cmds: Iterable[CMD]
     ) -> dict[str, tuple[CMD, str, bool]]:
         """Build match keys -> (cmd_object, root_name, is_guild_command)."""
         out: dict[str, tuple[CMD, str, bool]] = {}
@@ -176,7 +177,7 @@ class PrefixBlockerCog(commands.Cog):
         visible_cmds = self._get_visible_commands(message)
         in_guild = message.guild is not None
 
-        key_map = self._flatten_commands(visible_cmds, in_guild=in_guild)
+        key_map = self._flatten_commands(visible_cmds)
         choices = list(key_map.keys())
 
         suggestion: Suggestion | None = None
