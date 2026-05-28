@@ -1,6 +1,7 @@
 """Music API package."""
 
 from .models import (
+    MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     ControllerDestroyReason,
     MusicResult,
     MusicResultStatus,
@@ -21,6 +22,7 @@ from .protocols import ControllerManagerProtocol, HealerProtocol
 from .service import CoreMusicService as MusicService
 
 __all__ = [
+    "MUSIC_SERVICE_UNAVAILABLE_MESSAGE",
     "ControllerDestroyReason",
     "ControllerManagerProtocol",
     "HealerProtocol",

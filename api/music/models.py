@@ -14,6 +14,10 @@ from discord.utils import utcnow
 
 logger = logging.getLogger(__name__)
 
+MUSIC_SERVICE_UNAVAILABLE_MESSAGE = (
+    "Музыкальный сервис сейчас недоступен. Попробуйте позже."
+)
+
 type Track = mafic.Track
 type Playlist = mafic.Playlist
 type SearchResult = list[Track] | Playlist | None
@@ -90,6 +94,7 @@ class VoiceCheckResult(StrEnum):
     ALREADY_CONNECTED = auto()
     CHANNEL_EMPTY = auto()
     CONNECTION_FAILED = auto()
+    MUSIC_SERVICE_UNAVAILABLE = auto()
     TIMEOUT = auto()
     MOVED_CHANNELS = auto()
     SUCCESS = auto()

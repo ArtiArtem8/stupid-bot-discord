@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
 
+import aiohttp
 import mafic
 
-from .models import NodeNotConnectedError
+from .models import MUSIC_SERVICE_UNAVAILABLE_MESSAGE, NodeNotConnectedError
+
+EXPECTED_LAVALINK_IO_ERRORS = (
+    aiohttp.ClientError,
+    mafic.HTTPNotFound,
+    mafic.PlayerException,
+    mafic.PlayerNotConnected,
+    TimeoutError,
+    asyncio.TimeoutError,
+)
 
 
 class MusicErrorCode(StrEnum):
@@ -37,7 +48,12 @@ def classify_music_exception(exc: Exception) -> UserFacingMusicError:
     if isinstance(exc, NodeNotConnectedError):
         return UserFacingMusicError(
             MusicErrorCode.MUSIC_NODE_UNAVAILABLE,
-            "Музыкальный сервер сейчас недоступен. Попробуйте позже.",
+            MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+        )
+    if isinstance(exc, EXPECTED_LAVALINK_IO_ERRORS):
+        return UserFacingMusicError(
+            MusicErrorCode.MUSIC_NODE_UNAVAILABLE,
+            MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
         )
     if isinstance(exc, (mafic.PlayerNotConnected, mafic.PlayerException)):
         return UserFacingMusicError(
