@@ -13,8 +13,11 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.bot = MagicMock()
         self.connection = MagicMock()
+        self.connection.mark_node_unavailable = AsyncMock()
+        self.connection.detach_stale_voice_client = AsyncMock()
         self.state = MagicMock()
         self.state.is_timer_active.return_value = False
+        self.state.cancel_timer = MagicMock()
         self.ui = MagicMock()
         self.ui.controller.destroy_for_guild = AsyncMock()
         self.healer = MagicMock()
@@ -133,6 +136,49 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
 
         self.ui.controller.destroy_for_guild.assert_awaited_once_with(
             1, ControllerDestroyReason.VOICE_DISCONNECT
+        )
+
+    async def test_node_unavailable_marks_connection_and_cleans_music_state(
+        self,
+    ) -> None:
+        node = MagicMock()
+        node.label = "MAIN"
+        player = MagicMock(spec=object)
+        player.disconnect = AsyncMock()
+        guild = MagicMock()
+        guild.id = 123
+        guild.voice_client = player
+        self.bot.guilds = [guild]
+
+        with patch("api.music.service.event_handlers.mafic.Player", object):
+            await self.handlers.on_node_unavailable(node)
+
+        self.connection.mark_node_unavailable.assert_awaited_once_with(node)
+        self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+            123,
+            ControllerDestroyReason.PLAYER_ERROR,
+        )
+        self.state.cancel_timer.assert_called_once_with(123)
+        self.connection.detach_stale_voice_client.assert_awaited_once_with(
+            guild, player
+        )
+
+    async def test_repeated_setup_does_not_register_duplicate_listeners(self) -> None:
+        self.handlers.setup()
+        self.handlers.setup()
+
+        listeners = [
+            call.args
+            for call in self.bot.add_listener.call_args_list
+            if len(call.args) == 2
+        ]
+
+        self.assertEqual(
+            listeners.count((self.handlers.on_node_ready, "on_node_ready")), 1
+        )
+        self.assertEqual(
+            listeners.count((self.handlers.on_node_unavailable, "on_node_unavailable")),
+            1,
         )
 
     async def test_delayed_transition_validation_destroys_disconnected_controller(

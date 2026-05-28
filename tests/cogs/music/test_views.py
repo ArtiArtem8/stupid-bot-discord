@@ -4,6 +4,7 @@ import unittest
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 from discord import Client, Interaction, ui
 
 from api.music.models import ControllerDestroyReason, TrackId
@@ -65,3 +66,40 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             await callback(cast(Interaction[Client], cast(object, interaction)))
 
         self.assertEqual(calls, ["ack", "seek"])
+
+    async def test_pause_resume_handles_lavalink_io_error(self) -> None:
+        track = MagicMock(identifier="track")
+        player = MagicMock(current=track, paused=False)
+        player.pause = AsyncMock(side_effect=aiohttp.ClientConnectionError("down"))
+        player.cleanup = MagicMock()
+        on_stop = AsyncMock()
+        view = TrackControllerView(
+            user_id=10,
+            player=player,
+            guild_id=1,
+            track_id=TrackId("track"),
+            on_stop_callback=on_stop,
+        )
+        interaction = MagicMock()
+        interaction.user.id = 10
+
+        with (
+            patch(
+                "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                new=AsyncMock(),
+            ),
+            patch("cogs.music.views.send_warning", new=AsyncMock()) as send_warning,
+        ):
+            pause_button = next(
+                child
+                for child in view.children
+                if isinstance(child, ui.Button)
+                and child.custom_id == "btn_pause_resume"
+            )
+            callback = pause_button.callback
+            self.assertIsNotNone(callback)
+            await callback(cast(Interaction[Client], cast(object, interaction)))
+
+        player.cleanup.assert_called_once()
+        on_stop.assert_awaited_once_with(view, ControllerDestroyReason.PLAYER_ERROR)
+        send_warning.assert_awaited_once()

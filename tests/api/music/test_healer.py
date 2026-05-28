@@ -3,8 +3,10 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
+from discord import VoiceChannel
+
 from api.music.healer import SessionHealer
-from api.music.models import PlayerStateSnapshot, RepeatMode
+from api.music.models import PlayerStateSnapshot, RepeatMode, VoiceCheckResult
 from api.music.service.state_manager import StateManager
 
 
@@ -17,7 +19,10 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         ui.spawn_controller = AsyncMock()
         healer = SessionHealer(bot, connection, state, MagicMock(), ui)
 
-        channel = MagicMock()
+        channel = MagicMock(spec=VoiceChannel)
+
+        connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        connection.is_player_usable = MagicMock(return_value=True)
         channel.connect = AsyncMock()
         guild = MagicMock()
         guild.get_channel.return_value = channel
@@ -45,7 +50,8 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             session=None,
         )
 
-        await healer._restore_session(snapshot)
+        restored = await healer._restore_session(snapshot)
+        self.assertTrue(restored)
 
         player.play.assert_awaited_once()
         ui.spawn_controller.assert_awaited_once_with(player, track)
