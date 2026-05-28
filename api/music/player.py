@@ -10,11 +10,13 @@ import discord
 import mafic
 from discord.utils import MISSING  # pyright: ignore[reportAny]
 
+from .errors import EXPECTED_LAVALINK_IO_ERRORS
 from .models import RepeatMode, Track, TrackId, TrackRequester
 from .queue import QueueManager, RepeatManager
 
 if TYPE_CHECKING:
     from discord.abc import Connectable
+    from mafic.__libraries import VoiceServerUpdatePayload
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +142,23 @@ class MusicPlayer(mafic.Player[discord.Client]):
         return skipped_track
 
     @override
+    async def on_voice_server_update(self, data: VoiceServerUpdatePayload) -> None:
+        try:
+            await super().on_voice_server_update(data)
+        except EXPECTED_LAVALINK_IO_ERRORS as exc:
+            logger.warning(
+                "Lavalink IO failure during voice server update: %s",
+                type(exc).__name__,
+            )
+            try:
+                self.cleanup()
+            except Exception:
+                logger.debug(
+                    "Failed to cleanup player after voice server update failure",
+                    exc_info=True,
+                )
+
+    @override
     async def update(
         self,
         *,
@@ -161,9 +180,15 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 filter=filter,
                 replace=replace,
             )
-        except mafic.errors.HTTPNotFound as e:
-            logger.exception("Failed to update player: %s", e)
-            await self.disconnect(force=True)
+        except EXPECTED_LAVALINK_IO_ERRORS as exc:
+            logger.warning("Failed to update player: %s", type(exc).__name__)
+            try:
+                self.cleanup()
+            except Exception:
+                logger.debug(
+                    "Failed to cleanup player after update failure", exc_info=True
+                )
+            raise
 
 
 def music_player_factory(

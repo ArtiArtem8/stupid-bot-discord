@@ -11,6 +11,7 @@ from discord.ext import commands, tasks
 
 import config
 from api.music import (
+    MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     MusicResultStatus,
     MusicSession,
     QueueSnapshot,
@@ -69,6 +70,7 @@ def _format_voice_result_message(
         VoiceCheckResult.ALREADY_CONNECTED: "Уже подключён к {0}",
         VoiceCheckResult.CHANNEL_EMPTY: "Голосовой канал {0} пуст!",
         VoiceCheckResult.CONNECTION_FAILED: "Ошибка подключения к {0}",
+        VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE: MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
         VoiceCheckResult.TIMEOUT: "Время подключения к {0} **истекло**"
         + "\n*Попробуйте сменить регион этого канала!*",
         VoiceCheckResult.MOVED_CHANNELS: "Переместился {1} -> {0}",
@@ -424,6 +426,19 @@ class MusicCog(BaseCog):
             return
         await send_info(interaction, msg, delete_after=delete_after)
 
+    async def _send_no_player_or_unavailable(
+        self, interaction: Interaction, result: MusicResult[object]
+    ) -> None:
+        if result.message == MUSIC_SERVICE_UNAVAILABLE_MESSAGE:
+            await send_warning(
+                interaction,
+                MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+                ephemeral=True,
+                delete_after=60,
+            )
+            return
+        await send_warning_no_player(interaction)
+
     def _build_track_embed(
         self, interaction: Interaction, data: TrackResponseData
     ) -> discord.Embed:
@@ -490,7 +505,7 @@ class MusicCog(BaseCog):
         if res.is_success:
             await send_info(interaction, "Остановлено")
         else:
-            await send_warning_no_player(interaction)
+            await self._send_no_player_or_unavailable(interaction, res)
 
     @app_commands.command(name="skip", description="Пропустить текущий трек")
     @app_commands.guild_only()
@@ -501,7 +516,7 @@ class MusicCog(BaseCog):
             guild.id, interaction.user.id, interaction.channel_id
         )
         if res.status is MusicResultStatus.FAILURE:
-            await send_warning_no_player(interaction)
+            await self._send_no_player_or_unavailable(interaction, res)
             return
 
         if not res.is_success or not res.data:
@@ -535,14 +550,23 @@ class MusicCog(BaseCog):
     async def queue(self, interaction: Interaction, ephemeral: bool = True) -> None:
         guild = await self._require_guild(interaction)
 
+        res = await self.service.get_queue(guild.id)
+        data = res.data
+        if not data:
+            if res.message == MUSIC_SERVICE_UNAVAILABLE_MESSAGE:
+                await send_warning(
+                    interaction,
+                    MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+                    ephemeral=True,
+                    delete_after=60,
+                )
+                return
+            await send_warning(interaction, "Очередь пуста", ephemeral=True)
+            return
+
         async def fetch() -> QueueSnapshot | None:
             res = await self.service.get_queue(guild.id)
             return res.data
-
-        data = await fetch()
-        if not data:
-            await send_warning(interaction, "Очередь пуста", ephemeral=True)
-            return
 
         adapter = QueuePaginationAdapter(data)
         view = QueuePaginator(adapter, fetch, interaction.user.id)
@@ -574,12 +598,14 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def leave(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
-        res = await self.service.leave(guild)
+        res = await MusicInteractionResponder(interaction).await_with_defer_budget(
+            self.service.leave(guild)
+        )
         match res.status:
             case MusicResultStatus.SUCCESS:
                 await send_info(interaction, "Отключился", title="До свидания ❤️")
             case MusicResultStatus.FAILURE:
-                await send_warning_no_player(interaction)
+                await self._send_no_player_or_unavailable(interaction, res)
             case MusicResultStatus.ERROR:
                 await send_error(interaction, res.message)
 
@@ -594,7 +620,7 @@ class MusicCog(BaseCog):
         if res.is_success:
             await send_success(interaction, "Перемешано")
         else:
-            await send_warning_no_player(interaction)
+            await self._send_no_player_or_unavailable(interaction, res)
 
     @app_commands.command(
         name="rotate", description="Переместить тек. трек в конец очереди"
@@ -607,7 +633,7 @@ class MusicCog(BaseCog):
             guild.id, interaction.user.id, interaction.channel_id
         )
         if not res.is_success:
-            await send_warning_no_player(interaction)
+            await self._send_no_player_or_unavailable(interaction, res)
             return
         if not res.data or not res.data["skipped"]:
             await send_warning(interaction, "Нечего перемещать", ephemeral=True)
@@ -651,7 +677,7 @@ class MusicCog(BaseCog):
 
         data = result.data
         if not result.is_success or not data:
-            return await send_warning_no_player(interaction)
+            return await self._send_no_player_or_unavailable(interaction, result)
 
         new_mode = data.get("mode")
 
@@ -684,7 +710,7 @@ class MusicCog(BaseCog):
         if res.is_success:
             await send_info(interaction, "Воспроизведение приостановлено")
         else:
-            await send_warning_no_player(interaction)
+            await self._send_no_player_or_unavailable(interaction, res)
 
     @app_commands.command(name="resume", description="Продолжить")
     @app_commands.guild_only()
@@ -695,7 +721,7 @@ class MusicCog(BaseCog):
         if res.is_success:
             await send_info(interaction, "Воспроизведение продолжено")
         else:
-            await send_warning_no_player(interaction)
+            await self._send_no_player_or_unavailable(interaction, res)
 
     @app_commands.command(
         name="reconnect", description="Переподключиться в случае ошибок"
@@ -706,16 +732,31 @@ class MusicCog(BaseCog):
         if interaction.guild_id is None:
             await send_warning(interaction, "сервер не найден", ephemeral=True)
             return
+
         player = self.service.get_player(interaction.guild_id)
         if not player:
             await send_warning(interaction, "нет проигрывателя", ephemeral=True)
             return
+
         await interaction.response.defer(ephemeral=True)
-        await self.service.heal(interaction.guild_id)
+
+        restored = await self.service.heal(interaction.guild_id)
+        if restored:
+            await send_warning(
+                interaction,
+                title="Восстановлен",
+                message="Попытка переподключения сделана",
+                ephemeral=True,
+            )
+            return
+
         await send_warning(
             interaction,
-            title="Восстановлен",
-            message="Попытка переподключения сделана",
+            title="Не восстановлено",
+            message=(
+                "Переподключение выполнено, но трек не удалось снова запустить. "
+                "Скорее всего, источник временно отдал ошибку."
+            ),
             ephemeral=True,
         )
 

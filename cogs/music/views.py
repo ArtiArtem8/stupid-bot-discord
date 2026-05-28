@@ -10,7 +10,6 @@ from collections.abc import Awaitable, Callable, Coroutine
 from typing import TYPE_CHECKING, Self, override
 
 import discord
-import mafic
 from discord import Interaction, ui
 from discord.abc import PrivateChannel
 from discord.ext import commands
@@ -18,12 +17,14 @@ from discord.utils import escape_markdown, format_dt
 
 import config
 from api.music import (
+    MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     ControllerDestroyReason,
     MusicSession,
     QueueSnapshot,
     RepeatMode,
     TrackId,
 )
+from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
 from api.music.protocols import ControllerManagerProtocol
 from framework import PRIMARY, BasePaginator, PaginationData
 from utils import TextPaginator, truncate_text
@@ -444,11 +445,11 @@ def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
     ) -> None:
         try:
             await func(self, interaction, button)
-        except (mafic.PlayerNotConnected, mafic.PlayerException):
-            logger.warning("Player error in %s", func.__name__)
-            self.stop()
-            if self.on_stop_callback:
-                await self.on_stop_callback(self, ControllerDestroyReason.PLAYER_ERROR)
+        except EXPECTED_LAVALINK_IO_ERRORS as exc:
+            logger.warning(
+                "Player IO error in %s: %s", func.__name__, type(exc).__name__
+            )
+            await self.handle_player_io_error(interaction)
         except Exception:
             logger.exception("Unhandled error in %s", func.__name__)
             self.stop()
@@ -601,6 +602,19 @@ class TrackControllerView(ui.View):
         self.stop()
         if self.on_stop_callback:
             await self.on_stop_callback(self, reason)
+
+    async def handle_player_io_error(self, interaction: Interaction) -> None:
+        try:
+            self.player.cleanup()
+        except Exception:
+            logger.debug("Failed to cleanup controller player locally", exc_info=True)
+        await self._request_stop(ControllerDestroyReason.PLAYER_ERROR)
+        await send_warning(
+            interaction,
+            MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+            ephemeral=True,
+            delete_after=60,
+        )
 
     async def _handle_missing_track(
         self, failure_count: int, max_failures: int

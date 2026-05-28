@@ -58,6 +58,7 @@ class MusicEventHandlers:
         self._load_failures: dict[int, LoadFailureState] = {}
         self._recent_voice_transitions: dict[int, float] = {}
         self._voice_transition_validation_tasks: dict[int, asyncio.Task[None]] = {}
+        self._unavailable_node_labels: set[str] = set()
         self._setup_done = False
 
     def setup(self) -> None:
@@ -71,6 +72,7 @@ class MusicEventHandlers:
         self.bot.add_listener(self._on_track_exception, "on_track_exception")
         self.bot.add_listener(self._on_track_stuck, "on_track_stuck")
         self.bot.add_listener(self.on_node_ready, "on_node_ready")
+        self.bot.add_listener(self.on_node_unavailable, "on_node_unavailable")
         self.bot.add_listener(self._on_voice_state_update, "on_voice_state_update")
         self.bot.add_listener(self._on_websocket_closed, "on_websocket_closed")
         self._setup_done = True
@@ -85,17 +87,42 @@ class MusicEventHandlers:
         self.bot.remove_listener(self._on_track_exception, "on_track_exception")
         self.bot.remove_listener(self._on_track_stuck, "on_track_stuck")
         self.bot.remove_listener(self.on_node_ready, "on_node_ready")
+        self.bot.remove_listener(self.on_node_unavailable, "on_node_unavailable")
         self.bot.remove_listener(self._on_voice_state_update, "on_voice_state_update")
         self.bot.remove_listener(self._on_websocket_closed, "on_websocket_closed")
         for task in self._voice_transition_validation_tasks.values():
             task.cancel()
         self._voice_transition_validation_tasks.clear()
         self._recent_voice_transitions.clear()
+        self._unavailable_node_labels.clear()
         self._setup_done = False
         logger.info("MusicEventHandlers listeners removed.")
 
     async def on_node_ready(self, node: mafic.Node[commands.Bot]) -> None:
+        self._unavailable_node_labels.discard(node.label)
         logger.info("Lavalink node '%s' is ready", node.label)
+
+    async def on_node_unavailable(self, node: mafic.Node[commands.Bot]) -> None:
+        if node.label not in self._unavailable_node_labels:
+            logger.warning("Lavalink node '%s' became unavailable", node.label)
+            self._unavailable_node_labels.add(node.label)
+
+        await self.connection.mark_node_unavailable(node)
+        await self._cleanup_after_node_unavailable()
+
+    async def _cleanup_after_node_unavailable(self) -> None:
+        for guild in self.bot.guilds:
+            await self.ui.controller.destroy_for_guild(
+                guild.id,
+                ControllerDestroyReason.PLAYER_ERROR,
+            )
+            self.state.cancel_timer(guild.id)
+
+            voice_client = guild.voice_client
+            if not isinstance(voice_client, mafic.Player):
+                continue
+
+            await self.connection.detach_stale_voice_client(guild, voice_client)  # pyright: ignore[reportUnknownArgumentType]
 
     async def _on_track_start(self, event: mafic.TrackStartEvent[MusicPlayer]) -> None:
         if event.player.guild.id in self._healing_guilds:
@@ -158,14 +185,25 @@ class MusicEventHandlers:
     async def _on_track_stuck(self, event: mafic.TrackStuckEvent[MusicPlayer]) -> None:
         """Remove stale controls when Lavalink reports a stalled track.
 
-        This handler intentionally does not auto-advance: Lavalink may emit
-        track_end afterwards, and that event remains the single transition path.
+        During healing, stuck events from the old or restoring player should not drive
+        the normal controller lifecycle.
         """
+        guild_id = event.player.guild.id
+
+        if guild_id in self._healing_guilds:
+            logger.debug(
+                "Ignoring track_stuck during healing for guild %s",
+                guild_id,
+            )
+            return
+
         logger.warning(
-            "Track stuck in guild %s: %s", event.player.guild.id, event.track.title
+            "Track stuck in guild %s: %s",
+            guild_id,
+            event.track.title,
         )
         await self.ui.controller.destroy_for_guild(
-            event.player.guild.id,
+            guild_id,
             ControllerDestroyReason.TRACK_STUCK,
             expected_track_id=TrackId.from_track(event.track),
         )
@@ -323,8 +361,9 @@ class MusicEventHandlers:
     ) -> None:
         try:
             await asyncio.sleep(VOICE_TRANSITION_VALIDATION_DELAY_SECONDS)
-            player = self.connection.get_player(guild_id) or event_player
-            if player.connected and player.channel and player.current:
+
+            player = self.connection.get_player(guild_id)
+            if player and player.connected and player.channel and player.current:
                 logger.debug(
                     "Voice transition recovered in guild %s; preserving controller.",
                     guild_id,
@@ -338,6 +377,13 @@ class MusicEventHandlers:
             await self.ui.controller.destroy_for_guild(
                 guild_id, ControllerDestroyReason.VOICE_DISCONNECT
             )
+
+            if not self.connection.is_player_usable(event_player):
+                await self.connection.detach_stale_voice_client(
+                    event_player.guild,
+                    event_player,
+                )
+
         except asyncio.CancelledError:
             logger.debug(
                 "Voice transition validation cancelled for guild %s",
@@ -350,16 +396,18 @@ class MusicEventHandlers:
             if self._voice_transition_validation_tasks.get(guild_id) is current_task:
                 self._voice_transition_validation_tasks.pop(guild_id, None)
 
-    async def heal(self, guild_id: int) -> None:
+    async def heal(self, guild_id: int) -> bool:
         if guild_id in self._healing_guilds:
-            return
+            return False
+
         self._healing_guilds.add(guild_id)
         try:
             await self.ui.controller.destroy_for_guild(
-                guild_id, ControllerDestroyReason.PLAYER_ERROR
+                guild_id,
+                ControllerDestroyReason.PLAYER_ERROR,
             )
             self.state.cancel_timer(guild_id)
-            await self.healer.capture_and_heal(guild_id)
+            return await self.healer.capture_and_heal(guild_id)
         finally:
             self._healing_guilds.discard(guild_id)
 
