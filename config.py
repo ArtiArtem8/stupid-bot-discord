@@ -27,7 +27,7 @@ LAVALINK_CONNECT_RETRY_DELAY = float(os.getenv("LAVALINK_CONNECT_RETRY_DELAY", 3
 
 
 # --- Directory structure ---
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).resolve().parent
 COGS_DIR = BASE_DIR / "cogs"
 BACKUP_DIR = BASE_DIR / "backups"
 DATA_DIR = BASE_DIR / "data"

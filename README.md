@@ -66,6 +66,7 @@ The bot is designed to be easily extensible. New features can be added by creati
 - **Python 3.12**: Strictly required.
 - **[uv](https://github.com/astral-sh/uv)**: Fast Python package installer and resolver.
 - **[Lavalink](https://github.com/lavalink-devs/Lavalink)**: Required for music functionality (Java 11+).
+- **Linux voice/runtime packages**: For Debian/Ubuntu hosts, install `libopus0` and `ffmpeg` if you use Discord voice or other audio tooling alongside Lavalink.
 - **Discord Bot Token**: From [Discord Developer Portal](https://discord.com/developers/applications).
 - **WolframAlpha App ID**: From [WolframAlpha Developer Portal](https://developer.wolframalpha.com/).
 
@@ -107,14 +108,28 @@ The bot is designed to be easily extensible. New features can be added by creati
 
 ## Usage
 
-Start the bot using `uv`:
+Start the bot using `uv` on any supported platform:
 
 ```bash
 uv run main.py
 ```
 
+Platform launcher scripts are also included:
+
+```bash
+# Windows
+runstupidbot.bat
+
+# Linux/macOS
+./runstupidbot.sh
+```
+
 > [!NOTE]
 > Ensure the Lavalink server is running before starting the bot to enable music functionality.
+
+### Platform Notes
+
+For Linux deployments, run the bot with Python 3.12, keep Lavalink reachable using the same `.env` values, and install system audio packages such as `libopus0`/`ffmpeg` when your deployment uses Discord voice or local audio tooling.
 
 ## Configuration
 
