@@ -1,8 +1,6 @@
 version = 1
 revision = 3
 requires-python = "==3.12.*"
-supported-markers = [
-]
 
 [[package]]
 name = "aiofiles"
@@ -618,7 +616,7 @@ dev = [
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "defusedxml", specifier = ">=0.7.1" },
-    { name = "discord-py", extras = ["voice"], specifier = ">=2.7.0" },
+    { name = "discord-py", extras = ["voice"], specifier = ">=2.7.1" },
     { name = "mafic", specifier = ">=2.11.0" },
     { name = "pillow", specifier = ">=12" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
