@@ -14,7 +14,6 @@ Requirements:
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Literal, override
 
 import aiohttp
@@ -37,7 +36,7 @@ class WolframCog(BaseCog):
         super().__init__(bot)
 
         self.client_session: aiohttp.ClientSession | None = None
-        self.temp_dir = Path("temp")
+        self.temp_dir = config.TEMP_DIR
         self._prepare_directories()
 
         self.ctx_menu = app_commands.ContextMenu(
