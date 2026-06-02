@@ -1,6 +1,6 @@
 [project]
 name = "stupid-bot-discord"
-version = "2.3.1"
+version = "2.3.2"
 description = "A feature-rich Discord bot built with discord.py"
 authors = [
     { name = "ArtiArtem", email = "ArtiArtem8@users.noreply.github.com" },
@@ -18,7 +18,12 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["monkeytype>=23.3.0", "pytest>=9.0.2", "ruff>=0.14.6"]
+dev = [
+    "basedpyright>=1.39.6",
+    "pre-commit>=4.6.0",
+    "pytest>=9.0.2",
+    "ruff>=0.14.6",
+]
 
 [tool.setuptools]
 packages = ["api", "cogs", "di", "events", "framework", "repositories", "utils"]
@@ -79,14 +84,14 @@ testpaths = ["tests"]
 filterwarnings = ["ignore:.*audioop.*:DeprecationWarning:discord.player"]
 pythonpath = ["."]
 
-[tool.pyright]
+[tool.basedpyright]
 exclude = ["**/.venv/**"]
 reportUnannotatedClassAttribute = "none"
 reportUnusedCallResult = "none"
 reportUnknownMemberType = "none"
 reportMissingTypeStubs = "none"
 
-[[tool.pyright.executionEnvironments]]
+[[tool.basedpyright.executionEnvironments]]
 root = "tests"
 extraPaths = ["."]
 reportPrivateUsage = "none"
@@ -96,6 +101,6 @@ reportArgumentType = "none"
 reportAny = "none"
 reportExplicitAny = "none"
 
-[[tool.pyright.executionEnvironments]]
+[[tool.basedpyright.executionEnvironments]]
 root = "."
 enableExperimentalFeatures = true
