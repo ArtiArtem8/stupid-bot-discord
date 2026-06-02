@@ -28,9 +28,6 @@ dev = [
 [tool.setuptools]
 packages = ["api", "cogs", "di", "events", "framework", "repositories", "utils"]
 
-[tool.uv]
-environments = ["python_version == '3.12'"]
-
 [tool.ruff]
 line-length = 88
 target-version = "py312"
