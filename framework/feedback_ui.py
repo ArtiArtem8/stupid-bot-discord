@@ -181,7 +181,7 @@ class FeedbackUI:
     def _resolve_view(
         interaction: discord.Interaction,
         feedback_type: FeedbackType,
-        view: View | None,
+        view: object,
         disable_report_btn: bool,
         error_info: str | None,
     ) -> ViewDirective | View | None:
@@ -199,7 +199,11 @@ class FeedbackUI:
                 FeedbackUI._default_report_callback,
                 error_info=error_info,
             )
-        return ViewDirective.OMIT if view is MISSING else view
+        if view is MISSING:
+            return ViewDirective.OMIT
+        if view is None or isinstance(view, View):
+            return view
+        raise TypeError("view must be a discord.ui.View, None, or omitted")
 
     @staticmethod
     def _add_delete_timer(embed: discord.Embed, delete_after: float | None) -> None:
@@ -220,7 +224,7 @@ class FeedbackUI:
         title: str | None,
         delete_after: float | None,
         ephemeral: bool,
-        view: View | None,
+        view: object,
         disable_report_btn: bool,
         embed: discord.Embed,
         error_info: str | None,
