@@ -56,7 +56,6 @@ select = [
     "RUF", # Ruff-specific rules
 ]
 ignore = [
-    "C901",
     "D100",
     "D101",
     "D102",
@@ -69,6 +68,9 @@ ignore = [
     "RUF001",
     "S101",
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.ruff.lint.isort]
 known-first-party = ["cogs", "utils"]
