@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import override
 
 import discord
@@ -25,7 +26,7 @@ from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from repositories.volume_repository import VolumeRepository
 
-from .models import ControllerDestroyReason, PlayerStateSnapshot, VoiceCheckResult
+from .models import ControllerDestroyReason, MusicResultStatus, PlayerStateSnapshot
 from .player import MusicPlayer
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,12 @@ logger = logging.getLogger(__name__)
 RESTORE_CONFIRM_DELAY_SECONDS = 1.5
 RESTORE_SEEK_CONFIRM_DELAY_SECONDS = 1.0
 RESTORE_SEEK_THRESHOLD_MS = 3_000
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreTarget:
+    guild: discord.Guild
+    channel: VoiceChannel | StageChannel
 
 
 def _get_voice_channel_id(
@@ -464,52 +471,103 @@ class SessionHealer(HealerProtocol):
 
     async def _restore_session(self, snapshot: PlayerStateSnapshot) -> bool:
         """Rebuild the player from the snapshot using ConnectionManager safeguards."""
+        target = self._resolve_restore_target(snapshot)
+        if target is None:
+            return False
+
+        if not await self._join_restore_voice(target, snapshot.guild_id):
+            return False
+
+        player = self._get_restored_player(snapshot.guild_id)
+        if player is None:
+            return False
+
+        if not await self._restore_player_runtime_state(player, snapshot, target.guild):
+            return False
+
+        return await self._restore_current_track(player, snapshot, target.guild)
+
+    def _resolve_restore_target(
+        self, snapshot: PlayerStateSnapshot
+    ) -> RestoreTarget | None:
         guild = self.bot.get_guild(snapshot.guild_id)
         if not guild:
             logger.warning("Cannot restore: guild %s not found", snapshot.guild_id)
-            return False
+            return None
 
-        vc_channel = guild.get_channel(snapshot.voice_channel_id)
-        if not vc_channel:
+        channel = self._get_restore_voice_channel(guild, snapshot)
+        if channel is None:
             logger.error(
                 "Cannot restore: Voice channel %s not found",
                 snapshot.voice_channel_id,
             )
-            return False
+            return None
+        return RestoreTarget(guild, channel)
 
-        if isinstance(vc_channel, (ForumChannel, TextChannel, CategoryChannel)):
+    def _get_restore_voice_channel(
+        self, guild: discord.Guild, snapshot: PlayerStateSnapshot
+    ) -> VoiceChannel | StageChannel | None:
+        channel = guild.get_channel(snapshot.voice_channel_id)
+        if channel is None:
+            return None
+        if isinstance(channel, (ForumChannel, TextChannel, CategoryChannel)):
             raise ValueError("Invalid channel type for restoration")
-
-        if not isinstance(vc_channel, (VoiceChannel, StageChannel)):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if not isinstance(channel, (VoiceChannel, StageChannel)):  # pyright: ignore[reportUnnecessaryIsInstance]
             raise ValueError("Invalid voice channel type for restoration")
+        return channel
 
-        result, _old_channel = await self.connection.join(guild, vc_channel)
-        playable_results = {
-            VoiceCheckResult.SUCCESS,
-            VoiceCheckResult.ALREADY_CONNECTED,
-            VoiceCheckResult.MOVED_CHANNELS,
-        }
-        if result not in playable_results:
+    async def _join_restore_voice(self, target: RestoreTarget, guild_id: int) -> bool:
+        result, _old_channel = await self.connection.join(target.guild, target.channel)
+        if result.status is not MusicResultStatus.SUCCESS:
             logger.warning(
                 "Cannot restore session for guild %s: voice join failed with %s",
-                snapshot.guild_id,
+                guild_id,
                 result,
             )
             return False
+        return True
 
-        player = self.connection.get_player(snapshot.guild_id)
+    def _get_restored_player(self, guild_id: int) -> MusicPlayer | None:
+        player = self.connection.get_player(guild_id)
         if not player:
             logger.warning(
                 "Cannot restore session for guild %s: player failed to reconnect",
-                snapshot.guild_id,
+                guild_id,
             )
-            return False
+        return player
 
+    def _restore_player_queue_and_requesters(
+        self, player: MusicPlayer, snapshot: PlayerStateSnapshot
+    ) -> None:
         player.queue._queue.clear()  # pyright: ignore[reportPrivateUsage]
         player.queue._queue.extend(snapshot.queue)  # pyright: ignore[reportPrivateUsage]
         player.repeat.mode = snapshot.repeat_mode
         player._requester_map = snapshot.requester_map  # pyright: ignore[reportPrivateUsage]
 
+    async def _restore_player_runtime_state(
+        self,
+        player: MusicPlayer,
+        snapshot: PlayerStateSnapshot,
+        guild: discord.Guild,
+    ) -> bool:
+        self._restore_player_queue_and_requesters(player, snapshot)
+        if not await self._restore_player_volume(player, snapshot, guild):
+            return False
+
+        logger.debug("New player: %s", player)
+        logger.debug(
+            "Queue len: %s, Repeat mode: %s",
+            len(player.queue),
+            player.repeat.mode,
+        )
+        return True
+
+    async def _restore_player_volume(
+        self,
+        player: MusicPlayer,
+        snapshot: PlayerStateSnapshot,
+        guild: discord.Guild,
+    ) -> bool:
         try:
             await player.set_volume(snapshot.volume)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
@@ -520,18 +578,17 @@ class SessionHealer(HealerProtocol):
             )
             await self.connection.detach_stale_voice_client(guild, player)
             return False
+        return True
 
-        logger.debug("New player: %s", player)
-        logger.debug(
-            "Queue len: %s, Repeat mode: %s",
-            len(player.queue),
-            player.repeat.mode,
-        )
-
-        if snapshot.current_track:
+    async def _restore_current_track(
+        self,
+        player: MusicPlayer,
+        snapshot: PlayerStateSnapshot,
+        guild: discord.Guild,
+    ) -> bool:
+        if snapshot.current_track is not None:
             restored_track = await self._resolve_fresh_track_for_restore(
-                player,
-                snapshot.current_track,
+                player, snapshot.current_track
             )
 
             restore_position = max(0, snapshot.position)
@@ -560,7 +617,8 @@ class SessionHealer(HealerProtocol):
 
             await self.ui.spawn_controller(player, restored_track)
 
-        if session := snapshot.session:
+        if snapshot.session is not None:
+            session = snapshot.session
             self.state.sessions.setdefault(snapshot.guild_id, session)
 
         self.snapshots.pop(snapshot.guild_id, None)
