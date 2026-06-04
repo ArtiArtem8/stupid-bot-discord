@@ -36,6 +36,12 @@ from repositories.volume_repository import VolumeRepository
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+EXPECTED_PLAY_ERRORS = (
+    mafic.TrackLoadException,
+    mafic.PlayerNotConnected,
+    mafic.PlayerException,
+    NodeNotConnectedError,
+)
 
 
 class CoreMusicService:
@@ -160,95 +166,159 @@ class CoreMusicService:
         requester_id: int,
         text_channel_id: int | None = None,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        connection_result = await self.join(guild, voice_channel)
-        check_result, _old_channel = connection_result
-        playable_results = {
-            VoiceCheckResult.SUCCESS,
-            VoiceCheckResult.ALREADY_CONNECTED,
-            VoiceCheckResult.MOVED_CHANNELS,
-        }
-        if check_result not in playable_results:
-            return MusicResult(
-                check_result.status,
-                "Connection failed",
-                data=connection_result,
-            )
+        connection_result = await self._prepare_playback_connection(
+            guild, voice_channel
+        )
+        if not self._is_playable_join_result(connection_result):
+            return self._connection_failure_result(connection_result)
 
-        player = self.connection.get_player(guild.id)
-        if not player:
-            return MusicResult(
-                MusicResultStatus.ERROR,
-                "Плеер потерял соединение. Попробуй запустить трек ещё раз.",
-            )
+        player = self._get_playback_player(guild.id)
+        if player is None:
+            return self._lost_player_result()
 
-        if text_channel_id:
-            session = self.state.get_or_create_session(guild.id)
-            session.record_interaction(text_channel_id, requester_id)
-
+        self._record_interaction_if_possible(guild.id, requester_id, text_channel_id)
         try:
-            result = await player.fetch_tracks(query)
-
-            if not result:
-                return MusicResult(MusicResultStatus.FAILURE, "Nothing found")
-
-            if isinstance(result, mafic.Playlist):
-                for track in result.tracks:
-                    player.set_requester(track, requester_id, text_channel_id)
-                player.queue.add(result.tracks)
-                if not player.current:
-                    await player.advance()
-
-                return MusicResult(
-                    MusicResultStatus.SUCCESS,
-                    "Playlist added",
-                    data={
-                        "type": "playlist",
-                        "playlist": result,
-                        "connection": connection_result,
-                    },
-                )
-
-            track = result[0]
-            player.set_requester(track, requester_id, text_channel_id)
-
-            player.queue.add(track)
-
-            is_playing_before = player.current is not None
-
-            if not is_playing_before:
-                await player.advance()
-
-            return MusicResult(
-                MusicResultStatus.SUCCESS,
-                "Track processed",
-                data={
-                    "type": "track",
-                    "track": track,
-                    "playing": is_playing_before,
-                    "connection": connection_result,
-                },
+            return await self._load_and_enqueue(
+                player,
+                query,
+                requester_id,
+                text_channel_id,
+                connection_result,
             )
-
-        except (
-            mafic.TrackLoadException,
-            mafic.PlayerNotConnected,
-            mafic.PlayerException,
-            NodeNotConnectedError,
-        ) as exc:
-            if isinstance(exc, EXPECTED_LAVALINK_IO_ERRORS):
-                await self._handle_player_io_failure(player, exc)
-            logger.warning("Expected play failure for query '%s': %s", query, exc)
-            safe_error = classify_music_exception(exc)
-            status = (
-                MusicResultStatus.FAILURE
-                if isinstance(exc, mafic.TrackLoadException)
-                else MusicResultStatus.ERROR
-            )
-            return MusicResult(status, safe_error.message)
+        except EXPECTED_PLAY_ERRORS as exc:
+            return await self._handle_play_expected_failure(player, query, exc)
         except Exception as exc:
-            logger.exception("Error in play")
-            safe_error = classify_music_exception(exc)
-            return MusicResult(MusicResultStatus.ERROR, safe_error.message)
+            return self._handle_play_unexpected_failure(exc)
+
+    async def _prepare_playback_connection(
+        self,
+        guild: discord.Guild,
+        voice_channel: discord.VoiceChannel | discord.StageChannel,
+    ) -> VoiceJoinResult:
+        return await self.join(guild, voice_channel)
+
+    def _is_playable_join_result(self, result: VoiceJoinResult) -> bool:
+        return result[0].status is MusicResultStatus.SUCCESS
+
+    def _connection_failure_result(
+        self, connection_result: VoiceJoinResult
+    ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
+        return MusicResult(
+            connection_result[0].status,
+            "Connection failed",
+            data=connection_result,
+        )
+
+    def _get_playback_player(self, guild_id: int) -> MusicPlayer | None:
+        return self.connection.get_player(guild_id)
+
+    def _lost_player_result(self) -> MusicResult[PlayResponseData | VoiceJoinResult]:
+        return MusicResult(
+            MusicResultStatus.ERROR,
+            "Плеер потерял соединение. Попробуй запустить трек ещё раз.",
+        )
+
+    def _record_interaction_if_possible(
+        self, guild_id: int, requester_id: int | None, text_channel_id: int | None
+    ) -> None:
+        if text_channel_id and requester_id:
+            self.state.get_or_create_session(guild_id).record_interaction(
+                text_channel_id, requester_id
+            )
+
+    async def _load_tracks(
+        self, player: MusicPlayer, query: str
+    ) -> list[mafic.Track] | mafic.Playlist | None:
+        return await player.fetch_tracks(query)
+
+    async def _load_and_enqueue(
+        self,
+        player: MusicPlayer,
+        query: str,
+        requester_id: int,
+        text_channel_id: int | None,
+        connection_result: VoiceJoinResult,
+    ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
+        result = await self._load_tracks(player, query)
+        if not result:
+            return MusicResult(MusicResultStatus.FAILURE, "Nothing found")
+        if isinstance(result, mafic.Playlist):
+            return await self._enqueue_playlist(
+                player, result, requester_id, text_channel_id, connection_result
+            )
+        return await self._enqueue_track(
+            player, result[0], requester_id, text_channel_id, connection_result
+        )
+
+    async def _enqueue_playlist(
+        self,
+        player: MusicPlayer,
+        playlist: mafic.Playlist,
+        requester_id: int,
+        text_channel_id: int | None,
+        connection_result: VoiceJoinResult,
+    ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
+        for track in playlist.tracks:
+            player.set_requester(track, requester_id, text_channel_id)
+        player.queue.add(playlist.tracks)
+        await self._advance_if_idle(player)
+        return MusicResult(
+            MusicResultStatus.SUCCESS,
+            "Playlist added",
+            data={
+                "type": "playlist",
+                "playlist": playlist,
+                "connection": connection_result,
+            },
+        )
+
+    async def _enqueue_track(
+        self,
+        player: MusicPlayer,
+        track: mafic.Track,
+        requester_id: int,
+        text_channel_id: int | None,
+        connection_result: VoiceJoinResult,
+    ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
+        player.set_requester(track, requester_id, text_channel_id)
+        player.queue.add(track)
+        is_playing_before = player.current is not None
+        await self._advance_if_idle(player)
+        return MusicResult(
+            MusicResultStatus.SUCCESS,
+            "Track processed",
+            data={
+                "type": "track",
+                "track": track,
+                "playing": is_playing_before,
+                "connection": connection_result,
+            },
+        )
+
+    async def _advance_if_idle(self, player: MusicPlayer) -> None:
+        if player.current is None:
+            await player.advance()
+
+    async def _handle_play_expected_failure(
+        self, player: MusicPlayer, query: str, exc: Exception
+    ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
+        if isinstance(exc, EXPECTED_LAVALINK_IO_ERRORS):
+            await self._handle_player_io_failure(player, exc)
+        logger.warning("Expected play failure for query '%s': %s", query, exc)
+        safe_error = classify_music_exception(exc)
+        status = (
+            MusicResultStatus.FAILURE
+            if isinstance(exc, mafic.TrackLoadException)
+            else MusicResultStatus.ERROR
+        )
+        return MusicResult(status, safe_error.message)
+
+    def _handle_play_unexpected_failure(
+        self, exc: Exception
+    ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
+        logger.exception("Error in play")
+        safe_error = classify_music_exception(exc)
+        return MusicResult(MusicResultStatus.ERROR, safe_error.message)
 
     async def stop(
         self,

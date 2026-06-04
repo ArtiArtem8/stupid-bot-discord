@@ -69,6 +69,48 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         )
         self.connection.get_player.assert_not_called()
 
+    async def test_play_returns_lost_player_after_successful_join(self) -> None:
+        guild = MagicMock(id=123)
+        self.connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+
+        result = await self.service.play(guild, MagicMock(), "query", 1, 2)
+
+        self.assertIs(result.status, MusicResultStatus.ERROR)
+        self.assertIn("Плеер потерял соединение", result.message)
+
+    async def test_play_returns_failure_for_empty_fetch(self) -> None:
+        guild = MagicMock(id=123)
+        player = MagicMock()
+        player.fetch_tracks = AsyncMock(return_value=[])
+        self.service._prepare_playback_connection = AsyncMock(  # type: ignore[method-assign]
+            return_value=(VoiceCheckResult.SUCCESS, None)
+        )
+        self.connection.get_player.return_value = player
+
+        result = await self.service.play(guild, MagicMock(), "query", 1, 2)
+
+        self.assertIs(result.status, MusicResultStatus.FAILURE)
+        self.assertEqual(result.message, "Nothing found")
+
+    async def test_play_enqueues_single_track_and_advances_if_idle(self) -> None:
+        guild = MagicMock(id=123)
+        track = MagicMock()
+        player = MagicMock()
+        player.current = None
+        player.fetch_tracks = AsyncMock(return_value=[track])
+        player.advance = AsyncMock()
+        self.service._prepare_playback_connection = AsyncMock(  # type: ignore[method-assign]
+            return_value=(VoiceCheckResult.SUCCESS, None)
+        )
+        self.connection.get_player.return_value = player
+
+        result = await self.service.play(guild, MagicMock(), "query", 1, 2)
+
+        player.set_requester.assert_called_once_with(track, 1, 2)
+        player.queue.add.assert_called_once_with(track)
+        player.advance.assert_awaited_once()
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+
     async def test_no_player_command_returns_unavailable_when_known_down(self) -> None:
         result = await self.service.pause(123)
 
