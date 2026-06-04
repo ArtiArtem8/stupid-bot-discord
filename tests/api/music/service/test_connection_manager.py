@@ -15,7 +15,7 @@ from api.music.models import (
     NodeNotConnectedError,
     VoiceCheckResult,
 )
-from api.music.player import MusicPlayer
+from api.music.player import MusicPlayer, music_player_factory
 from api.music.service.connection_manager import ConnectionManager
 
 
@@ -166,7 +166,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         result = await self.manager.join(guild, channel)
 
         self.assertEqual(result, (VoiceCheckResult.SUCCESS, None))
-        channel.connect.assert_awaited_once()
+        channel.connect.assert_awaited_once_with(
+            cls=music_player_factory,
+            timeout=8.0,
+        )
 
     async def test_join_cleans_stale_player_when_node_unavailable(self):
         class DummyPlayer:

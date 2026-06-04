@@ -167,7 +167,8 @@ class CoreMusicService:
         text_channel_id: int | None = None,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         connection_result = await self.join(guild, voice_channel)
-        if connection_result[0].status is not MusicResultStatus.SUCCESS:
+        check_result, _old_channel = connection_result
+        if check_result.status is not MusicResultStatus.SUCCESS:
             return self._connection_failure_result(connection_result)
 
         player = self.connection.get_player(guild.id)

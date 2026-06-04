@@ -8,17 +8,12 @@ Info, Warning, Error), custom embeds, and automatic report button generation for
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from enum import Enum
-from typing import Self, cast, overload
+from enum import Enum, auto
+from typing import Self, overload
 
 import discord
 from discord.ui import Button, View
-from discord.utils import (
-    MISSING,  # pyright: ignore[reportAny]
-    _MissingSentinel,  # pyright: ignore[reportPrivateUsage]
-    format_dt,
-    utcnow,
-)
+from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAny]
 
 import config
 from utils import SafeEmbed
@@ -26,12 +21,18 @@ from utils import SafeEmbed
 type ReportCallback = Callable[[discord.Interaction, str | None], Awaitable[None]]
 
 
+class ViewDirective(Enum):
+    """Internal instruction for omitting the view argument from Discord calls."""
+
+    OMIT = auto()
+
+
 @dataclass(slots=True)
 class FeedbackPayload:
-    """Resolved data that preserves MISSING to avoid clearing existing views."""
+    """Resolved feedback data with explicit view update semantics."""
 
     embed: discord.Embed
-    view: View | _MissingSentinel
+    view: ViewDirective | View | None
     delete_after: float | None
     ephemeral: bool
 
@@ -102,7 +103,7 @@ class FeedbackUI:
         title: str | None = None,
         delete_after: float | None = None,
         ephemeral: bool = False,
-        view: View = MISSING,
+        view: View | None = MISSING,
         disable_report_btn: bool = False,
         error_info: str | None = None,
     ) -> None: ...
@@ -116,7 +117,7 @@ class FeedbackUI:
         feedback_type: FeedbackType = FeedbackType.INFO,
         delete_after: float | None = None,
         ephemeral: bool = False,
-        view: View = MISSING,
+        view: View | None = MISSING,
         disable_report_btn: bool = False,
         error_info: str | None = None,
     ) -> None: ...
@@ -130,7 +131,7 @@ class FeedbackUI:
         title: str | None = None,
         delete_after: float | None = None,
         ephemeral: bool = False,
-        view: View = MISSING,
+        view: View | None = MISSING,
         disable_report_btn: bool = False,
         embed: discord.Embed = MISSING,
         error_info: str | None = None,
@@ -144,7 +145,7 @@ class FeedbackUI:
             title: Optional title.
             delete_after: Auto-delete after N seconds.
             ephemeral: Whether the message is ephemeral.
-            view: Optional custom view.
+            view: Custom view, or None to clear a deferred original response view.
             disable_report_btn: If True, suppresses the Report button for ERROR type.
             embed: Optional custom embed. If provided, type/description/title are
                 ignored.
@@ -180,10 +181,10 @@ class FeedbackUI:
     def _resolve_view(
         interaction: discord.Interaction,
         feedback_type: FeedbackType,
-        view: View | _MissingSentinel,
+        view: View | None,
         disable_report_btn: bool,
         error_info: str | None,
-    ) -> View | _MissingSentinel:
+    ) -> ViewDirective | View | None:
         if (
             feedback_type is FeedbackType.ERROR
             and not disable_report_btn
@@ -198,7 +199,7 @@ class FeedbackUI:
                 FeedbackUI._default_report_callback,
                 error_info=error_info,
             )
-        return view
+        return ViewDirective.OMIT if view is MISSING else view
 
     @staticmethod
     def _add_delete_timer(embed: discord.Embed, delete_after: float | None) -> None:
@@ -219,7 +220,7 @@ class FeedbackUI:
         title: str | None,
         delete_after: float | None,
         ephemeral: bool,
-        view: View | _MissingSentinel,
+        view: View | None,
         disable_report_btn: bool,
         embed: discord.Embed,
         error_info: str | None,
@@ -246,35 +247,60 @@ class FeedbackUI:
     async def _send_after_response_done(
         interaction: discord.Interaction, payload: FeedbackPayload
     ) -> None:
-        # discord.py accepts MISSING at runtime, although its public overloads omit it.
-        view = cast(View, payload.view)
         if (
             interaction.response.type
             is discord.InteractionResponseType.deferred_channel_message
         ):
-            message = await interaction.edit_original_response(
-                embed=payload.embed, view=view
-            )
+            message = await FeedbackUI._edit_original_response(interaction, payload)
         else:
-            message = await interaction.followup.send(
+            message = await FeedbackUI._send_followup(interaction, payload)
+        if payload.delete_after:
+            await message.delete(delay=payload.delete_after)
+
+    @staticmethod
+    async def _edit_original_response(
+        interaction: discord.Interaction, payload: FeedbackPayload
+    ) -> discord.InteractionMessage:
+        if payload.view is ViewDirective.OMIT:
+            return await interaction.edit_original_response(embed=payload.embed)
+        return await interaction.edit_original_response(
+            embed=payload.embed, view=payload.view
+        )
+
+    @staticmethod
+    async def _send_followup(
+        interaction: discord.Interaction, payload: FeedbackPayload
+    ) -> discord.WebhookMessage:
+        if isinstance(payload.view, View):
+            return await interaction.followup.send(
                 embed=payload.embed,
-                view=view,
+                view=payload.view,
                 ephemeral=payload.ephemeral,
                 silent=True,
                 wait=True,
             )
-        if payload.delete_after:
-            await message.delete(delay=payload.delete_after)
+        return await interaction.followup.send(
+            embed=payload.embed,
+            ephemeral=payload.ephemeral,
+            silent=True,
+            wait=True,
+        )
 
     @staticmethod
     async def _send_initial_response(
         interaction: discord.Interaction, payload: FeedbackPayload
     ) -> None:
-        # discord.py accepts MISSING at runtime, although its public overloads omit it.
-        view = cast(View, payload.view)
+        if isinstance(payload.view, View):
+            await interaction.response.send_message(
+                embed=payload.embed,
+                view=payload.view,
+                ephemeral=payload.ephemeral,
+                delete_after=payload.delete_after,
+                silent=True,
+            )
+            return
         await interaction.response.send_message(
             embed=payload.embed,
-            view=view,
             ephemeral=payload.ephemeral,
             delete_after=payload.delete_after,
             silent=True,
