@@ -166,13 +166,11 @@ class CoreMusicService:
         requester_id: int,
         text_channel_id: int | None = None,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        connection_result = await self._prepare_playback_connection(
-            guild, voice_channel
-        )
-        if not self._is_playable_join_result(connection_result):
+        connection_result = await self.join(guild, voice_channel)
+        if connection_result[0].status is not MusicResultStatus.SUCCESS:
             return self._connection_failure_result(connection_result)
 
-        player = self._get_playback_player(guild.id)
+        player = self.connection.get_player(guild.id)
         if player is None:
             return self._lost_player_result()
 
@@ -190,16 +188,6 @@ class CoreMusicService:
         except Exception as exc:
             return self._handle_play_unexpected_failure(exc)
 
-    async def _prepare_playback_connection(
-        self,
-        guild: discord.Guild,
-        voice_channel: discord.VoiceChannel | discord.StageChannel,
-    ) -> VoiceJoinResult:
-        return await self.join(guild, voice_channel)
-
-    def _is_playable_join_result(self, result: VoiceJoinResult) -> bool:
-        return result[0].status is MusicResultStatus.SUCCESS
-
     def _connection_failure_result(
         self, connection_result: VoiceJoinResult
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
@@ -208,9 +196,6 @@ class CoreMusicService:
             "Connection failed",
             data=connection_result,
         )
-
-    def _get_playback_player(self, guild_id: int) -> MusicPlayer | None:
-        return self.connection.get_player(guild_id)
 
     def _lost_player_result(self) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         return MusicResult(
@@ -221,15 +206,10 @@ class CoreMusicService:
     def _record_interaction_if_possible(
         self, guild_id: int, requester_id: int | None, text_channel_id: int | None
     ) -> None:
-        if text_channel_id and requester_id:
+        if text_channel_id is not None and requester_id is not None:
             self.state.get_or_create_session(guild_id).record_interaction(
                 text_channel_id, requester_id
             )
-
-    async def _load_tracks(
-        self, player: MusicPlayer, query: str
-    ) -> list[mafic.Track] | mafic.Playlist | None:
-        return await player.fetch_tracks(query)
 
     async def _load_and_enqueue(
         self,
@@ -239,7 +219,7 @@ class CoreMusicService:
         text_channel_id: int | None,
         connection_result: VoiceJoinResult,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        result = await self._load_tracks(player, query)
+        result = await player.fetch_tracks(query)
         if not result:
             return MusicResult(MusicResultStatus.FAILURE, "Nothing found")
         if isinstance(result, mafic.Playlist):
@@ -338,9 +318,7 @@ class CoreMusicService:
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
 
-        if text_channel_id and requester_id:
-            msg_session = self.state.get_or_create_session(guild_id)
-            msg_session.record_interaction(text_channel_id, requester_id)
+        self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
 
         return MusicResult(MusicResultStatus.SUCCESS, "Stopped")
 
@@ -368,10 +346,7 @@ class CoreMusicService:
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
 
-        if text_channel_id and requester_id:
-            self.state.get_or_create_session(guild_id).record_interaction(
-                text_channel_id, requester_id
-            )
+        self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
 
         return MusicResult(
             MusicResultStatus.SUCCESS,
@@ -410,10 +385,7 @@ class CoreMusicService:
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
 
-        if text_channel_id and requester_id:
-            self.state.get_or_create_session(guild_id).record_interaction(
-                text_channel_id, requester_id
-            )
+        self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
 
         return MusicResult(MusicResultStatus.SUCCESS, "Shuffled")
 
@@ -436,10 +408,7 @@ class CoreMusicService:
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
 
-        if text_channel_id and requester_id:
-            self.state.get_or_create_session(guild_id).record_interaction(
-                text_channel_id, requester_id
-            )
+        self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
 
         return MusicResult(
             MusicResultStatus.SUCCESS,
@@ -484,10 +453,7 @@ class CoreMusicService:
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
 
-        if text_channel_id and requester_id:
-            self.state.get_or_create_session(guild_id).record_interaction(
-                text_channel_id, requester_id
-            )
+        self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
 
         return MusicResult(
             MusicResultStatus.SUCCESS,

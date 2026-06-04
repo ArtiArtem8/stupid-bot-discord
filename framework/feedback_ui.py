@@ -9,11 +9,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
-from typing import Self, overload
+from typing import Self, cast, overload
 
 import discord
 from discord.ui import Button, View
-from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAny]
+from discord.utils import (
+    MISSING,  # pyright: ignore[reportAny]
+    _MissingSentinel,  # pyright: ignore[reportPrivateUsage]
+    format_dt,
+    utcnow,
+)
 
 import config
 from utils import SafeEmbed
@@ -23,8 +28,10 @@ type ReportCallback = Callable[[discord.Interaction, str | None], Awaitable[None
 
 @dataclass(slots=True)
 class FeedbackPayload:
+    """Resolved data that preserves MISSING to avoid clearing existing views."""
+
     embed: discord.Embed
-    view: View
+    view: View | _MissingSentinel
     delete_after: float | None
     ephemeral: bool
 
@@ -173,10 +180,10 @@ class FeedbackUI:
     def _resolve_view(
         interaction: discord.Interaction,
         feedback_type: FeedbackType,
-        view: View,
+        view: View | _MissingSentinel,
         disable_report_btn: bool,
         error_info: str | None,
-    ) -> View:
+    ) -> View | _MissingSentinel:
         if (
             feedback_type is FeedbackType.ERROR
             and not disable_report_btn
@@ -212,7 +219,7 @@ class FeedbackUI:
         title: str | None,
         delete_after: float | None,
         ephemeral: bool,
-        view: View,
+        view: View | _MissingSentinel,
         disable_report_btn: bool,
         embed: discord.Embed,
         error_info: str | None,
@@ -239,17 +246,19 @@ class FeedbackUI:
     async def _send_after_response_done(
         interaction: discord.Interaction, payload: FeedbackPayload
     ) -> None:
+        # discord.py accepts MISSING at runtime, although its public overloads omit it.
+        view = cast(View, payload.view)
         if (
             interaction.response.type
             is discord.InteractionResponseType.deferred_channel_message
         ):
             message = await interaction.edit_original_response(
-                embed=payload.embed, view=payload.view
+                embed=payload.embed, view=view
             )
         else:
             message = await interaction.followup.send(
                 embed=payload.embed,
-                view=payload.view,
+                view=view,
                 ephemeral=payload.ephemeral,
                 silent=True,
                 wait=True,
@@ -261,9 +270,11 @@ class FeedbackUI:
     async def _send_initial_response(
         interaction: discord.Interaction, payload: FeedbackPayload
     ) -> None:
+        # discord.py accepts MISSING at runtime, although its public overloads omit it.
+        view = cast(View, payload.view)
         await interaction.response.send_message(
             embed=payload.embed,
-            view=payload.view,
+            view=view,
             ephemeral=payload.ephemeral,
             delete_after=payload.delete_after,
             silent=True,

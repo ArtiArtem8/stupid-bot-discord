@@ -232,38 +232,27 @@ class ConnectionManager:
         logger.debug("Joining channel: %s", channel)
 
         try:
-            voice_client = self._get_existing_voice_client(guild)
             existing_result = await self._handle_existing_voice_client(
-                guild, channel, voice_client
+                guild, channel, guild.voice_client
             )
             if existing_result is not None:
                 return existing_result
 
-            if not await self._ensure_join_available():
-                return self._voice_join_failure(
-                    VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE
-                )
+            if not await self.ensure_available():
+                return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
             return await self._connect_new_player(channel)
 
         except TimeoutError:
             logger.warning("Timeout while joining voice channel")
             await self._detach_voice_client_after_failed_connect(guild)
-            return self._voice_join_failure(VoiceCheckResult.TIMEOUT)
+            return VoiceCheckResult.TIMEOUT, None
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             await self._handle_join_io_failure(guild, exc)
-            return self._voice_join_failure(VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE)
+            return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         except Exception:
             logger.exception("Failed to join voice channel")
             await self._detach_voice_client_after_failed_connect(guild)
-            return self._voice_join_failure(VoiceCheckResult.CONNECTION_FAILED)
-
-    async def _ensure_join_available(self) -> bool:
-        return await self.ensure_available()
-
-    def _get_existing_voice_client(
-        self, guild: discord.Guild
-    ) -> discord.VoiceProtocol | None:
-        return guild.voice_client
+            return VoiceCheckResult.CONNECTION_FAILED, None
 
     async def _handle_existing_voice_client(
         self,
@@ -276,13 +265,11 @@ class ConnectionManager:
         ):
             await self._detach_unusable_player(guild, voice_client)
             voice_client = guild.voice_client
-            if voice_client or not await self._ensure_join_available():
-                return self._voice_join_failure(
-                    VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE
-                )
+            if voice_client or not await self.ensure_available():
+                return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
 
         if self._is_connected_to_channel(voice_client, channel):
-            return self._voice_join_success(VoiceCheckResult.ALREADY_CONNECTED)
+            return VoiceCheckResult.ALREADY_CONNECTED, None
 
         if isinstance(voice_client, MusicPlayer):
             return await self._reuse_or_move_player(guild, voice_client, channel)
@@ -323,33 +310,19 @@ class ConnectionManager:
         old_channel = cast(discord.abc.GuildChannel, cast(object, player.channel))
         if not self.is_player_usable(player):
             await self.detach_stale_voice_client(guild, player)
-            return self._voice_join_failure(VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE)
+            return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         try:
             await player.move_to(channel, timeout=5.0)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             await self._handle_voice_client_io_failure(guild, player, exc)
-            return self._voice_join_failure(VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE)
-        return self._voice_join_success(VoiceCheckResult.MOVED_CHANNELS, old_channel)
+            return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
+        return VoiceCheckResult.MOVED_CHANNELS, old_channel
 
     async def _connect_new_player(
         self, channel: discord.VoiceChannel | discord.StageChannel
     ) -> VoiceJoinResult:
         await channel.connect(cls=music_player_factory, timeout=8.0)
-        return self._voice_join_success(VoiceCheckResult.SUCCESS)
-
-    def _voice_join_success(
-        self,
-        status: VoiceCheckResult,
-        old_channel: discord.abc.GuildChannel | None = None,
-    ) -> VoiceJoinResult:
-        return status, old_channel
-
-    def _voice_join_failure(
-        self,
-        status: VoiceCheckResult,
-        old_channel: discord.abc.GuildChannel | None = None,
-    ) -> VoiceJoinResult:
-        return status, old_channel
+        return VoiceCheckResult.SUCCESS, None
 
     async def _handle_join_io_failure(
         self, guild: discord.Guild, exc: Exception

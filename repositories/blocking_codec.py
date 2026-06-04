@@ -46,15 +46,13 @@ def _has_optional_string_field(data: Mapping[str, object], field: str) -> bool:
     return value is None or isinstance(value, str)
 
 
-def _validated_list(
+def _has_valid_list_field(
     data: Mapping[str, object],
     field: str,
     item_guard: Callable[[object], bool],
-) -> list[object] | None:
+) -> bool:
     items = _as_object_list(data.get(field))
-    if items is None or not all(item_guard(item) for item in items):
-        return None
-    return items
+    return items is not None and all(item_guard(item) for item in items)
 
 
 def _is_block_history_entry_dict(value: object) -> TypeGuard[BlockHistoryEntryDict]:
@@ -73,13 +71,10 @@ def _is_blocked_user_dict(value: object) -> TypeGuard[BlockedUserDict]:
     data = _as_str_mapping(value)
     if data is None:
         return False
-    histories_are_valid = all(
-        history is not None
-        for history in (
-            _validated_list(data, "block_history", _is_block_history_entry_dict),
-            _validated_list(data, "unblock_history", _is_block_history_entry_dict),
-            _validated_list(data, "name_history", _is_name_history_entry_dict),
-        )
+    histories_are_valid = (
+        _has_valid_list_field(data, "block_history", _is_block_history_entry_dict)
+        and _has_valid_list_field(data, "unblock_history", _is_block_history_entry_dict)
+        and _has_valid_list_field(data, "name_history", _is_name_history_entry_dict)
     )
     return (
         _has_string_fields(data, ("user_id", "current_username"))

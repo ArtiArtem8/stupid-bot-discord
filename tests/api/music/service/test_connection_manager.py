@@ -156,6 +156,18 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(old)
         channel.connect.assert_not_called()
 
+    async def test_join_connects_new_player_when_service_is_available(self):
+        guild = MagicMock()
+        guild.voice_client = None
+        channel = MagicMock(spec=discord.VoiceChannel)
+        channel.connect = AsyncMock()
+        self.manager.ensure_available = AsyncMock(return_value=True)
+
+        result = await self.manager.join(guild, channel)
+
+        self.assertEqual(result, (VoiceCheckResult.SUCCESS, None))
+        channel.connect.assert_awaited_once()
+
     async def test_join_cleans_stale_player_when_node_unavailable(self):
         class DummyPlayer:
             def __init__(self) -> None:

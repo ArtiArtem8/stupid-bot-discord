@@ -82,7 +82,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         guild = MagicMock(id=123)
         player = MagicMock()
         player.fetch_tracks = AsyncMock(return_value=[])
-        self.service._prepare_playback_connection = AsyncMock(  # type: ignore[method-assign]
+        self.service.join = AsyncMock(  # type: ignore[method-assign]
             return_value=(VoiceCheckResult.SUCCESS, None)
         )
         self.connection.get_player.return_value = player
@@ -99,7 +99,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         player.current = None
         player.fetch_tracks = AsyncMock(return_value=[track])
         player.advance = AsyncMock()
-        self.service._prepare_playback_connection = AsyncMock(  # type: ignore[method-assign]
+        self.service.join = AsyncMock(  # type: ignore[method-assign]
             return_value=(VoiceCheckResult.SUCCESS, None)
         )
         self.connection.get_player.return_value = player
@@ -110,6 +110,14 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         player.queue.add.assert_called_once_with(track)
         player.advance.assert_awaited_once()
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
+
+    def test_record_interaction_accepts_zero_ids(self) -> None:
+        session = MagicMock()
+        self.state.get_or_create_session.return_value = session
+
+        self.service._record_interaction_if_possible(123, 0, 0)
+
+        session.record_interaction.assert_called_once_with(0, 0)
 
     async def test_no_player_command_returns_unavailable_when_known_down(self) -> None:
         result = await self.service.pause(123)
