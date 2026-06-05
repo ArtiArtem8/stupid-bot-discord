@@ -72,7 +72,8 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
         result = await self.repo.get((123, 456))
 
         self.assertIsNotNone(result)
-        assert result is not None
+        if result is None:
+            self.fail("expected stored blocked user")
         self.assertIsInstance(result, BlockedUser)
         self.assertEqual(result.user_id, 456)
         self.assertEqual(result.current_username, "user1")
@@ -315,7 +316,8 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
         loaded = await self.repo.get((10, 42))
 
         self.assertIsNotNone(loaded)
-        assert loaded is not None
+        if loaded is None:
+            self.fail("expected saved blocked user")
         self.assertEqual(loaded.user_id, 42)
         self.assertTrue(loaded.block_history)
         self.assertEqual(loaded.block_history[0].admin_id, 1)
@@ -405,7 +407,8 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         user = await self.repo.get(key)
 
         self.assertIsNotNone(user)
-        assert user is not None
+        if user is None:
+            self.fail("expected blocked user fixture")
         self.assertEqual(user.user_id, 222222222222222222)
         self.assertTrue(user.is_blocked)
         self.assertEqual(user.current_username, "user_one")
@@ -418,7 +421,8 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         user = await self.repo.get(key)
 
         self.assertIsNotNone(user)
-        assert user is not None
+        if user is None:
+            self.fail("expected unblocked user fixture")
         self.assertFalse(user.is_blocked)
         self.assertEqual(len(user.block_history), 2)
         self.assertEqual(len(user.unblock_history), 2)
@@ -495,7 +499,9 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         user_id = 222222222222222222
 
         user = await self.repo.get((guild_id, user_id))
-        assert user is not None
+        self.assertIsNotNone(user)
+        if user is None:
+            self.fail("expected blocked user fixture")
         user.current_username = "updated_name"
         await self.repo.save(user, key=(guild_id, user_id))
 

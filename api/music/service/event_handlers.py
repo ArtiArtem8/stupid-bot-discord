@@ -493,24 +493,8 @@ class MusicEventHandlers:
     async def _update_channel_timer(
         self, guild_id: int, channel: discord.VoiceChannel | discord.StageChannel
     ) -> None:
-        human_members = [m for m in channel.members if not m.bot]
-        effectively_empty = False
-        empty_reason: str | None = None
-
-        if len(human_members) == 0:
-            effectively_empty = True
-            empty_reason = "empty"
-        else:
-            all_deafened = all(
-                (m.voice.self_deaf or m.voice.deaf)
-                for m in human_members
-                if m.voice is not None
-            )
-            if all_deafened:
-                effectively_empty = True
-                empty_reason = "all_deafened"
-
-        if effectively_empty:
+        empty_reason = self._empty_channel_reason(channel)
+        if empty_reason is not None:
             if not self.state.is_timer_active(guild_id):
                 logger.info(
                     "Channel %s in guild %s is effectively empty (%s). Starting timer.",
@@ -527,3 +511,17 @@ class MusicEventHandlers:
                     guild_id,
                 )
                 self.state.cancel_timer(guild_id)
+
+    def _empty_channel_reason(
+        self, channel: discord.VoiceChannel | discord.StageChannel
+    ) -> str | None:
+        human_members = [member for member in channel.members if not member.bot]
+        if not human_members:
+            return "empty"
+        if all(
+            member.voice.self_deaf or member.voice.deaf
+            for member in human_members
+            if member.voice is not None
+        ):
+            return "all_deafened"
+        return None

@@ -237,7 +237,8 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
         loaded = await self.repo.get(123)
 
         self.assertIsNotNone(loaded)
-        assert loaded is not None
+        if loaded is None:
+            self.fail("expected saved birthday guild config")
         self.assertEqual(loaded.server_name, "MyServer")
         self.assertEqual(loaded.channel_id, 456)
         self.assertEqual(loaded.birthday_role_id, 789)

@@ -15,7 +15,7 @@ from api.music.models import (
     NodeNotConnectedError,
     VoiceCheckResult,
 )
-from api.music.player import MusicPlayer
+from api.music.player import MusicPlayer, music_player_factory
 from api.music.service.connection_manager import ConnectionManager
 
 
@@ -155,6 +155,21 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res, VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE)
         self.assertIsNone(old)
         channel.connect.assert_not_called()
+
+    async def test_join_connects_new_player_when_service_is_available(self):
+        guild = MagicMock()
+        guild.voice_client = None
+        channel = MagicMock(spec=discord.VoiceChannel)
+        channel.connect = AsyncMock()
+        self.manager.ensure_available = AsyncMock(return_value=True)
+
+        result = await self.manager.join(guild, channel)
+
+        self.assertEqual(result, (VoiceCheckResult.SUCCESS, None))
+        channel.connect.assert_awaited_once_with(
+            cls=music_player_factory,
+            timeout=8.0,
+        )
 
     async def test_join_cleans_stale_player_when_node_unavailable(self):
         class DummyPlayer:

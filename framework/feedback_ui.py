@@ -6,8 +6,9 @@ Info, Warning, Error), custom embeds, and automatic report button generation for
 """
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import timedelta
-from enum import Enum
+from enum import Enum, auto
 from typing import Self, overload
 
 import discord
@@ -18,6 +19,22 @@ import config
 from utils import SafeEmbed
 
 type ReportCallback = Callable[[discord.Interaction, str | None], Awaitable[None]]
+
+
+class ViewDirective(Enum):
+    """Internal instruction for omitting the view argument from Discord calls."""
+
+    OMIT = auto()
+
+
+@dataclass(slots=True)
+class FeedbackPayload:
+    """Resolved feedback data with explicit view update semantics."""
+
+    embed: discord.Embed
+    view: ViewDirective | View | None
+    delete_after: float | None
+    ephemeral: bool
 
 
 class FeedbackType(Enum):
@@ -86,7 +103,7 @@ class FeedbackUI:
         title: str | None = None,
         delete_after: float | None = None,
         ephemeral: bool = False,
-        view: View = MISSING,
+        view: View | None = MISSING,
         disable_report_btn: bool = False,
         error_info: str | None = None,
     ) -> None: ...
@@ -100,7 +117,7 @@ class FeedbackUI:
         feedback_type: FeedbackType = FeedbackType.INFO,
         delete_after: float | None = None,
         ephemeral: bool = False,
-        view: View = MISSING,
+        view: View | None = MISSING,
         disable_report_btn: bool = False,
         error_info: str | None = None,
     ) -> None: ...
@@ -114,7 +131,7 @@ class FeedbackUI:
         title: str | None = None,
         delete_after: float | None = None,
         ephemeral: bool = False,
-        view: View = MISSING,
+        view: View | None = MISSING,
         disable_report_btn: bool = False,
         embed: discord.Embed = MISSING,
         error_info: str | None = None,
@@ -128,18 +145,48 @@ class FeedbackUI:
             title: Optional title.
             delete_after: Auto-delete after N seconds.
             ephemeral: Whether the message is ephemeral.
-            view: Optional custom view.
+            view: Custom view, or None to clear a deferred original response view.
             disable_report_btn: If True, suppresses the Report button for ERROR type.
             embed: Optional custom embed. If provided, type/description/title are
                 ignored.
             error_info: Optional error information to pre-fill the report modal.
 
         """
-        if embed is MISSING:
-            if description is None:
-                description = ""
-            embed = FeedbackUI.make_embed(title, description, feedback_type)
+        resolved_embed = FeedbackUI._resolve_embed(
+            embed, title, description, feedback_type
+        )
+        resolved_view = FeedbackUI._resolve_view(
+            interaction,
+            feedback_type,
+            view,
+            disable_report_btn,
+            error_info,
+        )
+        FeedbackUI._add_delete_timer(resolved_embed, delete_after)
+        payload = FeedbackPayload(
+            resolved_embed, resolved_view, delete_after, ephemeral
+        )
+        await FeedbackUI._send_payload(interaction, payload)
 
+    @staticmethod
+    def _resolve_embed(
+        embed: discord.Embed,
+        title: str | None,
+        description: str | None,
+        feedback_type: FeedbackType,
+    ) -> discord.Embed:
+        if embed is MISSING:
+            return FeedbackUI.make_embed(title, description or "", feedback_type)
+        return embed
+
+    @staticmethod
+    def _resolve_view(
+        interaction: discord.Interaction,
+        feedback_type: FeedbackType,
+        view: object,
+        disable_report_btn: bool,
+        error_info: str | None,
+    ) -> ViewDirective | View | None:
         if (
             feedback_type is FeedbackType.ERROR
             and not disable_report_btn
@@ -149,12 +196,19 @@ class FeedbackUI:
                 raise RuntimeError(
                     "FeedbackUI not configured. Call FeedbackUI.configure() at startup."
                 )
-            view = ReportButtonView(
+            return ReportButtonView(
                 interaction.user.id,
                 FeedbackUI._default_report_callback,
                 error_info=error_info,
             )
+        if view is MISSING:
+            return ViewDirective.OMIT
+        if view is None or isinstance(view, View):
+            return view
+        raise TypeError("view must be a discord.ui.View, None, or omitted")
 
+    @staticmethod
+    def _add_delete_timer(embed: discord.Embed, delete_after: float | None) -> None:
         if delete_after:
             expire_at = utcnow() + timedelta(seconds=delete_after)
             timer = f"-# Удалится {format_dt(expire_at, style='R')}"
@@ -163,30 +217,74 @@ class FeedbackUI:
             else:
                 embed.add_field(name="", value=timer, inline=False)
 
+    @staticmethod
+    async def _send_payload(
+        interaction: discord.Interaction, payload: FeedbackPayload
+    ) -> None:
         if interaction.response.is_done():
-            if (
-                interaction.response.type
-                is discord.InteractionResponseType.deferred_channel_message
-            ):
-                msg = await interaction.edit_original_response(embed=embed, view=view)
-                if delete_after:
-                    await msg.delete(delay=delete_after)
-                return
-            msg = await interaction.followup.send(
-                embed=embed,
-                view=view,
-                ephemeral=ephemeral,
+            await FeedbackUI._send_after_response_done(interaction, payload)
+            return
+        await FeedbackUI._send_initial_response(interaction, payload)
+
+    @staticmethod
+    async def _send_after_response_done(
+        interaction: discord.Interaction, payload: FeedbackPayload
+    ) -> None:
+        if (
+            interaction.response.type
+            is discord.InteractionResponseType.deferred_channel_message
+        ):
+            message = await FeedbackUI._edit_original_response(interaction, payload)
+        else:
+            message = await FeedbackUI._send_followup(interaction, payload)
+        if payload.delete_after:
+            await message.delete(delay=payload.delete_after)
+
+    @staticmethod
+    async def _edit_original_response(
+        interaction: discord.Interaction, payload: FeedbackPayload
+    ) -> discord.InteractionMessage:
+        if payload.view is ViewDirective.OMIT:
+            return await interaction.edit_original_response(embed=payload.embed)
+        return await interaction.edit_original_response(
+            embed=payload.embed, view=payload.view
+        )
+
+    @staticmethod
+    async def _send_followup(
+        interaction: discord.Interaction, payload: FeedbackPayload
+    ) -> discord.WebhookMessage:
+        if isinstance(payload.view, View):
+            return await interaction.followup.send(
+                embed=payload.embed,
+                view=payload.view,
+                ephemeral=payload.ephemeral,
                 silent=True,
                 wait=True,
             )
-            if delete_after:
-                await msg.delete(delay=delete_after)
-            return
+        return await interaction.followup.send(
+            embed=payload.embed,
+            ephemeral=payload.ephemeral,
+            silent=True,
+            wait=True,
+        )
 
+    @staticmethod
+    async def _send_initial_response(
+        interaction: discord.Interaction, payload: FeedbackPayload
+    ) -> None:
+        if isinstance(payload.view, View):
+            await interaction.response.send_message(
+                embed=payload.embed,
+                view=payload.view,
+                ephemeral=payload.ephemeral,
+                delete_after=payload.delete_after,
+                silent=True,
+            )
+            return
         await interaction.response.send_message(
-            embed=embed,
-            view=view,
-            ephemeral=ephemeral,
-            delete_after=delete_after,
+            embed=payload.embed,
+            ephemeral=payload.ephemeral,
+            delete_after=payload.delete_after,
             silent=True,
         )
