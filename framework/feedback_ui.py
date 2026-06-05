@@ -152,17 +152,19 @@ class FeedbackUI:
             error_info: Optional error information to pre-fill the report modal.
 
         """
-        payload = FeedbackUI._build_payload(
+        resolved_embed = FeedbackUI._resolve_embed(
+            embed, title, description, feedback_type
+        )
+        resolved_view = FeedbackUI._resolve_view(
             interaction,
-            feedback_type=feedback_type,
-            description=description,
-            title=title,
-            delete_after=delete_after,
-            ephemeral=ephemeral,
-            view=view,
-            disable_report_btn=disable_report_btn,
-            embed=embed,
-            error_info=error_info,
+            feedback_type,
+            view,
+            disable_report_btn,
+            error_info,
+        )
+        FeedbackUI._add_delete_timer(resolved_embed, delete_after)
+        payload = FeedbackPayload(
+            resolved_embed, resolved_view, delete_after, ephemeral
         )
         await FeedbackUI._send_payload(interaction, payload)
 
@@ -214,29 +216,6 @@ class FeedbackUI:
                 embed.safe_add_field(name="", value=timer, inline=False)
             else:
                 embed.add_field(name="", value=timer, inline=False)
-
-    @staticmethod
-    def _build_payload(
-        interaction: discord.Interaction,
-        *,
-        feedback_type: FeedbackType,
-        description: str | None,
-        title: str | None,
-        delete_after: float | None,
-        ephemeral: bool,
-        view: object,
-        disable_report_btn: bool,
-        embed: discord.Embed,
-        error_info: str | None,
-    ) -> FeedbackPayload:
-        resolved_embed = FeedbackUI._resolve_embed(
-            embed, title, description, feedback_type
-        )
-        resolved_view = FeedbackUI._resolve_view(
-            interaction, feedback_type, view, disable_report_btn, error_info
-        )
-        FeedbackUI._add_delete_timer(resolved_embed, delete_after)
-        return FeedbackPayload(resolved_embed, resolved_view, delete_after, ephemeral)
 
     @staticmethod
     async def _send_payload(

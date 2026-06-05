@@ -26,10 +26,12 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         interaction.response.is_done.return_value = True
         interaction.response.type = discord.InteractionResponseType.pong
         interaction.followup.send = AsyncMock(return_value=MagicMock())
+        interaction.edit_original_response = AsyncMock()
 
         await FeedbackUI.send(cast(discord.Interaction, interaction), description="OK")
 
         interaction.followup.send.assert_awaited_once()
+        interaction.edit_original_response.assert_not_awaited()
         self.assertNotIn("view", interaction.followup.send.await_args.kwargs)
 
     async def test_deferred_channel_message_edits_original_response(self) -> None:
@@ -71,6 +73,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
             discord.InteractionResponseType.deferred_channel_message
         )
         interaction.edit_original_response = AsyncMock(return_value=MagicMock())
+        interaction.followup.send = AsyncMock()
 
         await FeedbackUI.send(
             cast(discord.Interaction, interaction),
@@ -80,6 +83,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertIsNone(interaction.edit_original_response.await_args.kwargs["view"])
+        interaction.followup.send.assert_not_awaited()
 
     async def test_none_is_omitted_from_initial_response(self) -> None:
         interaction = MagicMock()
