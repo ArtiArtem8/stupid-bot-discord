@@ -20,7 +20,8 @@ class TestBlockingCodec(unittest.TestCase):
         decoded = try_decode_user(self.valid)
 
         self.assertIsNotNone(decoded)
-        assert decoded is not None
+        if decoded is None:
+            self.fail("expected valid blocked user to decode")
         self.assertIsNone(decoded.current_global_name)
 
     def test_invalid_nested_history_is_rejected(self) -> None:

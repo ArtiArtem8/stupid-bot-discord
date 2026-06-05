@@ -21,7 +21,8 @@ class TestPrefixSuggestions(unittest.TestCase):
         )
 
         self.assertIsNotNone(result.primary)
-        assert result.primary is not None
+        if result.primary is None:
+            self.fail("expected a primary suggestion")
         self.assertEqual(result.primary.key, "play")
 
     def test_ambiguous_guild_match_prefers_guild_command(self) -> None:
@@ -32,7 +33,8 @@ class TestPrefixSuggestions(unittest.TestCase):
         )
 
         self.assertIsNotNone(result.primary)
-        assert result.primary is not None
+        if result.primary is None:
+            self.fail("expected a primary suggestion")
         self.assertTrue(result.primary.is_guild)
         self.assertIsNotNone(result.alternative)
 

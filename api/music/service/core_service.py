@@ -31,6 +31,7 @@ from api.music.service.connection_manager import ConnectionManager
 from api.music.service.event_handlers import MusicEventHandlers
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
+from api.music.session_events import dispatch_music_session_end
 from repositories.volume_repository import VolumeRepository
 
 logger = logging.getLogger(__name__)
@@ -523,19 +524,7 @@ class CoreMusicService:
     async def end_session(self, guild_id: int) -> None:
         """End the music session and dispatch the event."""
         session = self.state.end_session(guild_id)
-        if session and session.tracks:
-            main_channel_id = (
-                max(session.channel_usage, key=lambda k: session.channel_usage[k])
-                if session.channel_usage
-                else None
-            )
-            if main_channel_id:
-                self.bot.dispatch(
-                    "music_session_end",
-                    guild_id,
-                    session,
-                    main_channel_id,
-                )
+        dispatch_music_session_end(self.bot, guild_id, session)
 
     async def cleanup(self) -> None:
         """Cleanup on shutdown."""

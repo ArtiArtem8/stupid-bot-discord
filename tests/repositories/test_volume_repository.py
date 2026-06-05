@@ -108,7 +108,8 @@ class TestVolumeRepository(unittest.IsolatedAsyncioTestCase):
         entity = await self.repo.get(123)
 
         self.assertIsNotNone(entity)
-        assert entity is not None
+        if entity is None:
+            self.fail("expected saved volume entity")
         self.assertEqual(entity.guild_id, 123)
         self.assertEqual(entity.volume, 42)
 

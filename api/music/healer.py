@@ -24,6 +24,7 @@ from api.music.protocols import HealerProtocol
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
+from api.music.session_events import dispatch_music_session_end
 from repositories.volume_repository import VolumeRepository
 
 from .models import ControllerDestroyReason, MusicResultStatus, PlayerStateSnapshot
@@ -409,16 +410,7 @@ class SessionHealer(HealerProtocol):
             return
 
         session = self.state.end_session(guild_id)
-        if session and session.tracks:
-            main_channel_id = (
-                max(session.channel_usage, key=lambda k: session.channel_usage[k])
-                if session.channel_usage
-                else None
-            )
-            if main_channel_id:
-                self.bot.dispatch(
-                    "music_session_end", guild_id, session, main_channel_id
-                )
+        dispatch_music_session_end(self.bot, guild_id, session)
 
         self.state.cancel_timer(guild_id)
 
