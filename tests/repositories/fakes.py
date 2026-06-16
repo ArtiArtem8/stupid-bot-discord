@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import inspect
-from typing import cast
 
 from repositories.json_object_store import JsonUpdater
 from utils.json_types import JsonObject
@@ -11,8 +10,9 @@ from utils.json_types import JsonObject
 class InMemoryJsonStore:
     """In-memory async JSON store to avoid filesystem in repository tests."""
 
-    def __init__(self, initial_data: object | None = None) -> None:
-        self._data = json_object(initial_data or {})
+    def __init__(self, initial_data: JsonObject | None = None) -> None:
+        source: JsonObject = {} if initial_data is None else initial_data
+        self._data: JsonObject = copy.deepcopy(source)
         self.update_calls = 0
 
     async def read(self) -> JsonObject:
@@ -30,8 +30,3 @@ class InMemoryJsonStore:
     @property
     def data(self) -> JsonObject:
         return copy.deepcopy(self._data)
-
-
-def json_object(value: object) -> JsonObject:
-    """Convert loose test fixture data into the JSON object contract."""
-    return cast(JsonObject, copy.deepcopy(value))

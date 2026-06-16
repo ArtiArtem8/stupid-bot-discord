@@ -44,10 +44,8 @@ class CallbackButton[ViewT: discord.ui.View](discord.ui.Button[ViewT]):
         label: str | None = None,
         disabled: bool = False,
         custom_id: str | None = None,
-        url: str | None = None,
         emoji: str | discord.Emoji | discord.PartialEmoji | None = None,
         row: int | None = None,
-        sku_id: int | None = None,
         id: int | None = None,
     ) -> None:
         super().__init__(
@@ -55,10 +53,8 @@ class CallbackButton[ViewT: discord.ui.View](discord.ui.Button[ViewT]):
             label=label,
             disabled=disabled,
             custom_id=custom_id,
-            url=url,
             emoji=emoji,
             row=row,
-            sku_id=sku_id,
             id=id,
         )
         self._callback = callback

@@ -12,7 +12,7 @@ from api.music.player import MusicPlayer
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
-    async def test_voice_server_update_suppresses_client_connector_error(
+    async def test_voice_server_update_suppresses_client_connection_error(
         self,
     ) -> None:
         player = MusicPlayer.__new__(MusicPlayer)
