@@ -6,19 +6,29 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timedelta, timezone
-from typing import override
+from typing import cast, override
 
 from api.blocking_models import BlockedUser, BlockHistoryEntry, NameHistoryEntry
 from repositories.blocking_repository import (
     BlockingRepository,
 )
 from tests.repositories.fakes import InMemoryJsonStore
-from utils.json_types import JsonObject, JsonValue, freeze_json_object, is_json_object
+from utils.json_types import (
+    JsonEncodableObject,
+    JsonObject,
+    JsonValue,
+    freeze_json_object,
+    is_json_object,
+)
 
 
 def _as_json_object(value: JsonValue) -> JsonObject:
     assert is_json_object(value)
     return value
+
+
+def _json_fixture(value: object) -> JsonObject:
+    return freeze_json_object(cast(JsonEncodableObject, value))
 
 
 class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
@@ -37,7 +47,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="user1",
             current_global_name="Global",
         )
-        data = freeze_json_object(
+        data = _json_fixture(
             {
                 "123": {
                     "users": {
@@ -80,7 +90,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="u2",
             current_global_name="g2",
         )
-        data = freeze_json_object(
+        data = _json_fixture(
             {
                 "1": {
                     "users": {
@@ -109,7 +119,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="u1",
             current_global_name=None,
         )
-        data = freeze_json_object(
+        data = _json_fixture(
             {
                 "1": {
                     "users": {
@@ -161,7 +171,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="old",
             current_global_name=None,
         )
-        data = freeze_json_object(
+        data = _json_fixture(
             {
                 "1": {
                     "users": {
@@ -188,7 +198,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="test",
             current_global_name=None,
         )
-        data = freeze_json_object(
+        data = _json_fixture(
             {
                 "1": {
                     "users": {
@@ -242,10 +252,12 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="u2",
             current_global_name=None,
         )
-        data = {
-            "1": {"users": {"1": user1.to_dict()}},
-            "2": {"users": {"2": user2.to_dict()}},
-        }
+        data = _json_fixture(
+            {
+                "1": {"users": {"1": user1.to_dict()}},
+                "2": {"users": {"2": user2.to_dict()}},
+            }
+        )
         self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
@@ -462,7 +474,9 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(saved_user_dict["current_username"], "new_guy")
         self.assertTrue(saved_user_dict["blocked"])
-        self.assertEqual(len(saved_user_dict["block_history"]), 1)
+        block_history = saved_user_dict["block_history"]
+        assert isinstance(block_history, list)
+        self.assertEqual(len(block_history), 1)
 
     async def test_save_user_to_new_guild(self) -> None:
         """Test saving a user creates a new guild entry if it doesn't exist."""

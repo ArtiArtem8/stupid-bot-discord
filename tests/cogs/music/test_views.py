@@ -16,15 +16,16 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
         manager = TrackControllerManager(MagicMock())
         current_view = MagicMock(track_id=TrackId("new"))
         manager.controllers[1] = current_view
-        manager._cleanup_existing = AsyncMock()  # type: ignore[method-assign]
+        cleanup_existing = AsyncMock()
 
-        await manager.destroy_for_guild(
-            1,
-            ControllerDestroyReason.TRACK_END,
-            expected_track_id=TrackId("old"),
-        )
+        with patch.object(manager, "_cleanup_existing", cleanup_existing):
+            await manager.destroy_for_guild(
+                1,
+                ControllerDestroyReason.TRACK_END,
+                expected_track_id=TrackId("old"),
+            )
 
-        manager._cleanup_existing.assert_not_awaited()
+        cleanup_existing.assert_not_awaited()
         self.assertIs(manager.controllers[1], current_view)
 
 
@@ -45,16 +46,19 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             track_id=TrackId("track"),
             on_stop_callback=None,
         )
-        view._safe_update = AsyncMock()  # type: ignore[method-assign]
+        safe_update = AsyncMock()
         interaction = MagicMock()
         interaction.user.id = 10
 
         async def acknowledge(_responder: object) -> None:
             calls.append("ack")
 
-        with patch(
-            "cogs.music.views.MusicInteractionResponder.acknowledge_component",
-            new=acknowledge,
+        with (
+            patch(
+                "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                new=acknowledge,
+            ),
+            patch.object(view, "_safe_update", safe_update),
         ):
             restart_button = next(
                 child

@@ -76,5 +76,7 @@ class TestMusicInteractionResponder(unittest.IsolatedAsyncioTestCase):
             await responder.send_private_failure("Нет voice channel")
 
         send.assert_awaited_once()
-        self.assertTrue(send.await_args.kwargs["ephemeral"])
+        call = send.await_args
+        assert call is not None
+        self.assertTrue(call.kwargs["ephemeral"])
         interaction.response.defer.assert_not_awaited()

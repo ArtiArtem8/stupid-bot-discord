@@ -7,7 +7,10 @@ from __future__ import annotations
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, patch
+
+import discord
 
 import config
 from api.birthday import BirthdayManager, parse_birthday, safe_fetch_member
@@ -26,17 +29,24 @@ class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
 
     async def test_safe_fetch_member_returns_cached(self) -> None:
         member = object()
+        fetch_member = AsyncMock()
 
         def get_member(_: int) -> object:
             return member
 
-        guild = SimpleNamespace(
-            get_member=get_member,
-            fetch_member=AsyncMock(),
+        guild = cast(
+            discord.Guild,
+            cast(
+                object,
+                SimpleNamespace(
+                    get_member=get_member,
+                    fetch_member=fetch_member,
+                ),
+            ),
         )
         res = await safe_fetch_member(guild, 1)
         self.assertIs(res, member)
-        guild.fetch_member.assert_not_awaited()
+        fetch_member.assert_not_awaited()
 
     async def test_safe_fetch_member_retries_on_5xx(self) -> None:
         member = object()
@@ -49,9 +59,17 @@ class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
         def get_member(_: int) -> None:
             return None
 
-        guild = SimpleNamespace(
-            get_member=get_member,
-            fetch_member=AsyncMock(side_effect=[FakeHTTPException(500), member]),
+        guild = cast(
+            discord.Guild,
+            cast(
+                object,
+                SimpleNamespace(
+                    get_member=get_member,
+                    fetch_member=AsyncMock(
+                        side_effect=[FakeHTTPException(500), member]
+                    ),
+                ),
+            ),
         )
 
         with (

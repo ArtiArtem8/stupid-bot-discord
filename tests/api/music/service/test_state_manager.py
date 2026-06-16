@@ -28,6 +28,7 @@ class TestStateManager(unittest.TestCase):
 
         sess = self.manager.end_session(123)
         self.assertIsNotNone(sess)
+        assert sess is not None
         self.assertEqual(sess.guild_id, 123)
         self.assertIsNone(self.manager.get_session(123))
         self.assertNotIn(123, self.manager._track_start_times_dt)

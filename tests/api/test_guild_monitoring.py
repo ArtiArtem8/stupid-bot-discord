@@ -9,7 +9,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, patch
+
+import discord
 
 from api.guild_monitoring import MemberSnapshot, ServerMonitoringManager
 
@@ -43,8 +46,14 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
                 ),
                 patch("api.guild_monitoring.save_json") as save_mock,
             ):
-                member = SimpleNamespace(
-                    bot=False, id=1, guild=SimpleNamespace(id=10), roles=[]
+                member = cast(
+                    discord.Member,
+                    cast(
+                        object,
+                        SimpleNamespace(
+                            bot=False, id=1, guild=SimpleNamespace(id=10), roles=[]
+                        ),
+                    ),
                 )
                 count = mgr.save_snapshot(member)
 
@@ -93,7 +102,11 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
                 get_member=get_member,
                 id=SimpleNamespace(id=1),
             )
-            member = SimpleNamespace(guild=guild, id=5, add_roles=AsyncMock())
+            add_roles = AsyncMock()
+            member = cast(
+                discord.Member,
+                cast(object, SimpleNamespace(guild=guild, id=5, add_roles=add_roles)),
+            )
 
             snapshot = MemberSnapshot(
                 user_id=5,
@@ -102,12 +115,21 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
                 left_at=datetime.now(),
             )
 
-            mgr.get_snapshot = lambda gid, uid: snapshot  # pyright: ignore[reportAttributeAccessIssue]
-            mgr.delete_snapshot = lambda gid, uid: True  # pyright: ignore[reportAttributeAccessIssue]
-            mgr._validate_role = AsyncMock(side_effect=[object(), None])
+            def get_snapshot(_guild_id: int, _user_id: int) -> MemberSnapshot:
+                return snapshot
 
-            restored, skipped = await mgr.restore_snapshot(member)
+            def delete_snapshot(_guild_id: int, _user_id: int) -> bool:
+                return True
+
+            validate_role = AsyncMock(side_effect=[object(), None])
+
+            with (
+                patch.object(mgr, "get_snapshot", get_snapshot),
+                patch.object(mgr, "delete_snapshot", delete_snapshot),
+                patch.object(mgr, "_validate_role", validate_role),
+            ):
+                restored, skipped = await mgr.restore_snapshot(member)
 
             self.assertEqual(len(restored), 1)
             self.assertEqual(skipped, [20])
-            member.add_roles.assert_awaited_once()
+            add_roles.assert_awaited_once()

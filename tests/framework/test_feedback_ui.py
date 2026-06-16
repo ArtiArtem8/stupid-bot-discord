@@ -1,6 +1,7 @@
 """Tests for interaction response routing in feedback messages."""
 
 import unittest
+from collections.abc import Mapping
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -8,6 +9,12 @@ import discord
 from discord.ui import View
 
 from framework.feedback_ui import FeedbackType, FeedbackUI, ReportButtonView
+
+
+def _await_kwargs(mock: AsyncMock) -> Mapping[str, object]:
+    call = mock.await_args
+    assert call is not None
+    return call.kwargs
 
 
 class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
@@ -19,7 +26,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         await FeedbackUI.send(cast(discord.Interaction, interaction), description="OK")
 
         interaction.response.send_message.assert_awaited_once()
-        self.assertNotIn("view", interaction.response.send_message.await_args.kwargs)
+        self.assertNotIn("view", _await_kwargs(interaction.response.send_message))
 
     async def test_completed_response_uses_followup(self) -> None:
         interaction = MagicMock()
@@ -32,7 +39,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
 
         interaction.followup.send.assert_awaited_once()
         interaction.edit_original_response.assert_not_awaited()
-        self.assertNotIn("view", interaction.followup.send.await_args.kwargs)
+        self.assertNotIn("view", _await_kwargs(interaction.followup.send))
 
     async def test_deferred_channel_message_edits_original_response(self) -> None:
         interaction = MagicMock()
@@ -49,7 +56,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         )
 
         interaction.edit_original_response.assert_awaited_once()
-        self.assertNotIn("view", interaction.edit_original_response.await_args.kwargs)
+        self.assertNotIn("view", _await_kwargs(interaction.edit_original_response))
         interaction.followup.send.assert_not_awaited()
 
     async def test_explicit_view_is_passed_to_initial_response(self) -> None:
@@ -64,7 +71,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
             view=view,
         )
 
-        self.assertIs(interaction.response.send_message.await_args.kwargs["view"], view)
+        self.assertIs(_await_kwargs(interaction.response.send_message)["view"], view)
 
     async def test_none_clears_view_only_for_deferred_original_response(self) -> None:
         interaction = MagicMock()
@@ -82,7 +89,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
             view=None,
         )
 
-        self.assertIsNone(interaction.edit_original_response.await_args.kwargs["view"])
+        self.assertIsNone(_await_kwargs(interaction.edit_original_response)["view"])
         interaction.followup.send.assert_not_awaited()
 
     async def test_none_is_omitted_from_initial_response(self) -> None:
@@ -97,7 +104,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
             view=None,
         )
 
-        self.assertNotIn("view", interaction.response.send_message.await_args.kwargs)
+        self.assertNotIn("view", _await_kwargs(interaction.response.send_message))
 
     async def test_none_is_omitted_from_followup(self) -> None:
         interaction = MagicMock()
@@ -112,7 +119,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
             view=None,
         )
 
-        self.assertNotIn("view", interaction.followup.send.await_args.kwargs)
+        self.assertNotIn("view", _await_kwargs(interaction.followup.send))
 
     async def test_error_feedback_creates_report_button(self) -> None:
         interaction = MagicMock()
@@ -127,7 +134,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
             description="Error",
         )
 
-        view = interaction.response.send_message.await_args.kwargs["view"]
+        view = _await_kwargs(interaction.response.send_message)["view"]
         self.assertIsInstance(view, ReportButtonView)
 
     async def test_delete_timer_field_is_added(self) -> None:
@@ -141,7 +148,8 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
             delete_after=30,
         )
 
-        embed = interaction.response.send_message.await_args.kwargs["embed"]
+        embed = _await_kwargs(interaction.response.send_message)["embed"]
+        assert isinstance(embed, discord.Embed)
         self.assertEqual(len(embed.fields), 1)
 
     async def test_deferred_ephemeral_result_edits_original_response(self) -> None:

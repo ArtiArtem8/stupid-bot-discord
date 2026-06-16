@@ -82,12 +82,11 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         guild = MagicMock(id=123)
         player = MagicMock()
         player.fetch_tracks = AsyncMock(return_value=[])
-        self.service.join = AsyncMock(  # type: ignore[method-assign]
-            return_value=(VoiceCheckResult.SUCCESS, None)
-        )
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
 
-        result = await self.service.play(guild, MagicMock(), "query", 1, 2)
+        with patch.object(self.service, "join", join):
+            result = await self.service.play(guild, MagicMock(), "query", 1, 2)
 
         self.assertIs(result.status, MusicResultStatus.FAILURE)
         self.assertEqual(result.message, "Nothing found")
@@ -99,12 +98,11 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         player.current = None
         player.fetch_tracks = AsyncMock(return_value=[track])
         player.advance = AsyncMock()
-        self.service.join = AsyncMock(  # type: ignore[method-assign]
-            return_value=(VoiceCheckResult.SUCCESS, None)
-        )
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
 
-        result = await self.service.play(guild, MagicMock(), "query", 1, 2)
+        with patch.object(self.service, "join", join):
+            result = await self.service.play(guild, MagicMock(), "query", 1, 2)
 
         player.set_requester.assert_called_once_with(track, 1, 2)
         player.queue.append.assert_called_once_with(track)
@@ -135,9 +133,12 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.connection.disconnect = AsyncMock()
         self.connection.is_known_unavailable.return_value = False
         self.ui.controller.destroy_for_guild = AsyncMock()
-        self.service.end_session = AsyncMock()  # type: ignore[method-assign]
+        end_session = AsyncMock()
 
-        with patch("api.music.service.core_service.mafic.Player", object):
+        with (
+            patch("api.music.service.core_service.mafic.Player", object),
+            patch.object(self.service, "end_session", end_session),
+        ):
             result = await self.service.leave(guild)
 
         self.connection.disconnect.assert_awaited_once_with(guild, force=True)
@@ -155,11 +156,10 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
         self.volume_repo.get_volume = AsyncMock(return_value=80)
-        self.service._apply_volume = AsyncMock(  # type: ignore[method-assign]
-            side_effect=mafic.HTTPNotFound("Session not found")
-        )
+        apply_volume = AsyncMock(side_effect=mafic.HTTPNotFound("Session not found"))
 
-        result = await self.service.join(guild, channel)
+        with patch.object(self.service, "_apply_volume", apply_volume):
+            result = await self.service.join(guild, channel)
 
         self.assertEqual(result, (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None))
         self.connection.mark_node_unavailable.assert_awaited_once()
@@ -178,11 +178,10 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
         self.volume_repo.get_volume = AsyncMock(return_value=80)
-        self.service._apply_volume = AsyncMock(  # type: ignore[method-assign]
-            side_effect=aiohttp.ClientConnectionError("down")
-        )
+        apply_volume = AsyncMock(side_effect=aiohttp.ClientConnectionError("down"))
 
-        result = await self.service.join(guild, channel)
+        with patch.object(self.service, "_apply_volume", apply_volume):
+            result = await self.service.join(guild, channel)
 
         self.assertEqual(result, (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None))
         self.connection.mark_node_unavailable.assert_awaited_once()

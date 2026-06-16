@@ -7,7 +7,10 @@ from __future__ import annotations
 import unittest
 from datetime import date
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import Mock, patch
+
+import discord
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
 
@@ -35,10 +38,16 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         def get_member(_: int) -> object:
             return None
 
-        guild = SimpleNamespace(
-            name="S",
-            id=1,
-            get_member=get_member,
+        guild = cast(
+            discord.Guild,
+            cast(
+                object,
+                SimpleNamespace(
+                    name="S",
+                    id=1,
+                    get_member=get_member,
+                ),
+            ),
         )
 
         logger = Mock()

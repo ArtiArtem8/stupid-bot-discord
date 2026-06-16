@@ -7,7 +7,10 @@ from __future__ import annotations
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, Mock, patch
+
+import discord
 
 from api.reporting import _build_report_data, submit_report
 
@@ -21,11 +24,17 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         send_target = SimpleNamespace(send=AsyncMock())
         client = SimpleNamespace(get_channel=Mock(return_value=send_target))
 
-        interaction = SimpleNamespace(
-            user=user,
-            guild=guild,
-            channel=channel,
-            client=client,
+        interaction = cast(
+            discord.Interaction[discord.Client],
+            cast(
+                object,
+                SimpleNamespace(
+                    user=user,
+                    guild=guild,
+                    channel=channel,
+                    client=client,
+                ),
+            ),
         )
 
         fixed_dt = datetime(2025, 1, 1, 12, 0, 0)
@@ -46,10 +55,16 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         send_target.send.assert_awaited_once()
 
     def test_build_report_data_basic(self) -> None:
-        interaction = SimpleNamespace(
-            user=SimpleNamespace(id=1, name="u", avatar=None),
-            guild=None,
-            channel=None,
+        interaction = cast(
+            discord.Interaction[discord.Client],
+            cast(
+                object,
+                SimpleNamespace(
+                    user=SimpleNamespace(id=1, name="u", avatar=None),
+                    guild=None,
+                    channel=None,
+                ),
+            ),
         )
         data = _build_report_data(interaction, "r")
         self.assertEqual(data["reason"], "r")

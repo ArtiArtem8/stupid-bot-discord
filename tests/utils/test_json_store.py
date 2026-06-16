@@ -535,7 +535,9 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
         store = AsyncJsonFileStore(path=self.test_file, backup_dir=self.backup_dir)
 
         def updater(d: JsonDict) -> None:
-            d["count"] = int(d.get("count", 0)) + 1
+            raw_count = d.get("count", 0)
+            assert isinstance(raw_count, (int, float, str))
+            d["count"] = int(raw_count) + 1
 
         result = await store.update(updater)
         again = await store.read()
@@ -561,7 +563,9 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
         await store.write({"counter": 0})
 
         async def inc(d: JsonDict) -> None:
-            current = int(d.get("counter", 0))
+            raw_counter = d.get("counter", 0)
+            assert isinstance(raw_counter, (int, float, str))
+            current = int(raw_counter)
             await asyncio.sleep(0.01)
             d["counter"] = current + 1
 

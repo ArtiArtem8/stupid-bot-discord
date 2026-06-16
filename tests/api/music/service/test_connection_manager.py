@@ -58,9 +58,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             player_instance = DummyPlayer()
             guild_mock.voice_client = player_instance
             self.bot.get_guild.return_value = guild_mock
-            self.manager.is_player_usable = MagicMock(return_value=True)
+            is_player_usable = MagicMock(return_value=True)
 
-            player = self.manager.get_player(123)
+            with patch.object(self.manager, "is_player_usable", is_player_usable):
+                player = self.manager.get_player(123)
             self.assertIsNotNone(player)
             self.assertIsInstance(player, DummyPlayer)
 
@@ -73,9 +74,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         with patch("api.music.service.connection_manager.MusicPlayer", DummyPlayer):
             guild_mock.voice_client = DummyPlayer()
             self.bot.get_guild.return_value = guild_mock
-            self.manager.is_player_usable = MagicMock(return_value=False)
+            is_player_usable = MagicMock(return_value=False)
 
-            player = self.manager.get_player(123)
+            with patch.object(self.manager, "is_player_usable", is_player_usable):
+                player = self.manager.get_player(123)
 
         self.assertIsNone(player)
 
@@ -148,9 +150,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         guild.voice_client = None
         channel = MagicMock(spec=discord.VoiceChannel)
         channel.connect = AsyncMock()
-        self.manager.ensure_available = AsyncMock(return_value=False)
+        ensure_available = AsyncMock(return_value=False)
 
-        res, old = await self.manager.join(guild, channel)
+        with patch.object(self.manager, "ensure_available", ensure_available):
+            res, old = await self.manager.join(guild, channel)
 
         self.assertEqual(res, VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE)
         self.assertIsNone(old)
@@ -161,9 +164,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         guild.voice_client = None
         channel = MagicMock(spec=discord.VoiceChannel)
         channel.connect = AsyncMock()
-        self.manager.ensure_available = AsyncMock(return_value=True)
+        ensure_available = AsyncMock(return_value=True)
 
-        result = await self.manager.join(guild, channel)
+        with patch.object(self.manager, "ensure_available", ensure_available):
+            result = await self.manager.join(guild, channel)
 
         self.assertEqual(result, (VoiceCheckResult.SUCCESS, None))
         channel.connect.assert_awaited_once_with(
@@ -181,10 +185,14 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         guild.voice_client = player
         channel = MagicMock(spec=discord.VoiceChannel)
         channel.connect = AsyncMock()
-        self.manager.has_ready_node = MagicMock(return_value=False)
-        self.manager.ensure_available = AsyncMock(return_value=False)
+        has_ready_node = MagicMock(return_value=False)
+        ensure_available = AsyncMock(return_value=False)
 
-        with patch("api.music.service.connection_manager.MusicPlayer", DummyPlayer):
+        with (
+            patch("api.music.service.connection_manager.MusicPlayer", DummyPlayer),
+            patch.object(self.manager, "has_ready_node", has_ready_node),
+            patch.object(self.manager, "ensure_available", ensure_available),
+        ):
             res, old = await self.manager.join(guild, channel)
 
         self.assertEqual(res, VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE)
@@ -289,13 +297,14 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool_instance.close = AsyncMock()
         mock_pool_class.return_value = mock_pool_instance
         manager = ConnectionManager(self.bot)
-        manager.ensure_available = AsyncMock(return_value=False)
+        ensure_available = AsyncMock(return_value=False)
 
-        manager.start_lazy_connect()
-        manager.start_lazy_connect()
-        await asyncio.sleep(0)
+        with patch.object(manager, "ensure_available", ensure_available):
+            manager.start_lazy_connect()
+            manager.start_lazy_connect()
+            await asyncio.sleep(0)
 
-        manager.ensure_available.assert_awaited_once()
+        ensure_available.assert_awaited_once()
         await manager.cleanup()
         mock_pool_instance.close.assert_awaited_once()
 
@@ -313,11 +322,12 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             await asyncio.Future()
             return True
 
-        manager.ensure_available = AsyncMock(side_effect=wait_forever)
+        ensure_available = AsyncMock(side_effect=wait_forever)
 
-        manager.start_lazy_connect()
-        await started.wait()
-        await manager.cleanup()
+        with patch.object(manager, "ensure_available", ensure_available):
+            manager.start_lazy_connect()
+            await started.wait()
+            await manager.cleanup()
 
         self.assertIsNone(manager._lazy_connect_task)
         mock_pool_instance.close.assert_awaited_once()
