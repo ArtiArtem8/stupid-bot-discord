@@ -23,6 +23,7 @@ dev = [
     "pre-commit>=4.6.0",
     "pytest>=9.0.2",
     "ruff>=0.15.16",
+    "ty>=0.0.49",
 ]
 
 [tool.setuptools]
