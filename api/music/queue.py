@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import random
 from collections import deque
-from collections.abc import Iterable, Iterator, Reversible
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import overload
 
 from .models import RepeatMode, Track
 
@@ -40,33 +39,21 @@ class QueueManager:
         """Total duration of queue in milliseconds."""
         return sum(t.length for t in self._queue)
 
-    @overload
-    def add(self, tracks: Track, *, at_front: bool = False) -> None: ...
-    @overload
-    def add(self, tracks: Iterable[Track], *, at_front: bool = False) -> None: ...
-    def add(self, tracks: Iterable[Track] | Track, *, at_front: bool = False) -> None:
-        """Add track(s) to the queue.
+    def append(self, track: Track) -> None:
+        """Add a single track to the end of the queue."""
+        self._queue.append(track)
 
-        Args:
-            tracks: A single Track object or a sequence of Track objects.
-            at_front: If True, adds the track(s) to the beginning of the queue.
+    def extend(self, tracks: Iterable[Track]) -> None:
+        """Add multiple tracks to the end of the queue."""
+        self._queue.extend(tracks)
 
-        """
-        if isinstance(tracks, Iterable):
-            if at_front:
-                rev_tracks = (
-                    reversed(tracks)
-                    if isinstance(tracks, Reversible)
-                    else reversed(tuple(tracks))
-                )
-                self._queue.extendleft(rev_tracks)
-            else:
-                self._queue.extend(tracks)
-            return
-        if at_front:
-            self._queue.appendleft(tracks)
-        else:
-            self._queue.append(tracks)
+    def prepend(self, track: Track) -> None:
+        """Add a single track to the front of the queue."""
+        self._queue.appendleft(track)
+
+    def extend_front(self, tracks: Iterable[Track]) -> None:
+        """Add multiple tracks to the front of the queue, preserving order."""
+        self._queue.extendleft(reversed(tuple(tracks)))
 
     def pop_next(self) -> Track | None:
         """Pop the next track from the queue."""

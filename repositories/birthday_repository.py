@@ -6,6 +6,7 @@ from typing import cast, override
 import config
 from api.birthday_models import BirthdayGuildConfig, BirthdayGuildDict
 from repositories.base_repository import BaseRepository
+from repositories.json_object_store import JsonObjectStore
 from utils import AsyncJsonFileStore
 from utils.json_types import JsonObject, JsonValue
 
@@ -26,7 +27,7 @@ def _decode_guild_config(guild_id: int, raw: object) -> BirthdayGuildConfig | No
 class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
     """Repository for managing birthday data asynchronously."""
 
-    def __init__(self, store: AsyncJsonFileStore | None = None) -> None:
+    def __init__(self, store: JsonObjectStore | None = None) -> None:
         self._store = store or AsyncJsonFileStore(config.BIRTHDAY_FILE)
 
     @override

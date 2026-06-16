@@ -4,33 +4,17 @@ Covers guild config persistence, sorting helpers, and invalid data handling.
 
 from __future__ import annotations
 
-import copy
 import logging
 import unittest
-from collections.abc import Callable
 from datetime import date
 from typing import override
 from unittest.mock import Mock
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
 from repositories.birthday_repository import BirthdayRepository
+from tests.repositories.fakes import InMemoryJsonStore
 from utils import calculate_days_until_birthday
 from utils.json_types import JsonObject
-
-
-class FakeAsyncJsonFileStore:
-    """In-memory async store to avoid filesystem in tests."""
-
-    def __init__(self, initial_data: JsonObject | None = None) -> None:
-        self._data = copy.deepcopy(initial_data or {})
-
-    async def read(self) -> JsonObject:
-        return copy.deepcopy(self._data)
-
-    async def update(self, updater: Callable[[JsonObject], None]) -> None:
-        data = copy.deepcopy(self._data)
-        updater(data)
-        self._data = data
 
 
 class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
@@ -220,7 +204,7 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
 
     @override
     def setUp(self):
-        self.store = FakeAsyncJsonFileStore()
+        self.store = InMemoryJsonStore()
         self.repo = BirthdayRepository(self.store)
 
     async def test_save_and_get_guild(self):
@@ -282,7 +266,7 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
             "not_an_int": {},
             "3": {},  # Missing required fields (should trigger exception)
         }
-        self.repo = BirthdayRepository(FakeAsyncJsonFileStore(bad_data))
+        self.repo = BirthdayRepository(InMemoryJsonStore(bad_data))
 
         # Suppress logging during this test
         logging.disable(logging.ERROR)

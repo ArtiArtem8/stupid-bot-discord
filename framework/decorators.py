@@ -9,6 +9,7 @@ import discord
 from discord import Interaction
 
 from framework.feedback_ui import FeedbackType, FeedbackUI
+from utils.callables import callable_name
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,8 @@ def handle_errors[CogT, T, **P]() -> Callable[
     def decorator(
         func: CommandCallback[CogT, T, P],
     ) -> CommandCallback[CogT, T | None, P]:
+        func_name = callable_name(func)
+
         @functools.wraps(func)
         async def wrapper(
             self: CogT,
@@ -49,7 +52,7 @@ def handle_errors[CogT, T, **P]() -> Callable[
             try:
                 return await func(self, interaction, *args, **kwargs)
             except discord.DiscordException as e:
-                logger.exception("Discord error in %s", func.__name__)
+                logger.exception("Discord error in %s", func_name)
                 await FeedbackUI.send(
                     interaction,
                     title="Discord Ошибка",
@@ -61,7 +64,7 @@ def handle_errors[CogT, T, **P]() -> Callable[
                     error_info=str(e),
                 )
             except Exception as e:
-                logger.exception("Unexpected error in %s", func.__name__)
+                logger.exception("Unexpected error in %s", func_name)
                 await FeedbackUI.send(
                     interaction,
                     feedback_type=FeedbackType.ERROR,

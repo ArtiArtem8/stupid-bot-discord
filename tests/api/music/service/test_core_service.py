@@ -42,6 +42,34 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             self.ui,
         )
 
+    async def _assert_apply_volume_error_is_soft_failure(
+        self,
+        error: Exception,
+    ) -> None:
+        guild = MagicMock(id=123)
+        channel = MagicMock()
+        player = MagicMock()
+        player.guild = guild
+
+        self.connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        self.connection.get_player.return_value = player
+        self.volume_repo.get_volume = AsyncMock(return_value=80)
+
+        apply_volume = AsyncMock(side_effect=error)
+
+        with patch.object(self.service, "_apply_volume", apply_volume):
+            result = await self.service.join(guild, channel)
+
+        self.assertEqual(
+            result,
+            (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
+        )
+        self.connection.mark_node_unavailable.assert_awaited_once()
+        self.connection.detach_stale_voice_client.assert_awaited_once_with(
+            guild,
+            player,
+        )
+
     async def test_initialize_does_not_raise_when_connection_unavailable(self) -> None:
         await self.service.initialize()
 
@@ -82,12 +110,11 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         guild = MagicMock(id=123)
         player = MagicMock()
         player.fetch_tracks = AsyncMock(return_value=[])
-        self.service.join = AsyncMock(  # type: ignore[method-assign]
-            return_value=(VoiceCheckResult.SUCCESS, None)
-        )
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
 
-        result = await self.service.play(guild, MagicMock(), "query", 1, 2)
+        with patch.object(self.service, "join", join):
+            result = await self.service.play(guild, MagicMock(), "query", 1, 2)
 
         self.assertIs(result.status, MusicResultStatus.FAILURE)
         self.assertEqual(result.message, "Nothing found")
@@ -99,15 +126,14 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         player.current = None
         player.fetch_tracks = AsyncMock(return_value=[track])
         player.advance = AsyncMock()
-        self.service.join = AsyncMock(  # type: ignore[method-assign]
-            return_value=(VoiceCheckResult.SUCCESS, None)
-        )
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
 
-        result = await self.service.play(guild, MagicMock(), "query", 1, 2)
+        with patch.object(self.service, "join", join):
+            result = await self.service.play(guild, MagicMock(), "query", 1, 2)
 
         player.set_requester.assert_called_once_with(track, 1, 2)
-        player.queue.add.assert_called_once_with(track)
+        player.queue.append.assert_called_once_with(track)
         player.advance.assert_awaited_once()
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
 
@@ -135,9 +161,12 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.connection.disconnect = AsyncMock()
         self.connection.is_known_unavailable.return_value = False
         self.ui.controller.destroy_for_guild = AsyncMock()
-        self.service.end_session = AsyncMock()  # type: ignore[method-assign]
+        end_session = AsyncMock()
 
-        with patch("api.music.service.core_service.mafic.Player", object):
+        with (
+            patch("api.music.service.core_service.mafic.Player", object),
+            patch.object(self.service, "end_session", end_session),
+        ):
             result = await self.service.leave(guild)
 
         self.connection.disconnect.assert_awaited_once_with(guild, force=True)
@@ -147,42 +176,13 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
     async def test_join_returns_unavailable_when_apply_volume_http_not_found(
         self,
     ) -> None:
-        guild = MagicMock()
-        guild.id = 123
-        channel = MagicMock()
-        player = MagicMock()
-        player.guild = guild
-        self.connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
-        self.connection.get_player.return_value = player
-        self.volume_repo.get_volume = AsyncMock(return_value=80)
-        self.service._apply_volume = AsyncMock(  # type: ignore[method-assign]
-            side_effect=mafic.HTTPNotFound("Session not found")
-        )
-
-        result = await self.service.join(guild, channel)
-
-        self.assertEqual(result, (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None))
-        self.connection.mark_node_unavailable.assert_awaited_once()
-        self.connection.detach_stale_voice_client.assert_awaited_once_with(
-            guild, player
+        await self._assert_apply_volume_error_is_soft_failure(
+            mafic.HTTPNotFound("Session not found")
         )
 
     async def test_join_returns_unavailable_when_apply_volume_client_error(
         self,
     ) -> None:
-        guild = MagicMock()
-        guild.id = 123
-        channel = MagicMock()
-        player = MagicMock()
-        player.guild = guild
-        self.connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
-        self.connection.get_player.return_value = player
-        self.volume_repo.get_volume = AsyncMock(return_value=80)
-        self.service._apply_volume = AsyncMock(  # type: ignore[method-assign]
-            side_effect=aiohttp.ClientConnectionError("down")
+        await self._assert_apply_volume_error_is_soft_failure(
+            aiohttp.ClientConnectionError("down")
         )
-
-        result = await self.service.join(guild, channel)
-
-        self.assertEqual(result, (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None))
-        self.connection.mark_node_unavailable.assert_awaited_once()

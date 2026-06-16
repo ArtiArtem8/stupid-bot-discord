@@ -242,7 +242,7 @@ class CoreMusicService:
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         for track in playlist.tracks:
             player.set_requester(track, requester_id, text_channel_id)
-        player.queue.add(playlist.tracks)
+        player.queue.extend(playlist.tracks)
         await self._advance_if_idle(player)
         return MusicResult(
             MusicResultStatus.SUCCESS,
@@ -263,7 +263,7 @@ class CoreMusicService:
         connection_result: VoiceJoinResult,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         player.set_requester(track, requester_id, text_channel_id)
-        player.queue.add(track)
+        player.queue.append(track)
         is_playing_before = player.current is not None
         await self._advance_if_idle(player)
         return MusicResult(
@@ -405,7 +405,7 @@ class CoreMusicService:
 
         current = player.current
         try:
-            player.queue.add(current)
+            player.queue.append(current)
             await player.skip()
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)

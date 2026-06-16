@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
+
+import discord
 
 from api.blocking import BlockManager
 from api.blocking_models import BlockedUser
@@ -42,10 +45,16 @@ class TestBlockManager(unittest.IsolatedAsyncioTestCase):
         repo.get.return_value = None
         mgr = BlockManager(repo)
 
-        member = SimpleNamespace(
-            id=10,
-            display_name="Nick",
-            name="Global",
+        member = cast(
+            discord.Member,
+            cast(
+                object,
+                SimpleNamespace(
+                    id=10,
+                    display_name="Nick",
+                    name="Global",
+                ),
+            ),
         )
 
         user = await mgr.block_user(guild_id=99, target=member, admin_id=7, reason="r")
@@ -63,7 +72,10 @@ class TestBlockManager(unittest.IsolatedAsyncioTestCase):
         )
         mgr = BlockManager(repo)
 
-        member = SimpleNamespace(id=10, display_name="Nick", name="Global")
+        member = cast(
+            discord.Member,
+            cast(object, SimpleNamespace(id=10, display_name="Nick", name="Global")),
+        )
         user = await mgr.unblock_user(
             guild_id=99, target=member, admin_id=7, reason="r"
         )

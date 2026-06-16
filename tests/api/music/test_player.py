@@ -12,7 +12,7 @@ from api.music.player import MusicPlayer
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
-    async def test_voice_server_update_suppresses_client_connector_error(
+    async def test_voice_server_update_suppresses_client_connection_error(
         self,
     ) -> None:
         player = MusicPlayer.__new__(MusicPlayer)
@@ -21,7 +21,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         with patch.object(
             mafic.Player,
             "on_voice_server_update",
-            new=AsyncMock(side_effect=aiohttp.ClientConnectorError(None, OSError())),
+            new=AsyncMock(side_effect=aiohttp.ClientConnectionError("down")),
         ):
             await player.on_voice_server_update(
                 cast(VoiceServerUpdatePayload, object())

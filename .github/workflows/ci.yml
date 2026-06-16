@@ -49,5 +49,8 @@ jobs:
       - name: Basedpyright
         run: uv run basedpyright
 
+      - name: ty
+        run: uv run ty check
+
       - name: Tests
         run: uv run pytest -q

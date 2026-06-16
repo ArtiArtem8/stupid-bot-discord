@@ -4,49 +4,38 @@ Covers CRUD, history roundtrips, and guild/user query paths.
 
 from __future__ import annotations
 
-import copy
 import unittest
-from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import override
+from typing import cast, override
 
 from api.blocking_models import BlockedUser, BlockHistoryEntry, NameHistoryEntry
 from repositories.blocking_repository import (
     BlockingRepository,
 )
-from utils.json_types import JsonObject, JsonValue, is_json_object
+from tests.repositories.fakes import InMemoryJsonStore
+from utils.json_types import (
+    JsonEncodableObject,
+    JsonObject,
+    JsonValue,
+    freeze_json_object,
+    is_json_object,
+)
 
 
 def _as_json_object(value: JsonValue) -> JsonObject:
-    assert is_json_object(value)
+    if not is_json_object(value):
+        raise AssertionError(f"expected JSON object, got {type(value).__name__}")
     return value
 
 
-class FakeAsyncJsonFileStore:
-    """In-memory async store to avoid filesystem in tests."""
-
-    def __init__(self, initial_data: JsonObject | None = None) -> None:
-        self._data: JsonObject = copy.deepcopy(initial_data or {})
-        self.update_calls = 0
-
-    async def read(self) -> JsonObject:
-        return copy.deepcopy(self._data)
-
-    async def update(self, updater: Callable[[JsonObject], None]) -> None:
-        self.update_calls += 1
-        data = copy.deepcopy(self._data)
-        updater(data)
-        self._data = data
-
-    @property
-    def data(self) -> JsonObject:
-        return copy.deepcopy(self._data)
+def _json_fixture(value: object) -> JsonObject:
+    return freeze_json_object(cast(JsonEncodableObject, value))
 
 
 class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
     @override
     def setUp(self) -> None:
-        self.store = FakeAsyncJsonFileStore()
+        self.store = InMemoryJsonStore()
         self.repo = BlockingRepository(self.store)
 
     async def test_get_returns_none_when_user_not_found(self) -> None:
@@ -59,14 +48,16 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="user1",
             current_global_name="Global",
         )
-        data = {
-            "123": {
-                "users": {
-                    "456": user.to_dict(),
+        data = _json_fixture(
+            {
+                "123": {
+                    "users": {
+                        "456": user.to_dict(),
+                    }
                 }
             }
-        }
-        self.store = FakeAsyncJsonFileStore(data)
+        )
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         result = await self.repo.get((123, 456))
@@ -80,10 +71,10 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.current_global_name, "Global")
 
     async def test_get_ignores_invalid_guild_structure(self) -> None:
-        data = {
+        data: JsonObject = {
             "123": "invalid",
         }
-        self.store = FakeAsyncJsonFileStore(data)
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         result = await self.repo.get((123, 456))
@@ -100,19 +91,21 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="u2",
             current_global_name="g2",
         )
-        data = {
-            "1": {
-                "users": {
-                    "1": user1.to_dict(),
-                }
-            },
-            "2": {
-                "users": {
-                    "2": user2.to_dict(),
-                }
-            },
-        }
-        self.store = FakeAsyncJsonFileStore(data)
+        data = _json_fixture(
+            {
+                "1": {
+                    "users": {
+                        "1": user1.to_dict(),
+                    }
+                },
+                "2": {
+                    "users": {
+                        "2": user2.to_dict(),
+                    }
+                },
+            }
+        )
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         result = await self.repo.get_all()
@@ -127,15 +120,17 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="u1",
             current_global_name=None,
         )
-        data = {
-            "1": {
-                "users": {
-                    "1": user1.to_dict(),
-                }
-            },
-            "2": "invalid",  # should be skipped
-        }
-        self.store = FakeAsyncJsonFileStore(data)
+        data = _json_fixture(
+            {
+                "1": {
+                    "users": {
+                        "1": user1.to_dict(),
+                    }
+                },
+                "2": "invalid",  # should be skipped
+            }
+        )
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         result = await self.repo.get_all()
@@ -177,14 +172,16 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="old",
             current_global_name=None,
         )
-        data = {
-            "1": {
-                "users": {
-                    "42": user.to_dict(),
+        data = _json_fixture(
+            {
+                "1": {
+                    "users": {
+                        "42": user.to_dict(),
+                    }
                 }
             }
-        }
-        self.store = FakeAsyncJsonFileStore(data)
+        )
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         user.current_username = "new"
@@ -202,14 +199,16 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="test",
             current_global_name=None,
         )
-        data = {
-            "1": {
-                "users": {
-                    "42": user.to_dict(),
+        data = _json_fixture(
+            {
+                "1": {
+                    "users": {
+                        "42": user.to_dict(),
+                    }
                 }
             }
-        }
-        self.store = FakeAsyncJsonFileStore(data)
+        )
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         await self.repo.delete((1, 42))
@@ -227,7 +226,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
                 "users": {},
             }
         }
-        self.store = FakeAsyncJsonFileStore(data)
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         await self.repo.delete((1, 999))
@@ -236,7 +235,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
 
     async def test_delete_nonexistent_guild_is_noop(self) -> None:
         data: JsonObject = {}
-        self.store = FakeAsyncJsonFileStore(data)
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         await self.repo.delete((1, 999))
@@ -254,11 +253,13 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
             current_username="u2",
             current_global_name=None,
         )
-        data = {
-            "1": {"users": {"1": user1.to_dict()}},
-            "2": {"users": {"2": user2.to_dict()}},
-        }
-        self.store = FakeAsyncJsonFileStore(data)
+        data = _json_fixture(
+            {
+                "1": {"users": {"1": user1.to_dict()}},
+                "2": {"users": {"2": user2.to_dict()}},
+            }
+        )
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         users_g1 = await self.repo.get_all_for_guild(1)
@@ -270,18 +271,18 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(users_g2[0].user_id, 2)
 
     async def test_get_all_for_guild_handles_missing_guild(self) -> None:
-        data: dict[None, None] = {}
-        self.store = FakeAsyncJsonFileStore(data)
+        data: JsonObject = {}
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         users = await self.repo.get_all_for_guild(123)
         self.assertEqual(users, [])
 
     async def test_get_all_for_guild_handles_invalid_guild_structure(self) -> None:
-        data = {
+        data: JsonObject = {
             "123": "invalid",
         }
-        self.store = FakeAsyncJsonFileStore(data)
+        self.store = InMemoryJsonStore(data)
         self.repo = BlockingRepository(self.store)
 
         users = await self.repo.get_all_for_guild(123)
@@ -398,7 +399,7 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
                 }
             },
         }
-        self.store = FakeAsyncJsonFileStore(self.raw_data_fixture)
+        self.store = InMemoryJsonStore(self.raw_data_fixture)
         self.repo = BlockingRepository(self.store)
 
     async def test_get_existing_blocked_user(self) -> None:
@@ -474,7 +475,10 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(saved_user_dict["current_username"], "new_guy")
         self.assertTrue(saved_user_dict["blocked"])
-        self.assertEqual(len(saved_user_dict["block_history"]), 1)
+        block_history = saved_user_dict["block_history"]
+        if not isinstance(block_history, list):
+            self.fail("expected block_history to be stored as a list")
+        self.assertEqual(len(block_history), 1)
 
     async def test_save_user_to_new_guild(self) -> None:
         """Test saving a user creates a new guild entry if it doesn't exist."""
@@ -528,7 +532,7 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
                 }
             }
         }
-        store = FakeAsyncJsonFileStore(incomplete_data)
+        store = InMemoryJsonStore(incomplete_data)
         repo = BlockingRepository(store)
 
         user = await repo.get((999, 100))

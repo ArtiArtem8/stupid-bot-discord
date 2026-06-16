@@ -1,4 +1,5 @@
 # framework/pagination.py
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, Self, override
 
 import discord
@@ -27,6 +28,32 @@ class PaginationData(Protocol):
     async def on_unauthorized(self, interaction: Interaction) -> None:
         """Send an unauthorized message."""
         ...
+
+
+type ButtonCallback = Callable[[Interaction], Awaitable[None]]
+
+
+class CallbackButton[ViewT: discord.ui.View](discord.ui.Button[ViewT]):
+    """Button that delegates interaction handling to a typed callback."""
+
+    def __init__(
+        self,
+        callback: ButtonCallback,
+        *,
+        label: str | None = None,
+        style: discord.ButtonStyle = discord.ButtonStyle.secondary,
+        row: int | None = None,
+    ) -> None:
+        super().__init__(
+            label=label,
+            style=style,
+            row=row,
+        )
+        self._callback = callback
+
+    @override
+    async def callback(self, interaction: Interaction) -> None:
+        await self._callback(interaction)
 
 
 class ManagedView(discord.ui.View):
@@ -90,26 +117,31 @@ class BasePaginator(ManagedView):
     def _setup_buttons(self, show_first_last: bool, show_close: bool) -> None:
         """Setup navigation buttons based on configuration."""
         if show_first_last:
-            self.first_btn = Button[Self](label="⏮", style=SECONDARY, row=0)
-            self.first_btn.callback = self.first_page
+            self.first_btn = CallbackButton[Self](
+                self.first_page, label="⏮", style=SECONDARY, row=0
+            )
             self.add_item(self.first_btn)
 
-        self.next_btn = Button[Self](label="▶", style=SECONDARY, row=0)
-        self.prev_btn = Button[Self](label="◀", style=SECONDARY, row=0)
-        self.next_btn.callback = self.next_page
-        self.prev_btn.callback = self.prev_page
+        self.next_btn = CallbackButton[Self](
+            self.next_page, label="▶", style=SECONDARY, row=0
+        )
+        self.prev_btn = CallbackButton[Self](
+            self.prev_page, label="◀", style=SECONDARY, row=0
+        )
 
         self.add_item(self.prev_btn)
         self.add_item(self.next_btn)
 
         if show_first_last:
-            self.last_btn = Button[Self](label="⏭", style=SECONDARY, row=0)
-            self.last_btn.callback = self.last_page
+            self.last_btn = CallbackButton[Self](
+                self.last_page, label="⏭", style=SECONDARY, row=0
+            )
             self.add_item(self.last_btn)
 
         if show_close:
-            self.close_btn = Button[Self](label="✕", style=DANGER, row=0)
-            self.close_btn.callback = self.close
+            self.close_btn = CallbackButton[Self](
+                self.close, label="✕", style=DANGER, row=0
+            )
             self.add_item(self.close_btn)
 
     @override
