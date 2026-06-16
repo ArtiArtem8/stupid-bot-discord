@@ -24,8 +24,9 @@ class InMemoryJsonStore:
         result = updater(data)
         if inspect.isawaitable(result):
             await result
-        self._data = data
-        return data
+
+        self._data = copy.deepcopy(data)
+        return copy.deepcopy(data)
 
     @property
     def data(self) -> JsonObject:
