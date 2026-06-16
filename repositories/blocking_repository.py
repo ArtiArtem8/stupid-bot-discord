@@ -7,6 +7,7 @@ import config
 from api.blocking_models import BlockedUser
 from repositories.base_repository import BaseRepository
 from repositories.blocking_codec import as_json_object, try_decode_user
+from repositories.json_object_store import JsonObjectStore
 from utils import AsyncJsonFileStore
 from utils.json_types import JsonObject, JsonValue
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
-    def __init__(self, store: AsyncJsonFileStore | None = None) -> None:
+    def __init__(self, store: JsonObjectStore | None = None) -> None:
         self._store = store or AsyncJsonFileStore(config.BLOCKED_USERS_FILE)
 
     def _get_users_map_raw(self, data: JsonObject, guild_id: int) -> JsonObject:
