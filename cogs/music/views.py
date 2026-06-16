@@ -26,8 +26,9 @@ from api.music import (
 )
 from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
 from api.music.protocols import ControllerManagerProtocol
-from framework import PRIMARY, BasePaginator, PaginationData
+from framework import PRIMARY, BasePaginator, CallbackButton, PaginationData
 from utils import TextPaginator, truncate_text
+from utils.callables import callable_name
 
 from .responder import MusicInteractionResponder
 from .ui import send_warning
@@ -141,8 +142,9 @@ class QueuePaginator(BasePaginator):
         self.adapter = adapter
         self.refresh_callback = refresh_callback
 
-        self.refresh_btn = ui.Button[Self](label="⭮", style=PRIMARY, row=1)
-        self.refresh_btn.callback = self.refresh
+        self.refresh_btn = CallbackButton[Self](
+            self.refresh, label="⭮", style=PRIMARY, row=1
+        )
         self.add_item(self.refresh_btn)
 
     async def refresh(self, interaction: Interaction) -> None:
@@ -334,7 +336,7 @@ class TrackControllerManager(ControllerManagerProtocol):
 
                 view.message = msg
                 self.controllers[guild_id] = view
-                self._active_messages[guild_id] = (channel.id, msg.id)  # pyright: ignore[reportAttributeAccessIssue]
+                self._active_messages[guild_id] = (msg.channel.id, msg.id)
 
                 view.start_updater()
                 logger.debug(f"Manager: Controller active for {target_id.id}")
@@ -437,6 +439,7 @@ def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
     Logs any unhandled exceptions.
 
     """
+    func_name = callable_name(func)
 
     async def wrapper(
         self: "TrackControllerView",
@@ -446,12 +449,10 @@ def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
         try:
             await func(self, interaction, button)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            logger.warning(
-                "Player IO error in %s: %s", func.__name__, type(exc).__name__
-            )
+            logger.warning("Player IO error in %s: %s", func_name, type(exc).__name__)
             await self.handle_player_io_error(interaction)
         except Exception:
-            logger.exception("Unhandled error in %s", func.__name__)
+            logger.exception("Unhandled error in %s", func_name)
             self.stop()
             if self.on_stop_callback:
                 await self.on_stop_callback(self, ControllerDestroyReason.PLAYER_ERROR)

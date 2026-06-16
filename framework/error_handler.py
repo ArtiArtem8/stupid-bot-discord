@@ -12,11 +12,14 @@ from framework import BlockedUserError, FeedbackType, FeedbackUI, NoGuildError
 logger = logging.getLogger(__name__)
 
 
-class CustomErrorCommandTree(app_commands.CommandTree):
+class CustomErrorCommandTree(app_commands.CommandTree[discord.Client]):
     @override
-    async def on_error(
-        self, interaction: Interaction, error: app_commands.AppCommandError
-    ):
+    async def on_error(  # ty: ignore[invalid-method-override] matches discord.py CommandTree.on_error; basedpyright accepts this override.
+        self,
+        interaction: Interaction[discord.Client],
+        error: app_commands.AppCommandError,
+        /,
+    ) -> None:
         """Event handler for when an app command error occurs."""
         if isinstance(error, BlockedUserError):
             await interaction.response.send_message(

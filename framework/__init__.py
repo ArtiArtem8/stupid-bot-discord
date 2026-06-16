@@ -11,6 +11,7 @@ from framework.pagination import (
     PRIMARY,
     SECONDARY,
     BasePaginator,
+    CallbackButton,
     ManagedView,
     PaginationData,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "BaseCog",
     "BasePaginator",
     "BlockedUserError",
+    "CallbackButton",
     "FeedbackType",
     "FeedbackUI",
     "ManagedView",

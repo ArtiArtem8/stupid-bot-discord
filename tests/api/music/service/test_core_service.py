@@ -107,7 +107,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         result = await self.service.play(guild, MagicMock(), "query", 1, 2)
 
         player.set_requester.assert_called_once_with(track, 1, 2)
-        player.queue.add.assert_called_once_with(track)
+        player.queue.append.assert_called_once_with(track)
         player.advance.assert_awaited_once()
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
 

@@ -116,7 +116,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
 
         if not force_skip and current_or_prev and self.repeat.mode is RepeatMode.QUEUE:
             logger.debug("Adding track %s to queue", current_or_prev)
-            self.queue.add(current_or_prev)
+            self.queue.append(current_or_prev)
 
         next_track = self.queue.pop_next()
         if not next_track:
