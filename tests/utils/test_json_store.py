@@ -20,13 +20,13 @@ from utils.json_types import JsonObject, JsonValue, is_json_object
 
 def _as_json_object(value: JsonValue) -> JsonObject:
     if not is_json_object(value):
-        raise AssertionError("expected JSON object")
+        raise AssertionError(f"expected JSON object, got {type(value).__name__}")
     return value
 
 
 def _as_json_array(value: JsonValue) -> list[JsonValue]:
     if not isinstance(value, list):
-        raise AssertionError("expected JSON array")
+        raise AssertionError(f"expected JSON array, got {type(value).__name__}")
     return value
 
 
@@ -538,8 +538,9 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
 
         def updater(d: JsonDict) -> None:
             raw_count = d.get("count", 0)
-            self.assertIsInstance(raw_count, (int, float, str))
-            if not isinstance(raw_count, (int, float, str)):
+            if isinstance(raw_count, bool) or not isinstance(
+                raw_count, (int, float, str)
+            ):
                 self.fail("expected count to be numeric or string-like")
             d["count"] = int(raw_count) + 1
 
@@ -568,8 +569,9 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
 
         async def inc(d: JsonDict) -> None:
             raw_counter = d.get("counter", 0)
-            self.assertIsInstance(raw_counter, (int, float, str))
-            if not isinstance(raw_counter, (int, float, str)):
+            if isinstance(raw_counter, bool) or not isinstance(
+                raw_counter, (int, float, str)
+            ):
                 self.fail("expected counter to be numeric or string-like")
             current = int(raw_counter)
             await asyncio.sleep(0.01)

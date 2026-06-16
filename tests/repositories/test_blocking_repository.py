@@ -24,7 +24,7 @@ from utils.json_types import (
 
 def _as_json_object(value: JsonValue) -> JsonObject:
     if not is_json_object(value):
-        raise AssertionError("expected JSON object")
+        raise AssertionError(f"expected JSON object, got {type(value).__name__}")
     return value
 
 
@@ -476,7 +476,6 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved_user_dict["current_username"], "new_guy")
         self.assertTrue(saved_user_dict["blocked"])
         block_history = saved_user_dict["block_history"]
-        self.assertIsInstance(block_history, list)
         if not isinstance(block_history, list):
             self.fail("expected block_history to be stored as a list")
         self.assertEqual(len(block_history), 1)

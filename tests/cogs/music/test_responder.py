@@ -77,7 +77,6 @@ class TestMusicInteractionResponder(unittest.IsolatedAsyncioTestCase):
 
         send.assert_awaited_once()
         call = send.await_args
-        self.assertIsNotNone(call)
         if call is None:
             self.fail("expected FeedbackUI.send to be awaited")
         self.assertTrue(call.kwargs["ephemeral"])

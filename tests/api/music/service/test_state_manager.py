@@ -27,7 +27,6 @@ class TestStateManager(unittest.TestCase):
         self.manager.record_track_start(123)
 
         sess = self.manager.end_session(123)
-        self.assertIsNotNone(sess)
         if sess is None:
             self.fail("expected session to be returned before removal")
         self.assertEqual(sess.guild_id, 123)

@@ -14,7 +14,7 @@ from framework.feedback_ui import FeedbackType, FeedbackUI, ReportButtonView
 def _await_kwargs(mock: AsyncMock) -> Mapping[str, object]:
     call = mock.await_args
     if call is None:
-        raise AssertionError("expected async mock to have await arguments")
+        raise AssertionError("expected async mock to have await arguments, got None")
     return call.kwargs
 
 
@@ -150,7 +150,6 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         )
 
         embed = _await_kwargs(interaction.response.send_message)["embed"]
-        self.assertIsInstance(embed, discord.Embed)
         if not isinstance(embed, discord.Embed):
             self.fail("expected FeedbackUI.send to send an embed")
         self.assertEqual(len(embed.fields), 1)
