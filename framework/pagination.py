@@ -40,22 +40,14 @@ class CallbackButton[ViewT: discord.ui.View](discord.ui.Button[ViewT]):
         self,
         callback: ButtonCallback,
         *,
-        style: discord.ButtonStyle = discord.ButtonStyle.secondary,
         label: str | None = None,
-        disabled: bool = False,
-        custom_id: str | None = None,
-        emoji: str | discord.Emoji | discord.PartialEmoji | None = None,
+        style: discord.ButtonStyle = discord.ButtonStyle.secondary,
         row: int | None = None,
-        id: int | None = None,
     ) -> None:
         super().__init__(
-            style=style,
             label=label,
-            disabled=disabled,
-            custom_id=custom_id,
-            emoji=emoji,
+            style=style,
             row=row,
-            id=id,
         )
         self._callback = callback
 
