@@ -14,7 +14,7 @@ run_bot() {
 
     if command -v uv >/dev/null 2>&1; then
         echo "No .venv/bin/python found; running through uv."
-        uv run main.py
+        uv run --locked --no-dev main.py
         return $?
     fi
 
