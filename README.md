@@ -60,7 +60,7 @@ For music, run Lavalink separately and make sure its host, port, password, and s
 Start the bot with `uv`:
 
 ```bash
-uv run main.py
+uv run --locked --no-dev main.py
 ```
 
 Platform launcher scripts are also included:
