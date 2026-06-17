@@ -42,13 +42,7 @@ uv sync --locked --no-dev
 Then create your local `.env` file:
 
 ```bash
-# Linux/macOS
 cp .env.example .env
-```
-
-```powershell
-# Windows PowerShell
-Copy-Item .env.example .env
 ```
 
 Edit `.env` and set at least `DISCORD_BOT_TOKEN`. If you want WolframAlpha or music commands, fill in the related values too.
