@@ -29,8 +29,7 @@ New features usually belong in a cog under `cogs/`.
 - [uv](https://github.com/astral-sh/uv).
 - A Discord bot token from the [Discord Developer Portal](https://discord.com/developers/applications).
 - Optional: a [WolframAlpha App ID](https://developer.wolframalpha.com/) for `/solve` and `/plot`.
-- Optional: Lavalink with Java 11+ for music.
-- Optional on Debian/Ubuntu voice deployments: `libopus0` and `ffmpeg`.
+- Optional: Lavalink with Java 17+ for music.
 
 ## Installation
 
@@ -38,7 +37,18 @@ New features usually belong in a cog under `cogs/`.
 git clone https://github.com/ArtiArtem8/stupid-bot-discord.git
 cd stupid-bot-discord
 uv sync
+```
+
+Then create your local `.env` file:
+
+```bash
+# Linux/macOS
 cp .env.example .env
+```
+
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env
 ```
 
 Edit `.env` and set at least `DISCORD_BOT_TOKEN`. If you want WolframAlpha or music commands, fill in the related values too.
@@ -56,11 +66,11 @@ uv run main.py
 Platform launcher scripts are also included:
 
 ```bash
-# Windows
-runstupidbot.bat
-
 # Linux/macOS
 ./runstupidbot.sh
+
+# Windows
+runstupidbot.bat
 ```
 
 ## Configuration

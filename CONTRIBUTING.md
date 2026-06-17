@@ -6,7 +6,7 @@ Keep the change focused. A small fix does not need to become an architecture rew
 
 ```bash
 uv sync --locked --dev
-uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+uv run pre-commit install
 ```
 
 ## Normal Workflow

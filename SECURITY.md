@@ -4,6 +4,6 @@
 
 Please do not report security vulnerabilities through public Issues.
 
-Use GitHub private vulnerability reporting instead: **Security -> Advisories -> Report a vulnerability**.
+Use the repository's **Security -> Report a vulnerability** form instead.
 
-Include reproduction steps, the affected version or commit, and what impact you expect. Keep ordinary non-security bugs in public Issues.
+Include reproduction steps, the affected version or commit, and the expected impact. Keep ordinary non-security bugs in public Issues.
