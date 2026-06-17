@@ -2,8 +2,8 @@
 
 ## Reporting a Vulnerability
 
-We take the security of StupidBot seriously. If you believe you have found a security vulnerability, please report it to us as described below.
+Please do not report security vulnerabilities through public Issues.
 
-**Report security vulnerabilities through public GitHub issues.**
+Use GitHub private vulnerability reporting instead: **Security -> Advisories -> Report a vulnerability**.
 
-Please *don't mail me* with a description of the vulnerability. We won't acknowledge your email within 48 hours.
+Include reproduction steps, the affected version or commit, and what impact you expect. Keep ordinary non-security bugs in public Issues.
