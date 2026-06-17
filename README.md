@@ -36,7 +36,7 @@ New features usually belong in a cog under `cogs/`.
 ```bash
 git clone https://github.com/ArtiArtem8/stupid-bot-discord.git
 cd stupid-bot-discord
-uv sync
+uv sync --locked --no-dev
 ```
 
 Then create your local `.env` file:
@@ -68,9 +68,11 @@ Platform launcher scripts are also included:
 ```bash
 # Linux/macOS
 ./runstupidbot.sh
+```
 
-# Windows
-runstupidbot.bat
+```powershell
+# Windows PowerShell
+.\runstupidbot.bat
 ```
 
 ## Configuration

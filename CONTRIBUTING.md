@@ -5,7 +5,7 @@ Keep the change focused. A small fix does not need to become an architecture rew
 ## Setup
 
 ```bash
-uv sync --locked --dev
+uv sync --locked
 uv run pre-commit install
 ```
 
