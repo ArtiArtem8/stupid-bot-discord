@@ -19,11 +19,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.39.7",
+    "basedpyright>=1.39.8",
     "pre-commit>=4.6.0",
-    "pytest>=9.0.2",
-    "ruff>=0.15.16",
-    "ty>=0.0.49",
+    "pytest>=9.1.0",
+    "ruff>=0.15.17",
+    "ty>=0.0.50",
 ]
 
 [tool.setuptools]
