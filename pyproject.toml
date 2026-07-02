@@ -11,7 +11,7 @@ dependencies = [
     "defusedxml>=0.7.1",
     "discord-py[voice]>=2.7.1",
     "mafic>=2.11.0",
-    "pillow>=12",
+    "pillow>=12.3.0",
     "python-dotenv>=1.1.0",
     "rapidfuzz>=3.14.1",
     "requests>=2.32.3",
@@ -19,11 +19,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.39.8",
+    "basedpyright>=1.39.9",
     "pre-commit>=4.6.0",
     "pytest>=9.1.1",
-    "ruff>=0.15.19",
-    "ty>=0.0.53",
+    "ruff>=0.15.20",
+    "ty>=0.0.56",
 ]
 
 [tool.setuptools]
