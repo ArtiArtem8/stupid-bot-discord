@@ -110,6 +110,13 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 previous_track=previous_track,
             )
 
+    async def advance_after_end(self, previous_track: Track) -> Track | None:
+        """Advance after Lavalink reports a natural track end."""
+        async with self._transition_lock:
+            if self.current is not None:
+                return await self._handle_stale_end_unlocked(previous_track)
+            return await self._advance_unlocked(previous_track=previous_track)
+
     async def _advance_unlocked(
         self,
         *,
@@ -117,12 +124,6 @@ class MusicPlayer(mafic.Player[discord.Client]):
         previous_track: Track | None = None,
     ) -> Track | None:
         """Advance while the caller holds the transition lock."""
-        if previous_track is not None and self._is_stale_previous_track(previous_track):
-            return self._handle_stale_previous_track(
-                previous_track,
-                force_skip=force_skip,
-            )
-
         current_or_prev = previous_track or self.current
 
         logger.debug(
@@ -147,24 +148,16 @@ class MusicPlayer(mafic.Player[discord.Client]):
         await self.play(next_track, start_time=0)
         return next_track
 
-    def _is_stale_previous_track(self, previous_track: Track) -> bool:
-        current = self.current
-        return current is not None and current is not previous_track
-
-    def _handle_stale_previous_track(
+    async def _handle_stale_end_unlocked(
         self,
         previous_track: Track,
-        *,
-        force_skip: bool,
     ) -> Track | None:
         logger.debug(
-            "Ignoring stale advance in guild %s for track %s; current is %s",
+            "Handling stale track end in guild %s for track %s; current is %s",
             self.guild.id,
             previous_track,
             self.current,
         )
-        if force_skip:
-            return None
         if self.repeat.mode is RepeatMode.TRACK:
             self.queue.prepend(previous_track)
         elif self.repeat.mode is RepeatMode.QUEUE:
@@ -213,10 +206,13 @@ class MusicPlayer(mafic.Player[discord.Client]):
         """Skip the current track.
         This forces the player to advance to the next track, ignoring RepeatMode.TRACK.
         """
-        skipped_track = self.current
-
-        await self.advance(force_skip=True, previous_track=skipped_track)
-        return skipped_track
+        async with self._transition_lock:
+            skipped_track = self.current
+            await self._advance_unlocked(
+                force_skip=True,
+                previous_track=skipped_track,
+            )
+            return skipped_track
 
     @override
     async def on_voice_server_update(self, data: VoiceServerUpdatePayload) -> None:
