@@ -490,7 +490,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(player.queue), [])
         play_mock.assert_awaited_once_with(current, start_time=0)
 
-    async def test_stop_and_clear_clears_queue_and_stops_under_lock(self) -> None:
+    async def test_stop_and_clear_clears_queue_and_calls_base_stop(self) -> None:
         current = make_track("current")
         queued = make_track("queued")
         player = _make_player(current=current)
@@ -500,45 +500,87 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         async def stop() -> None:
             nonlocal observed_queue_after_clear
             observed_queue_after_clear = list(player.queue)
-            player._current = None
 
-        with patch.object(mafic.Player, "stop", new=AsyncMock(side_effect=stop)):
+        with patch.object(
+            mafic.Player, "stop", new=AsyncMock(side_effect=stop)
+        ) as stop_mock:
             await player.stop_and_clear()
 
         self.assertEqual(observed_queue_after_clear, [])
-        self.assertIsNone(player.current)
+        self.assertIs(player.current, current)
         self.assertEqual(list(player.queue), [])
+        stop_mock.assert_awaited_once()
 
-    async def test_concurrent_stop_after_enqueue_leaves_idle_empty_queue(self) -> None:
-        first = make_track("first")
-        second = make_track("second")
-        player = _make_player()
-        play_entered = asyncio.Event()
-        release_play = asyncio.Event()
-
-        async def play(track: mafic.Track, **_: object) -> None:
-            play_entered.set()
-            await release_play.wait()
-            player._current = track
+    async def test_stop_then_enqueue_leaves_new_track_queued_until_stopped_event(
+        self,
+    ) -> None:
+        current = make_track("current")
+        queued_before_stop = make_track("queued-before-stop")
+        queued_after_stop = make_track("queued-after-stop")
+        player = _make_player(current=current)
+        player.queue.append(queued_before_stop)
 
         async def stop() -> None:
-            player._current = None
+            return None
 
         with (
-            patch.object(player, "play", new=AsyncMock(side_effect=play)),
             patch.object(mafic.Player, "stop", new=AsyncMock(side_effect=stop)),
         ):
-            enqueue_task = asyncio.create_task(
-                player.enqueue_tracks((first, second), placement="end")
-            )
-            await play_entered.wait()
-            stop_task = asyncio.create_task(player.stop_and_clear())
-            await asyncio.sleep(0)
-            release_play.set()
-            await asyncio.gather(enqueue_task, stop_task)
+            await player.stop_and_clear()
+            started = await player.enqueue_tracks((queued_after_stop,), placement="end")
 
-        self.assertIsNone(player.current)
+        self.assertIsNone(started)
+        self.assertIs(player.current, current)
+        self.assertEqual(list(player.queue), [queued_after_stop])
+
+    async def test_start_queued_if_idle_starts_track_after_stopped_lifecycle(
+        self,
+    ) -> None:
+        current = make_track("current")
+        queued = make_track("queued")
+        player = _make_player(current=current)
+        player.queue.append(queued)
+
+        async def play(track: mafic.Track, **_: object) -> None:
+            player._current = track
+
+        player._current = None
+        with patch.object(player, "play", new=AsyncMock(side_effect=play)) as play_mock:
+            started = await player.start_queued_if_idle()
+
+        self.assertIs(started, queued)
+        self.assertIs(player.current, queued)
         self.assertEqual(list(player.queue), [])
+        play_mock.assert_awaited_once_with(queued, start_time=0)
+
+    async def test_start_queued_if_idle_with_empty_queue_does_not_play_or_stop(
+        self,
+    ) -> None:
+        player = _make_player()
+
+        with (
+            patch.object(player, "play", new=AsyncMock()) as play_mock,
+            patch.object(player, "stop", new=AsyncMock()) as stop_mock,
+        ):
+            started = await player.start_queued_if_idle()
+
+        self.assertIsNone(started)
+        play_mock.assert_not_awaited()
+        stop_mock.assert_not_awaited()
+
+    async def test_start_queued_if_idle_preserves_existing_current(self) -> None:
+        current = make_track("current")
+        queued = make_track("queued")
+        player = _make_player(current=current)
+        player.queue.append(queued)
+
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            started = await player.start_queued_if_idle()
+
+        self.assertIsNone(started)
+        self.assertIs(player.current, current)
+        self.assertEqual(list(player.queue), [queued])
+        play_mock.assert_not_awaited()
 
     async def test_repeat_track_replays_previous_track(self) -> None:
         previous = make_track("previous")

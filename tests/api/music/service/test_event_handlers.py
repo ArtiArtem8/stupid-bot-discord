@@ -171,17 +171,20 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         player = MagicMock()
         player.guild.id = 123
         player.advance_after_end = AsyncMock()
+        player.start_queued_if_idle = AsyncMock()
         event = MagicMock(player=player, track=track, reason=mafic.EndReason.FINISHED)
 
         await self.handlers._on_track_end(event)
 
         player.advance_after_end.assert_awaited_once_with(track)
+        player.start_queued_if_idle.assert_not_awaited()
 
     async def test_track_end_load_failed_uses_end_transition(self) -> None:
         track = make_track("failed")
         player = MagicMock()
         player.guild.id = 123
         player.advance_after_end = AsyncMock()
+        player.start_queued_if_idle = AsyncMock()
         event = MagicMock(
             player=player, track=track, reason=mafic.EndReason.LOAD_FAILED
         )
@@ -194,17 +197,33 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
             await self.handlers._on_track_end(event)
 
         player.advance_after_end.assert_awaited_once_with(track)
+        player.start_queued_if_idle.assert_not_awaited()
+
+    async def test_track_end_stopped_starts_queued_if_idle(self) -> None:
+        track = make_track("stopped")
+        player = MagicMock()
+        player.guild.id = 123
+        player.advance_after_end = AsyncMock()
+        player.start_queued_if_idle = AsyncMock()
+        event = MagicMock(player=player, track=track, reason=mafic.EndReason.STOPPED)
+
+        await self.handlers._on_track_end(event)
+
+        player.advance_after_end.assert_not_awaited()
+        player.start_queued_if_idle.assert_awaited_once_with()
 
     async def test_track_end_replaced_does_not_advance(self) -> None:
         track = make_track("replaced")
         player = MagicMock()
         player.guild.id = 123
         player.advance_after_end = AsyncMock()
+        player.start_queued_if_idle = AsyncMock()
         event = MagicMock(player=player, track=track, reason=mafic.EndReason.REPLACED)
 
         await self.handlers._on_track_end(event)
 
         player.advance_after_end.assert_not_awaited()
+        player.start_queued_if_idle.assert_not_awaited()
 
     async def test_repeated_setup_does_not_register_duplicate_listeners(self) -> None:
         self.handlers.setup()
