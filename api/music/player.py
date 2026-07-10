@@ -231,6 +231,19 @@ class MusicPlayer(mafic.Player[discord.Client]):
             )
             return moved_track, started_track
 
+    async def start_queued_if_idle(self) -> Track | None:
+        """Start the next queued track when playback is idle."""
+        async with self._transition_lock:
+            if self.current is not None:
+                return None
+
+            next_track = self.queue.pop_next()
+            if next_track is None:
+                return None
+
+            await self.play(next_track, start_time=0)
+            return next_track
+
     async def stop_and_clear(self) -> None:
         """Clear queued state and stop playback atomically."""
         async with self._transition_lock:
