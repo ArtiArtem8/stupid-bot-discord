@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import inspect
 import unittest
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import mafic
 
 from api.music.models import (
     MusicResult,
@@ -17,32 +14,7 @@ from api.music.models import (
     TrackResponseData,
 )
 from cogs.music.music_cog import MusicCog
-
-
-def _make_track(identifier: str, *, length: int = 1000) -> mafic.Track:
-    return mafic.Track(
-        track_id=f"encoded-{identifier}",
-        identifier=identifier,
-        seekable=True,
-        author="artist",
-        length=length,
-        stream=False,
-        position=0,
-        title=f"Track {identifier}",
-        uri=f"https://example.com/{identifier}",
-        artwork_url=None,
-        isrc=None,
-        source="test",
-    )
-
-
-def _make_playlist(name: str, tracks: list[mafic.Track]) -> mafic.Playlist:
-    playlist = mafic.Playlist.__new__(mafic.Playlist)
-    playlist.name = name
-    playlist.selected_track = -1
-    playlist.tracks = tracks
-    playlist.plugin_info = {}
-    return playlist
+from tests.api.music.helpers import make_playlist, make_track
 
 
 def _make_interaction() -> MagicMock:
@@ -73,15 +45,6 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
 
         run_play.assert_awaited_once_with(interaction, "query", "next")
 
-    def test_play_commands_delegate_to_shared_helper(self) -> None:
-        play_source = inspect.getsource(cast(Any, MusicCog.play).callback)
-        play_next_source = inspect.getsource(cast(Any, MusicCog.play_next).callback)
-
-        self.assertIn("_run_play_command", play_source)
-        self.assertIn("_run_play_command", play_next_source)
-        self.assertNotIn("self.service.play", play_source)
-        self.assertNotIn("self.service.play", play_next_source)
-
     async def test_run_play_command_calls_service_with_requested_placement(
         self,
     ) -> None:
@@ -89,7 +52,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         guild = MagicMock(id=123)
         channel = MagicMock()
         interaction = _make_interaction()
-        track = _make_track("one")
+        track = make_track("one")
         data: TrackResponseData = {
             "type": "track",
             "track": track,
@@ -145,7 +108,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
     def test_track_embed_titles_follow_placement(self) -> None:
         cog = MusicCog.__new__(MusicCog)
         interaction = _make_interaction()
-        track = _make_track("one")
+        track = make_track("one")
         cases: dict[PlayPlacement, str] = {
             "now": "Сейчас играет",
             "next": "Добавлено в начало очереди",
@@ -167,7 +130,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
     def test_playlist_embed_titles_follow_placement(self) -> None:
         cog = MusicCog.__new__(MusicCog)
         interaction = _make_interaction()
-        playlist = _make_playlist("Mix", [_make_track("one"), _make_track("two")])
+        playlist = make_playlist("Mix", [make_track("one"), make_track("two")])
         cases: dict[PlayPlacement, str] = {
             "now": "Плейлист запущен",
             "next": "Плейлист добавлен в начало очереди",

@@ -15,32 +15,7 @@ from api.music.models import (
     VoiceCheckResult,
 )
 from api.music.service.core_service import CoreMusicService
-
-
-def _make_track(identifier: str, *, length: int = 1000) -> mafic.Track:
-    return mafic.Track(
-        track_id=f"encoded-{identifier}",
-        identifier=identifier,
-        seekable=True,
-        author="artist",
-        length=length,
-        stream=False,
-        position=0,
-        title=f"Track {identifier}",
-        uri=f"https://example.com/{identifier}",
-        artwork_url=None,
-        isrc=None,
-        source="test",
-    )
-
-
-def _make_playlist(name: str, tracks: list[mafic.Track]) -> mafic.Playlist:
-    playlist = mafic.Playlist.__new__(mafic.Playlist)
-    playlist.name = name
-    playlist.selected_track = -1
-    playlist.tracks = tracks
-    playlist.plugin_info = {}
-    return playlist
+from tests.api.music.helpers import make_playlist, make_track
 
 
 class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
@@ -149,7 +124,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
     async def test_play_enqueues_single_track_at_end_by_default(self) -> None:
         guild = MagicMock(id=123)
-        track = _make_track("track")
+        track = make_track("track")
         player = MagicMock()
         player.fetch_tracks = AsyncMock(return_value=[track])
         player.enqueue_tracks = AsyncMock(return_value=track)
@@ -169,7 +144,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
     async def test_play_next_single_track_uses_next_placement(self) -> None:
         guild = MagicMock(id=123)
-        track = _make_track("track")
+        track = make_track("track")
         player = MagicMock()
         player.fetch_tracks = AsyncMock(return_value=[track])
         player.enqueue_tracks = AsyncMock(return_value=None)
@@ -196,8 +171,8 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
     async def test_play_next_playlist_enqueues_as_single_ordered_block(self) -> None:
         guild = MagicMock(id=123)
-        tracks = [_make_track("one"), _make_track("two")]
-        playlist = _make_playlist("Mix", tracks)
+        tracks = [make_track("one"), make_track("two")]
+        playlist = make_playlist("Mix", tracks)
         player = MagicMock()
         player.fetch_tracks = AsyncMock(return_value=playlist)
         player.enqueue_tracks = AsyncMock(return_value=None)
@@ -224,8 +199,8 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
     async def test_play_end_playlist_keeps_end_placement(self) -> None:
         guild = MagicMock(id=123)
-        tracks = [_make_track("one"), _make_track("two")]
-        playlist = _make_playlist("Mix", tracks)
+        tracks = [make_track("one"), make_track("two")]
+        playlist = make_playlist("Mix", tracks)
         player = MagicMock()
         player.fetch_tracks = AsyncMock(return_value=playlist)
         player.enqueue_tracks = AsyncMock(return_value=None)
@@ -244,7 +219,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
     async def test_play_empty_playlist_returns_nothing_found(self) -> None:
         guild = MagicMock(id=123)
-        playlist = _make_playlist("Empty", [])
+        playlist = make_playlist("Empty", [])
         player = MagicMock()
         player.fetch_tracks = AsyncMock(return_value=playlist)
         player.enqueue_tracks = AsyncMock()
@@ -262,7 +237,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         guild = MagicMock(id=123)
-        track = _make_track("track")
+        track = make_track("track")
         transition_lock = asyncio.Lock()
         fetch_started = asyncio.Event()
         enqueue_started = asyncio.Event()

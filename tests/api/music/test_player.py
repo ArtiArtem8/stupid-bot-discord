@@ -12,23 +12,7 @@ from discord.types.voice import VoiceServerUpdate as VoiceServerUpdatePayload
 from api.music.models import RepeatMode
 from api.music.player import MusicPlayer
 from api.music.queue import QueueManager, RepeatManager
-
-
-def _make_track(identifier: str, *, length: int = 1000) -> mafic.Track:
-    return mafic.Track(
-        track_id=f"encoded-{identifier}",
-        identifier=identifier,
-        seekable=True,
-        author="artist",
-        length=length,
-        stream=False,
-        position=0,
-        title=f"Track {identifier}",
-        uri=f"https://example.com/{identifier}",
-        artwork_url=None,
-        isrc=None,
-        source="test",
-    )
+from tests.api.music.helpers import make_track
 
 
 def _make_player(*, current: mafic.Track | None = None) -> MusicPlayer:
@@ -44,9 +28,9 @@ def _make_player(*, current: mafic.Track | None = None) -> MusicPlayer:
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
     async def test_enqueue_tracks_with_next_adds_single_track_to_front(self) -> None:
-        existing = _make_track("existing")
-        track = _make_track("next")
-        player = _make_player(current=_make_track("current"))
+        existing = make_track("existing")
+        track = make_track("next")
+        player = _make_player(current=make_track("current"))
         player.queue.append(existing)
 
         started = await player.enqueue_tracks((track,), placement="next")
@@ -57,9 +41,9 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
     async def test_enqueue_tracks_with_next_preserves_playlist_order_at_front(
         self,
     ) -> None:
-        existing = _make_track("existing")
-        tracks = [_make_track("one"), _make_track("two"), _make_track("three")]
-        player = _make_player(current=_make_track("current"))
+        existing = make_track("existing")
+        tracks = [make_track("one"), make_track("two"), make_track("three")]
+        player = _make_player(current=make_track("current"))
         player.queue.append(existing)
 
         started = await player.enqueue_tracks(tracks, placement="next")
@@ -68,9 +52,9 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(player.queue), [*tracks, existing])
 
     async def test_enqueue_tracks_with_end_adds_playlist_to_back(self) -> None:
-        existing = _make_track("existing")
-        tracks = [_make_track("one"), _make_track("two")]
-        player = _make_player(current=_make_track("current"))
+        existing = make_track("existing")
+        tracks = [make_track("one"), make_track("two")]
+        player = _make_player(current=make_track("current"))
         player.queue.append(existing)
 
         started = await player.enqueue_tracks(tracks, placement="end")
@@ -79,7 +63,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(player.queue), [existing, *tracks])
 
     async def test_enqueue_tracks_with_empty_sequence_returns_none(self) -> None:
-        player = _make_player(current=_make_track("current"))
+        player = _make_player(current=make_track("current"))
 
         started = await player.enqueue_tracks((), placement="end")
 
@@ -87,8 +71,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(player.queue), [])
 
     async def test_enqueue_tracks_starts_first_track_when_idle(self) -> None:
-        first = _make_track("first")
-        second = _make_track("second")
+        first = make_track("first")
+        second = make_track("second")
         player = _make_player()
 
         async def play(track: mafic.Track, **_: object) -> None:
@@ -104,7 +88,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
     async def test_enqueue_tracks_does_not_call_public_advance_recursively(
         self,
     ) -> None:
-        track = _make_track("first")
+        track = make_track("first")
         player = _make_player()
 
         async def play(track: mafic.Track, **_: object) -> None:
@@ -120,8 +104,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         advance_mock.assert_not_awaited()
 
     async def test_enqueue_tracks_does_not_interrupt_playing_track(self) -> None:
-        current = _make_track("current")
-        track = _make_track("queued")
+        current = make_track("current")
+        track = make_track("queued")
         player = _make_player(current=current)
 
         with patch.object(player, "play", new=AsyncMock()) as play_mock:
@@ -133,9 +117,9 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(player.queue), [track])
 
     async def test_repeated_next_request_goes_before_previous_next_block(self) -> None:
-        first_block = [_make_track("one"), _make_track("two")]
-        second_block = [_make_track("three"), _make_track("four")]
-        player = _make_player(current=_make_track("current"))
+        first_block = [make_track("one"), make_track("two")]
+        second_block = [make_track("three"), make_track("four")]
+        player = _make_player(current=make_track("current"))
 
         await player.enqueue_tracks(first_block, placement="next")
         await player.enqueue_tracks(second_block, placement="next")
@@ -143,8 +127,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(player.queue), [*second_block, *first_block])
 
     async def test_concurrent_idle_enqueue_starts_only_one_initial_track(self) -> None:
-        first = _make_track("first")
-        second = _make_track("second")
+        first = make_track("first")
+        second = make_track("second")
         player = _make_player()
         play_entered = asyncio.Event()
         release_play = asyncio.Event()
@@ -177,8 +161,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
     async def test_stale_advance_does_not_replace_track_started_by_enqueue(
         self,
     ) -> None:
-        old_track = _make_track("old")
-        new_track = _make_track("new")
+        old_track = make_track("old")
+        new_track = make_track("new")
         player = _make_player()
         play_entered = asyncio.Event()
         release_play = asyncio.Event()
@@ -213,8 +197,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         stop_mock.assert_not_awaited()
 
     async def test_advance_after_finished_track_starts_next_track(self) -> None:
-        previous = _make_track("previous")
-        next_track = _make_track("next")
+        previous = make_track("previous")
+        next_track = make_track("next")
         player = _make_player()
         player.queue.append(next_track)
 
@@ -228,8 +212,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         play_mock.assert_awaited_once_with(next_track, start_time=0)
 
     async def test_force_skip_advances_to_next_track(self) -> None:
-        current = _make_track("current")
-        next_track = _make_track("next")
+        current = make_track("current")
+        next_track = make_track("next")
         player = _make_player(current=current)
         player.queue.append(next_track)
 
@@ -246,7 +230,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         play_mock.assert_awaited_once_with(next_track, start_time=0)
 
     async def test_repeat_track_replays_previous_track(self) -> None:
-        previous = _make_track("previous")
+        previous = make_track("previous")
         player = _make_player()
         player.repeat.mode = RepeatMode.TRACK
 
@@ -260,8 +244,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         play_mock.assert_awaited_once_with(previous, start_time=0)
 
     async def test_repeat_queue_appends_previous_track_and_starts_next(self) -> None:
-        previous = _make_track("previous")
-        next_track = _make_track("next")
+        previous = make_track("previous")
+        next_track = make_track("next")
         player = _make_player()
         player.repeat.mode = RepeatMode.QUEUE
         player.queue.append(next_track)
