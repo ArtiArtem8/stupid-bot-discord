@@ -10,6 +10,8 @@ import mafic
 
 from api.music.models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+    ControllerDestroyReason,
+    MusicResult,
     MusicResultStatus,
     QueuePlacement,
     VoiceCheckResult,
@@ -359,18 +361,54 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         player.rotate_current.assert_awaited_once()
 
     async def test_stop_uses_atomic_stop_and_clear(self) -> None:
+        calls: list[str] = []
         player = MagicMock()
-        player.stop_and_clear = AsyncMock()
+
+        async def stop_and_clear() -> None:
+            calls.append("stop")
+
+        async def destroy_for_guild(*_args: object) -> None:
+            calls.append("destroy")
+
+        player.stop_and_clear = AsyncMock(side_effect=stop_and_clear)
         self.connection.get_player.return_value = player
         self.connection.is_known_unavailable.return_value = False
-        self.ui.controller.destroy_for_guild = AsyncMock()
+        self.ui.controller.destroy_for_guild = AsyncMock(side_effect=destroy_for_guild)
 
         result = await self.service.stop(123, requester_id=1, text_channel_id=2)
 
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        self.assertEqual(calls, ["destroy", "stop"])
+        self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+            123,
+            ControllerDestroyReason.MANUAL_STOP,
+        )
         player.stop_and_clear.assert_awaited_once()
         player.clear_queue.assert_not_called()
         player.stop.assert_not_called()
+
+    async def test_stop_io_error_happens_after_controller_destroy(self) -> None:
+        player = MagicMock()
+        error = mafic.HTTPNotFound("Session not found")
+        player.stop_and_clear = AsyncMock(side_effect=error)
+        self.connection.get_player.return_value = player
+        self.connection.is_known_unavailable.return_value = False
+        self.ui.controller.destroy_for_guild = AsyncMock()
+
+        with patch.object(
+            self.service,
+            "_handle_player_io_failure",
+            new=AsyncMock(return_value=MusicResult(MusicResultStatus.FAILURE, "down")),
+        ) as handle_failure:
+            result = await self.service.stop(123, requester_id=1, text_channel_id=2)
+
+        self.assertIs(result.status, MusicResultStatus.FAILURE)
+        self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+            123,
+            ControllerDestroyReason.MANUAL_STOP,
+        )
+        player.stop_and_clear.assert_awaited_once()
+        handle_failure.assert_awaited_once_with(player, error)
 
     async def test_leave_stale_voice_returns_unavailable_after_local_cleanup(
         self,

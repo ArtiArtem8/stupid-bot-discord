@@ -356,10 +356,10 @@ class CoreMusicService:
             return self._missing_player_result(guild_id, context="stop")
 
         try:
-            await player.stop_and_clear()
             await self.ui.controller.destroy_for_guild(
                 guild_id, ControllerDestroyReason.MANUAL_STOP
             )
+            await player.stop_and_clear()
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
 
