@@ -130,14 +130,12 @@ class MusicPlayer(mafic.Player[discord.Client]):
         )
         logger.debug("queue: %s, repeat mode: %s", self.queue, self.repeat.mode)
 
-        if not force_skip and current_or_prev and self.repeat.mode is RepeatMode.TRACK:
-            logger.debug("Repeating track %s", current_or_prev)
-            await self.play(current_or_prev, start_time=0)
-            return current_or_prev
-
-        if not force_skip and current_or_prev and self.repeat.mode is RepeatMode.QUEUE:
-            logger.debug("Adding track %s to queue", current_or_prev)
-            self.queue.append(current_or_prev)
+        repeat_track = await self._apply_repeat_unlocked(
+            current_or_prev,
+            force_skip=force_skip,
+        )
+        if repeat_track is not None:
+            return repeat_track
 
         next_track = self.queue.pop_next()
         if not next_track:
@@ -171,6 +169,23 @@ class MusicPlayer(mafic.Player[discord.Client]):
             self.queue.prepend(previous_track)
         elif self.repeat.mode is RepeatMode.QUEUE:
             self.queue.append(previous_track)
+        return None
+
+    async def _apply_repeat_unlocked(
+        self,
+        current_or_prev: Track | None,
+        *,
+        force_skip: bool,
+    ) -> Track | None:
+        if force_skip or current_or_prev is None:
+            return None
+        if self.repeat.mode is RepeatMode.TRACK:
+            logger.debug("Repeating track %s", current_or_prev)
+            await self.play(current_or_prev, start_time=0)
+            return current_or_prev
+        if self.repeat.mode is RepeatMode.QUEUE:
+            logger.debug("Adding track %s to queue", current_or_prev)
+            self.queue.append(current_or_prev)
         return None
 
     async def enqueue_tracks(
