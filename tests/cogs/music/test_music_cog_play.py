@@ -26,9 +26,14 @@ def _make_interaction() -> MagicMock:
     return interaction
 
 
+def _make_cog() -> MusicCog:
+    cog = object.__new__(MusicCog)
+    return cog
+
+
 class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
     async def test_play_command_passes_end_placement(self) -> None:
-        cog = MusicCog.__new__(MusicCog)
+        cog = _make_cog()
         interaction = _make_interaction()
 
         with patch.object(cog, "_run_play_command", new=AsyncMock()) as run_play:
@@ -37,7 +42,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         run_play.assert_awaited_once_with(interaction, "query", "end")
 
     async def test_play_next_command_passes_next_placement(self) -> None:
-        cog = MusicCog.__new__(MusicCog)
+        cog = _make_cog()
         interaction = _make_interaction()
 
         with patch.object(cog, "_run_play_command", new=AsyncMock()) as run_play:
@@ -48,7 +53,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
     async def test_run_play_command_calls_service_with_requested_placement(
         self,
     ) -> None:
-        cog = MusicCog.__new__(MusicCog)
+        cog = _make_cog()
         guild = MagicMock(id=123)
         channel = MagicMock()
         interaction = _make_interaction()
@@ -106,7 +111,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         send_feedback.assert_awaited_once()
 
     def test_track_embed_titles_follow_placement(self) -> None:
-        cog = MusicCog.__new__(MusicCog)
+        cog = _make_cog()
         interaction = _make_interaction()
         track = make_track("one")
         cases: dict[PlayPlacement, str] = {
@@ -128,7 +133,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(embed.title, expected_title)
 
     def test_playlist_embed_titles_follow_placement(self) -> None:
-        cog = MusicCog.__new__(MusicCog)
+        cog = _make_cog()
         interaction = _make_interaction()
         playlist = make_playlist("Mix", [make_track("one"), make_track("two")])
         cases: dict[PlayPlacement, str] = {
