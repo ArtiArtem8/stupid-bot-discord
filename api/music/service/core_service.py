@@ -377,16 +377,13 @@ class CoreMusicService:
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="skip")
 
-        current = player.current
-        up_next = player.queue.next
-
         try:
-            await player.skip()
-            if current:
+            skipped, started = await player.skip()
+            if skipped:
                 await self.ui.controller.destroy_for_guild(
                     guild_id,
                     ControllerDestroyReason.SKIP,
-                    expected_track_id=TrackId.from_track(current),
+                    expected_track_id=TrackId.from_track(skipped),
                 )
             await player.resume()
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
@@ -397,7 +394,7 @@ class CoreMusicService:
         return MusicResult(
             MusicResultStatus.SUCCESS,
             "Skipped",
-            data={"before": current, "after": up_next},
+            data={"before": skipped, "after": started},
         )
 
     async def pause(self, guild_id: int) -> MusicResult[None]:

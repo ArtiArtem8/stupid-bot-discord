@@ -206,17 +206,17 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 return await self._advance_unlocked()
             return None
 
-    async def skip(self) -> Track | None:
+    async def skip(self) -> tuple[Track | None, Track | None]:
         """Skip the current track.
         This forces the player to advance to the next track, ignoring RepeatMode.TRACK.
         """
         async with self._transition_lock:
             skipped_track = self.current
-            await self._advance_unlocked(
+            started_track = await self._advance_unlocked(
                 force_skip=True,
                 previous_track=skipped_track,
             )
-            return skipped_track
+            return skipped_track, started_track
 
     @override
     async def on_voice_server_update(self, data: VoiceServerUpdatePayload) -> None:
