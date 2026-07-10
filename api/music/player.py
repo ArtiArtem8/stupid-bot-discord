@@ -218,6 +218,19 @@ class MusicPlayer(mafic.Player[discord.Client]):
             )
             return skipped_track, started_track
 
+    async def rotate_current(self) -> tuple[Track | None, Track | None]:
+        """Move the current track to the end and advance atomically."""
+        async with self._transition_lock:
+            moved_track = self.current
+            if moved_track is None:
+                return None, None
+            self.queue.append(moved_track)
+            started_track = await self._advance_unlocked(
+                force_skip=True,
+                previous_track=moved_track,
+            )
+            return moved_track, started_track
+
     @override
     async def on_voice_server_update(self, data: VoiceServerUpdatePayload) -> None:
         try:

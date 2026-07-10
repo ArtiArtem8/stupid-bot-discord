@@ -441,22 +441,21 @@ class CoreMusicService:
         player = self.connection.get_player(guild_id)
         if not player:
             return self._missing_player_result(guild_id, context="rotate")
-        if not player.current:
-            return MusicResult(MusicResultStatus.FAILURE, "Nothing playing")
 
-        current = player.current
         try:
-            player.queue.append(current)
-            await player.skip()
+            moved_track, started_track = await player.rotate_current()
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
+
+        if not moved_track:
+            return MusicResult(MusicResultStatus.FAILURE, "Nothing playing")
 
         self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
 
         return MusicResult(
             MusicResultStatus.SUCCESS,
             "Rotated",
-            data={"skipped": current, "next": player.queue.next},
+            data={"skipped": moved_track, "next": started_track},
         )
 
     async def set_volume(self, guild_id: int, volume: int) -> MusicResult[int]:
