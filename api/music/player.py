@@ -187,11 +187,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
         """
         skipped_track = self.current
 
-        next_track = await self.advance(force_skip=True, previous_track=skipped_track)
-
-        if not next_track:
-            await self.stop()
-
+        await self.advance(force_skip=True, previous_track=skipped_track)
         return skipped_track
 
     @override

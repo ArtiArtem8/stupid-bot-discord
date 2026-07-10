@@ -229,6 +229,52 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(started, next_track)
         play_mock.assert_awaited_once_with(next_track, start_time=0)
 
+    async def test_skip_starts_next_track(self) -> None:
+        current = make_track("current")
+        next_track = make_track("next")
+        player = _make_player(current=current)
+        player.queue.append(next_track)
+
+        async def play(track: mafic.Track, **_: object) -> None:
+            player._current = track
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=play)) as play_mock:
+            skipped = await player.skip()
+
+        self.assertIs(skipped, current)
+        play_mock.assert_awaited_once_with(next_track, start_time=0)
+
+    async def test_skip_with_empty_queue_stops_once_via_advance(self) -> None:
+        current = make_track("current")
+        player = _make_player(current=current)
+
+        with patch.object(player, "stop", new=AsyncMock()) as stop_mock:
+            skipped = await player.skip()
+
+        self.assertIs(skipped, current)
+        stop_mock.assert_awaited_once()
+
+    async def test_stale_skip_does_not_stop_replacement_track(self) -> None:
+        skipped_track = make_track("skipped")
+        replacement = make_track("replacement")
+        player = _make_player(current=skipped_track)
+        await player._transition_lock.acquire()
+
+        with (
+            patch.object(player, "play", new=AsyncMock()) as play_mock,
+            patch.object(player, "stop", new=AsyncMock()) as stop_mock,
+        ):
+            skip_task = asyncio.create_task(player.skip())
+            await asyncio.sleep(0)
+            player._current = replacement
+            player._transition_lock.release()
+            skipped = await skip_task
+
+        self.assertIs(skipped, skipped_track)
+        self.assertIs(player.current, replacement)
+        play_mock.assert_not_awaited()
+        stop_mock.assert_not_awaited()
+
     async def test_repeat_track_replays_previous_track(self) -> None:
         previous = make_track("previous")
         player = _make_player()
