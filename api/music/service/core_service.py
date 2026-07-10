@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from typing import TypeVar
 
 import discord
@@ -15,12 +16,15 @@ from api.music.models import (
     MusicResult,
     MusicResultStatus,
     NodeNotConnectedError,
+    PlayPlacement,
     PlayResponseData,
+    QueuePlacement,
     QueueSnapshot,
     RepeatMode,
     RepeatModeData,
     RotateTrackData,
     SkipTrackData,
+    Track,
     TrackId,
     VoiceCheckResult,
     VoiceJoinResult,
@@ -166,6 +170,8 @@ class CoreMusicService:
         query: str,
         requester_id: int,
         text_channel_id: int | None = None,
+        *,
+        placement: QueuePlacement = "end",
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         connection_result = await self.join(guild, voice_channel)
         check_result, _old_channel = connection_result
@@ -184,6 +190,7 @@ class CoreMusicService:
                 requester_id,
                 text_channel_id,
                 connection_result,
+                placement=placement,
             )
         except EXPECTED_PLAY_ERRORS as exc:
             return await self._handle_play_expected_failure(player, query, exc)
@@ -220,16 +227,28 @@ class CoreMusicService:
         requester_id: int,
         text_channel_id: int | None,
         connection_result: VoiceJoinResult,
+        *,
+        placement: QueuePlacement,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         result = await player.fetch_tracks(query)
         if not result:
             return MusicResult(MusicResultStatus.FAILURE, "Nothing found")
         if isinstance(result, mafic.Playlist):
             return await self._enqueue_playlist(
-                player, result, requester_id, text_channel_id, connection_result
+                player,
+                result,
+                requester_id,
+                text_channel_id,
+                connection_result,
+                placement=placement,
             )
         return await self._enqueue_track(
-            player, result[0], requester_id, text_channel_id, connection_result
+            player,
+            result[0],
+            requester_id,
+            text_channel_id,
+            connection_result,
+            placement=placement,
         )
 
     async def _enqueue_playlist(
@@ -239,17 +258,26 @@ class CoreMusicService:
         requester_id: int,
         text_channel_id: int | None,
         connection_result: VoiceJoinResult,
+        *,
+        placement: QueuePlacement,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        for track in playlist.tracks:
-            player.set_requester(track, requester_id, text_channel_id)
-        player.queue.extend(playlist.tracks)
-        await self._advance_if_idle(player)
+        if not playlist.tracks:
+            return MusicResult(MusicResultStatus.FAILURE, "Nothing found")
+
+        response_placement = await self._enqueue_tracks_for_play(
+            player,
+            playlist.tracks,
+            requester_id,
+            text_channel_id,
+            placement=placement,
+        )
         return MusicResult(
             MusicResultStatus.SUCCESS,
             "Playlist added",
             data={
                 "type": "playlist",
                 "playlist": playlist,
+                "placement": response_placement,
                 "connection": connection_result,
             },
         )
@@ -261,25 +289,41 @@ class CoreMusicService:
         requester_id: int,
         text_channel_id: int | None,
         connection_result: VoiceJoinResult,
+        *,
+        placement: QueuePlacement,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        player.set_requester(track, requester_id, text_channel_id)
-        player.queue.append(track)
-        is_playing_before = player.current is not None
-        await self._advance_if_idle(player)
+        response_placement = await self._enqueue_tracks_for_play(
+            player,
+            (track,),
+            requester_id,
+            text_channel_id,
+            placement=placement,
+        )
         return MusicResult(
             MusicResultStatus.SUCCESS,
             "Track processed",
             data={
                 "type": "track",
                 "track": track,
-                "playing": is_playing_before,
+                "placement": response_placement,
                 "connection": connection_result,
             },
         )
 
-    async def _advance_if_idle(self, player: MusicPlayer) -> None:
-        if player.current is None:
-            await player.advance()
+    async def _enqueue_tracks_for_play(
+        self,
+        player: MusicPlayer,
+        tracks: Sequence[Track],
+        requester_id: int,
+        text_channel_id: int | None,
+        *,
+        placement: QueuePlacement,
+    ) -> PlayPlacement:
+        for track in tracks:
+            player.set_requester(track, requester_id, text_channel_id)
+
+        started = await player.enqueue_tracks(tracks, placement=placement)
+        return "now" if started is tracks[0] else placement
 
     async def _handle_play_expected_failure(
         self, player: MusicPlayer, query: str, exc: Exception

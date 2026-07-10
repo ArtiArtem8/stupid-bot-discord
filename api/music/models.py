@@ -21,6 +21,8 @@ MUSIC_SERVICE_UNAVAILABLE_MESSAGE = (
 type Track = mafic.Track
 type Playlist = mafic.Playlist
 type SearchResult = list[Track] | Playlist | None
+type QueuePlacement = Literal["end", "next"]
+type PlayPlacement = Literal["now", "end", "next"]
 
 
 class MusicError(Exception):
@@ -36,6 +38,7 @@ class PlaylistResponseData(TypedDict):
 
     type: Literal["playlist"]
     playlist: Playlist
+    placement: PlayPlacement
     connection: NotRequired[VoiceJoinResult]
 
 
@@ -44,7 +47,7 @@ class TrackResponseData(TypedDict):
 
     type: Literal["track"]
     track: Track
-    playing: bool
+    placement: PlayPlacement
     connection: NotRequired[VoiceJoinResult]
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, override
 
 import discord
@@ -11,7 +12,7 @@ import mafic
 from discord.utils import MISSING  # pyright: ignore[reportAny]
 
 from .errors import EXPECTED_LAVALINK_IO_ERRORS
-from .models import RepeatMode, Track, TrackId, TrackRequester
+from .models import QueuePlacement, RepeatMode, Track, TrackId, TrackRequester
 from .queue import QueueManager, RepeatManager
 
 if TYPE_CHECKING:
@@ -30,6 +31,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
         self.queue = QueueManager()
         self.repeat = RepeatManager()
         self._requester_map: dict[str, TrackRequester] = {}
+        self._transition_lock = asyncio.Lock()
 
     async def move_to(
         self, channel: discord.abc.Snowflake | None, *, timeout: float = 30.0
@@ -102,6 +104,28 @@ class MusicPlayer(mafic.Player[discord.Client]):
 
         :param force_skip: If True, ignores RepeatMode.TRACK and moves to next song.
         """
+        async with self._transition_lock:
+            return await self._advance_unlocked(
+                force_skip=force_skip,
+                previous_track=previous_track,
+            )
+
+    async def _advance_unlocked(
+        self,
+        *,
+        force_skip: bool = False,
+        previous_track: Track | None = None,
+    ) -> Track | None:
+        """Advance while the caller holds the transition lock."""
+        if self._is_stale_previous_track(previous_track):
+            logger.debug(
+                "Ignoring stale advance in guild %s for track %s; current is %s",
+                self.guild.id,
+                previous_track,
+                self.current,
+            )
+            return None
+
         current_or_prev = previous_track or self.current
 
         logger.debug(
@@ -127,6 +151,35 @@ class MusicPlayer(mafic.Player[discord.Client]):
         logger.debug("Playing next track: %s", next_track)
         await self.play(next_track, start_time=0)
         return next_track
+
+    def _is_stale_previous_track(self, previous_track: Track | None) -> bool:
+        current = self.current
+        return (
+            previous_track is not None
+            and current is not None
+            and current is not previous_track
+        )
+
+    async def enqueue_tracks(
+        self,
+        tracks: Sequence[Track],
+        *,
+        placement: QueuePlacement,
+    ) -> Track | None:
+        """Add tracks to the queue and start playback if the player is idle."""
+        if not tracks:
+            return None
+
+        async with self._transition_lock:
+            match placement:
+                case "end":
+                    self.queue.extend(tracks)
+                case "next":
+                    self.queue.extend_front(tracks)
+
+            if self.current is None:
+                return await self._advance_unlocked()
+            return None
 
     async def skip(self) -> Track | None:
         """Skip the current track.

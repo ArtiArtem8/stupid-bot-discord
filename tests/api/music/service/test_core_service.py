@@ -1,5 +1,6 @@
 """Tests for soft music service availability failures."""
 
+import asyncio
 import unittest
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,9 +11,36 @@ import mafic
 from api.music.models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     MusicResultStatus,
+    QueuePlacement,
     VoiceCheckResult,
 )
 from api.music.service.core_service import CoreMusicService
+
+
+def _make_track(identifier: str, *, length: int = 1000) -> mafic.Track:
+    return mafic.Track(
+        track_id=f"encoded-{identifier}",
+        identifier=identifier,
+        seekable=True,
+        author="artist",
+        length=length,
+        stream=False,
+        position=0,
+        title=f"Track {identifier}",
+        uri=f"https://example.com/{identifier}",
+        artwork_url=None,
+        isrc=None,
+        source="test",
+    )
+
+
+def _make_playlist(name: str, tracks: list[mafic.Track]) -> mafic.Playlist:
+    playlist = mafic.Playlist.__new__(mafic.Playlist)
+    playlist.name = name
+    playlist.selected_track = -1
+    playlist.tracks = tracks
+    playlist.plugin_info = {}
+    return playlist
 
 
 class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
@@ -119,13 +147,12 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result.status, MusicResultStatus.FAILURE)
         self.assertEqual(result.message, "Nothing found")
 
-    async def test_play_enqueues_single_track_and_advances_if_idle(self) -> None:
+    async def test_play_enqueues_single_track_at_end_by_default(self) -> None:
         guild = MagicMock(id=123)
-        track = MagicMock()
+        track = _make_track("track")
         player = MagicMock()
-        player.current = None
         player.fetch_tracks = AsyncMock(return_value=[track])
-        player.advance = AsyncMock()
+        player.enqueue_tracks = AsyncMock(return_value=track)
         join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
 
@@ -133,9 +160,151 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             result = await self.service.play(guild, MagicMock(), "query", 1, 2)
 
         player.set_requester.assert_called_once_with(track, 1, 2)
-        player.queue.append.assert_called_once_with(track)
-        player.advance.assert_awaited_once()
+        player.enqueue_tracks.assert_awaited_once_with((track,), placement="end")
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        data = result.data
+        if data is None or isinstance(data, tuple):
+            self.fail("Expected play response data")
+        self.assertEqual(data["placement"], "now")
+
+    async def test_play_next_single_track_uses_next_placement(self) -> None:
+        guild = MagicMock(id=123)
+        track = _make_track("track")
+        player = MagicMock()
+        player.fetch_tracks = AsyncMock(return_value=[track])
+        player.enqueue_tracks = AsyncMock(return_value=None)
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        self.connection.get_player.return_value = player
+
+        with patch.object(self.service, "join", join):
+            result = await self.service.play(
+                guild,
+                MagicMock(),
+                "query",
+                1,
+                2,
+                placement="next",
+            )
+
+        player.set_requester.assert_called_once_with(track, 1, 2)
+        player.enqueue_tracks.assert_awaited_once_with((track,), placement="next")
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        data = result.data
+        if data is None or isinstance(data, tuple):
+            self.fail("Expected play response data")
+        self.assertEqual(data["placement"], "next")
+
+    async def test_play_next_playlist_enqueues_as_single_ordered_block(self) -> None:
+        guild = MagicMock(id=123)
+        tracks = [_make_track("one"), _make_track("two")]
+        playlist = _make_playlist("Mix", tracks)
+        player = MagicMock()
+        player.fetch_tracks = AsyncMock(return_value=playlist)
+        player.enqueue_tracks = AsyncMock(return_value=None)
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        self.connection.get_player.return_value = player
+
+        with patch.object(self.service, "join", join):
+            result = await self.service.play(
+                guild,
+                MagicMock(),
+                "query",
+                1,
+                2,
+                placement="next",
+            )
+
+        self.assertEqual(player.set_requester.call_count, 2)
+        player.enqueue_tracks.assert_awaited_once_with(tracks, placement="next")
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        data = result.data
+        if data is None or isinstance(data, tuple):
+            self.fail("Expected play response data")
+        self.assertEqual(data["placement"], "next")
+
+    async def test_play_end_playlist_keeps_end_placement(self) -> None:
+        guild = MagicMock(id=123)
+        tracks = [_make_track("one"), _make_track("two")]
+        playlist = _make_playlist("Mix", tracks)
+        player = MagicMock()
+        player.fetch_tracks = AsyncMock(return_value=playlist)
+        player.enqueue_tracks = AsyncMock(return_value=None)
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        self.connection.get_player.return_value = player
+
+        with patch.object(self.service, "join", join):
+            result = await self.service.play(guild, MagicMock(), "query", 1, 2)
+
+        player.enqueue_tracks.assert_awaited_once_with(tracks, placement="end")
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        data = result.data
+        if data is None or isinstance(data, tuple):
+            self.fail("Expected play response data")
+        self.assertEqual(data["placement"], "end")
+
+    async def test_play_empty_playlist_returns_nothing_found(self) -> None:
+        guild = MagicMock(id=123)
+        playlist = _make_playlist("Empty", [])
+        player = MagicMock()
+        player.fetch_tracks = AsyncMock(return_value=playlist)
+        player.enqueue_tracks = AsyncMock()
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        self.connection.get_player.return_value = player
+
+        with patch.object(self.service, "join", join):
+            result = await self.service.play(guild, MagicMock(), "query", 1, 2)
+
+        self.assertIs(result.status, MusicResultStatus.FAILURE)
+        self.assertEqual(result.message, "Nothing found")
+        player.enqueue_tracks.assert_not_awaited()
+
+    async def test_play_fetches_tracks_before_waiting_for_player_transition_lock(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        track = _make_track("track")
+        transition_lock = asyncio.Lock()
+        fetch_started = asyncio.Event()
+        enqueue_started = asyncio.Event()
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        player = MagicMock()
+        player._transition_lock = transition_lock
+
+        async def fetch_tracks(_query: str) -> list[mafic.Track]:
+            fetch_started.set()
+            return [track]
+
+        async def enqueue_tracks(
+            tracks: tuple[mafic.Track, ...],
+            *,
+            placement: QueuePlacement,
+        ) -> mafic.Track | None:
+            del tracks, placement
+            enqueue_started.set()
+            async with transition_lock:
+                return None
+
+        player.fetch_tracks = AsyncMock(side_effect=fetch_tracks)
+        player.enqueue_tracks = AsyncMock(side_effect=enqueue_tracks)
+        self.connection.get_player.return_value = player
+
+        await transition_lock.acquire()
+        try:
+            with patch.object(self.service, "join", join):
+                play_task = asyncio.create_task(
+                    self.service.play(guild, MagicMock(), "query", 1, 2)
+                )
+                await asyncio.wait_for(fetch_started.wait(), timeout=1.0)
+                await asyncio.wait_for(enqueue_started.wait(), timeout=1.0)
+                self.assertFalse(play_task.done())
+                transition_lock.release()
+                result = await play_task
+        finally:
+            if transition_lock.locked():
+                transition_lock.release()
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        player.fetch_tracks.assert_awaited_once_with("query")
 
     def test_record_interaction_accepts_zero_ids(self) -> None:
         session = MagicMock()

@@ -36,6 +36,7 @@ class ConnectionManager:
         self._last_connect_error: str | None = None
         self._lazy_connect_task: asyncio.Task[None] | None = None
         self._stale_player_ids: set[int] = set()
+        self._join_locks: dict[int, asyncio.Lock] = {}
 
     async def initialize(self) -> None:
         """Initialize Lavalink node connection."""
@@ -229,6 +230,14 @@ class ConnectionManager:
         self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
     ) -> VoiceJoinResult:
         """Join a voice channel."""
+        lock = self._join_locks.setdefault(guild.id, asyncio.Lock())
+        async with lock:
+            return await self._join_unlocked(guild, channel)
+
+    async def _join_unlocked(
+        self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
+    ) -> VoiceJoinResult:
+        """Join a voice channel while holding this guild's join lock."""
         logger.debug("Joining channel: %s", channel)
 
         try:
