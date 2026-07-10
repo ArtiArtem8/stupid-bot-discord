@@ -328,6 +328,22 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         player.skip.assert_awaited_once()
         player.resume.assert_awaited_once()
 
+    async def test_skip_does_not_resume_when_no_track_started(self) -> None:
+        before = make_track("before")
+        player = MagicMock()
+        player.skip = AsyncMock(return_value=(before, None))
+        player.resume = AsyncMock()
+        self.connection.get_player.return_value = player
+        self.connection.is_known_unavailable.return_value = False
+        self.ui.controller.destroy_for_guild = AsyncMock()
+
+        result = await self.service.skip(123, requester_id=1, text_channel_id=2)
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        self.assertEqual(result.data, {"before": before, "after": None})
+        player.skip.assert_awaited_once()
+        player.resume.assert_not_awaited()
+
     async def test_rotate_uses_started_track_from_atomic_player_result(self) -> None:
         moved = make_track("moved")
         started = make_track("started")
