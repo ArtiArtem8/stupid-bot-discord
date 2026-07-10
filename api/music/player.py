@@ -159,7 +159,11 @@ class MusicPlayer(mafic.Player[discord.Client]):
             self.current,
         )
         if self.repeat.mode is RepeatMode.TRACK:
-            self.queue.prepend(previous_track)
+            replacement_track = self.current
+            if replacement_track is not None:
+                self.queue.prepend(replacement_track)
+            await self.play(previous_track, start_time=0)
+            return previous_track
         elif self.repeat.mode is RepeatMode.QUEUE:
             self.queue.append(previous_track)
         return None
