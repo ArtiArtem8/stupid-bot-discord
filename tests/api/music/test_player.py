@@ -30,13 +30,17 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
     async def test_enqueue_tracks_with_next_adds_single_track_to_front(self) -> None:
         existing = make_track("existing")
         track = make_track("next")
-        player = _make_player(current=make_track("current"))
+        current = make_track("current")
+        player = _make_player(current=current)
         player.queue.append(existing)
 
-        started = await player.enqueue_tracks((track,), placement="next")
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            started = await player.enqueue_tracks((track,), placement="next")
 
         self.assertIsNone(started)
+        self.assertIs(player.current, current)
         self.assertEqual(list(player.queue), [track, existing])
+        play_mock.assert_not_awaited()
 
     async def test_enqueue_tracks_with_next_preserves_playlist_order_at_front(
         self,
@@ -286,6 +290,16 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(started, next_track)
         play_mock.assert_awaited_once_with(next_track, start_time=0)
 
+    async def test_advance_with_empty_queue_stops_player(self) -> None:
+        previous = make_track("previous")
+        player = _make_player()
+
+        with patch.object(player, "stop", new=AsyncMock()) as stop_mock:
+            started = await player.advance(previous_track=previous)
+
+        self.assertIsNone(started)
+        stop_mock.assert_awaited_once()
+
     async def test_force_skip_advances_to_next_track(self) -> None:
         current = make_track("current")
         next_track = make_track("next")
@@ -349,6 +363,35 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(player.current, replacement)
         play_mock.assert_not_awaited()
         stop_mock.assert_not_awaited()
+
+    async def test_skip_ignores_track_and_queue_repeat_modes(self) -> None:
+        def make_play_side_effect(
+            target: MusicPlayer,
+        ) -> AsyncMock:
+            async def play(track: mafic.Track, **_: object) -> None:
+                target._current = track
+
+            return AsyncMock(side_effect=play)
+
+        for repeat_mode in (RepeatMode.TRACK, RepeatMode.QUEUE):
+            with self.subTest(repeat_mode=repeat_mode):
+                current = make_track(f"current-{repeat_mode.value}")
+                next_track = make_track(f"next-{repeat_mode.value}")
+                player = _make_player(current=current)
+                player.repeat.mode = repeat_mode
+                player.queue.append(next_track)
+
+                with patch.object(
+                    player,
+                    "play",
+                    new=make_play_side_effect(player),
+                ) as play_mock:
+                    skipped = await player.skip()
+
+                self.assertIs(skipped, current)
+                self.assertIs(player.current, next_track)
+                self.assertEqual(list(player.queue), [])
+                play_mock.assert_awaited_once_with(next_track, start_time=0)
 
     async def test_repeat_track_replays_previous_track(self) -> None:
         previous = make_track("previous")
