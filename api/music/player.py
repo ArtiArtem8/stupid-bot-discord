@@ -117,14 +117,11 @@ class MusicPlayer(mafic.Player[discord.Client]):
         previous_track: Track | None = None,
     ) -> Track | None:
         """Advance while the caller holds the transition lock."""
-        if self._is_stale_previous_track(previous_track):
-            logger.debug(
-                "Ignoring stale advance in guild %s for track %s; current is %s",
-                self.guild.id,
+        if previous_track is not None and self._is_stale_previous_track(previous_track):
+            return self._handle_stale_previous_track(
                 previous_track,
-                self.current,
+                force_skip=force_skip,
             )
-            return None
 
         current_or_prev = previous_track or self.current
 
@@ -152,13 +149,29 @@ class MusicPlayer(mafic.Player[discord.Client]):
         await self.play(next_track, start_time=0)
         return next_track
 
-    def _is_stale_previous_track(self, previous_track: Track | None) -> bool:
+    def _is_stale_previous_track(self, previous_track: Track) -> bool:
         current = self.current
-        return (
-            previous_track is not None
-            and current is not None
-            and current is not previous_track
+        return current is not None and current is not previous_track
+
+    def _handle_stale_previous_track(
+        self,
+        previous_track: Track,
+        *,
+        force_skip: bool,
+    ) -> Track | None:
+        logger.debug(
+            "Ignoring stale advance in guild %s for track %s; current is %s",
+            self.guild.id,
+            previous_track,
+            self.current,
         )
+        if force_skip:
+            return None
+        if self.repeat.mode is RepeatMode.TRACK:
+            self.queue.prepend(previous_track)
+        elif self.repeat.mode is RepeatMode.QUEUE:
+            self.queue.append(previous_track)
+        return None
 
     async def enqueue_tracks(
         self,
