@@ -34,7 +34,7 @@ class _ResponseStub:
 class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
     @override
     def setUp(self) -> None:
-        self.cog = MusicCog.__new__(MusicCog)
+        self.cog = object.__new__(MusicCog)
         self.bot_mock = MagicMock()
         self.cog.bot = cast(commands.Bot, self.bot_mock)
         self.service_initialize = AsyncMock(return_value=None)

@@ -242,7 +242,9 @@ class MusicEventHandlers:
         )
 
         if reason in (mafic.EndReason.FINISHED, mafic.EndReason.LOAD_FAILED):
-            await player.advance(previous_track=track)
+            await player.advance_after_end(track)
+        elif reason is mafic.EndReason.STOPPED:
+            await player.start_queued_if_idle()
 
     def _extract_exception_details(
         self, exception: LavalinkException

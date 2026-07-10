@@ -26,6 +26,7 @@ from api.music.models import (
     MusicResult,
     PlaylistResponseData,
     PlayResponseData,
+    QueuePlacement,
     TrackExceptionPayload,
     TrackResponseData,
 )
@@ -305,6 +306,24 @@ class MusicCog(BaseCog):
     @app_commands.guild_only()
     @handle_errors()
     async def play(self, interaction: Interaction, query: str) -> None:
+        await self._run_play_command(interaction, query, "end")
+
+    @app_commands.command(
+        name="play-next",
+        description="Добавить трек или плейлист в начало очереди",
+    )
+    @app_commands.describe(query="URL или название")
+    @app_commands.guild_only()
+    @handle_errors()
+    async def play_next(self, interaction: Interaction, query: str) -> None:
+        await self._run_play_command(interaction, query, "next")
+
+    async def _run_play_command(
+        self,
+        interaction: Interaction,
+        query: str,
+        placement: QueuePlacement,
+    ) -> None:
         guild = await self._require_guild(interaction)
         responder = MusicInteractionResponder(interaction)
         if not query.strip():
@@ -322,6 +341,7 @@ class MusicCog(BaseCog):
                 query.strip(),
                 interaction.user.id,
                 interaction.channel_id,
+                placement=placement,
             )
         )
 
@@ -443,9 +463,13 @@ class MusicCog(BaseCog):
         self, interaction: Interaction, data: TrackResponseData
     ) -> discord.Embed:
         track = data["track"]
-        title = "Сейчас играет" if not data["playing"] else "Добавлено в очередь"
+        title_by_placement = {
+            "now": "Сейчас играет",
+            "next": "Добавлено в начало очереди",
+            "end": "Добавлено в очередь",
+        }
         embed = discord.Embed(
-            title=title,
+            title=title_by_placement[data["placement"]],
             description=f"[{track.title}]({track.uri})",
             color=config.Color.INFO,
         )
@@ -462,9 +486,17 @@ class MusicCog(BaseCog):
         self, interaction: Interaction, data: PlaylistResponseData
     ) -> discord.Embed:
         playlist = data["playlist"]
+        title_by_placement = {
+            "now": "Плейлист запущен",
+            "next": "Плейлист добавлен в начало очереди",
+            "end": f"Добавлен плейлист **{playlist.name}**",
+        }
+        description = f"Треков: {len(playlist.tracks)}"
+        if data["placement"] != "end":
+            description = f"**{playlist.name}**\n{description}"
         embed = discord.Embed(
-            title=f"Добавлен плейлист **{playlist.name}**",
-            description=f"Треков: {len(playlist.tracks)}",
+            title=title_by_placement[data["placement"]],
+            description=description,
             color=config.Color.INFO,
         )
         duration = sum(t.length for t in playlist.tracks)

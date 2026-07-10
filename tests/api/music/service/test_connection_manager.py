@@ -161,6 +161,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_join_connects_new_player_when_service_is_available(self):
         guild = MagicMock()
+        guild.id = 123
         guild.voice_client = None
         channel = MagicMock(spec=discord.VoiceChannel)
         channel.connect = AsyncMock()
@@ -174,6 +175,40 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             cls=music_player_factory,
             timeout=8.0,
         )
+
+    async def test_concurrent_join_same_guild_does_not_overlap_join_body(self) -> None:
+        guild = MagicMock(id=123)
+        channel = MagicMock(spec=discord.VoiceChannel)
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        active = 0
+        max_active = 0
+
+        async def join_body(
+            _guild: discord.Guild,
+            _channel: discord.VoiceChannel | discord.StageChannel,
+        ) -> tuple[VoiceCheckResult, None]:
+            nonlocal active, max_active
+            active += 1
+            max_active = max(max_active, active)
+            entered.set()
+            await release.wait()
+            active -= 1
+            return VoiceCheckResult.SUCCESS, None
+
+        with patch.object(self.manager, "_join_unlocked", side_effect=join_body):
+            first = asyncio.create_task(self.manager.join(guild, channel))
+            await entered.wait()
+            second = asyncio.create_task(self.manager.join(guild, channel))
+            await asyncio.sleep(0)
+            self.assertEqual(max_active, 1)
+            release.set()
+
+            first_result, second_result = await asyncio.gather(first, second)
+
+        self.assertEqual(first_result, (VoiceCheckResult.SUCCESS, None))
+        self.assertEqual(second_result, (VoiceCheckResult.SUCCESS, None))
+        self.assertEqual(max_active, 1)
 
     async def test_join_cleans_stale_player_when_node_unavailable(self):
         class DummyPlayer:
