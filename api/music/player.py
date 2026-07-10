@@ -231,6 +231,12 @@ class MusicPlayer(mafic.Player[discord.Client]):
             )
             return moved_track, started_track
 
+    async def stop_and_clear(self) -> None:
+        """Clear queued state and stop playback atomically."""
+        async with self._transition_lock:
+            self.clear_queue()
+            await super().stop()
+
     @override
     async def on_voice_server_update(self, data: VoiceServerUpdatePayload) -> None:
         try:

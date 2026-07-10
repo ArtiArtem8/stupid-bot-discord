@@ -356,8 +356,7 @@ class CoreMusicService:
             return self._missing_player_result(guild_id, context="stop")
 
         try:
-            player.clear_queue()
-            await player.stop()
+            await player.stop_and_clear()
             await self.ui.controller.destroy_for_guild(
                 guild_id, ControllerDestroyReason.MANUAL_STOP
             )
