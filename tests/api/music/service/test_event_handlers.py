@@ -4,8 +4,11 @@ import unittest
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import mafic
+
 from api.music.models import ControllerDestroyReason
 from api.music.service.event_handlers import MusicEventHandlers
+from tests.api.music.helpers import make_track
 
 
 class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
@@ -162,6 +165,46 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         self.connection.detach_stale_voice_client.assert_awaited_once_with(
             guild, player
         )
+
+    async def test_track_end_finished_uses_end_transition(self) -> None:
+        track = make_track("finished")
+        player = MagicMock()
+        player.guild.id = 123
+        player.advance_after_end = AsyncMock()
+        event = MagicMock(player=player, track=track, reason=mafic.EndReason.FINISHED)
+
+        await self.handlers._on_track_end(event)
+
+        player.advance_after_end.assert_awaited_once_with(track)
+
+    async def test_track_end_load_failed_uses_end_transition(self) -> None:
+        track = make_track("failed")
+        player = MagicMock()
+        player.guild.id = 123
+        player.advance_after_end = AsyncMock()
+        event = MagicMock(
+            player=player, track=track, reason=mafic.EndReason.LOAD_FAILED
+        )
+
+        with patch.object(
+            self.handlers,
+            "_handle_load_failure",
+            new=AsyncMock(),
+        ):
+            await self.handlers._on_track_end(event)
+
+        player.advance_after_end.assert_awaited_once_with(track)
+
+    async def test_track_end_replaced_does_not_advance(self) -> None:
+        track = make_track("replaced")
+        player = MagicMock()
+        player.guild.id = 123
+        player.advance_after_end = AsyncMock()
+        event = MagicMock(player=player, track=track, reason=mafic.EndReason.REPLACED)
+
+        await self.handlers._on_track_end(event)
+
+        player.advance_after_end.assert_not_awaited()
 
     async def test_repeated_setup_does_not_register_duplicate_listeners(self) -> None:
         self.handlers.setup()

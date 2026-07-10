@@ -162,7 +162,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         play_mock.assert_awaited_once_with(first, start_time=0)
         self.assertEqual(list(player.queue), [second])
 
-    async def test_stale_advance_does_not_replace_track_started_by_enqueue(
+    async def test_stale_end_off_does_not_replace_track_started_by_enqueue(
         self,
     ) -> None:
         old_track = make_track("old")
@@ -185,7 +185,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             )
             await play_entered.wait()
             stale_advance_task = asyncio.create_task(
-                player.advance(previous_track=old_track)
+                player.advance_after_end(old_track)
             )
             await asyncio.sleep(0)
             release_play.set()
@@ -200,7 +200,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         play_mock.assert_awaited_once_with(new_track, start_time=0)
         stop_mock.assert_not_awaited()
 
-    async def test_stale_repeat_queue_appends_previous_without_interrupting_current(
+    async def test_stale_end_queue_appends_previous_without_interrupting_current(
         self,
     ) -> None:
         previous = make_track("previous")
@@ -214,7 +214,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             patch.object(player, "play", new=AsyncMock()) as play_mock,
             patch.object(player, "stop", new=AsyncMock()) as stop_mock,
         ):
-            started = await player.advance(previous_track=previous)
+            started = await player.advance_after_end(previous)
 
         self.assertIsNone(started)
         self.assertIs(player.current, replacement)
@@ -222,7 +222,33 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         play_mock.assert_not_awaited()
         stop_mock.assert_not_awaited()
 
-    async def test_stale_repeat_track_queues_previous_before_existing_queue(
+    async def test_stale_end_track_replays_previous_and_queues_replacement_first(
+        self,
+    ) -> None:
+        previous = make_track("previous")
+        replacement = make_track("replacement-1")
+        next_replacement = make_track("replacement-2")
+        existing = make_track("existing")
+        player = _make_player(current=replacement)
+        player.repeat.mode = RepeatMode.TRACK
+        player.queue.extend((next_replacement, existing))
+
+        async def play(track: mafic.Track, **_: object) -> None:
+            player._current = track
+
+        with (
+            patch.object(player, "play", new=AsyncMock(side_effect=play)) as play_mock,
+            patch.object(player, "stop", new=AsyncMock()) as stop_mock,
+        ):
+            started = await player.advance_after_end(previous)
+
+        self.assertIs(started, previous)
+        self.assertIs(player.current, previous)
+        self.assertEqual(list(player.queue), [replacement, next_replacement, existing])
+        play_mock.assert_awaited_once_with(previous, start_time=0)
+        stop_mock.assert_not_awaited()
+
+    async def test_stale_end_track_repeats_previous_again_after_replay_ends(
         self,
     ) -> None:
         previous = make_track("previous")
@@ -232,31 +258,22 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         player.repeat.mode = RepeatMode.TRACK
         player.queue.append(queued)
 
-        with (
-            patch.object(player, "play", new=AsyncMock()) as play_mock,
-            patch.object(player, "stop", new=AsyncMock()) as stop_mock,
-        ):
-            started = await player.advance(previous_track=previous)
+        async def play(track: mafic.Track, **_: object) -> None:
+            player._current = track
 
-        self.assertIsNone(started)
-        self.assertIs(player.current, replacement)
-        self.assertEqual(list(player.queue), [previous, queued])
-        play_mock.assert_not_awaited()
-        stop_mock.assert_not_awaited()
+        with patch.object(player, "play", new=AsyncMock(side_effect=play)) as play_mock:
+            first_started = await player.advance_after_end(previous)
+            player._current = None
+            second_started = await player.advance_after_end(previous)
 
-    async def test_stale_detection_uses_track_instance_not_identifier(self) -> None:
-        previous = make_track("same")
-        replacement = make_track("same")
-        player = _make_player(current=replacement)
+        self.assertIs(first_started, previous)
+        self.assertIs(second_started, previous)
+        self.assertIs(player.current, previous)
+        self.assertEqual(list(player.queue), [replacement, queued])
+        self.assertEqual(play_mock.await_count, 2)
+        play_mock.assert_awaited_with(previous, start_time=0)
 
-        with patch.object(player, "stop", new=AsyncMock()) as stop_mock:
-            started = await player.advance(previous_track=previous)
-
-        self.assertIsNone(started)
-        self.assertIs(player.current, replacement)
-        stop_mock.assert_not_awaited()
-
-    async def test_advance_after_finished_track_starts_next_track(self) -> None:
+    async def test_advance_after_end_with_no_current_starts_next_track(self) -> None:
         previous = make_track("previous")
         next_track = make_track("next")
         player = _make_player()
@@ -266,7 +283,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             player._current = track
 
         with patch.object(player, "play", new=AsyncMock(side_effect=play)) as play_mock:
-            started = await player.advance(previous_track=previous)
+            started = await player.advance_after_end(previous)
 
         self.assertIs(started, next_track)
         play_mock.assert_awaited_once_with(next_track, start_time=0)
@@ -295,7 +312,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         player = _make_player()
 
         with patch.object(player, "stop", new=AsyncMock()) as stop_mock:
-            started = await player.advance(previous_track=previous)
+            started = await player.advance_after_end(previous)
 
         self.assertIsNone(started)
         stop_mock.assert_awaited_once()
@@ -343,14 +360,19 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(skipped, current)
         stop_mock.assert_awaited_once()
 
-    async def test_stale_skip_does_not_stop_replacement_track(self) -> None:
-        skipped_track = make_track("skipped")
-        replacement = make_track("replacement")
+    async def test_skip_uses_current_under_lock_without_stale_end_guard(self) -> None:
+        skipped_track = make_track("same")
+        replacement = make_track("same")
+        next_track = make_track("next")
         player = _make_player(current=skipped_track)
+        player.queue.append(next_track)
         await player._transition_lock.acquire()
 
+        async def play(track: mafic.Track, **_: object) -> None:
+            player._current = track
+
         with (
-            patch.object(player, "play", new=AsyncMock()) as play_mock,
+            patch.object(player, "play", new=AsyncMock(side_effect=play)) as play_mock,
             patch.object(player, "stop", new=AsyncMock()) as stop_mock,
         ):
             skip_task = asyncio.create_task(player.skip())
@@ -359,9 +381,9 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             player._transition_lock.release()
             skipped = await skip_task
 
-        self.assertIs(skipped, skipped_track)
-        self.assertIs(player.current, replacement)
-        play_mock.assert_not_awaited()
+        self.assertIs(skipped, replacement)
+        self.assertIs(player.current, next_track)
+        play_mock.assert_awaited_once_with(next_track, start_time=0)
         stop_mock.assert_not_awaited()
 
     async def test_skip_ignores_track_and_queue_repeat_modes(self) -> None:
@@ -373,7 +395,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
 
             return AsyncMock(side_effect=play)
 
-        for repeat_mode in (RepeatMode.TRACK, RepeatMode.QUEUE):
+        for repeat_mode in (RepeatMode.OFF, RepeatMode.TRACK, RepeatMode.QUEUE):
             with self.subTest(repeat_mode=repeat_mode):
                 current = make_track(f"current-{repeat_mode.value}")
                 next_track = make_track(f"next-{repeat_mode.value}")
