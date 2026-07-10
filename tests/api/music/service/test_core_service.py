@@ -295,6 +295,67 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result.status, MusicResultStatus.FAILURE)
         self.assertEqual(result.message, MUSIC_SERVICE_UNAVAILABLE_MESSAGE)
 
+    async def test_skip_uses_atomic_player_result_without_pre_reading_queue(
+        self,
+    ) -> None:
+        before = make_track("before")
+        after = make_track("after")
+
+        class PlayerStub:
+            def __init__(self) -> None:
+                self.skip = AsyncMock(return_value=(before, after))
+                self.resume = AsyncMock()
+
+            @property
+            def current(self) -> mafic.Track | None:
+                msg = "service must not read current before skip"
+                raise AssertionError(msg)
+
+            @property
+            def queue(self) -> object:
+                msg = "service must not read queue before skip"
+                raise AssertionError(msg)
+
+        player = PlayerStub()
+        self.connection.get_player.return_value = player
+        self.connection.is_known_unavailable.return_value = False
+        self.ui.controller.destroy_for_guild = AsyncMock()
+
+        result = await self.service.skip(123, requester_id=1, text_channel_id=2)
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        self.assertEqual(result.data, {"before": before, "after": after})
+        player.skip.assert_awaited_once()
+        player.resume.assert_awaited_once()
+
+    async def test_rotate_uses_started_track_from_atomic_player_result(self) -> None:
+        moved = make_track("moved")
+        started = make_track("started")
+        player = MagicMock()
+        player.rotate_current = AsyncMock(return_value=(moved, started))
+        self.connection.get_player.return_value = player
+        self.connection.is_known_unavailable.return_value = False
+
+        result = await self.service.rotate(123, requester_id=1, text_channel_id=2)
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        self.assertEqual(result.data, {"skipped": moved, "next": started})
+        player.rotate_current.assert_awaited_once()
+
+    async def test_stop_uses_atomic_stop_and_clear(self) -> None:
+        player = MagicMock()
+        player.stop_and_clear = AsyncMock()
+        self.connection.get_player.return_value = player
+        self.connection.is_known_unavailable.return_value = False
+        self.ui.controller.destroy_for_guild = AsyncMock()
+
+        result = await self.service.stop(123, requester_id=1, text_channel_id=2)
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        player.stop_and_clear.assert_awaited_once()
+        player.clear_queue.assert_not_called()
+        player.stop.assert_not_called()
+
     async def test_leave_stale_voice_returns_unavailable_after_local_cleanup(
         self,
     ) -> None:
