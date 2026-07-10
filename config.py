@@ -110,4 +110,4 @@ SUGGESTION_THRESHOLD = 25
 
 # question_cog.py
 MAX_ANSWER_SAMPLE_SIZE = 8
-"""Minimum score to show as a suggestion (0-100)."""
+"""Maximum number of answer samples to consider."""
