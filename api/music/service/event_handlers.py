@@ -115,11 +115,7 @@ class MusicEventHandlers:
             await self.connection.detach_stale_voice_client(guild, voice_client)  # pyright: ignore[reportUnknownArgumentType]
 
     async def _on_track_start(self, event: mafic.TrackStartEvent[MusicPlayer]) -> None:
-        if event.player.guild.id in self._healing_guilds:
-            logger.debug(
-                "Ignoring track_start during healing for guild %s",
-                event.player.guild.id,
-            )
+        if not self._should_handle_player_event(event.player, "track_start"):
             return
 
         player = event.player
@@ -136,11 +132,7 @@ class MusicEventHandlers:
     async def _on_track_exception(
         self, event: mafic.TrackExceptionEvent[MusicPlayer]
     ) -> None:
-        if event.player.guild.id in self._healing_guilds:
-            logger.debug(
-                "Ignoring track_exception during healing for guild %s",
-                event.player.guild.id,
-            )
+        if not self._should_handle_player_event(event.player, "track_exception"):
             return
 
         player = event.player
@@ -171,15 +163,10 @@ class MusicEventHandlers:
         During healing, stuck events from the old or restoring player should not drive
         the normal controller lifecycle.
         """
-        guild_id = event.player.guild.id
-
-        if guild_id in self._healing_guilds:
-            logger.debug(
-                "Ignoring track_stuck during healing for guild %s",
-                guild_id,
-            )
+        if not self._should_handle_player_event(event.player, "track_stuck"):
             return
 
+        guild_id = event.player.guild.id
         logger.warning(
             "Track stuck in guild %s: %s",
             guild_id,
@@ -192,11 +179,7 @@ class MusicEventHandlers:
         )
 
     async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
-        if event.player.guild.id in self._healing_guilds:
-            logger.debug(
-                "Ignoring track_end during healing for guild %s",
-                event.player.guild.id,
-            )
+        if not self._should_handle_player_event(event.player, "track_end"):
             return
 
         player = event.player
@@ -277,6 +260,9 @@ class MusicEventHandlers:
     async def _on_websocket_closed(
         self, event: mafic.WebSocketClosedEvent[MusicPlayer]
     ) -> None:
+        if not self._should_handle_player_event(event.player, "websocket_closed"):
+            return
+
         guild_id = event.player.guild.id
         logger.warning(
             "Voice websocket closed for guild %s. Code: %s, Reason: %s",
@@ -314,6 +300,23 @@ class MusicEventHandlers:
 
         if event.code == 4014 and event.by_discord:
             await self.healer.cleanup_after_disconnect(event.player.guild.id)
+
+    def _should_handle_player_event(
+        self,
+        player: MusicPlayer,
+        event_name: str,
+    ) -> bool:
+        guild_id = player.guild.id
+        if guild_id in self._healing_guilds or not self.connection.is_current_player(
+            player
+        ):
+            logger.debug(
+                "Ignoring %s from non-current or healing player for guild %s",
+                event_name,
+                guild_id,
+            )
+            return False
+        return True
 
     def _has_recent_voice_transition(self, guild_id: int) -> bool:
         transition_at = self._recent_voice_transitions.get(guild_id)
