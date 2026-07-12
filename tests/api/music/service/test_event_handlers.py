@@ -16,12 +16,14 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.bot = MagicMock()
         self.connection = MagicMock()
+        self.connection.is_current_player.return_value = True
         self.connection.mark_node_unavailable = AsyncMock()
         self.connection.detach_stale_voice_client = AsyncMock()
         self.state = MagicMock()
         self.state.is_timer_active.return_value = False
         self.state.cancel_timer = MagicMock()
         self.ui = MagicMock()
+        self.ui.spawn_controller = AsyncMock()
         self.ui.controller.destroy_for_guild = AsyncMock()
         self.healer = MagicMock()
         self.healer.cleanup_after_disconnect = AsyncMock()
@@ -70,6 +72,82 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         )
 
         await self.handlers._on_track_end(event)
+
+    async def test_non_current_track_start_has_no_side_effects(self) -> None:
+        player = self._make_player()
+        track = make_track("stale-start")
+        active_failure = TrackId("current-failure")
+        self.handlers._load_failures[123] = active_failure
+        self.connection.is_current_player.return_value = False
+        event = MagicMock(player=player, track=track)
+
+        await self.handlers._on_track_start(event)
+
+        self.assertEqual(self.handlers._load_failures[123], active_failure)
+        self.state.record_track_start.assert_not_called()
+        self.ui.spawn_controller.assert_not_awaited()
+
+    async def test_non_current_track_end_has_no_side_effects(self) -> None:
+        player = self._make_player()
+        track = make_track("stale-end")
+        event = MagicMock(player=player, track=track, reason=mafic.EndReason.FINISHED)
+        self.connection.is_current_player.return_value = False
+
+        await self.handlers._on_track_end(event)
+
+        self.state.record_history.assert_not_called()
+        self.ui.controller.destroy_for_guild.assert_not_awaited()
+        player.advance_after_end.assert_not_awaited()
+        player.start_queued_if_idle.assert_not_awaited()
+
+    async def test_non_current_track_exception_has_no_side_effects(self) -> None:
+        player = self._make_player()
+        track = make_track("stale-exception")
+        active_failure = TrackId("current-failure")
+        self.handlers._load_failures[123] = active_failure
+        self.connection.is_current_player.return_value = False
+        event = MagicMock(
+            player=player,
+            track=track,
+            exception={"message": "stale failure", "severity": "COMMON"},
+        )
+
+        await self.handlers._on_track_exception(event)
+
+        self.bot.dispatch.assert_not_called()
+        self.assertEqual(self.handlers._load_failures[123], active_failure)
+        self.ui.controller.destroy_for_guild.assert_not_awaited()
+
+    async def test_non_current_track_stuck_has_no_side_effects(self) -> None:
+        player = self._make_player()
+        event = MagicMock(player=player, track=make_track("stale-stuck"))
+        self.connection.is_current_player.return_value = False
+
+        await self.handlers._on_track_stuck(event)
+
+        self.ui.controller.destroy_for_guild.assert_not_awaited()
+
+    async def test_non_current_websocket_close_has_no_side_effects(self) -> None:
+        player = self._make_player()
+        event = MagicMock(
+            player=player,
+            code=4006,
+            reason="stale websocket",
+            by_discord=False,
+        )
+        self.connection.is_current_player.return_value = False
+
+        with (
+            patch.object(self.handlers, "heal", new=AsyncMock()) as heal,
+            patch.object(
+                self.handlers, "_schedule_voice_transition_validation"
+            ) as schedule,
+        ):
+            await self.handlers._on_websocket_closed(event)
+
+        heal.assert_not_awaited()
+        schedule.assert_not_called()
+        self.connection.detach_stale_voice_client.assert_not_awaited()
 
     async def test_websocket_close_after_recent_move_defers_controller_cleanup(
         self,

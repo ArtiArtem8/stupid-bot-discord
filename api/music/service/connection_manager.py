@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from typing import cast
+from typing import TypeGuard, cast
 
 import discord
 import mafic
@@ -95,12 +95,17 @@ class ConnectionManager:
         """Return whether the last lazy connection attempt failed recently."""
         return bool(self._last_connect_error) and not self.has_ready_node()
 
-    def is_player_usable(self, player: object) -> bool:
-        """Return whether a player is still bound to a live node in this pool."""
-        if not isinstance(player, MusicPlayer):
+    def is_current_player(self, player: object) -> TypeGuard[MusicPlayer]:
+        """Return whether this is the current non-stale guild voice client."""
+        if not isinstance(player, MusicPlayer) or player.is_stale:
             return False
 
-        if player.is_stale:
+        guild = self.bot.get_guild(player.guild.id)
+        return guild is not None and guild.voice_client is player
+
+    def is_player_usable(self, player: object) -> bool:
+        """Return whether a current player uses an available node in this pool."""
+        if not self.is_current_player(player):
             return False
 
         node = self.get_player_node(player)
