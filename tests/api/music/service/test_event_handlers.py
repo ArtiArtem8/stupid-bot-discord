@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import mafic
 
-from api.music.models import ControllerDestroyReason
+from api.music.models import ControllerDestroyReason, TrackExceptionPayload, TrackId
 from api.music.service.event_handlers import MusicEventHandlers
 from tests.api.music.helpers import make_track
 
@@ -32,6 +32,44 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
             self.ui,
             self.healer,
         )
+
+    def _make_player(self) -> MagicMock:
+        player = MagicMock()
+        player.guild.id = 123
+        player.advance_after_end = AsyncMock()
+        player.start_queued_if_idle = AsyncMock()
+        requester = MagicMock()
+        requester.user_id = 456
+        requester.channel_id = 789
+        player.get_requester.return_value = requester
+        return player
+
+    async def _handle_track_exception(
+        self,
+        player: MagicMock,
+        track: mafic.Track,
+        *,
+        message: str = "load failed",
+    ) -> None:
+        event = MagicMock()
+        event.player = player
+        event.track = track
+        event.exception = {"message": message, "severity": "COMMON"}
+
+        await self.handlers._on_track_exception(event)
+
+    async def _handle_load_failed_end(
+        self,
+        player: MagicMock,
+        track: mafic.Track,
+    ) -> None:
+        event = MagicMock(
+            player=player,
+            track=track,
+            reason=mafic.EndReason.LOAD_FAILED,
+        )
+
+        await self.handlers._on_track_end(event)
 
     async def test_websocket_close_after_recent_move_defers_controller_cleanup(
         self,
@@ -166,6 +204,124 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
             guild, player
         )
 
+    async def test_duplicate_track_exception_dispatches_once_for_active_failure(
+        self,
+    ) -> None:
+        player = self._make_player()
+        track = make_track("same-failure")
+
+        await self._handle_track_exception(player, track)
+        await self._handle_track_exception(player, track)
+
+        self.assertEqual(self.bot.dispatch.call_count, 1)
+        self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+            123,
+            ControllerDestroyReason.TRACK_EXCEPTION,
+            expected_track_id=TrackId.from_track(track),
+        )
+
+    async def test_track_exception_then_load_failed_end_dispatches_once(self) -> None:
+        player = self._make_player()
+        track = make_track("exception-before-end")
+
+        await self._handle_track_exception(player, track)
+        await self._handle_load_failed_end(player, track)
+
+        self.assertEqual(self.bot.dispatch.call_count, 1)
+        player.advance_after_end.assert_awaited_once_with(track)
+        destroy_reasons = [
+            call.args[1]
+            for call in self.ui.controller.destroy_for_guild.await_args_list
+        ]
+        self.assertEqual(
+            destroy_reasons,
+            [
+                ControllerDestroyReason.TRACK_EXCEPTION,
+                ControllerDestroyReason.TRACK_END,
+            ],
+        )
+
+    async def test_load_failed_end_without_exception_dispatches_fallback(self) -> None:
+        player = self._make_player()
+        track = make_track("end-fallback")
+
+        await self._handle_load_failed_end(player, track)
+
+        self.bot.dispatch.assert_called_once()
+        event_name, payload = self.bot.dispatch.call_args.args
+        self.assertEqual(event_name, "music_track_exception")
+        self.assertIsInstance(payload, TrackExceptionPayload)
+        self.assertEqual(payload.guild_id, 123)
+        self.assertEqual(payload.track.identifier, "end-fallback")
+        self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+            123,
+            ControllerDestroyReason.TRACK_END,
+            expected_track_id=TrackId.from_track(track),
+        )
+
+    async def test_interleaved_next_failure_same_identifier_dispatches_again(
+        self,
+    ) -> None:
+        player = self._make_player()
+        first = make_track("interleaved")
+        second = make_track("interleaved")
+
+        async def advance_after_end(_track: mafic.Track) -> None:
+            await self._handle_track_exception(player, second, message="second")
+
+        player.advance_after_end.side_effect = advance_after_end
+
+        await self._handle_track_exception(player, first, message="first")
+        await self._handle_load_failed_end(player, first)
+
+        self.assertEqual(self.bot.dispatch.call_count, 2)
+        destroy_reasons = [
+            call.args[1]
+            for call in self.ui.controller.destroy_for_guild.await_args_list
+        ]
+        self.assertEqual(
+            destroy_reasons,
+            [
+                ControllerDestroyReason.TRACK_EXCEPTION,
+                ControllerDestroyReason.TRACK_END,
+                ControllerDestroyReason.TRACK_EXCEPTION,
+            ],
+        )
+
+    async def test_repeated_failed_attempts_without_track_start_dispatch_each(
+        self,
+    ) -> None:
+        player = self._make_player()
+        first = make_track("same-identifier")
+        second = make_track("same-identifier")
+
+        await self._handle_track_exception(player, first, message="first")
+        await self._handle_load_failed_end(player, first)
+        await self._handle_track_exception(player, second, message="second")
+        await self._handle_load_failed_end(player, second)
+
+        self.assertEqual(self.bot.dispatch.call_count, 2)
+        track_exception_cleanups = [
+            call
+            for call in self.ui.controller.destroy_for_guild.await_args_list
+            if call.args[1] is ControllerDestroyReason.TRACK_EXCEPTION
+        ]
+        self.assertEqual(len(track_exception_cleanups), 2)
+
+    async def test_cleanup_clears_active_failure_state(self) -> None:
+        player = self._make_player()
+        track = make_track("cleanup-retry")
+        self.handlers.setup()
+
+        await self._handle_track_exception(player, track)
+        await self._handle_track_exception(player, track)
+        self.assertEqual(self.bot.dispatch.call_count, 1)
+
+        self.handlers.cleanup()
+        await self._handle_track_exception(player, track)
+
+        self.assertEqual(self.bot.dispatch.call_count, 2)
+
     async def test_track_end_finished_uses_end_transition(self) -> None:
         track = make_track("finished")
         player = MagicMock()
@@ -181,20 +337,12 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
 
     async def test_track_end_load_failed_uses_end_transition(self) -> None:
         track = make_track("failed")
-        player = MagicMock()
-        player.guild.id = 123
-        player.advance_after_end = AsyncMock()
-        player.start_queued_if_idle = AsyncMock()
+        player = self._make_player()
         event = MagicMock(
             player=player, track=track, reason=mafic.EndReason.LOAD_FAILED
         )
 
-        with patch.object(
-            self.handlers,
-            "_handle_load_failure",
-            new=AsyncMock(),
-        ):
-            await self.handlers._on_track_end(event)
+        await self.handlers._on_track_end(event)
 
         player.advance_after_end.assert_awaited_once_with(track)
         player.start_queued_if_idle.assert_not_awaited()
