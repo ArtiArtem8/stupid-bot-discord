@@ -4,7 +4,6 @@ import asyncio
 import copy
 import logging
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import discord
@@ -27,17 +26,6 @@ VOICE_TRANSITION_WINDOW_SECONDS = 5.0
 VOICE_TRANSITION_VALIDATION_DELAY_SECONDS = 2.0
 
 
-@dataclass(slots=True)
-class LoadFailureState:
-    """Tracks notification and cleanup state for a failed track load."""
-
-    track_id: str
-    reason: str
-    severity: str | None
-    notified: bool = False
-    handled: bool = False
-
-
 class MusicEventHandlers:
     """Handles Discord and Mafic events for the music service."""
 
@@ -55,7 +43,7 @@ class MusicEventHandlers:
         self.ui = ui_orchestrator
         self.healer = healer
         self._healing_guilds: set[int] = set()
-        self._load_failures: dict[int, LoadFailureState] = {}
+        self._load_failures: dict[int, TrackId] = {}
         self._recent_voice_transitions: dict[int, float] = {}
         self._voice_transition_validation_tasks: dict[int, asyncio.Task[None]] = {}
         self._unavailable_node_labels: set[str] = set()
@@ -93,6 +81,7 @@ class MusicEventHandlers:
         for task in self._voice_transition_validation_tasks.values():
             task.cancel()
         self._voice_transition_validation_tasks.clear()
+        self._load_failures.clear()
         self._recent_voice_transitions.clear()
         self._unavailable_node_labels.clear()
         self._setup_done = False
@@ -112,6 +101,7 @@ class MusicEventHandlers:
 
     async def _cleanup_after_node_unavailable(self) -> None:
         for guild in self.bot.guilds:
+            self._load_failures.pop(guild.id, None)
             await self.ui.controller.destroy_for_guild(
                 guild.id,
                 ControllerDestroyReason.PLAYER_ERROR,
@@ -164,23 +154,16 @@ class MusicEventHandlers:
             reason,
         )
 
-        await self._handle_load_failure(
-            player,
-            track,
-            reason=reason,
-            severity=severity,
-        )
+        track_id = TrackId.from_track(track)
+        if not self._claim_load_failure(player.guild.id, track_id):
+            return
 
-        requester_info = player.get_requester(track)
-        payload = TrackExceptionPayload(
-            guild_id=player.guild.id,
-            track=copy.copy(track),
-            reason=reason,
-            severity=severity,
-            requester_id=requester_info.user_id if requester_info else None,
-            channel_id=requester_info.channel_id if requester_info else None,
+        self._dispatch_track_exception(player, track, reason, severity)
+        await self.ui.controller.destroy_for_guild(
+            player.guild.id,
+            ControllerDestroyReason.TRACK_EXCEPTION,
+            expected_track_id=track_id,
         )
-        self.bot.dispatch("music_track_exception", payload)
 
     async def _on_track_stuck(self, event: mafic.TrackStuckEvent[MusicPlayer]) -> None:
         """Remove stale controls when Lavalink reports a stalled track.
@@ -224,22 +207,26 @@ class MusicEventHandlers:
 
         self.state.record_history(player, track, reason)
 
-        if reason is mafic.EndReason.LOAD_FAILED:
-            failure_state = self._load_failures.get(player.guild.id)
-            expected_id = TrackId.from_track(track).id
-            if not (failure_state and failure_state.track_id == expected_id):
-                await self._handle_load_failure(
-                    player,
-                    track,
-                    reason="Lavalink: загрузка не удалась",
-                    severity=None,
-                )
+        track_id = TrackId.from_track(track)
+        if reason is mafic.EndReason.LOAD_FAILED and self._claim_load_failure(
+            player.guild.id,
+            track_id,
+        ):
+            self._dispatch_track_exception(
+                player,
+                track,
+                reason="Lavalink: загрузка не удалась",
+                severity=None,
+            )
 
         await self.ui.controller.destroy_for_guild(
             player.guild.id,
             ControllerDestroyReason.TRACK_END,
-            expected_track_id=TrackId.from_track(track),
+            expected_track_id=track_id,
         )
+
+        if reason is mafic.EndReason.LOAD_FAILED:
+            self._clear_load_failure(player.guild.id, track_id)
 
         if reason in (mafic.EndReason.FINISHED, mafic.EndReason.LOAD_FAILED):
             await player.advance_after_end(track)
@@ -256,45 +243,36 @@ class MusicEventHandlers:
         severity_text = str(severity) if severity else None
         return message_text, severity_text
 
-    async def _handle_load_failure(
+    def _claim_load_failure(self, guild_id: int, track_id: TrackId) -> bool:
+        """Claim the active load failure for this guild and track."""
+        if self._load_failures.get(guild_id) == track_id:
+            return False
+
+        self._load_failures[guild_id] = track_id
+        return True
+
+    def _clear_load_failure(self, guild_id: int, track_id: TrackId) -> None:
+        """Clear the active load failure only if it still matches this track."""
+        if self._load_failures.get(guild_id) == track_id:
+            self._load_failures.pop(guild_id, None)
+
+    def _dispatch_track_exception(
         self,
         player: MusicPlayer,
         track: mafic.Track,
-        *,
         reason: str,
         severity: str | None,
     ) -> None:
-        """Handle a track load failure, tracking state and cleaning up UI."""
-        guild_id = player.guild.id
-        track_id = TrackId.from_track(track).id
-
-        state = self._load_failures.get(guild_id)
-        if not state or state.track_id != track_id:
-            state = LoadFailureState(
-                track_id=track_id,
-                reason=reason,
-                severity=severity,
-            )
-            self._load_failures[guild_id] = state
-        else:
-            if reason and reason != state.reason:
-                state.reason = reason
-            if severity and not state.severity:
-                state.severity = severity
-
-        if state.handled:
-            return
-
-        state.handled = True
-
-        await self.ui.controller.destroy_for_guild(
-            guild_id,
-            ControllerDestroyReason.TRACK_EXCEPTION,
-            expected_track_id=TrackId.from_track(track),
+        requester_info = player.get_requester(track)
+        payload = TrackExceptionPayload(
+            guild_id=player.guild.id,
+            track=copy.copy(track),
+            reason=reason,
+            severity=severity,
+            requester_id=requester_info.user_id if requester_info else None,
+            channel_id=requester_info.channel_id if requester_info else None,
         )
-
-        if not state.notified:
-            state.notified = True
+        self.bot.dispatch("music_track_exception", payload)
 
     async def _on_websocket_closed(
         self, event: mafic.WebSocketClosedEvent[MusicPlayer]
@@ -429,6 +407,7 @@ class MusicEventHandlers:
         guild_id = member.guild.id
         if after.channel is None:
             logger.info("Bot was disconnected from guild %s. Cleaning up.", guild_id)
+            self._load_failures.pop(guild_id, None)
             await self.healer.cleanup_after_disconnect(
                 guild_id, is_healing=guild_id in self._healing_guilds
             )

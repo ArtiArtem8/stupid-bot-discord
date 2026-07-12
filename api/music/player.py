@@ -32,6 +32,16 @@ class MusicPlayer(mafic.Player[discord.Client]):
         self.repeat = RepeatManager()
         self._requester_map: dict[str, TrackRequester] = {}
         self._transition_lock = asyncio.Lock()
+        self._is_stale = False
+
+    @property
+    def is_stale(self) -> bool:
+        """Return whether this player has been detached from the active lifecycle."""
+        return self._is_stale
+
+    def mark_stale(self) -> None:
+        """Mark this player as no longer safe for reuse."""
+        self._is_stale = True
 
     async def move_to(
         self, channel: discord.abc.Snowflake | None, *, timeout: float = 30.0

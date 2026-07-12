@@ -21,12 +21,23 @@ def _make_player(*, current: mafic.Track | None = None) -> MusicPlayer:
     player.repeat = RepeatManager(RepeatMode.OFF)
     player._requester_map = {}
     player._transition_lock = asyncio.Lock()
+    player._is_stale = False
     player._current = current
     player.guild = MagicMock(id=123)
     return player
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
+    def test_new_player_starts_not_stale_and_can_be_marked_stale(self) -> None:
+        with patch.object(mafic.Player, "__init__", return_value=None):
+            player = MusicPlayer(MagicMock(), MagicMock())
+
+        self.assertFalse(player.is_stale)
+
+        player.mark_stale()
+
+        self.assertTrue(player.is_stale)
+
     async def test_enqueue_tracks_with_next_adds_single_track_to_front(self) -> None:
         existing = make_track("existing")
         track = make_track("next")

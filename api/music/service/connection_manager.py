@@ -35,7 +35,6 @@ class ConnectionManager:
         self._next_connect_retry_at = 0.0
         self._last_connect_error: str | None = None
         self._lazy_connect_task: asyncio.Task[None] | None = None
-        self._stale_player_ids: set[int] = set()
         self._join_locks: dict[int, asyncio.Lock] = {}
 
     async def initialize(self) -> None:
@@ -101,7 +100,7 @@ class ConnectionManager:
         if not isinstance(player, MusicPlayer):
             return False
 
-        if id(player) in self._stale_player_ids:
+        if player.is_stale:
             return False
 
         node = self.get_player_node(player)
@@ -371,7 +370,7 @@ class ConnectionManager:
     ) -> None:
         """Best-effort local voice cleanup that never exposes Lavalink IO errors."""
         if isinstance(voice_client, MusicPlayer):
-            self._stale_player_ids.add(id(voice_client))
+            voice_client.mark_stale()
 
         try:
             await voice_client.disconnect(force=True)

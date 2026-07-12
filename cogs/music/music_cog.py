@@ -92,8 +92,6 @@ class MusicCog(BaseCog):
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
 
-        self._recent_track_exceptions: dict[int, set[str]] = {}
-
         # Dependency Injection Setup
         self.container = Container()
         self.container.register(commands.Bot, factory=lambda _c: bot)
@@ -152,18 +150,6 @@ class MusicCog(BaseCog):
     @commands.Cog.listener()
     async def on_music_track_exception(self, payload: TrackExceptionPayload) -> None:
         """Handle dispatched track exception payloads."""
-        track_id = payload.track.identifier
-        if payload.guild_id not in self._recent_track_exceptions:
-            self._recent_track_exceptions[payload.guild_id] = set()
-        if track_id in self._recent_track_exceptions[payload.guild_id]:
-            logger.warning(
-                "Duplicate track exception for guild %s, track %s",
-                payload.guild_id,
-                track_id,
-            )
-            return
-        self._recent_track_exceptions[payload.guild_id].add(track_id)
-
         channel_id = payload.channel_id
         if not channel_id:
             return

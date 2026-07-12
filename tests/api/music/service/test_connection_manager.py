@@ -4,7 +4,7 @@ Covers node initialization, player retrieval, and join logic outcomes.
 
 import asyncio
 import unittest
-from typing import Any, override
+from typing import Any, cast, override
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
@@ -90,6 +90,11 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         class DummyPlayer:
             def __init__(self, node: object) -> None:
                 self._node = node
+                self._is_stale = False
+
+            @property
+            def is_stale(self) -> bool:
+                return self._is_stale
 
         mock_pool = MagicMock()
         mock_pool.nodes = []
@@ -113,6 +118,11 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         class DummyPlayer:
             def __init__(self, node: object) -> None:
                 self._node = node
+                self._is_stale = False
+
+            @property
+            def is_stale(self) -> bool:
+                return self._is_stale
 
         node = MagicMock(available=False)
         mock_pool = MagicMock()
@@ -214,6 +224,14 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         class DummyPlayer:
             def __init__(self) -> None:
                 self.disconnect = AsyncMock()
+                self._is_stale = False
+
+            @property
+            def is_stale(self) -> bool:
+                return self._is_stale
+
+            def mark_stale(self) -> None:
+                self._is_stale = True
 
         player = DummyPlayer()
         guild = MagicMock()
@@ -235,12 +253,79 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         player.disconnect.assert_awaited_once_with(force=True)
         channel.connect.assert_not_called()
 
+    @patch("api.music.service.connection_manager.mafic.NodePool")
+    async def test_stale_player_is_unusable_even_when_node_available(
+        self, mock_pool_class: Any
+    ) -> None:
+        class DummyPlayer:
+            def __init__(self, node: object) -> None:
+                self._node = node
+                self._is_stale = False
+
+            @property
+            def is_stale(self) -> bool:
+                return self._is_stale
+
+            def mark_stale(self) -> None:
+                self._is_stale = True
+
+        node = MagicMock(available=True)
+        mock_pool = MagicMock()
+        mock_pool.nodes = [node]
+        mock_pool_class.return_value = mock_pool
+        manager = ConnectionManager(self.bot)
+        player = DummyPlayer(node)
+        player.mark_stale()
+
+        with patch("api.music.service.connection_manager.MusicPlayer", DummyPlayer):
+            result = manager.is_player_usable(player)
+
+        self.assertFalse(result)
+
+    async def test_detach_marks_player_stale_when_remote_disconnect_fails(
+        self,
+    ) -> None:
+        class DummyPlayer:
+            def __init__(self) -> None:
+                self._is_stale = False
+                self.disconnect = AsyncMock(side_effect=mafic.HTTPNotFound("missing"))
+                self.cleanup = MagicMock()
+
+            @property
+            def is_stale(self) -> bool:
+                return self._is_stale
+
+            def mark_stale(self) -> None:
+                self._is_stale = True
+
+        player = DummyPlayer()
+        guild = MagicMock()
+        guild.change_voice_state = AsyncMock()
+
+        with patch("api.music.service.connection_manager.MusicPlayer", DummyPlayer):
+            await self.manager.detach_stale_voice_client(
+                guild, cast(discord.VoiceProtocol, cast(object, player))
+            )
+
+        self.assertTrue(player.is_stale)
+        player.disconnect.assert_awaited_once_with(force=True)
+        guild.change_voice_state.assert_awaited_once_with(channel=None)
+        player.cleanup.assert_called_once()
+
     async def test_disconnect_suppresses_http_not_found_and_cleans_local_state(self):
         class DummyPlayer:
             def __init__(self) -> None:
                 self.channel = MagicMock()
                 self.disconnect = AsyncMock(side_effect=mafic.HTTPNotFound("missing"))
                 self.cleanup = MagicMock()
+                self._is_stale = False
+
+            @property
+            def is_stale(self) -> bool:
+                return self._is_stale
+
+            def mark_stale(self) -> None:
+                self._is_stale = True
 
         player = DummyPlayer()
         guild = MagicMock()
