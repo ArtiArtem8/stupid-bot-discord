@@ -17,7 +17,7 @@ from tests.api.music.helpers import make_entry, make_track
 
 
 def _make_player(*, current: QueueEntry | None = None) -> MusicPlayer:
-    player = MusicPlayer.__new__(MusicPlayer)
+    player = object.__new__(MusicPlayer)
     player.queue = QueueManager()
     player.repeat = RepeatManager(RepeatMode.OFF)
     player._next_entry_id = (current.entry_id + 1) if current else 1
@@ -900,7 +900,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
     async def test_voice_server_update_propagates_error_without_cleanup(
         self,
     ) -> None:
-        player = MusicPlayer.__new__(MusicPlayer)
+        player = object.__new__(MusicPlayer)
         with (
             patch.object(player, "cleanup") as cleanup,
             patch.object(
@@ -916,7 +916,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         cleanup.assert_not_called()
 
     async def test_update_propagates_error_without_cleanup(self) -> None:
-        player = MusicPlayer.__new__(MusicPlayer)
+        player = object.__new__(MusicPlayer)
         with (
             patch.object(player, "cleanup") as cleanup,
             patch.object(

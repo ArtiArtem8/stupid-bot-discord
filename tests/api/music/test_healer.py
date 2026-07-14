@@ -38,7 +38,7 @@ def _snapshot() -> PlayerStateSnapshot:
 
 
 def _runtime_player(current: PlaybackAttempt) -> MusicPlayer:
-    player = MusicPlayer.__new__(MusicPlayer)
+    player = object.__new__(MusicPlayer)
     player.queue = QueueManager()
     player.repeat = RepeatManager()
     player._next_entry_id = current.entry.entry_id + 1
@@ -289,7 +289,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         healer, connection, ui = self._make_warm_restore_healer()
         guild = MagicMock(id=1)
         entry = make_entry("warm")
-        player = MusicPlayer.__new__(MusicPlayer)
+        player = object.__new__(MusicPlayer)
         player.queue = QueueManager()
         player.repeat = RepeatManager()
         player._next_entry_id = 2
@@ -724,7 +724,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         connection.detach_stale_voice_client = AsyncMock()
         entry = make_entry("failed", requester_id=42)
         attempt = PlaybackAttempt(1, entry)
-        player = MusicPlayer.__new__(MusicPlayer)
+        player = object.__new__(MusicPlayer)
         player.queue = QueueManager()
         player.repeat = RepeatManager()
         player._next_entry_id = 1
