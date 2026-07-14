@@ -30,6 +30,7 @@ from repositories.volume_repository import VolumeRepository
 from .models import (
     ControllerDestroyReason,
     MusicResultStatus,
+    PlaybackAttempt,
     PlayerStateSnapshot,
     QueueEntry,
 )
@@ -121,6 +122,7 @@ class SessionHealer(HealerProtocol):
     async def _confirm_restored_track_active(
         self,
         player: MusicPlayer,
+        expected_attempt: PlaybackAttempt,
         *,
         guild_id: int,
         context: str,
@@ -128,37 +130,29 @@ class SessionHealer(HealerProtocol):
         """Confirm that Lavalink did not immediately drop the restored track."""
         await asyncio.sleep(RESTORE_CONFIRM_DELAY_SECONDS)
 
-        attempt = player.current_attempt
+        if player.current_attempt is not expected_attempt:
+            logger.debug(
+                "Restore confirmation superseded in guild %s during %s",
+                guild_id,
+                context,
+            )
+            return False
+
         current = player.current
-        usable = self.connection.is_player_usable(player)
-        synchronized = (
-            attempt is not None
+        if (
+            self.connection.is_player_usable(player)
             and current is not None
-            and tracks_match(attempt.entry.track, current)
-        )
-        if usable and synchronized:
+            and tracks_match(expected_attempt.entry.track, current)
+        ):
             return True
 
-        if attempt is not None:
-            await player.clear_current_attempt(attempt)
-
-        if not usable:
-            logger.warning(
-                "Restore failed for guild %s during %s: player became stale",
-                guild_id,
-                context,
-            )
-        else:
-            logger.warning(
-                "Restore failed for guild %s during %s: playback state desynchronized",
-                guild_id,
-                context,
-            )
-        await self.connection.detach_stale_voice_client(player.guild, player)
-        await self.ui.controller.destroy_for_guild(
+        logger.warning(
+            "Restore attempt failed confirmation in guild %s during %s",
             guild_id,
-            ControllerDestroyReason.TRACK_EXCEPTION,
+            context,
         )
+        await player.clear_current_attempt(expected_attempt)
+        await self.connection.detach_stale_voice_client(player.guild, player)
         return False
 
     async def _seek_after_warm_restore(
@@ -214,7 +208,7 @@ class SessionHealer(HealerProtocol):
         )
 
         try:
-            await player.restore_playback(
+            fallback_attempt = await player.restore_playback(
                 entry,
                 start_time=0,
                 volume=volume,
@@ -230,6 +224,7 @@ class SessionHealer(HealerProtocol):
 
         return await self._confirm_restored_track_active(
             player,
+            fallback_attempt,
             guild_id=player.guild.id,
             context="fallback-start-after-seek-failure",
         )
@@ -246,7 +241,7 @@ class SessionHealer(HealerProtocol):
     ) -> bool:
         """Play a restored track and confirm it survives early Lavalink failures."""
         try:
-            await player.restore_playback(
+            attempt = await player.restore_playback(
                 entry,
                 start_time=start_time,
                 volume=volume,
@@ -262,6 +257,7 @@ class SessionHealer(HealerProtocol):
 
         return await self._confirm_restored_track_active(
             player,
+            attempt,
             guild_id=player.guild.id,
             context="direct-restore",
         )
@@ -287,7 +283,7 @@ class SessionHealer(HealerProtocol):
 
         # Keep this silent during warmup so users do not hear the first second twice.
         try:
-            await player.restore_playback(
+            attempt = await player.restore_playback(
                 entry,
                 start_time=0,
                 volume=0,
@@ -303,6 +299,7 @@ class SessionHealer(HealerProtocol):
 
         active = await self._confirm_restored_track_active(
             player,
+            attempt,
             guild_id=player.guild.id,
             context="warm-start",
         )
