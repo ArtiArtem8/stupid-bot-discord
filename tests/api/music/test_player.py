@@ -690,54 +690,40 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         play_mock.assert_awaited_once_with(next_track, start_time=0)
         self.assertEqual(list(player.queue), [previous])
 
-    async def test_voice_server_update_suppresses_client_connection_error(
+    async def test_voice_server_update_propagates_error_without_cleanup(
         self,
     ) -> None:
         player = MusicPlayer.__new__(MusicPlayer)
-        player.cleanup = MagicMock()  # type: ignore[method-assign]
 
-        with patch.object(
-            mafic.Player,
-            "on_voice_server_update",
-            new=AsyncMock(side_effect=aiohttp.ClientConnectionError("down")),
+        with (
+            patch.object(player, "cleanup") as cleanup,
+            patch.object(
+                mafic.Player,
+                "on_voice_server_update",
+                new=AsyncMock(side_effect=aiohttp.ClientConnectionError("down")),
+            ),
+            self.assertRaises(aiohttp.ClientConnectionError),
         ):
             await player.on_voice_server_update(
                 cast(VoiceServerUpdatePayload, object())
             )
 
-        player.cleanup.assert_called_once()
+        cleanup.assert_not_called()
 
-    async def test_voice_server_update_suppresses_http_not_found(self) -> None:
-        player = MusicPlayer.__new__(MusicPlayer)
-        player.cleanup = MagicMock()  # type: ignore[method-assign]
-
-        with patch.object(
-            mafic.Player,
-            "on_voice_server_update",
-            new=AsyncMock(side_effect=mafic.HTTPNotFound("Session not found")),
-        ):
-            await player.on_voice_server_update(
-                cast(VoiceServerUpdatePayload, object())
-            )
-
-        player.cleanup.assert_called_once()
-
-    async def test_update_does_not_call_remote_disconnect_after_http_not_found(
+    async def test_update_propagates_error_without_cleanup(
         self,
     ) -> None:
         player = MusicPlayer.__new__(MusicPlayer)
-        player.cleanup = MagicMock()  # type: ignore[method-assign]
-        player.disconnect = AsyncMock(  # type: ignore[method-assign]
-            side_effect=mafic.HTTPNotFound("Session not found")
-        )
 
-        with patch.object(
-            mafic.Player,
-            "update",
-            new=AsyncMock(side_effect=mafic.HTTPNotFound("Session not found")),
+        with (
+            patch.object(player, "cleanup") as cleanup,
+            patch.object(
+                mafic.Player,
+                "update",
+                new=AsyncMock(side_effect=mafic.HTTPNotFound("Session not found")),
+            ),
+            self.assertRaises(mafic.HTTPNotFound),
         ):
-            with self.assertRaises(mafic.HTTPNotFound):
-                await player.update(pause=True)
+            await player.update(pause=True)
 
-        player.cleanup.assert_called_once()
-        player.disconnect.assert_not_awaited()
+        cleanup.assert_not_called()

@@ -26,6 +26,7 @@ from api.music import (
 )
 from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
 from api.music.protocols import ControllerManagerProtocol
+from api.music.service.connection_manager import ConnectionManager
 from framework import PRIMARY, BasePaginator, CallbackButton, PaginationData
 from utils import TextPaginator, truncate_text
 from utils.callables import callable_name
@@ -251,14 +252,20 @@ class SessionSummaryView(ui.View):
 
 
 class TrackControllerManager(ControllerManagerProtocol):
-    def __init__(self, bot: commands.Bot):
+    def __init__(
+        self,
+        bot: commands.Bot,
+        connection_manager: ConnectionManager,
+    ) -> None:
         """Initialize the TrackControllerManager.
 
         Args:
             bot: The bot instance.
+            connection_manager: Owner of player lifecycle invalidation.
 
         """
         self.bot = bot
+        self.connection = connection_manager
         self.controllers: dict[int, TrackControllerView] = {}
         self._active_messages: dict[int, tuple[int, int]] = {}
         self._locks = defaultdict(asyncio.Lock)
@@ -326,6 +333,7 @@ class TrackControllerManager(ControllerManagerProtocol):
                 guild_id=guild_id,
                 track_id=target_id,
                 on_stop_callback=on_view_stop_callback,
+                on_player_failure=self.connection.invalidate_player,
             )
 
             try:
@@ -470,6 +478,7 @@ class TrackControllerView(ui.View):
         track_id: TrackId,
         on_stop_callback: Callable[[Self, ControllerDestroyReason], Awaitable[None]]
         | None,
+        on_player_failure: Callable[[MusicPlayer], Awaitable[None]],
     ):
         super().__init__(timeout=None)
         self.user_id = user_id
@@ -477,6 +486,7 @@ class TrackControllerView(ui.View):
         self.guild_id = guild_id
         self.track_id = track_id
         self.on_stop_callback = on_stop_callback
+        self.on_player_failure = on_player_failure
 
         self.message: discord.Message | None = None
         self._task: asyncio.Task[None] | None = None
@@ -606,9 +616,9 @@ class TrackControllerView(ui.View):
 
     async def handle_player_io_error(self, interaction: Interaction) -> None:
         try:
-            self.player.cleanup()
+            await self.on_player_failure(self.player)
         except Exception:
-            logger.debug("Failed to cleanup controller player locally", exc_info=True)
+            logger.exception("Failed to invalidate controller player")
         await self._request_stop(ControllerDestroyReason.PLAYER_ERROR)
         await send_warning(
             interaction,

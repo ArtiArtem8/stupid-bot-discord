@@ -10,6 +10,7 @@ import mafic
 from discord.ext import commands
 from mafic.typings import LavalinkException
 
+from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
 from api.music.models import ControllerDestroyReason, TrackExceptionPayload, TrackId
 from api.music.player import MusicPlayer
 from api.music.protocols import HealerProtocol
@@ -215,12 +216,21 @@ class MusicEventHandlers:
         if reason is mafic.EndReason.LOAD_FAILED:
             self._clear_load_failure(player.guild.id, track_id)
 
-        if reason is mafic.EndReason.FINISHED:
-            await player.advance_after_end(track)
-        elif reason is mafic.EndReason.LOAD_FAILED:
-            await player.advance_after_end(track, force_skip=True)
-        elif reason is mafic.EndReason.STOPPED:
-            await player.start_queued_if_idle()
+        try:
+            if reason is mafic.EndReason.FINISHED:
+                await player.advance_after_end(track)
+            elif reason is mafic.EndReason.LOAD_FAILED:
+                await player.advance_after_end(track, force_skip=True)
+            elif reason is mafic.EndReason.STOPPED:
+                await player.start_queued_if_idle()
+        except EXPECTED_LAVALINK_IO_ERRORS as exc:
+            logger.warning(
+                "Track end transition failed in guild %s (reason=%s, error=%s)",
+                player.guild.id,
+                reason,
+                type(exc).__name__,
+            )
+            await self.connection.invalidate_player(player)
 
     def _extract_exception_details(
         self, exception: LavalinkException

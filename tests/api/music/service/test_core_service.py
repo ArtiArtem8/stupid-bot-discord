@@ -57,21 +57,31 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         channel = MagicMock()
         player = MagicMock()
         player.guild = guild
+        player.connected = True
+        player.set_volume = AsyncMock(side_effect=error)
+        player.cleanup = MagicMock()
+        guild.voice_client = player
 
         self.connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
         self.volume_repo.get_volume = AsyncMock(return_value=80)
 
-        apply_volume = AsyncMock(side_effect=error)
+        async def invalidate_player(failed_player: object) -> None:
+            self.assertIs(failed_player, player)
+            self.assertIs(guild.voice_client, player)
+            player.cleanup.assert_not_called()
 
-        with patch.object(self.service, "_apply_volume", apply_volume):
-            result = await self.service.join(guild, channel)
+        self.connection.invalidate_player.side_effect = invalidate_player
+
+        result = await self.service.join(guild, channel)
 
         self.assertEqual(
             result,
             (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
         )
         self.connection.invalidate_player.assert_awaited_once_with(player)
+        player.set_volume.assert_awaited_once_with(80)
+        player.cleanup.assert_not_called()
         self.connection.invalidate_node_and_players.assert_not_awaited()
         self.connection.get_player_node.assert_not_called()
         self.connection.mark_node_unavailable.assert_not_awaited()
