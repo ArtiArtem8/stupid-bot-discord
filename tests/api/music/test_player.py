@@ -299,6 +299,72 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(started, next_track)
         play_mock.assert_awaited_once_with(next_track, start_time=0)
 
+    async def test_load_failed_with_repeat_off_starts_next_and_preserves_queue(
+        self,
+    ) -> None:
+        failed = make_track("failed")
+        next_track = make_track("next")
+        remaining = make_track("remaining")
+        player = _make_player(current=failed)
+        player.queue.extend((next_track, remaining))
+
+        async def play(track: mafic.Track, **_: object) -> None:
+            player._current = track
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=play)):
+            started = await player.advance_after_end(failed, force_skip=True)
+
+        self.assertIs(started, next_track)
+        self.assertIs(player.current, next_track)
+        self.assertEqual(list(player.queue), [remaining])
+
+    async def test_load_failed_ignores_repeat_track(self) -> None:
+        failed = make_track("failed")
+        next_track = make_track("next")
+        player = _make_player(current=failed)
+        player.repeat.mode = RepeatMode.TRACK
+        player.queue.append(next_track)
+
+        async def play(track: mafic.Track, **_: object) -> None:
+            player._current = track
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=play)) as play_mock:
+            started = await player.advance_after_end(failed, force_skip=True)
+
+        self.assertIs(started, next_track)
+        play_mock.assert_awaited_once_with(next_track, start_time=0)
+        self.assertNotIn(failed, player.queue)
+
+    async def test_load_failed_ignores_repeat_queue_and_preserves_remaining(
+        self,
+    ) -> None:
+        failed = make_track("failed")
+        next_track = make_track("next")
+        remaining = make_track("remaining")
+        player = _make_player(current=failed)
+        player.repeat.mode = RepeatMode.QUEUE
+        player.queue.extend((next_track, remaining))
+
+        async def play(track: mafic.Track, **_: object) -> None:
+            player._current = track
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=play)):
+            started = await player.advance_after_end(failed, force_skip=True)
+
+        self.assertIs(started, next_track)
+        self.assertEqual(list(player.queue), [remaining])
+        self.assertNotIn(failed, player.queue)
+
+    async def test_load_failed_with_empty_queue_stops_player(self) -> None:
+        failed = make_track("failed")
+        player = _make_player(current=failed)
+
+        with patch.object(player, "stop", new=AsyncMock()) as stop_mock:
+            started = await player.advance_after_end(failed, force_skip=True)
+
+        self.assertIsNone(started)
+        stop_mock.assert_awaited_once()
+
     async def test_force_skip_ignores_repeat_track_mode(self) -> None:
         current = make_track("current")
         next_track = make_track("next")

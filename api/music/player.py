@@ -120,12 +120,28 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 previous_track=previous_track,
             )
 
-    async def advance_after_end(self, previous_track: Track) -> Track | None:
+    async def advance_after_end(
+        self,
+        previous_track: Track,
+        *,
+        force_skip: bool = False,
+    ) -> Track | None:
         """Advance after Lavalink reports a natural track end."""
         async with self._transition_lock:
             if self.current is not None:
-                return await self._handle_stale_end_unlocked(previous_track)
-            return await self._advance_unlocked(previous_track=previous_track)
+                if force_skip and self.current is previous_track:
+                    return await self._advance_unlocked(
+                        force_skip=True,
+                        previous_track=previous_track,
+                    )
+                return await self._handle_stale_end_unlocked(
+                    previous_track,
+                    force_skip=force_skip,
+                )
+            return await self._advance_unlocked(
+                force_skip=force_skip,
+                previous_track=previous_track,
+            )
 
     async def _advance_unlocked(
         self,
@@ -161,6 +177,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     async def _handle_stale_end_unlocked(
         self,
         previous_track: Track,
+        *,
+        force_skip: bool = False,
     ) -> Track | None:
         logger.debug(
             "Handling stale track end in guild %s for track %s; current is %s",
@@ -168,6 +186,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
             previous_track,
             self.current,
         )
+        if force_skip:
+            return None
         if self.repeat.mode is RepeatMode.TRACK:
             replacement_track = self.current
             if replacement_track is not None:

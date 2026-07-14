@@ -70,7 +70,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.mccabe]
-max-complexity = 10
+max-complexity = 9
 
 [tool.ruff.lint.isort]
 known-first-party = ["cogs", "utils"]
