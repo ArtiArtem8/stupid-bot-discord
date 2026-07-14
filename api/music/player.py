@@ -187,7 +187,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 self.queue.extend(entries)
             else:
                 self.queue.extend_front(entries)
-            if self._current_attempt is not None or self._pending_end_attempts:
+            if self._current_attempt is not None:
                 return None
             queued_state = self.queue.snapshot()
             entry = self.queue.pop_next()
@@ -272,12 +272,10 @@ class MusicPlayer(mafic.Player[discord.Client]):
         async with self._transition_lock:
             return await self._start_queued_if_idle_unlocked()
 
-    async def _start_queued_if_idle_unlocked(
-        self, *, after_pending_end: bool = False
-    ) -> PlaybackAttempt | None:
-        if self._current_attempt is not None or (
-            self._pending_end_attempts and not after_pending_end
-        ):
+    async def _start_queued_if_idle_unlocked(self) -> PlaybackAttempt | None:
+        # Pending attempts only attribute delayed events. The current attempt
+        # alone determines whether this player is busy.
+        if self._current_attempt is not None:
             return None
         entry = self.queue.pop_next()
         if entry is None:
@@ -299,21 +297,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
 
             pending = self._pop_pending_match_unlocked(track)
             if pending is not None:
-                try:
-                    started = (
-                        await self._start_queued_if_idle_unlocked(
-                            after_pending_end=True
-                        )
-                        if reason is mafic.EndReason.STOPPED
-                        else None
-                    )
-                except (Exception, asyncio.CancelledError):
-                    self.queue.restore(old_queue)
-                    self._pending_end_attempts = old_pending
-                    self._current_attempt = old_current
-                    raise
                 self._exception_attempt_ids.discard(pending.attempt_id)
-                return TrackEndOutcome(pending, started, False)
+                return TrackEndOutcome(pending, None, False)
 
             current = self.resolve_current_attempt(track)
             if current is None:
