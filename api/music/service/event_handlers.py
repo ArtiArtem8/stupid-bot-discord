@@ -11,7 +11,11 @@ from discord.ext import commands
 from mafic.typings import LavalinkException
 
 from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
-from api.music.models import ControllerDestroyReason, TrackExceptionPayload, TrackId
+from api.music.models import (
+    ControllerDestroyReason,
+    PlaybackAttempt,
+    TrackExceptionPayload,
+)
 from api.music.player import MusicPlayer
 from api.music.protocols import HealerProtocol
 from api.music.service.connection_manager import ConnectionManager
@@ -41,7 +45,7 @@ class MusicEventHandlers:
         self.ui = ui_orchestrator
         self.healer = healer
         self._healing_guilds: set[int] = set()
-        self._load_failures: dict[int, TrackId] = {}
+        self._load_failures: dict[int, set[int]] = {}
         self._recent_voice_transitions: dict[int, float] = {}
         self._voice_transition_validation_tasks: dict[int, asyncio.Task[None]] = {}
         self._unavailable_node_labels: set[str] = set()
@@ -126,13 +130,14 @@ class MusicEventHandlers:
         player = event.player
         guild_id = player.guild.id
         track = event.track
+        attempt = player.resolve_current_attempt(track)
+        if attempt is None:
+            return
 
-        self._load_failures.pop(guild_id, None)
-
-        self.state.record_track_start(guild_id)
+        self.state.record_track_start(guild_id, attempt)
         logger.debug("Track started in guild %d: %s", guild_id, track.title)
 
-        await self.ui.spawn_controller(player, track)
+        await self.ui.spawn_controller(player, attempt)
 
     async def _on_track_exception(
         self, event: mafic.TrackExceptionEvent[MusicPlayer]
@@ -151,15 +156,16 @@ class MusicEventHandlers:
             reason,
         )
 
-        track_id = TrackId.from_track(track)
-        if not self._claim_load_failure(player.guild.id, track_id):
+        attempt = await player.claim_track_exception(track)
+        if attempt is None:
             return
 
-        self._dispatch_track_exception(player, track, reason, severity)
+        self._load_failures.setdefault(player.guild.id, set()).add(attempt.attempt_id)
+        self._dispatch_track_exception(player, attempt, reason, severity)
         await self.ui.controller.destroy_for_guild(
             player.guild.id,
             ControllerDestroyReason.TRACK_EXCEPTION,
-            expected_track_id=track_id,
+            expected_attempt_id=attempt.attempt_id,
         )
 
     async def _on_track_stuck(self, event: mafic.TrackStuckEvent[MusicPlayer]) -> None:
@@ -171,7 +177,11 @@ class MusicEventHandlers:
         if not self._should_handle_player_event(event.player, "track_stuck"):
             return
 
-        guild_id = event.player.guild.id
+        player = event.player
+        guild_id = player.guild.id
+        attempt = await player.resolve_exception_attempt(event.track)
+        if attempt is None:
+            return
         logger.warning(
             "Track stuck in guild %s: %s",
             guild_id,
@@ -180,7 +190,7 @@ class MusicEventHandlers:
         await self.ui.controller.destroy_for_guild(
             guild_id,
             ControllerDestroyReason.TRACK_STUCK,
-            expected_track_id=TrackId.from_track(event.track),
+            expected_attempt_id=attempt.attempt_id,
         )
 
     async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
@@ -191,38 +201,8 @@ class MusicEventHandlers:
         track = event.track
         reason = event.reason
 
-        logger.debug("Track ended: %s (Reason: %s)", track.title, reason)
-
-        self.state.record_history(player, track, reason)
-
-        track_id = TrackId.from_track(track)
-        if reason is mafic.EndReason.LOAD_FAILED and self._claim_load_failure(
-            player.guild.id,
-            track_id,
-        ):
-            self._dispatch_track_exception(
-                player,
-                track,
-                reason="Lavalink: загрузка не удалась",
-                severity=None,
-            )
-
-        await self.ui.controller.destroy_for_guild(
-            player.guild.id,
-            ControllerDestroyReason.TRACK_END,
-            expected_track_id=track_id,
-        )
-
-        if reason is mafic.EndReason.LOAD_FAILED:
-            self._clear_load_failure(player.guild.id, track_id)
-
         try:
-            if reason is mafic.EndReason.FINISHED:
-                await player.advance_after_end(track)
-            elif reason is mafic.EndReason.LOAD_FAILED:
-                await player.advance_after_end(track, force_skip=True)
-            elif reason is mafic.EndReason.STOPPED:
-                await player.start_queued_if_idle()
+            outcome = await player.handle_track_end(track, reason)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             logger.warning(
                 "Track end transition failed in guild %s (reason=%s, error=%s)",
@@ -231,6 +211,32 @@ class MusicEventHandlers:
                 type(exc).__name__,
             )
             await self.connection.invalidate_player(player)
+            return
+
+        if outcome.is_stale or outcome.ended_attempt is None:
+            return
+
+        ended = outcome.ended_attempt
+        logger.debug("Track ended: %s (Reason: %s)", track.title, reason)
+        self.state.record_history(player.guild.id, ended, reason)
+
+        failures = self._load_failures.setdefault(player.guild.id, set())
+        if reason is mafic.EndReason.LOAD_FAILED and ended.attempt_id not in failures:
+            self._dispatch_track_exception(
+                player,
+                ended,
+                reason="Lavalink: загрузка не удалась",
+                severity=None,
+            )
+        failures.discard(ended.attempt_id)
+        if not failures:
+            self._load_failures.pop(player.guild.id, None)
+
+        await self.ui.controller.destroy_for_guild(
+            player.guild.id,
+            ControllerDestroyReason.TRACK_END,
+            expected_attempt_id=ended.attempt_id,
+        )
 
     def _extract_exception_details(
         self, exception: LavalinkException
@@ -242,27 +248,15 @@ class MusicEventHandlers:
         severity_text = str(severity) if severity else None
         return message_text, severity_text
 
-    def _claim_load_failure(self, guild_id: int, track_id: TrackId) -> bool:
-        """Claim the active load failure for this guild and track."""
-        if self._load_failures.get(guild_id) == track_id:
-            return False
-
-        self._load_failures[guild_id] = track_id
-        return True
-
-    def _clear_load_failure(self, guild_id: int, track_id: TrackId) -> None:
-        """Clear the active load failure only if it still matches this track."""
-        if self._load_failures.get(guild_id) == track_id:
-            self._load_failures.pop(guild_id, None)
-
     def _dispatch_track_exception(
         self,
         player: MusicPlayer,
-        track: mafic.Track,
+        attempt: PlaybackAttempt,
         reason: str,
         severity: str | None,
     ) -> None:
-        requester_info = player.get_requester(track)
+        track = attempt.entry.track
+        requester_info = attempt.entry.requester
         payload = TrackExceptionPayload(
             guild_id=player.guild.id,
             track=copy.copy(track),

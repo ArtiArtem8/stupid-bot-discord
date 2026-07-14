@@ -7,14 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiohttp
 from discord import Client, Interaction, ui
 
-from api.music.models import ControllerDestroyReason, TrackId
+from api.music.models import ControllerDestroyReason, PlaybackAttempt
 from cogs.music.views import TrackControllerManager, TrackControllerView
+from tests.api.music.helpers import make_entry
 
 
 class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
     async def test_old_track_destroy_does_not_remove_new_controller(self) -> None:
         manager = TrackControllerManager(MagicMock(), MagicMock())
-        current_view = MagicMock(track_id=TrackId("new"))
+        current_view = MagicMock(attempt_id=2)
         manager.controllers[1] = current_view
         cleanup_existing = AsyncMock()
 
@@ -22,7 +23,7 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
             await manager.destroy_for_guild(
                 1,
                 ControllerDestroyReason.TRACK_END,
-                expected_track_id=TrackId("old"),
+                expected_attempt_id=1,
             )
 
         cleanup_existing.assert_not_awaited()
@@ -38,8 +39,8 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
         manager.controllers[1] = old_view
         manager._active_messages[1] = (10, 20)
 
-        track = MagicMock(identifier="new-track")
-        new_player = MagicMock(current=track)
+        attempt = PlaybackAttempt(2, make_entry("new-track"))
+        new_player = MagicMock(current_attempt=attempt)
         message = MagicMock(id=21)
         message.channel.id = 10
         channel = MagicMock()
@@ -48,7 +49,6 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
         safe_delete_message = AsyncMock()
 
         with (
-            patch.object(manager, "_wait_for_sync", new=AsyncMock(return_value=True)),
             patch.object(manager, "_safe_delete_message", safe_delete_message),
             patch(
                 "cogs.music.views.TrackControllerView", return_value=new_view
@@ -59,7 +59,7 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
                 user_id=2,
                 channel=channel,
                 player=new_player,
-                track=track,
+                attempt=attempt,
             )
 
         old_view.stop.assert_called_once()
@@ -74,15 +74,15 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
 
 class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
     async def test_skip_calls_player_and_stops_controller_silently(self) -> None:
-        track = MagicMock(identifier="track")
-        player = MagicMock(current=track)
+        attempt = PlaybackAttempt(1, make_entry("track"))
+        player = MagicMock(current_attempt=attempt)
         player.skip = AsyncMock()
         on_stop = AsyncMock()
         view = TrackControllerView(
             user_id=10,
             player=player,
             guild_id=1,
-            track_id=TrackId("track"),
+            attempt_id=1,
             on_stop_callback=on_stop,
             on_player_failure=AsyncMock(),
         )
@@ -113,8 +113,8 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
     async def test_restart_acknowledges_before_player_seek(self) -> None:
         calls: list[str] = []
-        track = MagicMock(identifier="track")
-        player = MagicMock(current=track, paused=False)
+        attempt = PlaybackAttempt(1, make_entry("track"))
+        player = MagicMock(current_attempt=attempt, paused=False)
 
         async def seek(_position: int) -> None:
             calls.append("seek")
@@ -124,7 +124,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             user_id=10,
             player=player,
             guild_id=1,
-            track_id=TrackId("track"),
+            attempt_id=1,
             on_stop_callback=None,
             on_player_failure=AsyncMock(),
         )
@@ -154,8 +154,8 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls, ["ack", "seek"])
 
     async def test_pause_resume_handles_lavalink_io_error(self) -> None:
-        track = MagicMock(identifier="track")
-        player = MagicMock(current=track, paused=False)
+        attempt = PlaybackAttempt(1, make_entry("track"))
+        player = MagicMock(current_attempt=attempt, paused=False)
         player.pause = AsyncMock(side_effect=aiohttp.ClientConnectionError("down"))
         player.cleanup = MagicMock()
         on_stop = AsyncMock()
@@ -164,7 +164,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             user_id=10,
             player=player,
             guild_id=1,
-            track_id=TrackId("track"),
+            attempt_id=1,
             on_stop_callback=on_stop,
             on_player_failure=on_player_failure,
         )
@@ -202,7 +202,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             user_id=10,
             player=player,
             guild_id=1,
-            track_id=TrackId("track"),
+            attempt_id=1,
             on_stop_callback=on_stop,
             on_player_failure=on_player_failure,
         )

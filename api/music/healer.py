@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import override
 
 import discord
@@ -27,8 +26,14 @@ from api.music.service.ui_orchestrator import UIOrchestrator
 from api.music.session_events import dispatch_music_session_end
 from repositories.volume_repository import VolumeRepository
 
-from .models import ControllerDestroyReason, MusicResultStatus, PlayerStateSnapshot
-from .player import MusicPlayer
+from .models import (
+    ControllerDestroyReason,
+    MusicResultStatus,
+    PlaybackAttempt,
+    PlayerStateSnapshot,
+    QueueEntry,
+)
+from .player import MusicPlayer, tracks_match
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +121,7 @@ class SessionHealer(HealerProtocol):
     async def _confirm_restored_track_active(
         self,
         player: MusicPlayer,
+        expected_attempt: PlaybackAttempt,
         *,
         guild_id: int,
         context: str,
@@ -123,75 +129,159 @@ class SessionHealer(HealerProtocol):
         """Confirm that Lavalink did not immediately drop the restored track."""
         await asyncio.sleep(RESTORE_CONFIRM_DELAY_SECONDS)
 
-        if not self.connection.is_player_usable(player):
-            logger.warning(
-                "Restore failed for guild %s during %s: player became stale",
+        if self._is_expected_restore_attempt_active(player, expected_attempt):
+            return True
+
+        return await self._fail_expected_restore_attempt(
+            player,
+            expected_attempt,
+            guild_id=guild_id,
+            context=context,
+        )
+
+    def _is_expected_restore_attempt_active(
+        self,
+        player: MusicPlayer,
+        expected_attempt: PlaybackAttempt,
+    ) -> bool:
+        current = player.current
+        return (
+            player.current_attempt is expected_attempt
+            and self.connection.is_player_usable(player)
+            and current is not None
+            and tracks_match(expected_attempt.entry.track, current)
+        )
+
+    async def _fail_expected_restore_attempt(
+        self,
+        player: MusicPlayer,
+        expected_attempt: PlaybackAttempt,
+        *,
+        guild_id: int,
+        context: str,
+    ) -> bool:
+        claimed = await player.invalidate_if_current_attempt(expected_attempt)
+        if not claimed:
+            logger.debug(
+                "Restore attempt superseded in guild %s during %s",
                 guild_id,
                 context,
             )
-            await self.connection.detach_stale_voice_client(player.guild, player)
             return False
 
-        if not player.current:
+        logger.warning(
+            "Restore attempt failed in guild %s during %s",
+            guild_id,
+            context,
+        )
+        await self.connection.detach_stale_voice_client(player.guild, player)
+        return False
+
+    async def _restore_expected_attempt_state(
+        self,
+        player: MusicPlayer,
+        expected_attempt: PlaybackAttempt,
+        *,
+        guild_id: int,
+        volume: int,
+        pause: bool,
+        context: str,
+    ) -> PlaybackAttempt | None:
+        try:
+            restored = await player.restore_attempt_state(
+                expected_attempt,
+                volume=volume,
+                pause=pause,
+            )
+        except EXPECTED_LAVALINK_IO_ERRORS as exc:
             logger.warning(
-                "Restore failed for guild %s during %s: track did not stay active",
-                guild_id,
+                "Restore volume/pause failed with %s during %s",
+                type(exc).__name__,
                 context,
             )
-            await self.ui.controller.destroy_for_guild(
-                guild_id,
-                ControllerDestroyReason.TRACK_EXCEPTION,
+            await self._fail_expected_restore_attempt(
+                player,
+                expected_attempt,
+                guild_id=guild_id,
+                context=context,
             )
-            return False
+            return None
 
-        return True
+        if restored and self._is_expected_restore_attempt_active(
+            player, expected_attempt
+        ):
+            return expected_attempt
+
+        await self._fail_expected_restore_attempt(
+            player,
+            expected_attempt,
+            guild_id=guild_id,
+            context=context,
+        )
+        return None
 
     async def _seek_after_warm_restore(
         self,
         *,
         guild: discord.Guild,
         player: MusicPlayer,
-        track: mafic.Track,
+        entry: QueueEntry,
         position: int,
         volume: int,
         pause: bool,
-    ) -> bool:
+        expected_attempt: PlaybackAttempt,
+    ) -> PlaybackAttempt | None:
         """Seek after a successful warm restore.
 
         If the seek itself breaks playback, fall back to playing from the start
         instead of disconnecting from voice.
         """
         try:
-            await player.seek(position)
+            sought = await player.seek_attempt(expected_attempt, position)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             logger.warning(
                 "Restore seek to %sms failed with %s; keeping playback from start",
                 position,
                 type(exc).__name__,
             )
-            if player.current:
-                with contextlib.suppress(*EXPECTED_LAVALINK_IO_ERRORS):
-                    await player.set_volume(volume)
-                if pause:
-                    with contextlib.suppress(*EXPECTED_LAVALINK_IO_ERRORS):
-                        await player.pause()
-                return True
-            return False
+            return await self._restore_expected_attempt_state(
+                player,
+                expected_attempt,
+                guild_id=guild.id,
+                volume=volume,
+                pause=pause,
+                context="state-after-warm-seek-error",
+            )
+
+        if not sought:
+            await self._fail_expected_restore_attempt(
+                player,
+                expected_attempt,
+                guild_id=guild.id,
+                context="warm-seek-superseded",
+            )
+            return None
 
         await asyncio.sleep(RESTORE_SEEK_CONFIRM_DELAY_SECONDS)
 
-        if player.current:
-            try:
-                await player.set_volume(volume)
-                if pause:
-                    await player.pause()
-            except EXPECTED_LAVALINK_IO_ERRORS as exc:
-                logger.warning(
-                    "Restore post-seek state failed with %s",
-                    type(exc).__name__,
-                )
-                return False
-            return True
+        if self._is_expected_restore_attempt_active(player, expected_attempt):
+            return await self._restore_expected_attempt_state(
+                player,
+                expected_attempt,
+                guild_id=guild.id,
+                volume=volume,
+                pause=pause,
+                context="post-warm-seek-state",
+            )
+
+        if player.current_attempt is not expected_attempt:
+            await self._fail_expected_restore_attempt(
+                player,
+                expected_attempt,
+                guild_id=guild.id,
+                context="warm-seek-superseded",
+            )
+            return None
 
         logger.warning(
             "Restore seek to %sms killed playback; falling back to start",
@@ -199,8 +289,8 @@ class SessionHealer(HealerProtocol):
         )
 
         try:
-            await player.play(
-                track,
+            fallback_attempt = await player.restore_playback(
+                entry,
                 start_time=0,
                 volume=volume,
                 pause=pause,
@@ -210,29 +300,36 @@ class SessionHealer(HealerProtocol):
                 "Restore fallback playback from start failed with %s",
                 type(exc).__name__,
             )
-            await self.connection.detach_stale_voice_client(guild, player)
-            return False
+            await self._fail_expected_restore_attempt(
+                player,
+                expected_attempt,
+                guild_id=guild.id,
+                context="fallback-start-after-seek-failure",
+            )
+            return None
 
-        return await self._confirm_restored_track_active(
+        active = await self._confirm_restored_track_active(
             player,
+            fallback_attempt,
             guild_id=player.guild.id,
             context="fallback-start-after-seek-failure",
         )
+        return fallback_attempt if active else None
 
     async def _play_and_confirm_restore(
         self,
         *,
         guild: discord.Guild,
         player: MusicPlayer,
-        track: mafic.Track,
+        entry: QueueEntry,
         start_time: int,
         volume: int,
         pause: bool,
-    ) -> bool:
+    ) -> PlaybackAttempt | None:
         """Play a restored track and confirm it survives early Lavalink failures."""
         try:
-            await player.play(
-                track,
+            attempt = await player.restore_playback(
+                entry,
                 start_time=start_time,
                 volume=volume,
                 pause=pause,
@@ -243,24 +340,26 @@ class SessionHealer(HealerProtocol):
                 type(exc).__name__,
             )
             await self.connection.detach_stale_voice_client(guild, player)
-            return False
+            return None
 
-        return await self._confirm_restored_track_active(
+        active = await self._confirm_restored_track_active(
             player,
+            attempt,
             guild_id=player.guild.id,
             context="direct-restore",
         )
+        return attempt if active else None
 
     async def _play_with_warm_seek_restore(
         self,
         *,
         guild: discord.Guild,
         player: MusicPlayer,
-        track: mafic.Track,
+        entry: QueueEntry,
         position: int,
         volume: int,
         pause: bool,
-    ) -> bool:
+    ) -> PlaybackAttempt | None:
         """Restore YouTube playback by starting at 0, then seeking after startup."""
         logger.warning(
             (
@@ -272,11 +371,11 @@ class SessionHealer(HealerProtocol):
 
         # Keep this silent during warmup so users do not hear the first second twice.
         try:
-            await player.play(
-                track,
+            attempt = await player.restore_playback(
+                entry,
                 start_time=0,
                 volume=0,
-                pause=False,
+                pause=pause,
             )
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             logger.warning(
@@ -284,23 +383,25 @@ class SessionHealer(HealerProtocol):
                 type(exc).__name__,
             )
             await self.connection.detach_stale_voice_client(guild, player)
-            return False
+            return None
 
         active = await self._confirm_restored_track_active(
             player,
+            attempt,
             guild_id=player.guild.id,
             context="warm-start",
         )
         if not active:
-            return False
+            return None
 
         return await self._seek_after_warm_restore(
             guild=guild,
             player=player,
-            track=track,
+            entry=entry,
             position=position,
             volume=volume,
             pause=pause,
+            expected_attempt=attempt,
         )
 
     def _restore_start_time(self, track: mafic.Track, position: int) -> int:
@@ -436,21 +537,19 @@ class SessionHealer(HealerProtocol):
                 else None
             )
 
-        req_map = player._requester_map.copy()  # pyright: ignore[reportPrivateUsage]
         volume = await self.volume_repo.get_volume(guild_id=player.guild.id)
 
         return PlayerStateSnapshot(
             guild_id=player.guild.id,
             voice_channel_id=voice_channel_id,
             text_channel_id=text_channel_id,
-            current_track=player.current,
+            current_entry=player.current_entry,
             position=player.position or 0,
             is_paused=player.paused,
             volume=volume,
-            queue=list(player.queue._queue),  # pyright: ignore[reportPrivateUsage]
+            queue=list(player.queue_snapshot()),
             repeat_mode=player.repeat.mode,
             filters=None,
-            requester_map=req_map,
             session=session,
         )
 
@@ -474,6 +573,7 @@ class SessionHealer(HealerProtocol):
         if player is None:
             return False
 
+        self.state.clear_track_start_times(snapshot.guild_id)
         if not await self._restore_player_runtime_state(player, snapshot, target.guild):
             return False
 
@@ -528,13 +628,11 @@ class SessionHealer(HealerProtocol):
             )
         return player
 
-    def _restore_player_queue_and_requesters(
+    def _restore_player_entries(
         self, player: MusicPlayer, snapshot: PlayerStateSnapshot
     ) -> None:
-        player.queue._queue.clear()  # pyright: ignore[reportPrivateUsage]
-        player.queue._queue.extend(snapshot.queue)  # pyright: ignore[reportPrivateUsage]
+        player.restore_entries(snapshot.current_entry, snapshot.queue)
         player.repeat.mode = snapshot.repeat_mode
-        player._requester_map = snapshot.requester_map  # pyright: ignore[reportPrivateUsage]
 
     async def _restore_player_runtime_state(
         self,
@@ -542,7 +640,7 @@ class SessionHealer(HealerProtocol):
         snapshot: PlayerStateSnapshot,
         guild: discord.Guild,
     ) -> bool:
-        self._restore_player_queue_and_requesters(player, snapshot)
+        self._restore_player_entries(player, snapshot)
         if not await self._restore_player_volume(player, snapshot, guild):
             return False
 
@@ -578,10 +676,11 @@ class SessionHealer(HealerProtocol):
         snapshot: PlayerStateSnapshot,
         guild: discord.Guild,
     ) -> bool:
-        if snapshot.current_track is not None:
+        if snapshot.current_entry is not None:
             restored_track = await self._resolve_fresh_track_for_restore(
-                player, snapshot.current_track
+                player, snapshot.current_entry.track
             )
+            restored_entry = replace(snapshot.current_entry, track=restored_track)
 
             restore_position = max(0, snapshot.position)
 
@@ -589,7 +688,7 @@ class SessionHealer(HealerProtocol):
                 restored = await self._play_with_warm_seek_restore(
                     guild=guild,
                     player=player,
-                    track=restored_track,
+                    entry=restored_entry,
                     position=restore_position,
                     volume=snapshot.volume,
                     pause=snapshot.is_paused,
@@ -598,16 +697,26 @@ class SessionHealer(HealerProtocol):
                 restored = await self._play_and_confirm_restore(
                     guild=guild,
                     player=player,
-                    track=restored_track,
+                    entry=restored_entry,
                     start_time=restore_position,
                     volume=snapshot.volume,
                     pause=snapshot.is_paused,
                 )
 
-            if not restored:
+            if restored is None:
                 return False
 
-            await self.ui.spawn_controller(player, restored_track)
+            if not self._is_expected_restore_attempt_active(player, restored):
+                await self._fail_expected_restore_attempt(
+                    player,
+                    restored,
+                    guild_id=snapshot.guild_id,
+                    context="restore-orchestration",
+                )
+                return False
+
+            self.state.record_track_start(snapshot.guild_id, restored)
+            await self.ui.spawn_controller(player, restored)
 
         if snapshot.session is not None:
             session = snapshot.session

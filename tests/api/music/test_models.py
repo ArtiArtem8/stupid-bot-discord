@@ -1,8 +1,16 @@
 """Tests for explicit playable voice connection outcomes."""
 
 import unittest
+from dataclasses import FrozenInstanceError
 
-from api.music.models import MusicResultStatus, VoiceCheckResult
+from api.music.models import (
+    MusicResultStatus,
+    PlaybackAttempt,
+    QueueEntry,
+    TrackRequester,
+    VoiceCheckResult,
+)
+from tests.api.music.helpers import make_track
 
 
 class TestVoiceCheckResult(unittest.TestCase):
@@ -29,3 +37,16 @@ class TestVoiceCheckResult(unittest.TestCase):
             VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE.status,
             MusicResultStatus.FAILURE,
         )
+
+
+class TestPlaybackIdentityModels(unittest.TestCase):
+    def test_queue_entry_and_attempt_are_immutable_and_distinct(self) -> None:
+        requester = TrackRequester(1, 2)
+        entry = QueueEntry(3, make_track("track"), requester)
+        attempt = PlaybackAttempt(4, entry)
+
+        self.assertEqual(attempt.attempt_id, 4)
+        self.assertIs(attempt.entry, entry)
+        self.assertFalse(hasattr(entry, "__dict__"))
+        with self.assertRaises(FrozenInstanceError):
+            entry.__setattr__("entry_id", 5)

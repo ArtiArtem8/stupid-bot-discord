@@ -20,9 +20,9 @@ from api.music import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     ControllerDestroyReason,
     MusicSession,
+    PlaybackAttempt,
     QueueSnapshot,
     RepeatMode,
-    TrackId,
 )
 from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
 from api.music.protocols import ControllerManagerProtocol
@@ -35,7 +35,7 @@ from .responder import MusicInteractionResponder
 from .ui import send_warning
 
 if TYPE_CHECKING:
-    from api.music import MusicPlayer, Track
+    from api.music import MusicPlayer
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,10 @@ class QueuePaginationAdapter(PaginationData):
 
     def _build_paginator(self, snapshot: QueueSnapshot) -> TextPaginator:
         return TextPaginator(
-            [f"{i}. [{t.title}]({t.uri})" for i, t in enumerate(snapshot.queue, 1)],
+            [
+                f"{i}. [{entry.track.title}]({entry.track.uri})"
+                for i, entry in enumerate(snapshot.queue, 1)
+            ],
             page_size=self.page_size,
             max_length=config.MAX_EMBED_FIELD_LENGTH,
             separator="\n",
@@ -91,13 +94,14 @@ class QueuePaginationAdapter(PaginationData):
         current = self.snapshot.current
 
         if current:
+            track = current.track
             embed.add_field(
                 name="Сейчас играет",
-                value=f"[{escape_markdown(current.title)}]({current.uri})",
+                value=f"[{escape_markdown(track.title)}]({track.uri})",
                 inline=False,
             )
-            if current.artwork_url:
-                embed.set_thumbnail(url=current.artwork_url)
+            if track.artwork_url:
+                embed.set_thumbnail(url=track.artwork_url)
         else:
             embed.description = "Ничего не играет."
 
@@ -301,21 +305,13 @@ class TrackControllerManager(ControllerManagerProtocol):
         user_id: int,
         channel: discord.abc.Messageable,
         player: MusicPlayer,
-        track: Track,
+        attempt: PlaybackAttempt,
     ):
         """Creates a new controller, replacing any existing one safely."""
         async with self._locks[guild_id]:
             logger.debug(f"Manager: Setup controller for guild {guild_id}")
-            target_id = TrackId.from_track(track)
-
-            if not await self._wait_for_sync(player, target_id, timeout=2.0):
-                current_id = (
-                    TrackId.from_track(player.current) if player.current else "None"
-                )
-                logger.debug(
-                    "Manager: Aborting. Player state desynced. "
-                    + f"Expected: {target_id}, Got: {current_id}",
-                )
+            if player.current_attempt is not attempt:
+                logger.debug("Manager: Aborting stale controller creation")
                 return
 
             await self._cleanup_existing(
@@ -331,7 +327,7 @@ class TrackControllerManager(ControllerManagerProtocol):
                 user_id=user_id,
                 player=player,
                 guild_id=guild_id,
-                track_id=target_id,
+                attempt_id=attempt.attempt_id,
                 on_stop_callback=on_view_stop_callback,
                 on_player_failure=self.connection.invalidate_player,
             )
@@ -347,7 +343,9 @@ class TrackControllerManager(ControllerManagerProtocol):
                 self._active_messages[guild_id] = (msg.channel.id, msg.id)
 
                 view.start_updater()
-                logger.debug(f"Manager: Controller active for {target_id.id}")
+                logger.debug(
+                    "Manager: Controller active for attempt %s", attempt.attempt_id
+                )
 
             except Exception as e:
                 logger.exception(f"Failed to send controller: {e}")
@@ -360,7 +358,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         reason: ControllerDestroyReason,
         requesting_view: TrackControllerView | None = None,
         *,
-        expected_track_id: TrackId | None = None,
+        expected_attempt_id: int | None = None,
     ) -> None:
         """Destroys the controller for a guild.
         If requesting_view is provided, only destroys if current active view.
@@ -376,14 +374,13 @@ class TrackControllerManager(ControllerManagerProtocol):
                 )
                 return
             if (
-                expected_track_id
+                expected_attempt_id is not None
                 and current_view
-                and current_view.track_id != expected_track_id
+                and current_view.attempt_id != expected_attempt_id
             ):
                 logger.debug(
-                    "Manager: Ignoring %s destroy for old track %s in guild %s",
+                    "Manager: Ignoring %s destroy for old attempt in guild %s",
                     reason.value,
-                    expected_track_id.id,
                     guild_id,
                 )
                 return
@@ -414,23 +411,6 @@ class TrackControllerManager(ControllerManagerProtocol):
                 await self._safe_delete_message(chan_id, msg_id)
             except Exception as e:
                 logger.warning("Failed to delete message: %s", e)
-
-    async def _wait_for_sync(
-        self, player: MusicPlayer, target_id: TrackId, timeout: float = 2.0
-    ) -> bool:
-        """Helper to wait for player state to match target track."""
-
-        async def check():
-            while True:
-                if player.current and TrackId.from_track(player.current) == target_id:
-                    return
-                await asyncio.sleep(0.1)
-
-        try:
-            await asyncio.wait_for(check(), timeout=timeout)
-            return True
-        except asyncio.TimeoutError:
-            return False
 
 
 type ButtonCallback = Callable[
@@ -475,7 +455,7 @@ class TrackControllerView(ui.View):
         user_id: int,
         player: MusicPlayer,
         guild_id: int,
-        track_id: TrackId,
+        attempt_id: int,
         on_stop_callback: Callable[[Self, ControllerDestroyReason], Awaitable[None]]
         | None,
         on_player_failure: Callable[[MusicPlayer], Awaitable[None]],
@@ -484,7 +464,7 @@ class TrackControllerView(ui.View):
         self.user_id = user_id
         self.player = player
         self.guild_id = guild_id
-        self.track_id = track_id
+        self.attempt_id = attempt_id
         self.on_stop_callback = on_stop_callback
         self.on_player_failure = on_player_failure
 
@@ -511,9 +491,10 @@ class TrackControllerView(ui.View):
         super().stop()
 
     def make_embed(self) -> discord.Embed:
-        track = self.player.current
-        if not track:
+        attempt = self.player.current_attempt
+        if attempt is None or attempt.attempt_id != self.attempt_id:
             return discord.Embed(title="Playback Stopped", color=config.Color.INFO)
+        track = attempt.entry.track
 
         if self._is_paused_cache:
             pos = self._frozen_position
@@ -585,9 +566,9 @@ class TrackControllerView(ui.View):
             while self._running:
                 await asyncio.sleep(self.update_interval)
 
-                current_track = self.player.current
+                current_attempt = self.player.current_attempt
 
-                if not current_track:
+                if not current_attempt:
                     failure_count = await self._handle_missing_track(
                         failure_count, MAX_FAILURES
                     )
@@ -595,7 +576,7 @@ class TrackControllerView(ui.View):
                         return
                     continue
 
-                if await self._handle_track_change(current_track):
+                if await self._handle_track_change(current_attempt):
                     return
 
                 failure_count = 0
@@ -637,15 +618,14 @@ class TrackControllerView(ui.View):
             return None
         return failure_count
 
-    async def _handle_track_change(self, current_track: Track) -> bool:
-        current_id = TrackId.from_track(current_track)
-        if current_id == self.track_id:
+    async def _handle_track_change(self, current_attempt: PlaybackAttempt) -> bool:
+        if current_attempt.attempt_id == self.attempt_id:
             return False
 
         logger.debug(
             "View: Track changed (%s -> %s). Requesting stop.",
-            self.track_id,
-            current_id,
+            self.attempt_id,
+            current_attempt.attempt_id,
         )
         await self._request_stop(ControllerDestroyReason.TRACK_CHANGED)
         return True
@@ -725,8 +705,8 @@ class TrackControllerView(ui.View):
         if not await self._check_owner(interaction):
             return False
         await MusicInteractionResponder(interaction).acknowledge_component()
-        current = self.player.current
-        if not current or TrackId.from_track(current) != self.track_id:
+        current = self.player.current_attempt
+        if not current or current.attempt_id != self.attempt_id:
             await self._request_stop(ControllerDestroyReason.STALE_VIEW)
             return False
         return True

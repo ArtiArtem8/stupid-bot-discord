@@ -7,25 +7,25 @@ from collections import deque
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
-from .models import RepeatMode, Track
+from .models import QueueEntry, RepeatMode
 
 
 class QueueManager:
     """Manages the track queue using a deque."""
 
     def __init__(self) -> None:
-        self._queue: deque[Track] = deque()
+        self._queue: deque[QueueEntry] = deque()
 
     def __len__(self) -> int:
         """Return the number of tracks in the queue."""
         return len(self._queue)
 
-    def __iter__(self) -> Iterator[Track]:
+    def __iter__(self) -> Iterator[QueueEntry]:
         """Return an iterator over the tracks in the queue."""
         return iter(self._queue)
 
     @property
-    def next(self) -> Track | None:
+    def next(self) -> QueueEntry | None:
         """Peek at the next track without removing it."""
         return self._queue[0] if self._queue else None
 
@@ -37,25 +37,25 @@ class QueueManager:
     @property
     def duration(self) -> int:
         """Total duration of queue in milliseconds."""
-        return sum(t.length for t in self._queue)
+        return sum(entry.track.length for entry in self._queue)
 
-    def append(self, track: Track) -> None:
+    def append(self, entry: QueueEntry) -> None:
         """Add a single track to the end of the queue."""
-        self._queue.append(track)
+        self._queue.append(entry)
 
-    def extend(self, tracks: Iterable[Track]) -> None:
+    def extend(self, entries: Iterable[QueueEntry]) -> None:
         """Add multiple tracks to the end of the queue."""
-        self._queue.extend(tracks)
+        self._queue.extend(entries)
 
-    def prepend(self, track: Track) -> None:
+    def prepend(self, entry: QueueEntry) -> None:
         """Add a single track to the front of the queue."""
-        self._queue.appendleft(track)
+        self._queue.appendleft(entry)
 
-    def extend_front(self, tracks: Iterable[Track]) -> None:
+    def extend_front(self, entries: Iterable[QueueEntry]) -> None:
         """Add multiple tracks to the front of the queue, preserving order."""
-        self._queue.extendleft(reversed(tuple(tracks)))
+        self._queue.extendleft(reversed(tuple(entries)))
 
-    def pop_next(self) -> Track | None:
+    def pop_next(self) -> QueueEntry | None:
         """Pop the next track from the queue."""
         if not self._queue:
             return None
@@ -72,6 +72,14 @@ class QueueManager:
     def clear(self) -> None:
         """Clear the queue."""
         self._queue.clear()
+
+    def snapshot(self) -> tuple[QueueEntry, ...]:
+        """Return the queue contents in playback order."""
+        return tuple(self._queue)
+
+    def restore(self, entries: Iterable[QueueEntry]) -> None:
+        """Replace the queue contents while preserving entry identity."""
+        self._queue = deque(entries)
 
 
 @dataclass(slots=True)
