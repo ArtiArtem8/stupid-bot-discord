@@ -4,7 +4,6 @@ import asyncio
 import copy
 import logging
 import time
-from typing import TYPE_CHECKING
 
 import discord
 import mafic
@@ -12,13 +11,11 @@ from discord.ext import commands
 from mafic.typings import LavalinkException
 
 from api.music.models import ControllerDestroyReason, TrackExceptionPayload, TrackId
+from api.music.player import MusicPlayer
 from api.music.protocols import HealerProtocol
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
-
-if TYPE_CHECKING:
-    from api.music.player import MusicPlayer
 
 logger = logging.getLogger(__name__)
 
@@ -96,23 +93,30 @@ class MusicEventHandlers:
             logger.warning("Lavalink node '%s' became unavailable", node.label)
             self._unavailable_node_labels.add(node.label)
 
-        await self.connection.mark_node_unavailable(node)
-        await self._cleanup_after_node_unavailable()
+        players: list[MusicPlayer] = []
+        for player in node.players:
+            if isinstance(player, MusicPlayer):
+                players.append(player)
+        affected_guild_ids: set[int] = {player.guild.id for player in players}
+        try:
+            if players:
+                await self.connection.invalidate_node_and_players(players[0])
+            else:
+                await self.connection.mark_node_unavailable(node)
+        finally:
+            await self._cleanup_after_node_unavailable(affected_guild_ids)
 
-    async def _cleanup_after_node_unavailable(self) -> None:
-        for guild in self.bot.guilds:
-            self._load_failures.pop(guild.id, None)
+    async def _cleanup_after_node_unavailable(
+        self,
+        affected_guild_ids: set[int],
+    ) -> None:
+        for guild_id in affected_guild_ids:
+            self._load_failures.pop(guild_id, None)
             await self.ui.controller.destroy_for_guild(
-                guild.id,
+                guild_id,
                 ControllerDestroyReason.PLAYER_ERROR,
             )
-            self.state.cancel_timer(guild.id)
-
-            voice_client = guild.voice_client
-            if not isinstance(voice_client, mafic.Player):
-                continue
-
-            await self.connection.detach_stale_voice_client(guild, voice_client)  # pyright: ignore[reportUnknownArgumentType]
+            self.state.cancel_timer(guild_id)
 
     async def _on_track_start(self, event: mafic.TrackStartEvent[MusicPlayer]) -> None:
         if not self._should_handle_player_event(event.player, "track_start"):
@@ -211,8 +215,10 @@ class MusicEventHandlers:
         if reason is mafic.EndReason.LOAD_FAILED:
             self._clear_load_failure(player.guild.id, track_id)
 
-        if reason in (mafic.EndReason.FINISHED, mafic.EndReason.LOAD_FAILED):
+        if reason is mafic.EndReason.FINISHED:
             await player.advance_after_end(track)
+        elif reason is mafic.EndReason.LOAD_FAILED:
+            await player.advance_after_end(track, force_skip=True)
         elif reason is mafic.EndReason.STOPPED:
             await player.start_queued_if_idle()
 

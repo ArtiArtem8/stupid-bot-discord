@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -11,14 +10,27 @@ import mafic
 
 from .models import MUSIC_SERVICE_UNAVAILABLE_MESSAGE, NodeNotConnectedError
 
-EXPECTED_LAVALINK_IO_ERRORS = (
-    aiohttp.ClientError,
+NODE_TRANSPORT_ERRORS = (aiohttp.ClientError,)
+
+PLAYER_LIFECYCLE_ERRORS = (
     mafic.HTTPNotFound,
-    mafic.PlayerException,
     mafic.PlayerNotConnected,
-    TimeoutError,
-    asyncio.TimeoutError,
 )
+
+EXPECTED_LAVALINK_IO_ERRORS = (
+    *NODE_TRANSPORT_ERRORS,
+    TimeoutError,
+    *PLAYER_LIFECYCLE_ERRORS,
+    mafic.PlayerException,
+)
+
+
+def is_player_lifecycle_error(exc: Exception) -> bool:
+    """Return whether an error means the player lifecycle is no longer usable."""
+    return isinstance(exc, PLAYER_LIFECYCLE_ERRORS) or (
+        isinstance(exc, mafic.PlayerException)
+        and not isinstance(exc, mafic.TrackLoadException)
+    )
 
 
 class MusicErrorCode(StrEnum):
@@ -45,20 +57,17 @@ def classify_music_exception(exc: Exception) -> UserFacingMusicError:
             MusicErrorCode.SOURCE_UNAVAILABLE,
             "Не удалось загрузить трек. Источник временно недоступен или не ответил.",
         )
-    if isinstance(exc, NodeNotConnectedError):
-        return UserFacingMusicError(
-            MusicErrorCode.MUSIC_NODE_UNAVAILABLE,
-            MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
-        )
-    if isinstance(exc, EXPECTED_LAVALINK_IO_ERRORS):
-        return UserFacingMusicError(
-            MusicErrorCode.MUSIC_NODE_UNAVAILABLE,
-            MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
-        )
-    if isinstance(exc, (mafic.PlayerNotConnected, mafic.PlayerException)):
+    if is_player_lifecycle_error(exc):
         return UserFacingMusicError(
             MusicErrorCode.PLAYER_DISCONNECTED,
             "Плеер потерял соединение. Попробуйте запустить трек ещё раз.",
+        )
+    if isinstance(exc, NODE_TRANSPORT_ERRORS) or isinstance(
+        exc, (TimeoutError, NodeNotConnectedError)
+    ):
+        return UserFacingMusicError(
+            MusicErrorCode.MUSIC_NODE_UNAVAILABLE,
+            MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
         )
     return UserFacingMusicError(
         MusicErrorCode.INTERNAL,

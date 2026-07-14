@@ -34,6 +34,8 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.connection.get_player_node = MagicMock(return_value=None)
         self.connection.mark_node_unavailable = AsyncMock()
         self.connection.detach_stale_voice_client = AsyncMock()
+        self.connection.invalidate_player = AsyncMock()
+        self.connection.invalidate_node_and_players = AsyncMock()
         self.state = MagicMock()
         self.volume_repo = MagicMock()
         self.events = MagicMock()
@@ -69,11 +71,73 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             result,
             (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
         )
-        self.connection.mark_node_unavailable.assert_awaited_once()
-        self.connection.detach_stale_voice_client.assert_awaited_once_with(
-            guild,
-            player,
+        self.connection.invalidate_player.assert_awaited_once_with(player)
+        self.connection.invalidate_node_and_players.assert_not_awaited()
+        self.connection.get_player_node.assert_not_called()
+        self.connection.mark_node_unavailable.assert_not_awaited()
+        self.connection.detach_stale_voice_client.assert_not_awaited()
+
+    async def test_player_io_failure_uses_player_scope_with_safe_message(
+        self,
+    ) -> None:
+        player = MagicMock()
+        player_disconnected_message = (
+            "Плеер потерял соединение. Попробуйте запустить трек ещё раз."
         )
+        cases = (
+            (
+                aiohttp.ClientConnectionError("down"),
+                MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+            ),
+            (TimeoutError("timed out"), MUSIC_SERVICE_UNAVAILABLE_MESSAGE),
+            (mafic.HTTPNotFound("missing"), player_disconnected_message),
+            (mafic.PlayerNotConnected(), player_disconnected_message),
+            (mafic.PlayerException("failed"), player_disconnected_message),
+        )
+
+        for error, expected_message in cases:
+            with self.subTest(error=type(error).__name__):
+                self.connection.invalidate_node_and_players.reset_mock()
+                self.connection.invalidate_player.reset_mock()
+
+                result: MusicResult[
+                    object
+                ] = await self.service._handle_player_io_failure(player, error)
+
+                self.connection.invalidate_player.assert_awaited_once_with(player)
+                self.connection.invalidate_node_and_players.assert_not_awaited()
+                self.assertIs(result.status, MusicResultStatus.FAILURE)
+                self.assertEqual(result.message, expected_message)
+
+        self.connection.get_player_node.assert_not_called()
+        self.connection.mark_node_unavailable.assert_not_awaited()
+        self.connection.detach_stale_voice_client.assert_not_awaited()
+
+    async def test_player_operation_failure_does_not_remove_shared_node(self) -> None:
+        node = MagicMock(available=True)
+        player_a = MagicMock(is_stale=False, _node=node)
+        player_b = MagicMock(is_stale=False, _node=node)
+        player_b.disconnect = AsyncMock()
+        node.players = [player_a, player_b]
+
+        async def invalidate_failed_player(player: object) -> None:
+            self.assertIs(player, player_a)
+            player_a.is_stale = True
+
+        self.connection.invalidate_player.side_effect = invalidate_failed_player
+
+        await self.service._handle_player_io_failure(
+            player_a,
+            aiohttp.ClientConnectionError("guild A request failed"),
+        )
+
+        self.connection.invalidate_player.assert_awaited_once_with(player_a)
+        self.connection.invalidate_node_and_players.assert_not_awaited()
+        self.connection.mark_node_unavailable.assert_not_awaited()
+        self.assertTrue(node.available)
+        self.assertTrue(player_a.is_stale)
+        self.assertFalse(player_b.is_stale)
+        player_b.disconnect.assert_not_awaited()
 
     async def test_initialize_does_not_raise_when_connection_unavailable(self) -> None:
         await self.service.initialize()
@@ -123,6 +187,42 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(result.status, MusicResultStatus.FAILURE)
         self.assertEqual(result.message, "Nothing found")
+
+    async def test_play_track_load_failure_keeps_current_player_and_controller(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        current_track = make_track("current")
+        error = mafic.TrackLoadException(
+            message="load failed",
+            severity="COMMON",
+            cause="backend detail",
+        )
+        player = MagicMock(current=current_track, is_stale=False)
+        player.fetch_tracks = AsyncMock(side_effect=error)
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        self.connection.get_player.return_value = player
+        self.ui.controller.destroy_for_guild = AsyncMock()
+
+        with patch.object(self.service, "join", join):
+            result = await self.service.play(
+                guild,
+                MagicMock(),
+                "query",
+                requester_id=1,
+                text_channel_id=2,
+            )
+
+        self.connection.invalidate_player.assert_not_awaited()
+        self.connection.invalidate_node_and_players.assert_not_awaited()
+        self.assertFalse(player.is_stale)
+        self.assertIs(player.current, current_track)
+        self.ui.controller.destroy_for_guild.assert_not_awaited()
+        self.assertIs(result.status, MusicResultStatus.FAILURE)
+        self.assertEqual(
+            result.message,
+            "Не удалось загрузить трек. Источник временно недоступен или не ответил.",
+        )
 
     async def test_play_enqueues_single_track_at_end_by_default(self) -> None:
         guild = MagicMock(id=123)

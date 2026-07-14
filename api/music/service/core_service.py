@@ -9,7 +9,10 @@ import discord
 import mafic
 from discord.ext import commands
 
-from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS, classify_music_exception
+from api.music.errors import (
+    EXPECTED_LAVALINK_IO_ERRORS,
+    classify_music_exception,
+)
 from api.music.models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     ControllerDestroyReason,
@@ -328,7 +331,9 @@ class CoreMusicService:
     async def _handle_play_expected_failure(
         self, player: MusicPlayer, query: str, exc: Exception
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        if isinstance(exc, EXPECTED_LAVALINK_IO_ERRORS):
+        if not isinstance(exc, mafic.TrackLoadException) and isinstance(
+            exc, EXPECTED_LAVALINK_IO_ERRORS
+        ):
             await self._handle_player_io_failure(player, exc)
         logger.warning("Expected play failure for query '%s': %s", query, exc)
         safe_error = classify_music_exception(exc)
@@ -541,15 +546,11 @@ class CoreMusicService:
         self, player: MusicPlayer, exc: Exception
     ) -> MusicResult[T]:
         logger.warning("Lavalink player IO failure: %s", type(exc).__name__)
-        node = self.connection.get_player_node(player)
-        if node is not None:
-            await self.connection.mark_node_unavailable(node)
-        else:
-            await self.connection.mark_node_unavailable()
-        await self.connection.detach_stale_voice_client(player.guild, player)
+        await self.connection.invalidate_player(player)
+        safe_error = classify_music_exception(exc)
         return MusicResult(
             MusicResultStatus.FAILURE,
-            MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+            safe_error.message,
         )
 
     async def check_auto_leave(self) -> None:

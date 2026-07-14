@@ -91,6 +91,9 @@ class ConnectionManager:
         """Return whether the pool has a usable Lavalink node."""
         return any(getattr(node, "available", False) for node in self.pool.nodes)
 
+    def _pool_contains_node(self, node: mafic.Node[commands.Bot]) -> bool:
+        return self.pool.label_to_node.get(node.label) is node
+
     def is_known_unavailable(self) -> bool:
         """Return whether the last lazy connection attempt failed recently."""
         return bool(self._last_connect_error) and not self.has_ready_node()
@@ -133,6 +136,32 @@ class ConnectionManager:
                 await self._remove_or_close_node(node)
 
             await self._cleanup_unavailable_nodes()
+
+    async def invalidate_player(self, player: MusicPlayer) -> None:
+        """Mark a failed player stale and detach its local voice client."""
+        player.mark_stale()
+        await self.detach_stale_voice_client(player.guild, player)
+
+    async def invalidate_node_and_players(self, player: MusicPlayer) -> None:
+        """Invalidate the player's node, then detach all of its players locally."""
+        node = self.get_player_node(player)
+        players: list[MusicPlayer] = []
+        if node is not None:
+            for candidate in node.players:
+                if isinstance(candidate, MusicPlayer):
+                    players.append(candidate)
+        if all(candidate is not player for candidate in players):
+            players.append(player)
+        for candidate in players:
+            candidate.mark_stale()
+        try:
+            await self.mark_node_unavailable(node)
+        finally:
+            for candidate in players:
+                await self._cleanup_voice_client_locally(
+                    candidate.guild,
+                    candidate,
+                )
 
     async def ensure_available(self) -> bool:
         """Lazily connect to Lavalink, respecting the retry cooldown."""
@@ -184,7 +213,7 @@ class ConnectionManager:
 
     async def _remove_or_close_node(self, node: mafic.Node[commands.Bot]) -> None:
         try:
-            if node in self.pool.nodes:
+            if self._pool_contains_node(node):
                 await self.pool.remove_node(node, transfer_players=False)
                 return
         except Exception:
@@ -194,7 +223,7 @@ class ConnectionManager:
 
     async def _cleanup_unavailable_nodes(self) -> None:
         """Close unusable Mafic nodes left behind by a failed connection attempt."""
-        nodes = list(self.pool.nodes)
+        nodes = list(self.pool.label_to_node.values())
         for node in nodes:
             if getattr(node, "available", False):
                 continue
@@ -285,16 +314,22 @@ class ConnectionManager:
             return VoiceCheckResult.ALREADY_CONNECTED, None
 
         if isinstance(voice_client, MusicPlayer):
-            return await self._reuse_or_move_player(guild, voice_client, channel)
+            return await self._reuse_or_move_player(voice_client, channel)
         return None
 
     async def _detach_unusable_player(
         self, guild: discord.Guild, player: MusicPlayer
     ) -> None:
         node = self.get_player_node(player)
-        if node is not None and node in self.pool.nodes:
-            await self.mark_node_unavailable(node)
-        await self.detach_stale_voice_client(guild, player)
+        if (
+            self.is_current_player(player)
+            and node is not None
+            and self._pool_contains_node(node)
+            and not node.available
+        ):
+            await self.invalidate_node_and_players(player)
+        else:
+            await self.invalidate_player(player)
         logger.debug(
             "Detached stale voice client for guild %s; remaining voice_client=%r",
             guild.id,
@@ -316,18 +351,18 @@ class ConnectionManager:
 
     async def _reuse_or_move_player(
         self,
-        guild: discord.Guild,
         player: MusicPlayer,
         channel: discord.VoiceChannel | discord.StageChannel,
     ) -> VoiceJoinResult:
         old_channel = cast(discord.abc.GuildChannel, cast(object, player.channel))
         if not self.is_player_usable(player):
-            await self.detach_stale_voice_client(guild, player)
+            await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         try:
             await player.move_to(channel, timeout=5.0)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            await self._handle_voice_client_io_failure(guild, player, exc)
+            logger.warning("Lavalink voice client failure: %s", type(exc).__name__)
+            await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         return VoiceCheckResult.MOVED_CHANNELS, old_channel
 
@@ -344,21 +379,9 @@ class ConnectionManager:
             "Lavalink IO failure while joining voice: %s", type(exc).__name__
         )
         if isinstance(guild.voice_client, MusicPlayer):
-            await self._handle_voice_client_io_failure(guild, guild.voice_client, exc)
+            await self.invalidate_player(guild.voice_client)
             return
         await self._detach_voice_client_after_failed_connect(guild)
-        await self.mark_node_unavailable()
-
-    async def _handle_voice_client_io_failure(
-        self, guild: discord.Guild, voice_client: MusicPlayer, exc: Exception
-    ) -> None:
-        logger.warning("Lavalink voice client failure: %s", type(exc).__name__)
-        node = self.get_player_node(voice_client)
-        if node is not None:
-            await self.mark_node_unavailable(node)
-        else:
-            await self.mark_node_unavailable()
-        await self.detach_stale_voice_client(guild, voice_client)
 
     def _bot_voice_channel(
         self, guild: discord.Guild
@@ -373,9 +396,13 @@ class ConnectionManager:
     async def detach_stale_voice_client(
         self, guild: discord.Guild, voice_client: discord.VoiceProtocol
     ) -> None:
-        """Best-effort local voice cleanup that never exposes Lavalink IO errors."""
+        """Best-effort stale voice cleanup that never exposes Lavalink IO errors."""
         if isinstance(voice_client, MusicPlayer):
             voice_client.mark_stale()
+
+        if guild.voice_client is not voice_client:
+            logger.debug("Skipping disconnect for non-current voice client")
+            return
 
         try:
             await voice_client.disconnect(force=True)
@@ -384,10 +411,26 @@ class ConnectionManager:
         except Exception:
             logger.debug("Failed to disconnect stale music player", exc_info=True)
 
+        await self._cleanup_voice_client_locally(guild, voice_client)
+
+    async def _cleanup_voice_client_locally(
+        self,
+        guild: discord.Guild,
+        voice_client: discord.VoiceProtocol,
+    ) -> None:
+        """Best-effort local cleanup without another remote disconnect."""
+        if guild.voice_client is not voice_client:
+            logger.debug("Skipping local cleanup for non-current voice client")
+            return
+
         try:
             await guild.change_voice_state(channel=None)
         except Exception:
             logger.debug("Failed to clear guild voice state locally", exc_info=True)
+
+        if guild.voice_client is not voice_client:
+            logger.debug("Skipping cache cleanup for non-current voice client")
+            return
 
         try:
             await maybe_coroutine(voice_client.cleanup)
@@ -409,17 +452,15 @@ class ConnectionManager:
         if isinstance(voice_client, MusicPlayer) and not self.is_player_usable(
             voice_client
         ):
-            node = self.get_player_node(voice_client)
-            if node is not None and node in self.pool.nodes:
-                await self.mark_node_unavailable(node)
-            await self.detach_stale_voice_client(guild, voice_client)
+            await self._detach_unusable_player(guild, voice_client)
             return
 
         try:
             await voice_client.disconnect(force=force)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             if isinstance(voice_client, MusicPlayer):
-                await self._handle_voice_client_io_failure(guild, voice_client, exc)
+                logger.warning("Lavalink voice client failure: %s", type(exc).__name__)
+                await self.invalidate_player(voice_client)
             else:
                 logger.warning(
                     "Voice disconnect failed with expected IO error: %s",

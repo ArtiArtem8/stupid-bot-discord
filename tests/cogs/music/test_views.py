@@ -28,6 +28,41 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
         cleanup_existing.assert_not_awaited()
         self.assertIs(manager.controllers[1], current_view)
 
+    async def test_create_for_user_replaces_existing_controller_and_message(
+        self,
+    ) -> None:
+        manager = TrackControllerManager(MagicMock())
+        old_view = MagicMock()
+        manager.controllers[1] = old_view
+        manager._active_messages[1] = (10, 20)
+
+        track = MagicMock(identifier="new-track")
+        new_player = MagicMock(current=track)
+        message = MagicMock(id=21)
+        message.channel.id = 10
+        channel = MagicMock()
+        channel.send = AsyncMock(return_value=message)
+        new_view = MagicMock()
+        safe_delete_message = AsyncMock()
+
+        with (
+            patch.object(manager, "_wait_for_sync", new=AsyncMock(return_value=True)),
+            patch.object(manager, "_safe_delete_message", safe_delete_message),
+            patch("cogs.music.views.TrackControllerView", return_value=new_view),
+        ):
+            await manager.create_for_user(
+                guild_id=1,
+                user_id=2,
+                channel=channel,
+                player=new_player,
+                track=track,
+            )
+
+        old_view.stop.assert_called_once()
+        safe_delete_message.assert_awaited_once_with(10, 20)
+        self.assertEqual(manager.controllers, {1: new_view})
+        self.assertEqual(manager._active_messages, {1: (10, 21)})
+
 
 class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
     async def test_restart_acknowledges_before_player_seek(self) -> None:
