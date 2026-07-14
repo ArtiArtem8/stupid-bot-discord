@@ -14,6 +14,7 @@ from api.music.models import (
     MusicResult,
     MusicResultStatus,
     QueuePlacement,
+    TrackId,
     VoiceCheckResult,
 )
 from api.music.service.core_service import CoreMusicService
@@ -429,16 +430,25 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
                 raise AssertionError(msg)
 
         player = PlayerStub()
+        session = MagicMock()
         self.connection.get_player.return_value = player
         self.connection.is_known_unavailable.return_value = False
+        self.state.get_or_create_session.return_value = session
         self.ui.controller.destroy_for_guild = AsyncMock()
 
         result = await self.service.skip(123, requester_id=1, text_channel_id=2)
 
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        self.assertEqual(result.message, "Skipped")
         self.assertEqual(result.data, {"before": before, "after": after})
         player.skip.assert_awaited_once()
-        player.resume.assert_awaited_once()
+        player.resume.assert_not_awaited()
+        self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+            123,
+            ControllerDestroyReason.SKIP,
+            expected_track_id=TrackId.from_track(before),
+        )
+        session.record_interaction.assert_called_once_with(2, 1)
 
     async def test_skip_does_not_resume_when_no_track_started(self) -> None:
         before = make_track("before")

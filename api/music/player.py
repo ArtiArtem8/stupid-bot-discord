@@ -168,7 +168,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
             return None
 
         logger.debug("Playing next track: %s", next_track)
-        await self.play(next_track, start_time=0)
+        await self.play(next_track, start_time=0, pause=False)
         return next_track
 
     async def _handle_stale_end_unlocked(
@@ -189,7 +189,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
             replacement_track = self.current
             if replacement_track is not None:
                 self.queue.prepend(replacement_track)
-            await self.play(previous_track, start_time=0)
+            await self.play(previous_track, start_time=0, pause=False)
             return previous_track
         elif self.repeat.mode is RepeatMode.QUEUE:
             self.queue.append(previous_track)
@@ -205,7 +205,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
             return None
         if self.repeat.mode is RepeatMode.TRACK:
             logger.debug("Repeating track %s", current_or_prev)
-            await self.play(current_or_prev, start_time=0)
+            await self.play(current_or_prev, start_time=0, pause=False)
             return current_or_prev
         if self.repeat.mode is RepeatMode.QUEUE:
             logger.debug("Adding track %s to queue", current_or_prev)
@@ -268,7 +268,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
             if next_track is None:
                 return None
 
-            await self.play(next_track, start_time=0)
+            await self.play(next_track, start_time=0, pause=False)
             return next_track
 
     async def stop_and_clear(self) -> None:

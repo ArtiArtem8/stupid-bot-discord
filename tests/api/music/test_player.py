@@ -97,7 +97,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             started = await player.enqueue_tracks((first, second), placement="end")
 
         self.assertIs(started, first)
-        play_mock.assert_awaited_once_with(first, start_time=0)
+        play_mock.assert_awaited_once_with(first, start_time=0, pause=False)
         self.assertEqual(list(player.queue), [second])
 
     async def test_enqueue_tracks_does_not_call_public_advance_recursively(
@@ -170,7 +170,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(started_first, first)
         self.assertIsNone(started_second)
-        play_mock.assert_awaited_once_with(first, start_time=0)
+        play_mock.assert_awaited_once_with(first, start_time=0, pause=False)
         self.assertEqual(list(player.queue), [second])
 
     async def test_stale_end_off_does_not_replace_track_started_by_enqueue(
@@ -208,7 +208,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(started, new_track)
         self.assertIsNone(stale_result)
-        play_mock.assert_awaited_once_with(new_track, start_time=0)
+        play_mock.assert_awaited_once_with(new_track, start_time=0, pause=False)
         stop_mock.assert_not_awaited()
 
     async def test_stale_end_queue_appends_previous_without_interrupting_current(
@@ -256,7 +256,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(started, previous)
         self.assertIs(player.current, previous)
         self.assertEqual(list(player.queue), [replacement, next_replacement, existing])
-        play_mock.assert_awaited_once_with(previous, start_time=0)
+        play_mock.assert_awaited_once_with(previous, start_time=0, pause=False)
         stop_mock.assert_not_awaited()
 
     async def test_stale_end_track_repeats_previous_again_after_replay_ends(
@@ -282,7 +282,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(player.current, previous)
         self.assertEqual(list(player.queue), [replacement, queued])
         self.assertEqual(play_mock.await_count, 2)
-        play_mock.assert_awaited_with(previous, start_time=0)
+        play_mock.assert_awaited_with(previous, start_time=0, pause=False)
 
     async def test_advance_after_end_with_no_current_starts_next_track(self) -> None:
         previous = make_track("previous")
@@ -297,7 +297,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             started = await player.advance_after_end(previous)
 
         self.assertIs(started, next_track)
-        play_mock.assert_awaited_once_with(next_track, start_time=0)
+        play_mock.assert_awaited_once_with(next_track, start_time=0, pause=False)
 
     async def test_load_failed_with_repeat_off_starts_next_and_preserves_queue(
         self,
@@ -332,7 +332,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             started = await player.advance_after_end(failed, force_skip=True)
 
         self.assertIs(started, next_track)
-        play_mock.assert_awaited_once_with(next_track, start_time=0)
+        play_mock.assert_awaited_once_with(next_track, start_time=0, pause=False)
         self.assertNotIn(failed, player.queue)
 
     async def test_load_failed_ignores_repeat_queue_and_preserves_remaining(
@@ -382,7 +382,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIs(started, next_track)
-        play_mock.assert_awaited_once_with(next_track, start_time=0)
+        play_mock.assert_awaited_once_with(next_track, start_time=0, pause=False)
 
     async def test_advance_with_empty_queue_stops_player(self) -> None:
         previous = make_track("previous")
@@ -410,7 +410,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIs(started, next_track)
-        play_mock.assert_awaited_once_with(next_track, start_time=0)
+        play_mock.assert_awaited_once_with(next_track, start_time=0, pause=False)
 
     async def test_skip_starts_next_track(self) -> None:
         current = make_track("current")
@@ -426,7 +426,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(skipped, current)
         self.assertIs(started, next_track)
-        play_mock.assert_awaited_once_with(next_track, start_time=0)
+        play_mock.assert_awaited_once_with(next_track, start_time=0, pause=False)
 
     async def test_skip_with_empty_queue_stops_once_via_advance(self) -> None:
         current = make_track("current")
@@ -463,7 +463,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(skipped, replacement)
         self.assertIs(started, next_track)
         self.assertIs(player.current, next_track)
-        play_mock.assert_awaited_once_with(next_track, start_time=0)
+        play_mock.assert_awaited_once_with(next_track, start_time=0, pause=False)
         stop_mock.assert_not_awaited()
 
     async def test_skip_waiting_behind_enqueue_returns_actual_transition(
@@ -528,7 +528,9 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
                 self.assertIs(started, next_track)
                 self.assertIs(player.current, next_track)
                 self.assertEqual(list(player.queue), [])
-                play_mock.assert_awaited_once_with(next_track, start_time=0)
+                play_mock.assert_awaited_once_with(
+                    next_track, start_time=0, pause=False
+                )
 
     async def test_rotate_current_preserves_queue_order_and_returns_started(
         self,
@@ -549,7 +551,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(started, next_track)
         self.assertIs(player.current, next_track)
         self.assertEqual(list(player.queue), [existing, current])
-        play_mock.assert_awaited_once_with(next_track, start_time=0)
+        play_mock.assert_awaited_once_with(next_track, start_time=0, pause=False)
 
     async def test_rotate_current_with_empty_queue_restarts_current(self) -> None:
         current = make_track("current")
@@ -565,7 +567,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(started, current)
         self.assertIs(player.current, current)
         self.assertEqual(list(player.queue), [])
-        play_mock.assert_awaited_once_with(current, start_time=0)
+        play_mock.assert_awaited_once_with(current, start_time=0, pause=False)
 
     async def test_stop_and_clear_clears_queue_and_calls_base_stop(self) -> None:
         current = make_track("current")
@@ -628,7 +630,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(started, queued)
         self.assertIs(player.current, queued)
         self.assertEqual(list(player.queue), [])
-        play_mock.assert_awaited_once_with(queued, start_time=0)
+        play_mock.assert_awaited_once_with(queued, start_time=0, pause=False)
 
     async def test_start_queued_if_idle_with_empty_queue_does_not_play_or_stop(
         self,
@@ -671,7 +673,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             started = await player.advance(previous_track=previous)
 
         self.assertIs(started, previous)
-        play_mock.assert_awaited_once_with(previous, start_time=0)
+        play_mock.assert_awaited_once_with(previous, start_time=0, pause=False)
 
     async def test_repeat_queue_appends_previous_track_and_starts_next(self) -> None:
         previous = make_track("previous")
@@ -687,7 +689,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             started = await player.advance(previous_track=previous)
 
         self.assertIs(started, next_track)
-        play_mock.assert_awaited_once_with(next_track, start_time=0)
+        play_mock.assert_awaited_once_with(next_track, start_time=0, pause=False)
         self.assertEqual(list(player.queue), [previous])
 
     async def test_voice_server_update_propagates_error_without_cleanup(
