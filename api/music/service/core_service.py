@@ -389,8 +389,6 @@ class CoreMusicService:
                     ControllerDestroyReason.SKIP,
                     expected_track_id=TrackId.from_track(skipped),
                 )
-            if started is not None:
-                await player.resume()
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
 

@@ -73,6 +73,44 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
 
 
 class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
+    async def test_skip_calls_player_and_stops_controller_silently(self) -> None:
+        track = MagicMock(identifier="track")
+        player = MagicMock(current=track)
+        player.skip = AsyncMock()
+        on_stop = AsyncMock()
+        view = TrackControllerView(
+            user_id=10,
+            player=player,
+            guild_id=1,
+            track_id=TrackId("track"),
+            on_stop_callback=on_stop,
+            on_player_failure=AsyncMock(),
+        )
+        interaction = MagicMock()
+        interaction.user.id = 10
+
+        with (
+            patch(
+                "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                new=AsyncMock(),
+            ) as acknowledge,
+            patch("cogs.music.views.send_warning", new=AsyncMock()) as send_warning,
+        ):
+            skip_button = next(
+                child
+                for child in view.children
+                if isinstance(child, ui.Button) and child.custom_id == "btn_skip"
+            )
+            callback = skip_button.callback
+            self.assertIsNotNone(callback)
+            await callback(interaction)
+
+        acknowledge.assert_awaited_once()
+        player.skip.assert_awaited_once_with()
+        on_stop.assert_awaited_once_with(view, ControllerDestroyReason.SKIP)
+        send_warning.assert_not_awaited()
+        self.assertTrue(view.is_finished())
+
     async def test_restart_acknowledges_before_player_seek(self) -> None:
         calls: list[str] = []
         track = MagicMock(identifier="track")
