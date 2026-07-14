@@ -223,9 +223,8 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         entry = make_entry("warm")
         attempt = PlaybackAttempt(1, entry)
         player = MagicMock(guild=guild, current_attempt=None, current=None)
-        player.seek = AsyncMock()
-        player.set_volume = AsyncMock()
-        player.pause = AsyncMock()
+        player.seek_attempt = AsyncMock(return_value=True)
+        player.restore_attempt_state = AsyncMock(return_value=True)
 
         async def restore_playback(
             _entry: object, **_kwargs: object
@@ -247,10 +246,11 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
                 pause=False,
             )
 
-        self.assertTrue(restored)
-        player.seek.assert_awaited_once_with(4_000)
-        player.set_volume.assert_awaited_once_with(65)
-        player.pause.assert_not_awaited()
+        self.assertIs(restored, attempt)
+        player.seek_attempt.assert_awaited_once_with(attempt, 4_000)
+        player.restore_attempt_state.assert_awaited_once_with(
+            attempt, volume=65, pause=False
+        )
         self.assertIs(player.current_attempt, attempt)
         connection.detach_stale_voice_client.assert_not_awaited()
         ui.controller.destroy_for_guild.assert_not_awaited()
@@ -264,9 +264,8 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             current_attempt=attempt,
             current=attempt.entry.track,
         )
-        player.seek = AsyncMock(side_effect=TimeoutError)
-        player.set_volume = AsyncMock()
-        player.pause = AsyncMock()
+        player.seek_attempt = AsyncMock(side_effect=TimeoutError)
+        player.restore_attempt_state = AsyncMock(return_value=True)
         player.invalidate_if_current_attempt = AsyncMock()
 
         restored = await healer._seek_after_warm_restore(
@@ -279,9 +278,10 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             expected_attempt=attempt,
         )
 
-        self.assertTrue(restored)
-        player.set_volume.assert_awaited_once_with(65)
-        player.pause.assert_awaited_once_with()
+        self.assertIs(restored, attempt)
+        player.restore_attempt_state.assert_awaited_once_with(
+            attempt, volume=65, pause=True
+        )
         connection.detach_stale_voice_client.assert_not_awaited()
         ui.controller.destroy_for_guild.assert_not_awaited()
 
@@ -298,6 +298,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player._pending_end_attempts = deque()
         player._exception_attempt_ids = set()
         player._transition_lock = asyncio.Lock()
+        player._is_stale = False
         player._current = None
         player.guild = guild
 
@@ -310,7 +311,6 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(player, "play", new=AsyncMock(side_effect=play)),
             patch.object(player, "seek", new=AsyncMock(side_effect=seek)),
-            patch.object(player, "set_volume", new=AsyncMock()),
             patch("api.music.healer.asyncio.sleep", new=AsyncMock()),
         ):
             restored = await healer._play_with_warm_seek_restore(
@@ -322,7 +322,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
                 pause=False,
             )
 
-        self.assertTrue(restored)
+        self.assertIs(restored, player.current_attempt)
         self.assertIsNotNone(player.current_attempt)
         if player.current_attempt is None:
             self.fail("expected fallback attempt")
@@ -340,8 +340,8 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             current_attempt=attempt,
             current=attempt.entry.track,
         )
-        player.seek = AsyncMock()
-        player.set_volume = AsyncMock(side_effect=TimeoutError)
+        player.seek_attempt = AsyncMock(return_value=True)
+        player.restore_attempt_state = AsyncMock(side_effect=TimeoutError)
 
         async def invalidate_current(expected: PlaybackAttempt) -> bool:
             self.assertIs(expected, attempt)
@@ -376,8 +376,8 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         expected = PlaybackAttempt(1, entry)
         replacement = PlaybackAttempt(2, make_entry("same", entry_id=2))
         player = MagicMock(guild=guild, current_attempt=None, current=None)
-        player.seek = AsyncMock()
-        player.set_volume = AsyncMock()
+        player.seek_attempt = AsyncMock(return_value=True)
+        player.restore_attempt_state = AsyncMock()
         player.invalidate_if_current_attempt = AsyncMock(return_value=False)
 
         async def restore_playback(
@@ -414,6 +414,131 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(restored)
         self.assertIs(player.current_attempt, replacement)
         player.invalidate_if_current_attempt.assert_awaited_once_with(expected)
+        connection.detach_stale_voice_client.assert_not_awaited()
+        ui.controller.destroy_for_guild.assert_not_awaited()
+
+    async def test_restore_current_track_uses_exact_fallback_attempt(self) -> None:
+        healer, connection, ui = self._make_warm_restore_healer()
+        entry = make_entry("warm", requester_id=42)
+        fallback = PlaybackAttempt(2, entry)
+        guild = MagicMock(id=1)
+        player = MagicMock(
+            guild=guild,
+            current_attempt=fallback,
+            current=entry.track,
+        )
+        snapshot = PlayerStateSnapshot(
+            guild_id=1,
+            voice_channel_id=2,
+            text_channel_id=3,
+            current_entry=entry,
+            position=4_000,
+            is_paused=False,
+            volume=65,
+            queue=[],
+            repeat_mode=RepeatMode.OFF,
+            filters=None,
+            session=None,
+        )
+        healer._resolve_fresh_track_for_restore = AsyncMock(return_value=entry.track)
+        healer._should_restore_with_warm_seek = MagicMock(return_value=True)
+        healer._play_with_warm_seek_restore = AsyncMock(return_value=fallback)
+        healer.state.record_track_start = MagicMock()
+
+        restored = await healer._restore_current_track(player, snapshot, guild)
+
+        self.assertTrue(restored)
+        healer.state.record_track_start.assert_called_once_with(1, fallback)
+        ui.spawn_controller.assert_awaited_once_with(player, fallback)
+        connection.detach_stale_voice_client.assert_not_awaited()
+
+    async def test_restore_current_track_does_not_rebind_success_to_replacement(
+        self,
+    ) -> None:
+        healer, connection, ui = self._make_warm_restore_healer()
+        entry = make_entry("restored", entry_id=1)
+        restored_attempt = PlaybackAttempt(1, entry)
+        replacement = PlaybackAttempt(2, make_entry("replacement", entry_id=2))
+        guild = MagicMock(id=1)
+        player = MagicMock(
+            guild=guild,
+            current_attempt=replacement,
+            current=replacement.entry.track,
+        )
+        player.invalidate_if_current_attempt = AsyncMock(return_value=False)
+        snapshot = PlayerStateSnapshot(
+            guild_id=1,
+            voice_channel_id=2,
+            text_channel_id=3,
+            current_entry=entry,
+            position=0,
+            is_paused=False,
+            volume=65,
+            queue=[],
+            repeat_mode=RepeatMode.OFF,
+            filters=None,
+            session=None,
+        )
+        healer._resolve_fresh_track_for_restore = AsyncMock(return_value=entry.track)
+        healer._should_restore_with_warm_seek = MagicMock(return_value=False)
+        healer._play_and_confirm_restore = AsyncMock(return_value=restored_attempt)
+        healer.state.record_track_start = MagicMock()
+
+        restored = await healer._restore_current_track(player, snapshot, guild)
+
+        self.assertFalse(restored)
+        self.assertIs(player.current_attempt, replacement)
+        healer.state.record_track_start.assert_not_called()
+        ui.spawn_controller.assert_not_awaited()
+        player.invalidate_if_current_attempt.assert_awaited_once_with(restored_attempt)
+        connection.detach_stale_voice_client.assert_not_awaited()
+
+    async def test_restore_state_io_failure_preserves_concurrent_replacement(
+        self,
+    ) -> None:
+        healer, connection, ui = self._make_warm_restore_healer()
+        expected = PlaybackAttempt(1, make_entry("expected", entry_id=1))
+        replacement = PlaybackAttempt(2, make_entry("replacement", entry_id=2))
+        player = _runtime_player(expected)
+        update_entered = asyncio.Event()
+        allow_error = asyncio.Event()
+        replacement_started = asyncio.Event()
+        replacement_installed = asyncio.Event()
+
+        async def update(**_kwargs: object) -> None:
+            update_entered.set()
+            await allow_error.wait()
+            raise TimeoutError
+
+        async def replace_attempt() -> None:
+            replacement_started.set()
+            async with player._transition_lock:
+                player._current_attempt = replacement
+                player._current = replacement.entry.track
+                replacement_installed.set()
+
+        with patch.object(player, "update", new=AsyncMock(side_effect=update)):
+            restore_task = asyncio.create_task(
+                healer._restore_expected_attempt_state(
+                    player,
+                    expected,
+                    guild_id=1,
+                    volume=65,
+                    pause=True,
+                    context="test-state-race",
+                )
+            )
+            await update_entered.wait()
+            replacement_task = asyncio.create_task(replace_attempt())
+            await replacement_started.wait()
+            allow_error.set()
+            await replacement_installed.wait()
+            restored = await restore_task
+            await replacement_task
+
+        self.assertIsNone(restored)
+        self.assertIs(player.current_attempt, replacement)
+        self.assertFalse(player.is_stale)
         connection.detach_stale_voice_client.assert_not_awaited()
         ui.controller.destroy_for_guild.assert_not_awaited()
 

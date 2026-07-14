@@ -370,6 +370,28 @@ class MusicPlayer(mafic.Player[discord.Client]):
             self._is_stale = True
             return True
 
+    async def seek_attempt(self, expected: PlaybackAttempt, position: int) -> bool:
+        """Seek only while the expected attempt owns this player."""
+        async with self._transition_lock:
+            if self._is_stale or self._current_attempt is not expected:
+                return False
+            await self.seek(position)
+            return self._current_attempt is expected and not self._is_stale
+
+    async def restore_attempt_state(
+        self,
+        expected: PlaybackAttempt,
+        *,
+        volume: int,
+        pause: bool,
+    ) -> bool:
+        """Restore playback state only for the expected attempt."""
+        async with self._transition_lock:
+            if self._is_stale or self._current_attempt is not expected:
+                return False
+            await self.update(volume=volume, pause=pause)
+            return self._current_attempt is expected and not self._is_stale
+
     def restore_entries(
         self, current: QueueEntry | None, queued: Sequence[QueueEntry]
     ) -> None:

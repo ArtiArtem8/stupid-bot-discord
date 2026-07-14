@@ -62,6 +62,72 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         player.mark_stale()
         self.assertTrue(player.is_stale)
 
+    async def test_seek_attempt_waits_for_lock_and_refuses_replacement(self) -> None:
+        expected_entry = make_entry("expected", entry_id=1)
+        replacement_entry = make_entry("replacement", entry_id=2)
+        player = _make_player(current=expected_entry)
+        expected = _require_attempt(player.current_attempt)
+        replacement = PlaybackAttempt(2, replacement_entry)
+        entered = asyncio.Event()
+
+        async def guarded_seek() -> bool:
+            entered.set()
+            return await player.seek_attempt(expected, 4_000)
+
+        await player._transition_lock.acquire()
+        with patch.object(player, "seek", new=AsyncMock()) as seek_mock:
+            task = asyncio.create_task(guarded_seek())
+            await entered.wait()
+            player._current_attempt = replacement
+            player._transition_lock.release()
+            sought = await task
+
+        self.assertFalse(sought)
+        self.assertIs(player.current_attempt, replacement)
+        seek_mock.assert_not_awaited()
+
+    async def test_restore_attempt_state_refuses_replacement(self) -> None:
+        expected_entry = make_entry("expected", entry_id=1)
+        replacement_entry = make_entry("replacement", entry_id=2)
+        player = _make_player(current=expected_entry)
+        expected = _require_attempt(player.current_attempt)
+        replacement = PlaybackAttempt(2, replacement_entry)
+        entered = asyncio.Event()
+
+        async def guarded_restore() -> bool:
+            entered.set()
+            return await player.restore_attempt_state(
+                expected,
+                volume=65,
+                pause=True,
+            )
+
+        await player._transition_lock.acquire()
+        with patch.object(player, "update", new=AsyncMock()) as update_mock:
+            task = asyncio.create_task(guarded_restore())
+            await entered.wait()
+            player._current_attempt = replacement
+            player._transition_lock.release()
+            restored = await task
+
+        self.assertFalse(restored)
+        self.assertIs(player.current_attempt, replacement)
+        update_mock.assert_not_awaited()
+
+    async def test_restore_attempt_state_uses_one_player_update(self) -> None:
+        player = _make_player(current=make_entry("expected"))
+        expected = _require_attempt(player.current_attempt)
+
+        with patch.object(player, "update", new=AsyncMock()) as update_mock:
+            restored = await player.restore_attempt_state(
+                expected,
+                volume=65,
+                pause=True,
+            )
+
+        self.assertTrue(restored)
+        update_mock.assert_awaited_once_with(volume=65, pause=True)
+
     async def test_enqueue_tracks_with_next_adds_single_track_to_front(self) -> None:
         current = make_entry("current")
         existing = make_entry("existing", entry_id=2)

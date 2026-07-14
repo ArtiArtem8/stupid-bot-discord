@@ -186,41 +186,39 @@ class SessionHealer(HealerProtocol):
         volume: int,
         pause: bool,
         context: str,
-    ) -> bool:
-        if not self._is_expected_restore_attempt_active(player, expected_attempt):
-            return await self._fail_expected_restore_attempt(
-                player,
-                expected_attempt,
-                guild_id=guild_id,
-                context=context,
-            )
-
+    ) -> PlaybackAttempt | None:
         try:
-            await player.set_volume(volume)
-            if pause:
-                await player.pause()
+            restored = await player.restore_attempt_state(
+                expected_attempt,
+                volume=volume,
+                pause=pause,
+            )
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             logger.warning(
                 "Restore volume/pause failed with %s during %s",
                 type(exc).__name__,
                 context,
             )
-            return await self._fail_expected_restore_attempt(
+            await self._fail_expected_restore_attempt(
                 player,
                 expected_attempt,
                 guild_id=guild_id,
                 context=context,
             )
+            return None
 
-        if self._is_expected_restore_attempt_active(player, expected_attempt):
-            return True
+        if restored and self._is_expected_restore_attempt_active(
+            player, expected_attempt
+        ):
+            return expected_attempt
 
-        return await self._fail_expected_restore_attempt(
+        await self._fail_expected_restore_attempt(
             player,
             expected_attempt,
             guild_id=guild_id,
             context=context,
         )
+        return None
 
     async def _seek_after_warm_restore(
         self,
@@ -232,14 +230,14 @@ class SessionHealer(HealerProtocol):
         volume: int,
         pause: bool,
         expected_attempt: PlaybackAttempt,
-    ) -> bool:
+    ) -> PlaybackAttempt | None:
         """Seek after a successful warm restore.
 
         If the seek itself breaks playback, fall back to playing from the start
         instead of disconnecting from voice.
         """
         try:
-            await player.seek(position)
+            sought = await player.seek_attempt(expected_attempt, position)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             logger.warning(
                 "Restore seek to %sms failed with %s; keeping playback from start",
@@ -255,6 +253,15 @@ class SessionHealer(HealerProtocol):
                 context="state-after-warm-seek-error",
             )
 
+        if not sought:
+            await self._fail_expected_restore_attempt(
+                player,
+                expected_attempt,
+                guild_id=guild.id,
+                context="warm-seek-superseded",
+            )
+            return None
+
         await asyncio.sleep(RESTORE_SEEK_CONFIRM_DELAY_SECONDS)
 
         if self._is_expected_restore_attempt_active(player, expected_attempt):
@@ -268,12 +275,13 @@ class SessionHealer(HealerProtocol):
             )
 
         if player.current_attempt is not expected_attempt:
-            return await self._fail_expected_restore_attempt(
+            await self._fail_expected_restore_attempt(
                 player,
                 expected_attempt,
                 guild_id=guild.id,
                 context="warm-seek-superseded",
             )
+            return None
 
         logger.warning(
             "Restore seek to %sms killed playback; falling back to start",
@@ -292,19 +300,21 @@ class SessionHealer(HealerProtocol):
                 "Restore fallback playback from start failed with %s",
                 type(exc).__name__,
             )
-            return await self._fail_expected_restore_attempt(
+            await self._fail_expected_restore_attempt(
                 player,
                 expected_attempt,
                 guild_id=guild.id,
                 context="fallback-start-after-seek-failure",
             )
+            return None
 
-        return await self._confirm_restored_track_active(
+        active = await self._confirm_restored_track_active(
             player,
             fallback_attempt,
             guild_id=player.guild.id,
             context="fallback-start-after-seek-failure",
         )
+        return fallback_attempt if active else None
 
     async def _play_and_confirm_restore(
         self,
@@ -315,7 +325,7 @@ class SessionHealer(HealerProtocol):
         start_time: int,
         volume: int,
         pause: bool,
-    ) -> bool:
+    ) -> PlaybackAttempt | None:
         """Play a restored track and confirm it survives early Lavalink failures."""
         try:
             attempt = await player.restore_playback(
@@ -330,14 +340,15 @@ class SessionHealer(HealerProtocol):
                 type(exc).__name__,
             )
             await self.connection.detach_stale_voice_client(guild, player)
-            return False
+            return None
 
-        return await self._confirm_restored_track_active(
+        active = await self._confirm_restored_track_active(
             player,
             attempt,
             guild_id=player.guild.id,
             context="direct-restore",
         )
+        return attempt if active else None
 
     async def _play_with_warm_seek_restore(
         self,
@@ -348,7 +359,7 @@ class SessionHealer(HealerProtocol):
         position: int,
         volume: int,
         pause: bool,
-    ) -> bool:
+    ) -> PlaybackAttempt | None:
         """Restore YouTube playback by starting at 0, then seeking after startup."""
         logger.warning(
             (
@@ -372,7 +383,7 @@ class SessionHealer(HealerProtocol):
                 type(exc).__name__,
             )
             await self.connection.detach_stale_voice_client(guild, player)
-            return False
+            return None
 
         active = await self._confirm_restored_track_active(
             player,
@@ -381,7 +392,7 @@ class SessionHealer(HealerProtocol):
             context="warm-start",
         )
         if not active:
-            return False
+            return None
 
         return await self._seek_after_warm_restore(
             guild=guild,
@@ -692,13 +703,20 @@ class SessionHealer(HealerProtocol):
                     pause=snapshot.is_paused,
                 )
 
-            if not restored:
+            if restored is None:
                 return False
 
-            attempt = player.current_attempt
-            if attempt is not None:
-                self.state.record_track_start(snapshot.guild_id, attempt)
-                await self.ui.spawn_controller(player, attempt)
+            if not self._is_expected_restore_attempt_active(player, restored):
+                await self._fail_expected_restore_attempt(
+                    player,
+                    restored,
+                    guild_id=snapshot.guild_id,
+                    context="restore-orchestration",
+                )
+                return False
+
+            self.state.record_track_start(snapshot.guild_id, restored)
+            await self.ui.spawn_controller(player, restored)
 
         if snapshot.session is not None:
             session = snapshot.session
