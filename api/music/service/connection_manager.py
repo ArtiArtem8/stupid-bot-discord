@@ -142,16 +142,25 @@ class ConnectionManager:
         player.mark_stale()
         await self.detach_stale_voice_client(player.guild, player)
 
+    def _snapshot_node_players(
+        self, player: MusicPlayer
+    ) -> tuple[mafic.Node[commands.Bot] | None, list[MusicPlayer]]:
+        node = self.get_player_node(player)
+        if node is None:
+            return node, [player]
+
+        players: list[MusicPlayer] = [
+            candidate
+            for candidate in node.players
+            if isinstance(candidate, MusicPlayer)
+        ]
+        if not any(candidate is player for candidate in players):
+            players.append(player)
+        return node, players
+
     async def invalidate_node_and_players(self, player: MusicPlayer) -> None:
         """Invalidate the player's node, then detach all of its players locally."""
-        node = self.get_player_node(player)
-        players: list[MusicPlayer] = []
-        if node is not None:
-            for candidate in node.players:
-                if isinstance(candidate, MusicPlayer):
-                    players.append(candidate)
-        if all(candidate is not player for candidate in players):
-            players.append(player)
+        node, players = self._snapshot_node_players(player)
         for candidate in players:
             candidate.mark_stale()
         try:
