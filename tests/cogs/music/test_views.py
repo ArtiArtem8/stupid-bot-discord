@@ -13,7 +13,7 @@ from cogs.music.views import TrackControllerManager, TrackControllerView
 
 class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
     async def test_old_track_destroy_does_not_remove_new_controller(self) -> None:
-        manager = TrackControllerManager(MagicMock())
+        manager = TrackControllerManager(MagicMock(), MagicMock())
         current_view = MagicMock(track_id=TrackId("new"))
         manager.controllers[1] = current_view
         cleanup_existing = AsyncMock()
@@ -31,7 +31,9 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
     async def test_create_for_user_replaces_existing_controller_and_message(
         self,
     ) -> None:
-        manager = TrackControllerManager(MagicMock())
+        connection = MagicMock()
+        connection.invalidate_player = AsyncMock()
+        manager = TrackControllerManager(MagicMock(), connection)
         old_view = MagicMock()
         manager.controllers[1] = old_view
         manager._active_messages[1] = (10, 20)
@@ -48,7 +50,9 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(manager, "_wait_for_sync", new=AsyncMock(return_value=True)),
             patch.object(manager, "_safe_delete_message", safe_delete_message),
-            patch("cogs.music.views.TrackControllerView", return_value=new_view),
+            patch(
+                "cogs.music.views.TrackControllerView", return_value=new_view
+            ) as view_cls,
         ):
             await manager.create_for_user(
                 guild_id=1,
@@ -62,6 +66,10 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
         safe_delete_message.assert_awaited_once_with(10, 20)
         self.assertEqual(manager.controllers, {1: new_view})
         self.assertEqual(manager._active_messages, {1: (10, 21)})
+        self.assertEqual(
+            view_cls.call_args.kwargs["on_player_failure"],
+            connection.invalidate_player,
+        )
 
 
 class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
@@ -80,6 +88,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             guild_id=1,
             track_id=TrackId("track"),
             on_stop_callback=None,
+            on_player_failure=AsyncMock(),
         )
         safe_update = AsyncMock()
         interaction = MagicMock()
@@ -112,12 +121,14 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         player.pause = AsyncMock(side_effect=aiohttp.ClientConnectionError("down"))
         player.cleanup = MagicMock()
         on_stop = AsyncMock()
+        on_player_failure = AsyncMock()
         view = TrackControllerView(
             user_id=10,
             player=player,
             guild_id=1,
             track_id=TrackId("track"),
             on_stop_callback=on_stop,
+            on_player_failure=on_player_failure,
         )
         interaction = MagicMock()
         interaction.user.id = 10
@@ -139,6 +150,34 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(callback)
             await callback(cast(Interaction[Client], cast(object, interaction)))
 
-        player.cleanup.assert_called_once()
+        on_player_failure.assert_awaited_once_with(player)
+        player.cleanup.assert_not_called()
         on_stop.assert_awaited_once_with(view, ControllerDestroyReason.PLAYER_ERROR)
         send_warning.assert_awaited_once()
+
+    async def test_invalidation_failure_still_stops_and_warns(self) -> None:
+        player = MagicMock()
+        player.cleanup = MagicMock()
+        on_stop = AsyncMock()
+        on_player_failure = AsyncMock(side_effect=RuntimeError("unexpected"))
+        view = TrackControllerView(
+            user_id=10,
+            player=player,
+            guild_id=1,
+            track_id=TrackId("track"),
+            on_stop_callback=on_stop,
+            on_player_failure=on_player_failure,
+        )
+        interaction = MagicMock()
+
+        with (
+            patch("cogs.music.views.logger.exception") as log_exception,
+            patch("cogs.music.views.send_warning", new=AsyncMock()) as send_warning,
+        ):
+            await view.handle_player_io_error(interaction)
+
+        on_player_failure.assert_awaited_once_with(player)
+        log_exception.assert_called_once()
+        on_stop.assert_awaited_once_with(view, ControllerDestroyReason.PLAYER_ERROR)
+        send_warning.assert_awaited_once()
+        player.cleanup.assert_not_called()

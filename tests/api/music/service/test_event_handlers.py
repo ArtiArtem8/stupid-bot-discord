@@ -4,6 +4,7 @@ import unittest
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import mafic
 
 from api.music.models import ControllerDestroyReason, TrackExceptionPayload, TrackId
@@ -20,6 +21,7 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         self.connection.mark_node_unavailable = AsyncMock()
         self.connection.invalidate_node_and_players = AsyncMock()
         self.connection.detach_stale_voice_client = AsyncMock()
+        self.connection.invalidate_player = AsyncMock()
         self.state = MagicMock()
         self.state.is_timer_active.return_value = False
         self.state.cancel_timer = MagicMock()
@@ -100,6 +102,7 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         self.ui.controller.destroy_for_guild.assert_not_awaited()
         player.advance_after_end.assert_not_awaited()
         player.start_queued_if_idle.assert_not_awaited()
+        self.connection.invalidate_player.assert_not_awaited()
 
     async def test_non_current_track_exception_has_no_side_effects(self) -> None:
         player = self._make_player()
@@ -455,6 +458,23 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
 
         player.advance_after_end.assert_awaited_once_with(track)
         player.start_queued_if_idle.assert_not_awaited()
+
+    async def test_track_end_transition_io_failure_invalidates_player(self) -> None:
+        track = make_track("transition-failure")
+        player = self._make_player()
+        player.advance_after_end.side_effect = aiohttp.ClientConnectionError("down")
+        event = MagicMock(player=player, track=track, reason=mafic.EndReason.FINISHED)
+
+        await self.handlers._on_track_end(event)
+
+        player.advance_after_end.assert_awaited_once_with(track)
+        player.start_queued_if_idle.assert_not_awaited()
+        self.connection.invalidate_player.assert_awaited_once_with(player)
+        self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+            123,
+            ControllerDestroyReason.TRACK_END,
+            expected_track_id=TrackId.from_track(track),
+        )
 
     async def test_track_end_load_failed_uses_end_transition(self) -> None:
         track = make_track("failed")

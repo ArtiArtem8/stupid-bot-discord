@@ -5,19 +5,16 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING
 
 import discord
 import mafic
-from discord.utils import MISSING  # pyright: ignore[reportAny]
 
-from .errors import EXPECTED_LAVALINK_IO_ERRORS
 from .models import QueuePlacement, RepeatMode, Track, TrackId, TrackRequester
 from .queue import QueueManager, RepeatManager
 
 if TYPE_CHECKING:
     from discord.abc import Connectable
-    from mafic.__libraries import VoiceServerUpdatePayload
 
 logger = logging.getLogger(__name__)
 
@@ -279,55 +276,6 @@ class MusicPlayer(mafic.Player[discord.Client]):
         async with self._transition_lock:
             self.clear_queue()
             await super().stop()
-
-    @override
-    async def on_voice_server_update(self, data: VoiceServerUpdatePayload) -> None:
-        try:
-            await super().on_voice_server_update(data)
-        except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            logger.warning(
-                "Lavalink IO failure during voice server update: %s",
-                type(exc).__name__,
-            )
-            try:
-                self.cleanup()
-            except Exception:
-                logger.debug(
-                    "Failed to cleanup player after voice server update failure",
-                    exc_info=True,
-                )
-
-    @override
-    async def update(
-        self,
-        *,
-        track: Track | str | None = MISSING,
-        position: int | None = None,
-        end_time: int | None = None,
-        volume: int | None = None,
-        pause: bool | None = None,
-        filter: mafic.Filter | None = None,
-        replace: bool = False,
-    ) -> None:
-        try:
-            return await super().update(
-                track=track,
-                position=position,
-                end_time=end_time,
-                volume=volume,
-                pause=pause,
-                filter=filter,
-                replace=replace,
-            )
-        except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            logger.warning("Failed to update player: %s", type(exc).__name__)
-            try:
-                self.cleanup()
-            except Exception:
-                logger.debug(
-                    "Failed to cleanup player after update failure", exc_info=True
-                )
-            raise
 
 
 def music_player_factory(
