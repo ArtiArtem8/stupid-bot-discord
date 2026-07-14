@@ -160,7 +160,8 @@ class SessionHealer(HealerProtocol):
         guild_id: int,
         context: str,
     ) -> bool:
-        if player.current_attempt is not expected_attempt:
+        claimed = await player.invalidate_if_current_attempt(expected_attempt)
+        if not claimed:
             logger.debug(
                 "Restore attempt superseded in guild %s during %s",
                 guild_id,
@@ -173,7 +174,6 @@ class SessionHealer(HealerProtocol):
             guild_id,
             context,
         )
-        await player.clear_current_attempt(expected_attempt)
         await self.connection.detach_stale_voice_client(player.guild, player)
         return False
 

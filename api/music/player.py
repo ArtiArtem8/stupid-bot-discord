@@ -360,13 +360,14 @@ class MusicPlayer(mafic.Player[discord.Client]):
             ):
                 return None
 
-    async def clear_current_attempt(self, expected: PlaybackAttempt) -> bool:
-        """Clear a failed runtime attempt without touching a replacement."""
+    async def invalidate_if_current_attempt(self, expected: PlaybackAttempt) -> bool:
+        """Atomically claim an expected attempt for player teardown."""
         async with self._transition_lock:
             if self._current_attempt is not expected:
                 return False
             self._current_attempt = None
             self._exception_attempt_ids.discard(expected.attempt_id)
+            self._is_stale = True
             return True
 
     def restore_entries(
