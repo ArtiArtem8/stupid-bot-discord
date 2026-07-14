@@ -716,6 +716,121 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(player._pending_end_attempts), [unrelated])
         self.assertIn(first.attempt_id, player._exception_attempt_ids)
 
+    async def test_idle_enqueue_cancellation_restores_playlist_entries(self) -> None:
+        player = _make_player()
+        tracks = (make_track("one"), make_track("two"))
+        requester = TrackRequester(7, 8)
+        entered = asyncio.Event()
+        never_finish = asyncio.Event()
+
+        async def blocked_play(*_args: object, **_kwargs: object) -> None:
+            entered.set()
+            await never_finish.wait()
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=blocked_play)):
+            task = asyncio.create_task(
+                player.enqueue_tracks(tracks, requester, placement="end")
+            )
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        entries = player.queue.snapshot()
+        self.assertIsNone(player.current_attempt)
+        self.assertEqual([entry.track for entry in entries], list(tracks))
+        self.assertTrue(all(entry.requester is requester for entry in entries))
+
+    async def test_skip_cancellation_restores_transition_state(self) -> None:
+        current = make_entry("current")
+        next_entry = make_entry("next", entry_id=2)
+        unrelated = PlaybackAttempt(99, make_entry("unrelated", entry_id=99))
+        player = _make_player(current=current)
+        player.queue.append(next_entry)
+        player._pending_end_attempts.append(unrelated)
+        entered = asyncio.Event()
+        never_finish = asyncio.Event()
+
+        async def blocked_play(*_args: object, **_kwargs: object) -> None:
+            entered.set()
+            await never_finish.wait()
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=blocked_play)):
+            task = asyncio.create_task(player.skip())
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        self.assertEqual(player.current_entry, current)
+        self.assertEqual(list(player._pending_end_attempts), [unrelated])
+        self.assertEqual(player.queue.snapshot(), (next_entry,))
+        self.assertNotIn(current, player.queue)
+
+    async def test_repeat_queue_cancellation_restores_transition_state(self) -> None:
+        current = make_entry("current")
+        next_entry = make_entry("next", entry_id=2)
+        player = _make_player(current=current)
+        player.repeat.mode = RepeatMode.QUEUE
+        player.queue.append(next_entry)
+        entered = asyncio.Event()
+        never_finish = asyncio.Event()
+
+        async def blocked_play(*_args: object, **_kwargs: object) -> None:
+            entered.set()
+            await never_finish.wait()
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=blocked_play)):
+            task = asyncio.create_task(
+                player.handle_track_end(current.track, mafic.EndReason.FINISHED)
+            )
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        self.assertEqual(player.current_entry, current)
+        self.assertEqual(player.queue.snapshot(), (next_entry,))
+        self.assertEqual(list(player._pending_end_attempts), [])
+
+    async def test_repeated_restore_cancellation_restores_previous_attempt(
+        self,
+    ) -> None:
+        player = _make_player()
+        entry = make_entry("restored")
+        unrelated = PlaybackAttempt(99, make_entry("unrelated", entry_id=99))
+        entered = asyncio.Event()
+        never_finish = asyncio.Event()
+        play_count = 0
+
+        async def second_play_blocks(*_args: object, **_kwargs: object) -> None:
+            nonlocal play_count
+            play_count += 1
+            if play_count == 1:
+                return
+            entered.set()
+            await never_finish.wait()
+
+        with patch.object(
+            player, "play", new=AsyncMock(side_effect=second_play_blocks)
+        ):
+            first = await player.restore_playback(
+                entry, start_time=0, volume=50, pause=False
+            )
+            player._pending_end_attempts.append(unrelated)
+            player._exception_attempt_ids.add(first.attempt_id)
+            task = asyncio.create_task(
+                player.restore_playback(entry, start_time=0, volume=50, pause=False)
+            )
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        self.assertIs(player.current_attempt, first)
+        self.assertEqual(list(player._pending_end_attempts), [unrelated])
+        self.assertIn(first.attempt_id, player._exception_attempt_ids)
+
     async def test_voice_server_update_propagates_error_without_cleanup(
         self,
     ) -> None:

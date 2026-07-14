@@ -166,7 +166,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 volume=volume,
                 pause=pause,
             )
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             self._current_attempt = previous
             raise
         return attempt
@@ -195,7 +195,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 return None
             try:
                 return await self._start_entry_unlocked(entry)
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 self.queue.restore(queued_state)
                 raise
 
@@ -218,7 +218,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                     return ended, None
                 started = await self._start_entry_unlocked(next_entry)
                 return ended, started
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 self._current_attempt = ended
                 self._pending_end_attempts = old_pending
                 self.queue.restore(old_queue)
@@ -243,7 +243,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                     return ended, None
                 started = await self._start_entry_unlocked(next_entry)
                 return ended, started
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 self._current_attempt = ended
                 self._pending_end_attempts = old_pending
                 self.queue.restore(old_queue)
@@ -261,7 +261,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 self._current_attempt = None
             try:
                 await super().stop()
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 self.queue.restore(old_queue)
                 self._pending_end_attempts = old_pending
                 self._current_attempt = ended
@@ -284,7 +284,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
             return None
         try:
             return await self._start_entry_unlocked(entry)
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             self.queue.prepend(entry)
             raise
 
@@ -307,7 +307,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                         if reason is mafic.EndReason.STOPPED
                         else None
                     )
-                except Exception:
+                except (Exception, asyncio.CancelledError):
                     self.queue.restore(old_queue)
                     self._pending_end_attempts = old_pending
                     self._current_attempt = old_current
@@ -324,7 +324,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 started = await self._transition_after_current_end_unlocked(
                     current, reason
                 )
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 self.queue.restore(old_queue)
                 self._pending_end_attempts = old_pending
                 self._current_attempt = old_current
@@ -399,7 +399,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                     volume=volume,
                     pause=pause,
                 )
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 self._current_attempt = previous
                 raise
             if previous is not None:
