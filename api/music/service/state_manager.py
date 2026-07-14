@@ -8,8 +8,7 @@ from typing import TypedDict
 import mafic
 from discord.utils import utcnow
 
-from api.music.models import MusicSession
-from api.music.player import MusicPlayer
+from api.music.models import MusicSession, PlaybackAttempt
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ class StateManager:
 
     def __init__(self) -> None:
         self.sessions: dict[int, MusicSession] = {}
-        self._track_start_times_dt: dict[int, datetime.datetime] = {}
+        self._track_start_times_dt: dict[tuple[int, int], datetime.datetime] = {}
 
         # Auto-leave tracking
         self.empty_channel_timers: dict[int, EmptyTimerInfo] = {}
@@ -38,33 +37,42 @@ class StateManager:
     def end_session(self, guild_id: int) -> MusicSession | None:
         """Removes and returns the session for a guild."""
         session = self.sessions.pop(guild_id, None)
-        self._track_start_times_dt.pop(guild_id, None)
+        self.clear_track_start_times(guild_id)
         return session
 
-    def record_track_start(self, guild_id: int) -> None:
+    def clear_track_start_times(self, guild_id: int) -> None:
+        """Remove unfinished playback start records for one guild."""
+        self._track_start_times_dt = {
+            key: value
+            for key, value in self._track_start_times_dt.items()
+            if key[0] != guild_id
+        }
+
+    def record_track_start(self, guild_id: int, attempt: PlaybackAttempt) -> None:
         self.get_or_create_session(guild_id)
         # Using utcnow() as in original
-        self._track_start_times_dt[guild_id] = utcnow()
+        self._track_start_times_dt[(guild_id, attempt.attempt_id)] = utcnow()
 
     def record_history(
-        self, player: MusicPlayer, track: mafic.Track, reason: mafic.EndReason
+        self, guild_id: int, attempt: PlaybackAttempt, reason: mafic.EndReason
     ) -> None:
-        guild_id = player.guild.id
         session = self.sessions.get(guild_id)
-        start_time = self._track_start_times_dt.pop(guild_id, None)
+        start_time = self._track_start_times_dt.pop(
+            (guild_id, attempt.attempt_id), None
+        )
 
         if not session or not start_time:
             return
 
-        skipped = False
-        if (
-            reason is mafic.EndReason.STOPPED
-            or reason is mafic.EndReason.REPLACED
-            or reason is mafic.EndReason.LOAD_FAILED
-        ):
-            skipped = True
+        skipped = reason in (
+            mafic.EndReason.STOPPED,
+            mafic.EndReason.REPLACED,
+            mafic.EndReason.LOAD_FAILED,
+            mafic.EndReason.CLEANUP,
+        )
 
-        requester_info = player.get_requester(track)
+        track = attempt.entry.track
+        requester_info = attempt.entry.requester
 
         session.add_track(
             title=track.title,

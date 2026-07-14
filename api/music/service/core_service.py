@@ -28,7 +28,7 @@ from api.music.models import (
     RotateTrackData,
     SkipTrackData,
     Track,
-    TrackId,
+    TrackRequester,
     VoiceCheckResult,
     VoiceJoinResult,
     player_fail_result,
@@ -322,11 +322,9 @@ class CoreMusicService:
         *,
         placement: QueuePlacement,
     ) -> PlayPlacement:
-        for track in tracks:
-            player.set_requester(track, requester_id, text_channel_id)
-
-        started = await player.enqueue_tracks(tracks, placement=placement)
-        return "now" if started is tracks[0] else placement
+        requester = TrackRequester(requester_id, text_channel_id)
+        started = await player.enqueue_tracks(tracks, requester, placement=placement)
+        return "now" if started is not None else placement
 
     async def _handle_play_expected_failure(
         self, player: MusicPlayer, query: str, exc: Exception
@@ -382,12 +380,12 @@ class CoreMusicService:
             return self._missing_player_result(guild_id, context="skip")
 
         try:
-            skipped, started = await player.skip()
-            if skipped:
+            skipped_attempt, started_attempt = await player.skip()
+            if skipped_attempt:
                 await self.ui.controller.destroy_for_guild(
                     guild_id,
                     ControllerDestroyReason.SKIP,
-                    expected_track_id=TrackId.from_track(skipped),
+                    expected_attempt_id=skipped_attempt.attempt_id,
                 )
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
@@ -397,7 +395,10 @@ class CoreMusicService:
         return MusicResult(
             MusicResultStatus.SUCCESS,
             "Skipped",
-            data={"before": skipped, "after": started},
+            data={
+                "before": (skipped_attempt.entry.track if skipped_attempt else None),
+                "after": (started_attempt.entry.track if started_attempt else None),
+            },
         )
 
     async def pause(self, guild_id: int) -> MusicResult[None]:
@@ -446,11 +447,11 @@ class CoreMusicService:
             return self._missing_player_result(guild_id, context="rotate")
 
         try:
-            moved_track, started_track = await player.rotate_current()
+            moved_attempt, started_attempt = await player.rotate_current()
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
 
-        if not moved_track:
+        if not moved_attempt:
             return MusicResult(MusicResultStatus.FAILURE, "Nothing playing")
 
         self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
@@ -458,7 +459,10 @@ class CoreMusicService:
         return MusicResult(
             MusicResultStatus.SUCCESS,
             "Rotated",
-            data={"skipped": moved_track, "next": started_track},
+            data={
+                "skipped": moved_attempt.entry.track,
+                "next": started_attempt.entry.track if started_attempt else None,
+            },
         )
 
     async def set_volume(self, guild_id: int, volume: int) -> MusicResult[int]:
@@ -510,11 +514,11 @@ class CoreMusicService:
         player = self.connection.get_player(guild_id)
         if not player:
             return self._missing_player_result(guild_id, context="get_queue")
-        if not player.queue and not player.current:
+        if not player.queue and not player.current_entry:
             return MusicResult(MusicResultStatus.FAILURE, "Queue empty")
 
         snapshot = QueueSnapshot(
-            current=player.current,
+            current=player.current_entry,
             queue=tuple(player.queue),
             repeat_mode=player.repeat.mode,
         )
@@ -525,9 +529,9 @@ class CoreMusicService:
         if not player:
             return 0
         total = player.queue.duration
-        if player.current:
+        if player.current_entry:
             position = player.position or 0
-            total += max(0, player.current.length - position)
+            total += max(0, player.current_entry.track.length - position)
         return total
 
     def _missing_player_result(

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import mafic
 
+from api.music.models import QueueEntry, TrackRequester
+
 
 def make_track(identifier: str, *, length: int = 1000) -> mafic.Track:
     """Create a Mafic track for music tests."""
@@ -31,3 +33,15 @@ def make_playlist(name: str, tracks: list[mafic.Track]) -> mafic.Playlist:
     playlist.tracks = tracks
     playlist.plugin_info = {}
     return playlist
+
+
+def make_entry(
+    identifier: str,
+    *,
+    entry_id: int = 1,
+    requester_id: int | None = None,
+    length: int = 1000,
+) -> QueueEntry:
+    """Create a queue entry for music tests."""
+    requester = TrackRequester(requester_id) if requester_id is not None else None
+    return QueueEntry(entry_id, make_track(identifier, length=length), requester)

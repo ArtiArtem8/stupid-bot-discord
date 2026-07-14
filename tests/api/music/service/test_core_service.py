@@ -13,12 +13,13 @@ from api.music.models import (
     ControllerDestroyReason,
     MusicResult,
     MusicResultStatus,
+    PlaybackAttempt,
     QueuePlacement,
-    TrackId,
+    TrackRequester,
     VoiceCheckResult,
 )
 from api.music.service.core_service import CoreMusicService
-from tests.api.music.helpers import make_playlist, make_track
+from tests.api.music.helpers import make_entry, make_playlist, make_track
 
 
 class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
@@ -240,15 +241,16 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         track = make_track("track")
         player = MagicMock()
         player.fetch_tracks = AsyncMock(return_value=[track])
-        player.enqueue_tracks = AsyncMock(return_value=track)
+        player.enqueue_tracks = AsyncMock(return_value=MagicMock())
         join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
 
         with patch.object(self.service, "join", join):
             result = await self.service.play(guild, MagicMock(), "query", 1, 2)
 
-        player.set_requester.assert_called_once_with(track, 1, 2)
-        player.enqueue_tracks.assert_awaited_once_with((track,), placement="end")
+        player.enqueue_tracks.assert_awaited_once_with(
+            (track,), TrackRequester(1, 2), placement="end"
+        )
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
         data = result.data
         if data is None or isinstance(data, tuple):
@@ -274,8 +276,9 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
                 placement="next",
             )
 
-        player.set_requester.assert_called_once_with(track, 1, 2)
-        player.enqueue_tracks.assert_awaited_once_with((track,), placement="next")
+        player.enqueue_tracks.assert_awaited_once_with(
+            (track,), TrackRequester(1, 2), placement="next"
+        )
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
         data = result.data
         if data is None or isinstance(data, tuple):
@@ -302,8 +305,9 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
                 placement="next",
             )
 
-        self.assertEqual(player.set_requester.call_count, 2)
-        player.enqueue_tracks.assert_awaited_once_with(tracks, placement="next")
+        player.enqueue_tracks.assert_awaited_once_with(
+            tracks, TrackRequester(1, 2), placement="next"
+        )
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
         data = result.data
         if data is None or isinstance(data, tuple):
@@ -323,7 +327,9 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.service, "join", join):
             result = await self.service.play(guild, MagicMock(), "query", 1, 2)
 
-        player.enqueue_tracks.assert_awaited_once_with(tracks, placement="end")
+        player.enqueue_tracks.assert_awaited_once_with(
+            tracks, TrackRequester(1, 2), placement="end"
+        )
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
         data = result.data
         if data is None or isinstance(data, tuple):
@@ -364,10 +370,11 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
         async def enqueue_tracks(
             tracks: tuple[mafic.Track, ...],
+            requester: TrackRequester,
             *,
             placement: QueuePlacement,
-        ) -> mafic.Track | None:
-            del tracks, placement
+        ) -> PlaybackAttempt | None:
+            del tracks, requester, placement
             enqueue_started.set()
             async with transition_lock:
                 return None
@@ -411,13 +418,19 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
     async def test_skip_uses_atomic_player_result_without_pre_reading_queue(
         self,
     ) -> None:
-        before = make_track("before")
-        after = make_track("after")
+        before = make_entry("before")
+        after = make_entry("after", entry_id=2)
+        attempt = PlaybackAttempt(7, before)
 
         class PlayerStub:
             def __init__(self) -> None:
-                self.skip = AsyncMock(return_value=(before, after))
+                self.skip = AsyncMock(return_value=(attempt, PlaybackAttempt(8, after)))
                 self.resume = AsyncMock()
+
+            @property
+            def current_attempt(self) -> PlaybackAttempt:
+                msg = "service must not pre-read current attempt"
+                raise AssertionError(msg)
 
             @property
             def current(self) -> mafic.Track | None:
@@ -440,20 +453,20 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
         self.assertEqual(result.message, "Skipped")
-        self.assertEqual(result.data, {"before": before, "after": after})
+        self.assertEqual(result.data, {"before": before.track, "after": after.track})
         player.skip.assert_awaited_once()
         player.resume.assert_not_awaited()
         self.ui.controller.destroy_for_guild.assert_awaited_once_with(
             123,
             ControllerDestroyReason.SKIP,
-            expected_track_id=TrackId.from_track(before),
+            expected_attempt_id=7,
         )
         session.record_interaction.assert_called_once_with(2, 1)
 
     async def test_skip_does_not_resume_when_no_track_started(self) -> None:
-        before = make_track("before")
+        before = make_entry("before")
         player = MagicMock()
-        player.skip = AsyncMock(return_value=(before, None))
+        player.skip = AsyncMock(return_value=(PlaybackAttempt(7, before), None))
         player.resume = AsyncMock()
         self.connection.get_player.return_value = player
         self.connection.is_known_unavailable.return_value = False
@@ -462,22 +475,54 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         result = await self.service.skip(123, requester_id=1, text_channel_id=2)
 
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
-        self.assertEqual(result.data, {"before": before, "after": None})
+        self.assertEqual(result.data, {"before": before.track, "after": None})
         player.skip.assert_awaited_once()
         player.resume.assert_not_awaited()
 
+    async def test_skip_destroy_uses_attempt_returned_after_lock_wait(self) -> None:
+        before_wait = PlaybackAttempt(1, make_entry("before-wait"))
+        actually_skipped = PlaybackAttempt(2, make_entry("actually-skipped"))
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def skip() -> tuple[PlaybackAttempt, None]:
+            entered.set()
+            await release.wait()
+            return actually_skipped, None
+
+        player = MagicMock(current_attempt=before_wait)
+        player.skip = AsyncMock(side_effect=skip)
+        self.connection.get_player.return_value = player
+        self.connection.is_known_unavailable.return_value = False
+        self.ui.controller.destroy_for_guild = AsyncMock()
+
+        service_skip = asyncio.create_task(self.service.skip(123))
+        await entered.wait()
+        player.current_attempt = actually_skipped
+        release.set()
+        result = await service_skip
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+            123,
+            ControllerDestroyReason.SKIP,
+            expected_attempt_id=actually_skipped.attempt_id,
+        )
+
     async def test_rotate_uses_started_track_from_atomic_player_result(self) -> None:
-        moved = make_track("moved")
-        started = make_track("started")
+        moved = make_entry("moved")
+        started = make_entry("started", entry_id=2)
         player = MagicMock()
-        player.rotate_current = AsyncMock(return_value=(moved, started))
+        player.rotate_current = AsyncMock(
+            return_value=(PlaybackAttempt(7, moved), PlaybackAttempt(8, started))
+        )
         self.connection.get_player.return_value = player
         self.connection.is_known_unavailable.return_value = False
 
         result = await self.service.rotate(123, requester_id=1, text_channel_id=2)
 
         self.assertIs(result.status, MusicResultStatus.SUCCESS)
-        self.assertEqual(result.data, {"skipped": moved, "next": started})
+        self.assertEqual(result.data, {"skipped": moved.track, "next": started.track})
         player.rotate_current.assert_awaited_once()
 
     async def test_stop_uses_atomic_stop_and_clear(self) -> None:

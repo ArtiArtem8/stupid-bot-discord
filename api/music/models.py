@@ -180,6 +180,32 @@ class TrackRequester:
 
 
 @dataclass(frozen=True, slots=True)
+class QueueEntry:
+    """One concrete request for a source track."""
+
+    entry_id: int
+    track: Track
+    requester: TrackRequester | None
+
+
+@dataclass(frozen=True, slots=True)
+class PlaybackAttempt:
+    """One runtime playback start for a queue entry."""
+
+    attempt_id: int
+    entry: QueueEntry
+
+
+@dataclass(frozen=True, slots=True)
+class TrackEndOutcome:
+    """Classification and transition result for a Mafic track-end event."""
+
+    ended_attempt: PlaybackAttempt | None
+    started_attempt: PlaybackAttempt | None
+    is_stale: bool
+
+
+@dataclass(frozen=True, slots=True)
 class TrackGroup:
     """Helper class to group consecutive tracks."""
 
@@ -272,8 +298,8 @@ def player_fail_result(
 class QueueSnapshot:
     """Snapshot of the current queue state."""
 
-    current: Track | None
-    queue: tuple[Track, ...]
+    current: QueueEntry | None
+    queue: tuple[QueueEntry, ...]
     repeat_mode: RepeatMode
 
 
@@ -285,15 +311,14 @@ class PlayerStateSnapshot:
     voice_channel_id: int
     text_channel_id: int | None
 
-    current_track: Track | None
+    current_entry: QueueEntry | None
     position: int
     is_paused: bool
     volume: int
 
-    queue: list[Track]
+    queue: list[QueueEntry]
     repeat_mode: RepeatMode
 
     filters: mafic.Filter | None
 
-    requester_map: dict[str, TrackRequester]
     session: MusicSession | None

@@ -4,14 +4,13 @@ import logging
 from typing import TYPE_CHECKING
 
 import discord
-import mafic
 from discord.ext import commands
 
 from api.music.protocols import ControllerManagerProtocol
 from api.music.service.state_manager import StateManager
 
 if TYPE_CHECKING:
-    from api.music.models import TrackRequester
+    from api.music.models import PlaybackAttempt, TrackRequester
     from api.music.player import MusicPlayer
 
 logger = logging.getLogger(__name__)
@@ -31,10 +30,11 @@ class UIOrchestrator:
         self.state = state_manager
 
     def _resolve_channel(
-        self, player: MusicPlayer, track: mafic.Track
+        self, player: MusicPlayer, attempt: PlaybackAttempt
     ) -> tuple[discord.abc.Messageable, TrackRequester] | None:
         """Resolve the best messageable channel for a track."""
-        requester_info = player.get_requester(track)
+        track = attempt.entry.track
+        requester_info = attempt.entry.requester
         if not requester_info:
             logger.debug("No requester found for track: %s", track.title)
             return None
@@ -58,9 +58,12 @@ class UIOrchestrator:
 
         return channel, requester_info
 
-    async def spawn_controller(self, player: MusicPlayer, track: mafic.Track) -> None:
+    async def spawn_controller(
+        self, player: MusicPlayer, attempt: PlaybackAttempt
+    ) -> None:
         """Helper to safely spawn a UI controller."""
-        resolved = self._resolve_channel(player, track)
+        track = attempt.entry.track
+        resolved = self._resolve_channel(player, attempt)
         if not resolved:
             return
 
@@ -78,5 +81,5 @@ class UIOrchestrator:
             user_id=requester_info.user_id,
             channel=channel,
             player=player,
-            track=track,
+            attempt=attempt,
         )

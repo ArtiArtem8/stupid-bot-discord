@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import override
 
 import discord
@@ -27,8 +27,13 @@ from api.music.service.ui_orchestrator import UIOrchestrator
 from api.music.session_events import dispatch_music_session_end
 from repositories.volume_repository import VolumeRepository
 
-from .models import ControllerDestroyReason, MusicResultStatus, PlayerStateSnapshot
-from .player import MusicPlayer
+from .models import (
+    ControllerDestroyReason,
+    MusicResultStatus,
+    PlayerStateSnapshot,
+    QueueEntry,
+)
+from .player import MusicPlayer, tracks_match
 
 logger = logging.getLogger(__name__)
 
@@ -123,35 +128,45 @@ class SessionHealer(HealerProtocol):
         """Confirm that Lavalink did not immediately drop the restored track."""
         await asyncio.sleep(RESTORE_CONFIRM_DELAY_SECONDS)
 
-        if not self.connection.is_player_usable(player):
+        attempt = player.current_attempt
+        current = player.current
+        usable = self.connection.is_player_usable(player)
+        synchronized = (
+            attempt is not None
+            and current is not None
+            and tracks_match(attempt.entry.track, current)
+        )
+        if usable and synchronized:
+            return True
+
+        if attempt is not None:
+            await player.clear_current_attempt(attempt)
+
+        if not usable:
             logger.warning(
                 "Restore failed for guild %s during %s: player became stale",
                 guild_id,
                 context,
             )
-            await self.connection.detach_stale_voice_client(player.guild, player)
-            return False
-
-        if not player.current:
+        else:
             logger.warning(
-                "Restore failed for guild %s during %s: track did not stay active",
+                "Restore failed for guild %s during %s: playback state desynchronized",
                 guild_id,
                 context,
             )
-            await self.ui.controller.destroy_for_guild(
-                guild_id,
-                ControllerDestroyReason.TRACK_EXCEPTION,
-            )
-            return False
-
-        return True
+        await self.connection.detach_stale_voice_client(player.guild, player)
+        await self.ui.controller.destroy_for_guild(
+            guild_id,
+            ControllerDestroyReason.TRACK_EXCEPTION,
+        )
+        return False
 
     async def _seek_after_warm_restore(
         self,
         *,
         guild: discord.Guild,
         player: MusicPlayer,
-        track: mafic.Track,
+        entry: QueueEntry,
         position: int,
         volume: int,
         pause: bool,
@@ -199,8 +214,8 @@ class SessionHealer(HealerProtocol):
         )
 
         try:
-            await player.play(
-                track,
+            await player.restore_playback(
+                entry,
                 start_time=0,
                 volume=volume,
                 pause=pause,
@@ -224,15 +239,15 @@ class SessionHealer(HealerProtocol):
         *,
         guild: discord.Guild,
         player: MusicPlayer,
-        track: mafic.Track,
+        entry: QueueEntry,
         start_time: int,
         volume: int,
         pause: bool,
     ) -> bool:
         """Play a restored track and confirm it survives early Lavalink failures."""
         try:
-            await player.play(
-                track,
+            await player.restore_playback(
+                entry,
                 start_time=start_time,
                 volume=volume,
                 pause=pause,
@@ -256,7 +271,7 @@ class SessionHealer(HealerProtocol):
         *,
         guild: discord.Guild,
         player: MusicPlayer,
-        track: mafic.Track,
+        entry: QueueEntry,
         position: int,
         volume: int,
         pause: bool,
@@ -272,11 +287,11 @@ class SessionHealer(HealerProtocol):
 
         # Keep this silent during warmup so users do not hear the first second twice.
         try:
-            await player.play(
-                track,
+            await player.restore_playback(
+                entry,
                 start_time=0,
                 volume=0,
-                pause=False,
+                pause=pause,
             )
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             logger.warning(
@@ -297,7 +312,7 @@ class SessionHealer(HealerProtocol):
         return await self._seek_after_warm_restore(
             guild=guild,
             player=player,
-            track=track,
+            entry=entry,
             position=position,
             volume=volume,
             pause=pause,
@@ -436,21 +451,19 @@ class SessionHealer(HealerProtocol):
                 else None
             )
 
-        req_map = player._requester_map.copy()  # pyright: ignore[reportPrivateUsage]
         volume = await self.volume_repo.get_volume(guild_id=player.guild.id)
 
         return PlayerStateSnapshot(
             guild_id=player.guild.id,
             voice_channel_id=voice_channel_id,
             text_channel_id=text_channel_id,
-            current_track=player.current,
+            current_entry=player.current_entry,
             position=player.position or 0,
             is_paused=player.paused,
             volume=volume,
-            queue=list(player.queue._queue),  # pyright: ignore[reportPrivateUsage]
+            queue=list(player.queue_snapshot()),
             repeat_mode=player.repeat.mode,
             filters=None,
-            requester_map=req_map,
             session=session,
         )
 
@@ -474,6 +487,7 @@ class SessionHealer(HealerProtocol):
         if player is None:
             return False
 
+        self.state.clear_track_start_times(snapshot.guild_id)
         if not await self._restore_player_runtime_state(player, snapshot, target.guild):
             return False
 
@@ -528,13 +542,11 @@ class SessionHealer(HealerProtocol):
             )
         return player
 
-    def _restore_player_queue_and_requesters(
+    def _restore_player_entries(
         self, player: MusicPlayer, snapshot: PlayerStateSnapshot
     ) -> None:
-        player.queue._queue.clear()  # pyright: ignore[reportPrivateUsage]
-        player.queue._queue.extend(snapshot.queue)  # pyright: ignore[reportPrivateUsage]
+        player.restore_entries(snapshot.current_entry, snapshot.queue)
         player.repeat.mode = snapshot.repeat_mode
-        player._requester_map = snapshot.requester_map  # pyright: ignore[reportPrivateUsage]
 
     async def _restore_player_runtime_state(
         self,
@@ -542,7 +554,7 @@ class SessionHealer(HealerProtocol):
         snapshot: PlayerStateSnapshot,
         guild: discord.Guild,
     ) -> bool:
-        self._restore_player_queue_and_requesters(player, snapshot)
+        self._restore_player_entries(player, snapshot)
         if not await self._restore_player_volume(player, snapshot, guild):
             return False
 
@@ -578,10 +590,11 @@ class SessionHealer(HealerProtocol):
         snapshot: PlayerStateSnapshot,
         guild: discord.Guild,
     ) -> bool:
-        if snapshot.current_track is not None:
+        if snapshot.current_entry is not None:
             restored_track = await self._resolve_fresh_track_for_restore(
-                player, snapshot.current_track
+                player, snapshot.current_entry.track
             )
+            restored_entry = replace(snapshot.current_entry, track=restored_track)
 
             restore_position = max(0, snapshot.position)
 
@@ -589,7 +602,7 @@ class SessionHealer(HealerProtocol):
                 restored = await self._play_with_warm_seek_restore(
                     guild=guild,
                     player=player,
-                    track=restored_track,
+                    entry=restored_entry,
                     position=restore_position,
                     volume=snapshot.volume,
                     pause=snapshot.is_paused,
@@ -598,7 +611,7 @@ class SessionHealer(HealerProtocol):
                 restored = await self._play_and_confirm_restore(
                     guild=guild,
                     player=player,
-                    track=restored_track,
+                    entry=restored_entry,
                     start_time=restore_position,
                     volume=snapshot.volume,
                     pause=snapshot.is_paused,
@@ -607,7 +620,10 @@ class SessionHealer(HealerProtocol):
             if not restored:
                 return False
 
-            await self.ui.spawn_controller(player, restored_track)
+            attempt = player.current_attempt
+            if attempt is not None:
+                self.state.record_track_start(snapshot.guild_id, attempt)
+                await self.ui.spawn_controller(player, attempt)
 
         if snapshot.session is not None:
             session = snapshot.session
