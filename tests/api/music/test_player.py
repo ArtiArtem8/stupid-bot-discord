@@ -28,6 +28,7 @@ def _make_player(*, current: QueueEntry | None = None) -> MusicPlayer:
     player._transition_lock = asyncio.Lock()
     player._is_stale = False
     player._current = current.track if current else None
+    player._paused = False
     player.guild = MagicMock(id=123)
     return player
 
@@ -85,6 +86,89 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(sought)
         self.assertIs(player.current_attempt, replacement)
         seek_mock.assert_not_awaited()
+
+    async def test_expected_skip_waits_for_lock_and_refuses_replacement(
+        self,
+    ) -> None:
+        expected_entry = make_entry("expected", entry_id=1)
+        queued_entry = make_entry("queued", entry_id=2)
+        replacement_entry = make_entry("replacement", entry_id=3)
+        pending = PlaybackAttempt(99, make_entry("pending", entry_id=99))
+        player = _make_player(current=expected_entry)
+        expected = _require_attempt(player.current_attempt)
+        replacement = PlaybackAttempt(2, replacement_entry)
+        player.queue.append(queued_entry)
+        player._pending_end_attempts.append(pending)
+        queue_before = player.queue.snapshot()
+        pending_before = player._pending_end_attempts.copy()
+        entered = asyncio.Event()
+
+        async def guarded_skip() -> tuple[
+            PlaybackAttempt | None, PlaybackAttempt | None
+        ]:
+            entered.set()
+            return await player.skip(expected=expected)
+
+        await player._transition_lock.acquire()
+        with (
+            patch.object(mafic.Player, "stop", new=AsyncMock()) as stop_mock,
+            patch.object(player, "play", new=AsyncMock()) as play_mock,
+        ):
+            task = asyncio.create_task(guarded_skip())
+            await entered.wait()
+            self.assertFalse(task.done())
+            player._current_attempt = replacement
+            player._transition_lock.release()
+            result = await task
+
+        self.assertEqual(result, (None, None))
+        self.assertIs(player.current_attempt, replacement)
+        self.assertEqual(player.queue.snapshot(), queue_before)
+        self.assertEqual(player._pending_end_attempts, pending_before)
+        stop_mock.assert_not_awaited()
+        play_mock.assert_not_awaited()
+
+    async def test_toggle_pause_waits_for_lock_and_refuses_replacement(self) -> None:
+        player = _make_player(current=make_entry("expected"))
+        expected = _require_attempt(player.current_attempt)
+        replacement = PlaybackAttempt(2, make_entry("replacement", entry_id=2))
+        entered = asyncio.Event()
+
+        async def guarded_toggle() -> bool | None:
+            entered.set()
+            return await player.toggle_pause_for_attempt(expected)
+
+        await player._transition_lock.acquire()
+        with (
+            patch.object(player, "update", new=AsyncMock()) as update_mock,
+            patch.object(player, "pause", new=AsyncMock()) as pause_mock,
+            patch.object(player, "resume", new=AsyncMock()) as resume_mock,
+        ):
+            task = asyncio.create_task(guarded_toggle())
+            await entered.wait()
+            self.assertFalse(task.done())
+            player._current_attempt = replacement
+            player._transition_lock.release()
+            paused = await task
+
+        self.assertIsNone(paused)
+        self.assertIs(player.current_attempt, replacement)
+        update_mock.assert_not_awaited()
+        pause_mock.assert_not_awaited()
+        resume_mock.assert_not_awaited()
+
+    async def test_toggle_pause_uses_one_update_and_returns_new_state(self) -> None:
+        player = _make_player(current=make_entry("expected"))
+        expected = _require_attempt(player.current_attempt)
+
+        for initial, new_state in ((False, True), (True, False)):
+            with self.subTest(initial=initial):
+                player._paused = initial
+                with patch.object(player, "update", new=AsyncMock()) as update_mock:
+                    paused = await player.toggle_pause_for_attempt(expected)
+
+                self.assertIs(paused, new_state)
+                update_mock.assert_awaited_once_with(pause=new_state)
 
     async def test_restore_attempt_state_refuses_replacement(self) -> None:
         expected_entry = make_entry("expected", entry_id=1)

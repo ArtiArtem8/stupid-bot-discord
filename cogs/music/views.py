@@ -327,7 +327,7 @@ class TrackControllerManager(ControllerManagerProtocol):
                 user_id=user_id,
                 player=player,
                 guild_id=guild_id,
-                attempt_id=attempt.attempt_id,
+                attempt=attempt,
                 on_stop_callback=on_view_stop_callback,
                 on_player_failure=self.connection.invalidate_player,
             )
@@ -455,16 +455,16 @@ class TrackControllerView(ui.View):
         user_id: int,
         player: MusicPlayer,
         guild_id: int,
-        attempt_id: int,
+        attempt: PlaybackAttempt,
         on_stop_callback: Callable[[Self, ControllerDestroyReason], Awaitable[None]]
         | None,
         on_player_failure: Callable[[MusicPlayer], Awaitable[None]],
-    ):
+    ) -> None:
         super().__init__(timeout=None)
         self.user_id = user_id
         self.player = player
         self.guild_id = guild_id
-        self.attempt_id = attempt_id
+        self.attempt = attempt
         self.on_stop_callback = on_stop_callback
         self.on_player_failure = on_player_failure
 
@@ -481,6 +481,10 @@ class TrackControllerView(ui.View):
         self._last_update_time: float = 0
         self._min_update_delay: float = 1.0
 
+    @property
+    def attempt_id(self) -> int:
+        return self.attempt.attempt_id
+
     @override
     def stop(self):
         """Stops the updater loop and interaction."""
@@ -492,7 +496,7 @@ class TrackControllerView(ui.View):
 
     def make_embed(self) -> discord.Embed:
         attempt = self.player.current_attempt
-        if attempt is None or attempt.attempt_id != self.attempt_id:
+        if attempt is None or attempt is not self.attempt:
             return discord.Embed(title="Playback Stopped", color=config.Color.INFO)
         track = attempt.entry.track
 
@@ -619,7 +623,7 @@ class TrackControllerView(ui.View):
         return failure_count
 
     async def _handle_track_change(self, current_attempt: PlaybackAttempt) -> bool:
-        if current_attempt.attempt_id == self.attempt_id:
+        if current_attempt is self.attempt:
             return False
 
         logger.debug(
@@ -701,15 +705,14 @@ class TrackControllerView(ui.View):
             return False
         return True
 
-    async def _prepare_action(self, interaction: Interaction) -> bool:
+    async def _prepare_action(self, interaction: Interaction) -> PlaybackAttempt | None:
         if not await self._check_owner(interaction):
-            return False
+            return None
         await MusicInteractionResponder(interaction).acknowledge_component()
-        current = self.player.current_attempt
-        if not current or current.attempt_id != self.attempt_id:
+        if self.player.current_attempt is not self.attempt:
             await self._request_stop(ControllerDestroyReason.STALE_VIEW)
-            return False
-        return True
+            return None
+        return self.attempt
 
     @ui.button(
         emoji=MUSIC_PLAYER_EMOJIS["restart"],
@@ -717,12 +720,15 @@ class TrackControllerView(ui.View):
         custom_id="btn_restart",
     )
     @handle_view_errors
-    async def restart(self, interaction: Interaction, _: ui.Button[Self]):
-        if not await self._prepare_action(interaction):
+    async def restart(self, interaction: Interaction, _: ui.Button[Self]) -> None:
+        expected = await self._prepare_action(interaction)
+        if expected is None:
+            return
+        if not await self.player.seek_attempt(expected, 0):
+            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
             return
         if self._is_paused_cache:
             self._frozen_position = 0
-        await self.player.seek(0)
         await self._safe_update(force=True)
 
     @ui.button(
@@ -731,8 +737,9 @@ class TrackControllerView(ui.View):
         custom_id="btn_back10",
     )
     @handle_view_errors
-    async def back10(self, interaction: Interaction, _: ui.Button[Self]):
-        if not await self._prepare_action(interaction):
+    async def back10(self, interaction: Interaction, _: ui.Button[Self]) -> None:
+        expected = await self._prepare_action(interaction)
+        if expected is None:
             return
         pos = (
             self._frozen_position
@@ -740,7 +747,9 @@ class TrackControllerView(ui.View):
             else (self.player.position or 0)
         )
         new = max(pos - 10000, 0)
-        await self.player.seek(new)
+        if not await self.player.seek_attempt(expected, new):
+            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
+            return
         if self._is_paused_cache:
             self._frozen_position = new
         await self._safe_update(force=True)
@@ -751,17 +760,22 @@ class TrackControllerView(ui.View):
         custom_id="btn_pause_resume",
     )
     @handle_view_errors
-    async def pause_resume(self, interaction: Interaction, _: ui.Button[Self]):
-        if not await self._prepare_action(interaction):
+    async def pause_resume(self, interaction: Interaction, _: ui.Button[Self]) -> None:
+        expected = await self._prepare_action(interaction)
+        if expected is None:
             return
-        if self.player.paused:
-            await self.player.resume()
-            self._is_paused_cache = False
-        else:
-            await self.player.pause()
+        frozen_position = self.player.position or 0
+        paused = await self.player.toggle_pause_for_attempt(expected)
+        if paused is None:
+            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
+            return
+        if paused:
             self._is_paused_cache = True
-            self._frozen_position = self.player.position or 0
+            self._frozen_position = frozen_position
             self._pause_start_time = time.monotonic()
+        else:
+            self._is_paused_cache = False
+            self._pause_start_time = None
         await self._safe_update(force=True)
 
     @ui.button(
@@ -770,18 +784,19 @@ class TrackControllerView(ui.View):
         custom_id="btn_fwd10",
     )
     @handle_view_errors
-    async def forward10(self, interaction: Interaction, _: ui.Button[Self]):
-        if not await self._prepare_action(interaction):
-            return
-        if not self.player.current:
+    async def forward10(self, interaction: Interaction, _: ui.Button[Self]) -> None:
+        expected = await self._prepare_action(interaction)
+        if expected is None:
             return
         pos = (
             self._frozen_position
             if self._is_paused_cache
             else (self.player.position or 0)
         )
-        new = min(pos + 10000, self.player.current.length)
-        await self.player.seek(new)
+        new = min(pos + 10000, expected.entry.track.length)
+        if not await self.player.seek_attempt(expected, new):
+            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
+            return
         if self._is_paused_cache:
             self._frozen_position = new
         await self._safe_update(force=True)
@@ -792,8 +807,14 @@ class TrackControllerView(ui.View):
         custom_id="btn_skip",
     )
     @handle_view_errors
-    async def skip(self, interaction: Interaction, _: ui.Button[Self]):
-        if not await self._prepare_action(interaction):
+    async def skip(self, interaction: Interaction, _: ui.Button[Self]) -> None:
+        expected = await self._prepare_action(interaction)
+        if expected is None:
             return
-        await self.player.skip()
-        await self._request_stop(ControllerDestroyReason.SKIP)
+        ended, _started = await self.player.skip(expected=expected)
+        reason = (
+            ControllerDestroyReason.SKIP
+            if ended is expected
+            else ControllerDestroyReason.STALE_VIEW
+        )
+        await self._request_stop(reason)
