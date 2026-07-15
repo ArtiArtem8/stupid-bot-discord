@@ -201,11 +201,15 @@ class MusicPlayer(mafic.Player[discord.Client]):
 
     async def skip(
         self,
+        *,
+        expected: PlaybackAttempt | None = None,
     ) -> tuple[PlaybackAttempt | None, PlaybackAttempt | None]:
         """Replace current playback with the next entry, ignoring repeat."""
         async with self._transition_lock:
             ended = self._current_attempt
             if ended is None:
+                return None, None
+            if expected is not None and (self._is_stale or ended is not expected):
                 return None, None
             old_queue = self.queue.snapshot()
             old_pending = self._pending_end_attempts.copy()
@@ -362,6 +366,17 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 return False
             await self.seek(position)
             return self._current_attempt is expected and not self._is_stale
+
+    async def toggle_pause_for_attempt(self, expected: PlaybackAttempt) -> bool | None:
+        """Toggle pause for the expected attempt and return its new state."""
+        async with self._transition_lock:
+            if self._is_stale or self._current_attempt is not expected:
+                return None
+            paused = not self.paused
+            await self.update(pause=paused)
+            if self._is_stale or self._current_attempt is not expected:
+                return None
+            return paused
 
     async def restore_attempt_state(
         self,
