@@ -57,6 +57,8 @@ MUSIC_PLAYER_EMOJIS = {
     "musical_note": "<:musicalnote:1447968776128565358>",
 }
 
+# Must match the 10 shown by the seek button icons
+_SEEK_STEP_MS = 10_000
 
 type QueueRefreshCallback = Callable[[], Awaitable[QueueSnapshot | None]]
 
@@ -746,7 +748,7 @@ class TrackControllerView(ui.View):
             if self._is_paused_cache
             else (self.player.position or 0)
         )
-        new = max(pos - 10000, 0)
+        new = max(pos - _SEEK_STEP_MS, 0)
         if not await self.player.seek_attempt(expected, new):
             await self._request_stop(ControllerDestroyReason.STALE_VIEW)
             return
@@ -793,7 +795,10 @@ class TrackControllerView(ui.View):
             if self._is_paused_cache
             else (self.player.position or 0)
         )
-        new = min(pos + 10000, expected.entry.track.length)
+        new = min(
+            pos + _SEEK_STEP_MS,
+            expected.entry.track.length,
+        )
         if not await self.player.seek_attempt(expected, new):
             await self._request_stop(ControllerDestroyReason.STALE_VIEW)
             return
