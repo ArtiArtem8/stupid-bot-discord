@@ -7,13 +7,13 @@ authors = [
 ]
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "aiohttp>=3.14.1",
     "defusedxml>=0.7.1",
     "discord-py[voice]>=2.7.1",
     "mafic>=2.11.0",
     "pillow>=12.3.0",
     "python-dotenv>=1.1.0",
     "rapidfuzz>=3.14.1",
-    "requests>=2.32.3",
 ]
 
 [dependency-groups]
@@ -34,7 +34,6 @@ target-version = "py312"
 exclude = [
     ".venv",
     "venv",
-    "temp",
     "backups",
     "data",
     "**/__pycache__",
@@ -70,7 +69,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.mccabe]
-max-complexity = 9
+max-complexity = 8
 
 [tool.ruff.lint.isort]
 known-first-party = ["cogs", "utils"]
@@ -82,6 +81,9 @@ fixture-parentheses = false
 testpaths = ["tests"]
 filterwarnings = ["ignore:.*audioop.*:DeprecationWarning:discord.player"]
 pythonpath = ["."]
+markers = [
+    "wolfram_live: performs a real Wolfram API request",
+]
 
 [tool.basedpyright]
 exclude = ["**/.venv/**"]
