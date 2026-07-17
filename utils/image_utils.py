@@ -1,163 +1,111 @@
-import secrets
 from io import BytesIO
-from pathlib import Path
 
-import requests
 from PIL import Image, UnidentifiedImageError
 
 
-def save_image(
-    image_url: str,
-    save_to: Path,
-    resize: tuple[int, int | None] | None = None,
-    quality: int = 95,
-    format: str = "WEBP",
-) -> Path:
-    """Download and process an image from URL with various optimizations.
-
-    Args:
-        image_url: URL of the source image
-        save_to: Directory to save the processed image
-        resize: Optional (width, height) tuple for resizing
-        quality: Image quality (1-100)
-        format: Output format (WEBP/JPEG/PNG)
-
-    Returns:
-        Path to saved image file
-
-    """
-    fmt = format.upper()
-    try:
-        response = requests.get(image_url, timeout=10)
-        response.raise_for_status()
-
-        with Image.open(BytesIO(response.content)) as img:
-            # Convert to RGB for JPEG/WEBP formats
-            if fmt in ("JPEG", "WEBP") and img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-
-            if resize:
-                resize = (resize[0], img.size[1] * resize[0] // img.size[0])
-                img = img.resize(resize, Image.Resampling.LANCZOS)
-
-            filename = generate_unique_filename(fmt.lower())
-            output_path = save_to / filename
-
-            save_args: dict[str, int | bool] = {
-                "quality": quality,
-                "optimize": True,
-            }
-
-            if fmt == "WEBP":
-                save_args["method"] = 6  # Highest compression
-            elif fmt == "PNG":
-                save_args["compress_level"] = 9  # Max compression
-
-            save_to.mkdir(parents=True, exist_ok=True)
-            img.save(output_path, format=fmt, **save_args)
-            return output_path
-
-    except Exception as e:
-        raise RuntimeError(f"Image processing failed: {e!s}") from e
+class ImageProcessingError(Exception):
+    """Raised when a Wolfram plot cannot be processed."""
 
 
-def generate_unique_filename(extension: str) -> Path:
-    """Generate unique random filename with given extension."""
-    return Path(f"{secrets.token_hex(8)}").with_suffix(f".{extension}")
+class ImageOutputTooLargeError(ImageProcessingError):
+    """Raised when the processed plot cannot fit the upload budget."""
 
 
-def optimize_image(
-    input_path: Path,
-    output_path: Path | None = None,
-    quality: int = 85,
-    max_size: tuple[int, int] | None = None,
-) -> Path:
-    """Optimize existing image file for web use.
+def _calculate_output_size(
+    source_size: tuple[int, int],
+    *,
+    target_width: int,
+    max_size: tuple[int, int],
+) -> tuple[int, int]:
+    """Calculate one aspect-preserving resize bounded by both dimensions."""
+    source_width, source_height = source_size
+    max_width, max_height = max_size
+    if min(source_width, source_height, target_width, max_width, max_height) <= 0:
+        raise ImageProcessingError("Image dimensions must be positive")
 
-    Args:
-        input_path: Path to source image
-        output_path: Optional output path (uses input path if None)
-        quality: Image quality (1-100)
-        max_size: Optional maximum dimensions (width, height)
-
-    Returns:
-        Path to optimized image
-
-    Note:
-        - For JPEG: quality 1-95 recommended (avoid 100)
-        - For WEBP: quality 0-100 (80-90 optimal)
-        - For PNG: quality ignored, uses compress_level 0-9
-
-    Raises:
-        ValueError: If image format is unsupported
-        RuntimeError: If optimization fails
-
-    """
-    try:
-        output_path = output_path or input_path
-
-        with Image.open(input_path) as img:
-            if max_size:
-                img.thumbnail(max_size, Image.Resampling.LANCZOS)
-
-            save_args: dict[str, int | bool] = {
-                "quality": quality,
-                "optimize": True,
-            }
-
-            if img.format == "PNG":
-                save_args["compress_level"] = 9
-            elif img.format == "WEBP":
-                save_args["method"] = 6
-
-            img.save(output_path, format=img.format, **save_args)
-            return output_path
-
-    except UnidentifiedImageError as e:
-        raise ValueError("Unsupported image format") from e
-    except Exception as e:
-        raise RuntimeError(f"Image optimization failed: {e!s}") from e
+    scale = min(
+        target_width / source_width,
+        max_width / source_width,
+        max_height / source_height,
+    )
+    return (
+        max(1, round(source_width * scale)),
+        max(1, round(source_height * scale)),
+    )
 
 
-def convert_image(
-    input_path: Path,
-    output_format: str,
-    output_path: Path | None = None,
-    quality: int = 85,
-) -> Path:
-    """Convert image between formats with optional quality setting.
+def _encode_webp(image: Image.Image, *, quality: int) -> bytes:
+    """Encode an image to WebP entirely in memory."""
+    with BytesIO() as output:
+        image.save(
+            output,
+            format="WEBP",
+            quality=quality,
+            optimize=True,
+            method=6,
+        )
+        return output.getvalue()
 
-    Args:
-        input_path: Path to source image
-        output_format: Target format (WEBP/JPEG/PNG)
-        output_path: Optional output path
-        quality: Image quality (1-100)
 
-    Returns:
-        Path to converted image
+def _encode_with_budget(
+    image: Image.Image,
+    *,
+    qualities: tuple[int, ...],
+    max_output_bytes: int,
+) -> bytes:
+    """Return the first of at most two encoded qualities that fits the budget."""
+    if max_output_bytes <= 0:
+        raise ImageOutputTooLargeError("Image upload budget must be positive")
 
-    """
-    fmt = output_format.upper()
-    valid_formats = ("WEBP", "JPEG", "PNG")
-    if fmt not in valid_formats:
-        raise ValueError(f"Invalid format. Must be one of {valid_formats}")
+    for quality in qualities[:2]:
+        encoded = _encode_webp(image, quality=quality)
+        if len(encoded) <= max_output_bytes:
+            return encoded
+    raise ImageOutputTooLargeError("Processed plot exceeds the upload budget")
 
-    output_path = output_path or input_path.with_suffix(f".{output_format.lower()}")
+
+def process_wolfram_plot(
+    source: bytes,
+    *,
+    target_width: int,
+    max_size: tuple[int, int],
+    max_source_pixels: int,
+    max_output_bytes: int,
+    quality: int,
+    fallback_qualities: tuple[int, ...],
+) -> bytes:
+    """Resize and encode complete Wolfram plot bytes without cropping."""
+    if not source:
+        raise ImageProcessingError("Wolfram plot response is empty")
+    if max_source_pixels <= 0:
+        raise ImageProcessingError("Source pixel limit must be positive")
 
     try:
-        with Image.open(input_path) as img:
-            if fmt in ("JPEG", "WEBP") and img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
+        with BytesIO(source) as input_buffer, Image.open(input_buffer) as opened:
+            source_pixels = opened.width * opened.height
+            if source_pixels > max_source_pixels:
+                raise ImageProcessingError(
+                    "Wolfram plot exceeds the source pixel limit"
+                )
 
-            save_args: dict[str, int | bool] = {
-                "quality": quality,
-                "optimize": True,
-            }
-
-            img.save(output_path, format=fmt, **save_args)
-            return output_path
-
-    except UnidentifiedImageError as e:
-        raise ValueError("Unsupported source image format") from e
-    except Exception as e:
-        raise RuntimeError(f"Image conversion failed: {e!s}") from e
+            output_size = _calculate_output_size(
+                opened.size,
+                target_width=target_width,
+                max_size=max_size,
+            )
+            with opened.convert("RGB") as rgb:
+                with rgb.resize(output_size, Image.Resampling.LANCZOS) as resized:
+                    return _encode_with_budget(
+                        resized,
+                        qualities=(quality, *fallback_qualities),
+                        max_output_bytes=max_output_bytes,
+                    )
+    except ImageProcessingError:
+        raise
+    except (
+        Image.DecompressionBombError,
+        OSError,
+        UnidentifiedImageError,
+        ValueError,
+    ) as error:
+        raise ImageProcessingError("Failed to process Wolfram plot") from error

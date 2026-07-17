@@ -5,7 +5,11 @@ from utils.birthday_utils import (
     is_leap,
 )
 from utils.embeds import EmbedLimits, SafeEmbed
-from utils.image_utils import convert_image, optimize_image, save_image
+from utils.image_utils import (
+    ImageOutputTooLargeError,
+    ImageProcessingError,
+    process_wolfram_plot,
+)
 from utils.json_store import AsyncJsonFileStore
 from utils.json_utils import clear_json, get_json, save_json
 from utils.logging_setup import setup_logging
@@ -22,20 +26,20 @@ from utils.text_utils import (
 __all__ = [
     "AsyncJsonFileStore",
     "EmbedLimits",
+    "ImageOutputTooLargeError",
+    "ImageProcessingError",
     "SafeEmbed",
     "TextPaginator",
     "calculate_days_until_birthday",
     "clear_json",
-    "convert_image",
     "format_birthday_date",
     "format_duration_ru",
     "format_list",
     "get_json",
     "is_birthday_today",
     "is_leap",
-    "optimize_image",
+    "process_wolfram_plot",
     "random_answer",
-    "save_image",
     "save_json",
     "setup_logging",
     "str_local",
