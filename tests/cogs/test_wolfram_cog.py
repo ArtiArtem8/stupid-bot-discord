@@ -295,7 +295,9 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
             await cog._send_plot(interaction, "https://example.invalid/plot", "sin(x)")
 
         channel.send.assert_not_awaited()
-        self.assertEqual(feedback.await_args_list[-1].kwargs["title"], "API Error")
+        self.assertEqual(
+            feedback.await_args_list[-1].kwargs["title"], "API Rate Limit Error"
+        )
         self.assertIn("try again", feedback.await_args_list[-1].kwargs["description"])
 
     async def test_cancellation_propagates_from_download(self) -> None:

@@ -40,6 +40,11 @@ from utils import (
 
 logger = logging.getLogger(__name__)
 _WOLFRAM_RESULT_URL = "https://www.wolframalpha.com/input?i="
+_INVALID_QUERY_MESSAGE = "Query empty or too long."
+_WOLFRAM_FAILURE_MESSAGE = "Wolfram|Alpha request failed. Please try again later."
+_WOLFRAM_RATE_LIMIT_MESSAGE = (
+    "Wolfram|Alpha is temporarily rate-limited. Please try again later."
+)
 
 
 def _wolfram_result_url(query: str) -> str:
@@ -140,11 +145,11 @@ class WolframCog(BaseCog):
         """Unified handler for API interaction."""
         try:
             query = _normalize_query(query)
-        except ValueError as error:
+        except ValueError:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description=str(error),
+                description=_INVALID_QUERY_MESSAGE,
                 ephemeral=True,
             )
             return
@@ -161,7 +166,7 @@ class WolframCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title="API Error",
+                title="API-Key Error",
                 description="The API key is not set.",
             )
             return
@@ -209,12 +214,12 @@ class WolframCog(BaseCog):
                     return
             await self._send_text_results(interaction, result, query)
 
-        except WolframAPIError as error:
+        except WolframAPIError:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
                 title="API Error",
-                description=str(error),
+                description=_WOLFRAM_FAILURE_MESSAGE,
             )
 
     async def _send_text_results(
@@ -303,12 +308,12 @@ class WolframCog(BaseCog):
                 feedback_type=FeedbackType.SUCCESS,
                 description=f"Graph generated: {msg.jump_url}",
             )
-        except WolframRateLimitError as error:
+        except WolframRateLimitError:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title="API Error",
-                description=str(error),
+                title="API Rate Limit Error",
+                description=_WOLFRAM_RATE_LIMIT_MESSAGE,
             )
         except (WolframAPIError, ImageProcessingError):
             await self._send_plot_error(interaction)
