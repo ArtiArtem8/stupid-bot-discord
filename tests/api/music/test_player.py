@@ -87,6 +87,24 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIs(player.current_attempt, replacement)
         seek_mock.assert_not_awaited()
 
+    async def test_seek_attempt_allows_expected_attempt_with_empty_mafic_cache(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("old"))
+        old_attempt = _require_attempt(player.current_attempt)
+        replacement = PlaybackAttempt(2, make_entry("replacement", entry_id=2))
+        player._pending_end_attempts.append(old_attempt)
+        player._current_attempt = replacement
+        player._current = None
+
+        with patch.object(player, "seek", new=AsyncMock()) as seek_mock:
+            result = await player.seek_attempt(replacement, 10_000)
+
+        self.assertTrue(result)
+        self.assertIs(player.current_attempt, replacement)
+        self.assertEqual(list(player._pending_end_attempts), [old_attempt])
+        seek_mock.assert_awaited_once_with(10_000)
+
     async def test_expected_skip_waits_for_lock_and_refuses_replacement(
         self,
     ) -> None:
