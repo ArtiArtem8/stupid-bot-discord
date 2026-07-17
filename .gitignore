@@ -175,4 +175,3 @@ cython_debug/
 
 backups/*
 data/*
-temp/*

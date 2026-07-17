@@ -29,7 +29,6 @@ async def main() -> None:
     for dir in [
         config.DATA_DIR,
         config.BACKUP_DIR,
-        config.TEMP_DIR,
         config.COGS_DIR,
     ]:
         dir.mkdir(parents=True, exist_ok=True)
