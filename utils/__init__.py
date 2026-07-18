@@ -4,7 +4,13 @@ from utils.birthday_utils import (
     is_birthday_today,
     is_leap,
 )
-from utils.embeds import EmbedLimits, SafeEmbed
+from utils.embeds import (
+    CharacterLimitExceededError,
+    EmbedLimits,
+    FieldLimitExceededError,
+    SafeEmbed,
+    SafeEmbedError,
+)
 from utils.image_utils import (
     ImageOutputTooLargeError,
     ImageProcessingError,
@@ -25,10 +31,13 @@ from utils.text_utils import (
 
 __all__ = [
     "AsyncJsonFileStore",
+    "CharacterLimitExceededError",
     "EmbedLimits",
+    "FieldLimitExceededError",
     "ImageOutputTooLargeError",
     "ImageProcessingError",
     "SafeEmbed",
+    "SafeEmbedError",
     "TextPaginator",
     "calculate_days_until_birthday",
     "clear_json",

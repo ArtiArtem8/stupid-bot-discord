@@ -20,7 +20,11 @@ from api.wolfram import (
     WolframRateLimitError,
     WolframResult,
 )
-from cogs.wolfram_cog import WolframCog, _normalize_query
+from cogs.wolfram_cog import (
+    WolframCog,
+    _build_text_results_embed,
+    _normalize_query,
+)
 from framework import FeedbackType, FeedbackUI
 from utils import ImageOutputTooLargeError
 
@@ -253,6 +257,66 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             feedback.await_args_list[-1].kwargs["description"],
             "No graph generated.",
+        )
+
+    def test_text_results_embed_skips_empty_pods_and_caps_fields(self) -> None:
+        pods = [
+            Pod(
+                title="Input",
+                id="Input",
+                subpods=(SubPod("solve x", None, None),),
+            ),
+            Pod(
+                title="Empty",
+                id="Empty",
+                subpods=(SubPod(None, None, None),),
+            ),
+        ]
+        pods.extend(
+            Pod(
+                title=f"Result {index}",
+                id=f"Result{index}",
+                subpods=(SubPod(str(index), None, None),),
+            )
+            for index in range(12)
+        )
+
+        embed = _build_text_results_embed(WolframResult(success=True, pods=pods), "x")
+
+        self.assertEqual(embed.description, "`x`")
+        self.assertEqual(len(embed.fields), 10)
+
+    def test_text_results_embed_stops_at_total_character_limit(self) -> None:
+        pods = tuple(
+            Pod(
+                title=f"Result {index}",
+                id=f"Result{index}",
+                subpods=(SubPod("x" * 2_000, None, None),),
+            )
+            for index in range(10)
+        )
+
+        embed = _build_text_results_embed(WolframResult(success=True, pods=pods), "x")
+
+        self.assertGreater(len(embed.fields), 0)
+        self.assertLess(len(embed.fields), 10)
+        self.assertLessEqual(len(embed), 6_000)
+
+    async def test_text_results_without_fields_uses_warning(self) -> None:
+        cog, _ = self._make_cog()
+        interaction, channel = self._make_interaction()
+        result = WolframResult(
+            success=True,
+            pods=(Pod("Input", "Input", (SubPod("solve x", None, None),)),),
+        )
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback:
+            await cog._send_text_results(interaction, result, "x")
+
+        channel.send.assert_not_awaited()
+        self.assertEqual(
+            feedback.await_args_list[-1].kwargs["description"],
+            "No displayable results found.\nAll results were filtered out.",
         )
 
     async def test_invalid_channel_is_rejected_before_http(self) -> None:

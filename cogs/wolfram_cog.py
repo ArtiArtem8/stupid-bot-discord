@@ -33,6 +33,7 @@ from api.wolfram import (
 )
 from framework import BaseCog, FeedbackType, FeedbackUI
 from utils import (
+    CharacterLimitExceededError,
     ImageProcessingError,
     SafeEmbed,
     process_wolfram_plot,
@@ -45,6 +46,7 @@ _WOLFRAM_FAILURE_MESSAGE = "Wolfram|Alpha request failed. Please try again later
 _WOLFRAM_RATE_LIMIT_MESSAGE = (
     "Wolfram|Alpha is temporarily rate-limited. Please try again later."
 )
+_MAX_TEXT_RESULT_FIELDS = 10
 
 
 def _wolfram_result_url(query: str) -> str:
@@ -63,6 +65,32 @@ def _normalize_query(query: str) -> str:
 def _wolfram_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
     """Share cooldowns per user within each guild or direct-message context."""
     return interaction.guild_id, interaction.user.id
+
+
+def _build_text_results_embed(result: WolframResult, query: str) -> SafeEmbed:
+    """Build an embed from the displayable text pods that fit Discord's limits."""
+    input_pod = next((pod for pod in result.pods if pod.id == "Input"), None)
+    title_text = input_pod.get_joined_text() if input_pod else query
+    title_text = title_text.replace("solve ", "").replace("plot ", "")
+
+    embed = SafeEmbed(
+        title="Expression:", description=f"`{title_text}`", color=config.Color.INFO
+    )
+    embed.set_author(name="StupidBot", icon_url=config.BOT_ICON)
+
+    for pod in result.pods:
+        if pod.id == "Input" or not (text := pod.get_joined_text()):
+            continue
+        try:
+            embed.add_code_field(
+                name=f"{pod.title}:", value=text, inline=not pod.is_primary
+            )
+        except CharacterLimitExceededError:
+            break
+        if len(embed.fields) >= _MAX_TEXT_RESULT_FIELDS:
+            break
+
+    return embed
 
 
 _wolfram_cooldown = app_commands.checks.cooldown(
@@ -254,33 +282,8 @@ class WolframCog(BaseCog):
         self, interaction: Interaction, result: WolframResult, query: str
     ) -> None:
         """Construct and send the Embed."""
-        input_pod = next((p for p in result.pods if p.id == "Input"), None)
-        title_text = input_pod.get_joined_text() if input_pod else query
-        title_text = title_text.replace("solve ", "").replace("plot ", "")
-
-        embed = SafeEmbed(
-            title="Expression:", description=f"`{title_text}`", color=config.Color.INFO
-        )
-        embed.set_author(name="StupidBot", icon_url=config.BOT_ICON)
-
-        fields_added = 0
-        for pod in result.pods:
-            if pod.id == "Input":
-                continue
-
-            text = pod.get_joined_text()
-            if not text:
-                continue
-
-            inline = not pod.is_primary
-            # SafeEmbed handles truncation and code block wrapping
-            embed.add_code_field(name=f"{pod.title}:", value=text, inline=inline)
-            fields_added += 1
-
-            if fields_added >= 10:
-                break
-
-        if fields_added == 0:
+        embed = _build_text_results_embed(result, query)
+        if not embed.fields:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
