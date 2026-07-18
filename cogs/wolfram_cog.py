@@ -69,8 +69,9 @@ def _wolfram_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
 
 def _build_text_results_embed(result: WolframResult, query: str) -> SafeEmbed:
     """Build an embed from the displayable text pods that fit Discord's limits."""
-    input_pod = next((pod for pod in result.pods if pod.id == "Input"), None)
-    title_text = input_pod.get_joined_text() if input_pod else query
+    title_text = next(
+        (pod.get_joined_text() for pod in result.pods if pod.id == "Input"), query
+    )
     title_text = title_text.replace("solve ", "").replace("plot ", "")
 
     embed = SafeEmbed(
