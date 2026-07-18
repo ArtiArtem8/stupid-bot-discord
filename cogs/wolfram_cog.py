@@ -185,35 +185,14 @@ class WolframCog(BaseCog):
 
         try:
             result = await self.wolfram_client.query(final_query)
-
-            if not result.success:
-                msg = result.error_msg or "Wolfram could not understand the input."
-                await FeedbackUI.send(
-                    interaction,
-                    feedback_type=FeedbackType.WARNING,
-                    title="No Results",
-                    description=msg,
-                )
-                return
-
-            if mode == "plot" or (mode == "solve" and "plot" in query.lower()):
-                if plot_url := result.plot_url:
-                    return await self._send_plot(
-                        interaction,
-                        plot_url,
-                        query,
-                        result_query=final_query,
-                    )
-                elif mode == "plot":
-                    await FeedbackUI.send(
-                        interaction,
-                        feedback_type=FeedbackType.WARNING,
-                        title="No Plot",
-                        description="No graph generated.",
-                    )
-                    return
-            await self._send_text_results(interaction, result, query)
-
+        except WolframRateLimitError:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.ERROR,
+                title="API Rate Limit Error",
+                description=_WOLFRAM_RATE_LIMIT_MESSAGE,
+            )
+            return
         except WolframAPIError:
             await FeedbackUI.send(
                 interaction,
@@ -221,6 +200,55 @@ class WolframCog(BaseCog):
                 title="API Error",
                 description=_WOLFRAM_FAILURE_MESSAGE,
             )
+            return
+
+        await self._send_query_result(
+            interaction,
+            result,
+            query=query,
+            final_query=final_query,
+            mode=mode,
+        )
+
+    async def _send_query_result(
+        self,
+        interaction: Interaction,
+        result: WolframResult,
+        *,
+        query: str,
+        final_query: str,
+        mode: Literal["solve", "plot"],
+    ) -> None:
+        """Dispatch a parsed Wolfram result to the existing Discord feedback path."""
+        if not result.success:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                title="No Results",
+                description=(
+                    result.error_msg or "Wolfram could not understand the input."
+                ),
+            )
+            return
+
+        plot_expected = mode == "plot" or (mode == "solve" and "plot" in query.lower())
+        if plot_expected and (plot_url := result.plot_url):
+            await self._send_plot(
+                interaction,
+                plot_url,
+                query,
+                result_query=final_query,
+            )
+            return
+        if mode == "plot":
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                title="No Plot",
+                description="No graph generated.",
+            )
+            return
+        await self._send_text_results(interaction, result, query)
 
     async def _send_text_results(
         self, interaction: Interaction, result: WolframResult, query: str

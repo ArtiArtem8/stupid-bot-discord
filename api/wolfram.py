@@ -152,24 +152,57 @@ def _parse_subpod(element: Element) -> SubPod:
     )
 
 
+def _should_ignore_pod(*, title: str, pod_id: str) -> bool:
+    """Return whether the existing pod filters should exclude a pod."""
+    if pod_id == "ImagePod:GraphData":
+        return False
+    return title in WOLFRAM_IGNORED_TITLES or any(
+        pattern in title for pattern in WOLFRAM_IGNORED_PATTERNS
+    )
+
+
+def _has_displayable_content(subpods: Sequence[SubPod]) -> bool:
+    """Return whether at least one subpod has text or an image URL."""
+    return any(subpod.display_text or subpod.image_url for subpod in subpods)
+
+
 def _parse_pod(element: Element) -> Pod | None:
     """Parse one displayable pod while preserving the existing filters."""
     title = element.get("title", "")
     pod_id = element.get("id", "")
-    is_graph_image = pod_id == "ImagePod:GraphData"
-    if not is_graph_image and title in WOLFRAM_IGNORED_TITLES:
-        return None
-    if not is_graph_image and any(
-        pattern in title for pattern in WOLFRAM_IGNORED_PATTERNS
-    ):
+    if _should_ignore_pod(title=title, pod_id=pod_id):
         return None
 
     subpods = tuple(_parse_subpod(subpod) for subpod in element.findall("subpod"))
-    if not subpods or not any(
-        subpod.display_text or subpod.image_url for subpod in subpods
-    ):
+    if not _has_displayable_content(subpods):
         return None
     return Pod(title=title, id=pod_id, subpods=subpods)
+
+
+def _validate_content_length(
+    content_length: int | None,
+    *,
+    max_bytes: int,
+) -> None:
+    """Reject a declared plot size before its response body is read."""
+    if content_length is not None and content_length > max_bytes:
+        raise WolframAPIError("Plot download exceeds the size limit")
+
+
+async def _read_limited_response(
+    response: aiohttp.ClientResponse,
+    *,
+    max_bytes: int,
+) -> bytes:
+    """Read a plot response while enforcing its streaming byte limit."""
+    payload = bytearray()
+    async for chunk in response.content.iter_chunked(64 * 1024):
+        payload.extend(chunk)
+        if len(payload) > max_bytes:
+            raise WolframAPIError("Plot download exceeds the size limit")
+    if not payload:
+        raise WolframAPIError("Plot download is empty")
+    return bytes(payload)
 
 
 class WolframClient:
@@ -250,20 +283,11 @@ class WolframClient:
             timeout = aiohttp.ClientTimeout(total=config.WOLFRAM_HTTP_TIMEOUT_SECONDS)
             async with self.session.get(url, timeout=timeout) as response:
                 response.raise_for_status()
-                if (
-                    response.content_length is not None
-                    and response.content_length > max_bytes
-                ):
-                    raise WolframAPIError("Plot download exceeds the size limit")
-
-                payload = bytearray()
-                async for chunk in response.content.iter_chunked(64 * 1024):
-                    payload.extend(chunk)
-                    if len(payload) > max_bytes:
-                        raise WolframAPIError("Plot download exceeds the size limit")
-                if not payload:
-                    raise WolframAPIError("Plot download is empty")
-                return bytes(payload)
+                _validate_content_length(
+                    response.content_length,
+                    max_bytes=max_bytes,
+                )
+                return await _read_limited_response(response, max_bytes=max_bytes)
         except aiohttp.ClientResponseError as error:
             _raise_http_error(
                 error,

@@ -1,6 +1,6 @@
 from io import BytesIO
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 
 class ImageProcessingError(Exception):
@@ -102,10 +102,5 @@ def process_wolfram_plot(
                     )
     except ImageProcessingError:
         raise
-    except (
-        Image.DecompressionBombError,
-        OSError,
-        UnidentifiedImageError,
-        ValueError,
-    ) as error:
+    except (Image.DecompressionBombError, OSError, ValueError) as error:
         raise ImageProcessingError("Failed to process Wolfram plot") from error

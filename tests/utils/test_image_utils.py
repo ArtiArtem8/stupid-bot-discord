@@ -41,7 +41,7 @@ class TestWolframPlotProcessing(unittest.TestCase):
 
     def _synthetic_source(
         self,
-        format: str = "PNG",
+        image_format: str = "PNG",
         *,
         mode: str = "RGB",
         size: tuple[int, int] = (437, 214),
@@ -51,19 +51,19 @@ class TestWolframPlotProcessing(unittest.TestCase):
                 with Image.new("P", size, 0) as image:
                     image.putpalette([255, 255, 255, 0, 0, 0] + [0] * 762)
                     image.putpixel((min(20, size[0] - 1), size[1] // 2), 1)
-                    image.save(buffer, format=format)
+                    image.save(buffer, format=image_format)
             else:
                 color = (255, 255, 255, 0) if mode == "RGBA" else "white"
                 with Image.new(mode, size, color) as image:
                     marker = (20, 20, 20, 255) if mode == "RGBA" else (20, 20, 20)
                     image.putpixel((min(20, size[0] - 1), size[1] // 2), marker)
-                    image.save(buffer, format=format)
+                    image.save(buffer, format=image_format)
             return buffer.getvalue()
 
     def test_png_gif_and_jpeg_sources_become_webp(self) -> None:
-        for format in ("PNG", "GIF", "JPEG"):
-            with self.subTest(format=format):
-                output = self._process(self._synthetic_source(format))
+        for image_format in ("PNG", "GIF", "JPEG"):
+            with self.subTest(image_format=image_format):
+                output = self._process(self._synthetic_source(image_format))
                 with Image.open(BytesIO(output)) as image:
                     self.assertEqual(image.format, "WEBP")
                     self.assertEqual(image.size, (800, 392))

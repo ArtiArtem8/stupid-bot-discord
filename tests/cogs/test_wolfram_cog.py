@@ -13,13 +13,15 @@ from discord.ext import commands
 
 import config
 from api.wolfram import (
+    Pod,
+    SubPod,
     WolframAPIError,
     WolframClient,
     WolframRateLimitError,
     WolframResult,
 )
 from cogs.wolfram_cog import WolframCog, _normalize_query
-from framework import FeedbackUI
+from framework import FeedbackType, FeedbackUI
 from utils import ImageOutputTooLargeError
 
 
@@ -145,6 +147,113 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(peak, 2)
+
+    async def test_query_rate_limit_uses_specific_safe_feedback(self) -> None:
+        cog, client = self._make_cog()
+        interaction, _ = self._make_interaction()
+        client.query.side_effect = WolframRateLimitError("upstream details")
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback:
+            await cog._execute_query(interaction, "sin(x)", mode="solve")
+
+        kwargs = feedback.await_args_list[-1].kwargs
+        self.assertEqual(kwargs["feedback_type"], FeedbackType.ERROR)
+        self.assertEqual(kwargs["title"], "API Rate Limit Error")
+        self.assertEqual(
+            kwargs["description"],
+            "Wolfram|Alpha is temporarily rate-limited. Please try again later.",
+        )
+
+    async def test_query_api_error_uses_generic_safe_feedback(self) -> None:
+        cog, client = self._make_cog()
+        interaction, _ = self._make_interaction()
+        client.query.side_effect = WolframAPIError("upstream details")
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback:
+            await cog._execute_query(interaction, "sin(x)", mode="solve")
+
+        self.assertEqual(feedback.await_args_list[-1].kwargs["title"], "API Error")
+        self.assertEqual(
+            feedback.await_args_list[-1].kwargs["description"],
+            "Wolfram|Alpha request failed. Please try again later.",
+        )
+        self.assertNotIn(
+            "upstream details",
+            feedback.await_args_list[-1].kwargs["description"],
+        )
+
+    async def test_unsuccessful_result_uses_no_results_feedback(self) -> None:
+        cog, _ = self._make_cog()
+        interaction, _ = self._make_interaction()
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback:
+            await cog._send_query_result(
+                interaction,
+                WolframResult(success=False, error_msg="No results found"),
+                query="sin(x)",
+                final_query="solve sin(x)",
+                mode="solve",
+            )
+
+        self.assertEqual(feedback.await_args_list[-1].kwargs["title"], "No Results")
+        self.assertEqual(
+            feedback.await_args_list[-1].kwargs["description"], "No results found"
+        )
+
+    async def test_plot_result_with_url_is_sent_as_plot(self) -> None:
+        cog, _ = self._make_cog()
+        interaction, _ = self._make_interaction()
+        result = WolframResult(
+            success=True,
+            pods=(
+                Pod(
+                    title="Plot",
+                    id="Plot",
+                    subpods=(
+                        SubPod(
+                            plaintext=None,
+                            image_url="https://example.invalid/plot.gif",
+                            image_title=None,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        with patch.object(cog, "_send_plot", new=AsyncMock()) as send_plot:
+            await cog._send_query_result(
+                interaction,
+                result,
+                query="sin(x)",
+                final_query="plot sin(x)",
+                mode="plot",
+            )
+
+        send_plot.assert_awaited_once_with(
+            interaction,
+            "https://example.invalid/plot.gif",
+            "sin(x)",
+            result_query="plot sin(x)",
+        )
+
+    async def test_plot_result_without_url_uses_no_plot_feedback(self) -> None:
+        cog, _ = self._make_cog()
+        interaction, _ = self._make_interaction()
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback:
+            await cog._send_query_result(
+                interaction,
+                WolframResult(success=True),
+                query="sin(x)",
+                final_query="plot sin(x)",
+                mode="plot",
+            )
+
+        self.assertEqual(feedback.await_args_list[-1].kwargs["title"], "No Plot")
+        self.assertEqual(
+            feedback.await_args_list[-1].kwargs["description"],
+            "No graph generated.",
+        )
 
     async def test_invalid_channel_is_rejected_before_http(self) -> None:
         cog, client = self._make_cog()

@@ -147,6 +147,43 @@ class TestWolframParsing(unittest.TestCase):
 
         self.assertEqual(result.plot_url, "https://example.invalid/3d-plot.gif")
 
+    def test_ignored_pod_is_not_added(self) -> None:
+        result = self.client._parse_xml(
+            """
+            <queryresult success="true">
+              <pod title="Properties" id="Properties">
+                <subpod><plaintext>ignored</plaintext></subpod>
+              </pod>
+            </queryresult>
+            """
+        )
+
+        self.assertEqual(result.pods, ())
+
+    def test_graph_image_pod_bypasses_ignored_title(self) -> None:
+        result = self.client._parse_xml(
+            """
+            <queryresult success="true">
+              <pod title="Properties" id="ImagePod:GraphData">
+                <subpod><img src="https://example.invalid/graph.gif" /></subpod>
+              </pod>
+            </queryresult>
+            """
+        )
+
+        self.assertEqual([pod.id for pod in result.pods], ["ImagePod:GraphData"])
+
+    def test_empty_pod_is_not_added(self) -> None:
+        result = self.client._parse_xml(
+            """
+            <queryresult success="true">
+              <pod title="Result" id="Result"><subpod /></pod>
+            </queryresult>
+            """
+        )
+
+        self.assertEqual(result.pods, ())
+
 
 class TestWolframHTTP(unittest.IsolatedAsyncioTestCase):
     def _client(self, response: _Response) -> tuple[WolframClient, _Session]:
