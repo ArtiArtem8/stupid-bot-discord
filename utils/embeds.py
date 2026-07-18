@@ -39,6 +39,26 @@ class EmbedLimits:
 DEFAULT_LIMITS = EmbedLimits()
 
 
+class SafeEmbedError(ValueError):
+    """Base exception for SafeEmbed errors."""
+
+
+class FieldLimitExceededError(SafeEmbedError):
+    """Raised when the maximum number of embed fields is exceeded."""
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(f"Embed field limit reached ({limit}).")
+        self.limit = limit
+
+
+class CharacterLimitExceededError(SafeEmbedError):
+    """Raised when the total character limit of the embed is exceeded."""
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(f"Embed total character limit reached ({limit}).")
+        self.limit = limit
+
+
 class SafeEmbed(discord.Embed):
     def __init__(
         self,
@@ -78,13 +98,13 @@ class SafeEmbed(discord.Embed):
 
         if len(self.fields) >= self._limits.max_fields:
             if strict:
-                raise ValueError("Embed field limit reached (25).")
+                raise FieldLimitExceededError(self._limits.max_fields)
             return self
 
         projected = len(self) + len(name) + len(value)
         if projected > self._limits.max_total:
             if strict:
-                raise ValueError("Embed total size limit reached (~6000).")
+                raise CharacterLimitExceededError(self._limits.max_total)
             remaining = max(0, self._limits.max_total - (len(self) + len(name)))
             value = truncate_text(value, min(self._limits.field_value, remaining))
 
@@ -110,7 +130,7 @@ class SafeEmbed(discord.Embed):
         for idx, page in enumerate(paginator.pages, 1):
             if len(self.fields) >= self._limits.max_fields:
                 if strict:
-                    raise ValueError("Embed field limit reached (25) while paginating.")
+                    raise FieldLimitExceededError(self._limits.max_fields)
                 break
 
             page_name = name if idx == 1 else f"{name} (стр. {idx})"

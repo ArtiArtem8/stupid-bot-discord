@@ -8,7 +8,13 @@ import unittest
 from collections.abc import Mapping
 from typing import Any
 
-from utils.embeds import EmbedLimits, SafeEmbed
+from utils.embeds import (
+    CharacterLimitExceededError,
+    EmbedLimits,
+    FieldLimitExceededError,
+    SafeEmbed,
+    SafeEmbedError,
+)
 from utils.text_utils import truncate_text
 
 
@@ -84,9 +90,12 @@ class TestSafeEmbed(unittest.TestCase):
         limits = EmbedLimits(max_fields=0)
         e = SafeEmbed(limits=limits)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(FieldLimitExceededError) as caught:
             e.safe_add_field(name="n", value="v", strict=True)
 
+        self.assertIsInstance(caught.exception, SafeEmbedError)
+        self.assertEqual(caught.exception.limit, limits.max_fields)
+        self.assertEqual(str(caught.exception), "Embed field limit reached (0).")
         self.assertEqual(len(e.fields), 0)
 
     def test_safe_add_field_max_fields_non_strict_noop(self) -> None:
@@ -101,8 +110,14 @@ class TestSafeEmbed(unittest.TestCase):
         limits = EmbedLimits(field_name=10, field_value=10, max_total=15)
         e = SafeEmbed(limits=limits)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(CharacterLimitExceededError) as caught:
             e.safe_add_field(name="N" * 10, value="V" * 10, strict=True)
+
+        self.assertIsInstance(caught.exception, SafeEmbedError)
+        self.assertEqual(caught.exception.limit, limits.max_total)
+        self.assertEqual(
+            str(caught.exception), "Embed total character limit reached (15)."
+        )
 
     def test_safe_add_field_max_total_non_strict_squeezes_value(self) -> None:
         limits = EmbedLimits(field_name=10, field_value=10, max_total=15)
@@ -138,7 +153,7 @@ class TestSafeEmbed(unittest.TestCase):
         limits = EmbedLimits(field_value=12, max_fields=1)
         e = SafeEmbed(limits=limits)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(FieldLimitExceededError) as caught:
             e.add_field_pages(
                 name="P",
                 lines=["line1", "line2"],
@@ -147,6 +162,7 @@ class TestSafeEmbed(unittest.TestCase):
                 strict=True,
             )
 
+        self.assertEqual(caught.exception.limit, limits.max_fields)
         self.assertEqual(len(e.fields), 1)
 
     def test_add_code_field_truncates_inside_codeblock(self) -> None:

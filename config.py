@@ -31,7 +31,6 @@ BASE_DIR = Path(__file__).resolve().parent
 COGS_DIR = BASE_DIR / "cogs"
 BACKUP_DIR = BASE_DIR / "backups"
 DATA_DIR = BASE_DIR / "data"
-TEMP_DIR = BASE_DIR / "temp"
 
 
 # --- Bot schema ---
@@ -88,17 +87,18 @@ MUSIC_DEFAULT_VOLUME = 10  # percentage (10%)
 
 # wolfram_cog.py
 # https://developer.wolframalpha.com/access
-WOLFRAM_API_URL = "http://api.wolframalpha.com/v2/query"
-WOLFRAM_QUERY_TIMEOUT = 30
+WOLFRAM_API_URL = "https://api.wolframalpha.com/v2/query"
 WOLFRAM_MAX_QUERY_LEN = 200
+WOLFRAM_HTTP_TIMEOUT_SECONDS = 30
 
 # Image settings
-WOLFRAM_PLOT_RESIZE = (800, None)
-"""Target plot width (height scales proportionally)."""
+WOLFRAM_PLOT_MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
+WOLFRAM_PLOT_MAX_SOURCE_PIXELS = 25_000_000
+WOLFRAM_PLOT_MAX_UPLOAD_BYTES = 9 * 1024 * 1024
+WOLFRAM_PLOT_TARGET_WIDTH = 800
 WOLFRAM_PLOT_MAX_SIZE = (1200, 1200)
-"""Maximum plot dimensions before compression."""
 WOLFRAM_PLOT_QUALITY = 90
-"""JPEG quality (0-100)."""
+WOLFRAM_PLOT_FALLBACK_QUALITIES = (82,)
 
 # Fuzzy matching and search
 FUZZY_THRESHOLD_DEFAULT = 90
