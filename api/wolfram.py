@@ -154,7 +154,7 @@ def _parse_subpod(element: Element) -> SubPod:
 
 def _should_ignore_pod(*, title: str, pod_id: str) -> bool:
     """Return whether the existing pod filters should exclude a pod."""
-    if pod_id == "ImagePod:GraphData":
+    if "plot" in pod_id.lower() or pod_id == "ImagePod:GraphData":
         return False
     return title in WOLFRAM_IGNORED_TITLES or any(
         pattern in title for pattern in WOLFRAM_IGNORED_PATTERNS
@@ -250,7 +250,7 @@ class WolframClient:
             "output": "xml",
             "excludepodid": "Identity",
             # Wolfram treats this as an approximate graphics width, not a guarantee.
-            "plotwidth": str(config.WOLFRAM_PLOT_TARGET_WIDTH),
+            "plotwidth": str(config.WOLFRAM_PLOT_REQUEST_WIDTH),
         }
 
         try:

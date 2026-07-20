@@ -2,7 +2,7 @@
 
 import unittest
 from io import BytesIO
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from PIL import Image
 
@@ -22,21 +22,15 @@ class TestWolframPlotProcessing(unittest.TestCase):
         self,
         source: bytes,
         *,
-        target_width: int = 800,
         max_size: tuple[int, int] = (1200, 1200),
         max_source_pixels: int = 25_000_000,
         max_output_bytes: int = 9 * 1024 * 1024,
-        quality: int = 90,
-        fallback_qualities: tuple[int, ...] = (82,),
     ) -> bytes:
         return process_wolfram_plot(
             source,
-            target_width=target_width,
             max_size=max_size,
             max_source_pixels=max_source_pixels,
             max_output_bytes=max_output_bytes,
-            quality=quality,
-            fallback_qualities=fallback_qualities,
         )
 
     def _synthetic_source(
@@ -60,79 +54,99 @@ class TestWolframPlotProcessing(unittest.TestCase):
                     image.save(buffer, format=image_format)
             return buffer.getvalue()
 
-    def test_png_gif_and_jpeg_sources_become_webp(self) -> None:
+    def test_png_gif_and_jpeg_sources_become_webp_without_upscale(self) -> None:
         for image_format in ("PNG", "GIF", "JPEG"):
             with self.subTest(image_format=image_format):
                 output = self._process(self._synthetic_source(image_format))
                 with Image.open(BytesIO(output)) as image:
                     self.assertEqual(image.format, "WEBP")
-                    self.assertEqual(image.size, (800, 392))
+                    self.assertEqual(image.size, (437, 214))
+
+    def test_source_inside_max_size_preserves_dimensions(self) -> None:
+        source = self._synthetic_source(size=(1000, 1100))
+
+        output = self._process(source)
+
+        with Image.open(BytesIO(output)) as image:
+            self.assertEqual(image.size, (1000, 1100))
+
+    def test_large_source_is_downscaled_proportionally(self) -> None:
+        source = self._synthetic_source(size=(2400, 1800))
+
+        output = self._process(source)
+
+        with Image.open(BytesIO(output)) as image:
+            self.assertEqual(image.size, (1200, 900))
+
+    def test_resize_is_not_called_when_source_fits(self) -> None:
+        source = self._synthetic_source(size=(800, 600))
+
+        with patch.object(Image.Image, "resize", autospec=True) as resize:
+            self._process(source)
+
+        resize.assert_not_called()
 
     def test_processing_uses_full_source_dimensions_without_crop(self) -> None:
         source = self._synthetic_source(size=(437, 214))
-        with patch(
-            "utils.image_utils._calculate_output_size",
+        with patch.object(
+            image_utils,
+            "_calculate_output_size",
             wraps=_calculate_output_size,
         ) as calculate:
             self._process(source)
 
-        calculate.assert_called_once_with(
-            (437, 214), target_width=800, max_size=(1200, 1200)
-        )
+        calculate.assert_called_once_with((437, 214), max_size=(1200, 1200))
 
     def test_output_fits_budget(self) -> None:
         output = self._process(self._synthetic_source(), max_output_bytes=20_000)
         self.assertLessEqual(len(output), 20_000)
 
-    def test_primary_quality_stops_fallback_when_it_fits(self) -> None:
-        with Image.new("RGB", (10, 10)) as image:
-            with patch("utils.image_utils._encode_webp", return_value=b"fit") as encode:
-                output = _encode_with_budget(
-                    image, qualities=(90, 82), max_output_bytes=3
-                )
-
-        self.assertEqual(output, b"fit")
-        encode.assert_called_once_with(image, quality=90)
-
-    def test_quality_fallback_is_used_after_oversized_primary(self) -> None:
-        encoded = {90: b"large", 82: b"fits"}
-
-        def fake_encode(_image: Image.Image, *, quality: int) -> bytes:
-            return encoded[quality]
-
+    def test_lossless_primary_stops_fallback_when_it_fits(self) -> None:
         with Image.new("RGB", (10, 10)) as image:
             with patch.object(
                 image_utils,
                 "_encode_webp",
-                side_effect=fake_encode,
+                return_value=b"fit",
             ) as encode:
-                output = _encode_with_budget(
-                    image, qualities=(90, 82), max_output_bytes=4
-                )
+                output = _encode_with_budget(image, max_output_bytes=3)
 
-        self.assertEqual(output, b"fits")
+        self.assertEqual(output, b"fit")
+        encode.assert_called_once_with(image, lossless=True, quality=100)
+
+    def test_lossy_fallback_runs_only_after_oversized_lossless(self) -> None:
+        with Image.new("RGB", (10, 10)) as image:
+            with patch.object(
+                image_utils,
+                "_encode_webp",
+                side_effect=(b"large", b"fit"),
+            ) as encode:
+                output = _encode_with_budget(image, max_output_bytes=4)
+
+        self.assertEqual(output, b"fit")
         self.assertEqual(
-            [call.kwargs["quality"] for call in encode.call_args_list], [90, 82]
+            encode.call_args_list,
+            [
+                call(image, lossless=True, quality=100),
+                call(image, lossless=False, quality=95),
+            ],
         )
 
-    def test_all_qualities_oversized_raises(self) -> None:
+    def test_encoding_has_at_most_two_attempts(self) -> None:
         with Image.new("RGB", (10, 10)) as image:
-            with patch("utils.image_utils._encode_webp", return_value=b"too large"):
-                with self.assertRaises(ImageOutputTooLargeError):
-                    _encode_with_budget(image, qualities=(90, 82), max_output_bytes=4)
-
-    def test_encoding_never_uses_more_than_one_fallback(self) -> None:
-        with Image.new("RGB", (10, 10)) as image:
-            with patch(
-                "utils.image_utils._encode_webp", return_value=b"too large"
+            with patch.object(
+                image_utils,
+                "_encode_webp",
+                return_value=b"too large",
             ) as encode:
                 with self.assertRaises(ImageOutputTooLargeError):
-                    _encode_with_budget(
-                        image, qualities=(90, 82, 74, 66), max_output_bytes=4
-                    )
+                    _encode_with_budget(image, max_output_bytes=4)
 
         self.assertEqual(
-            [call.kwargs["quality"] for call in encode.call_args_list], [90, 82]
+            encode.call_args_list,
+            [
+                call(image, lossless=True, quality=100),
+                call(image, lossless=False, quality=95),
+            ],
         )
 
     def test_invalid_and_empty_sources_raise_processing_error(self) -> None:
@@ -156,24 +170,24 @@ class TestWolframPlotProcessing(unittest.TestCase):
                 with Image.open(BytesIO(output)) as image:
                     self.assertEqual(image.mode, "RGB")
 
-    def test_narrow_images_are_processed_without_special_cases(self) -> None:
-        for width, expected_width in ((80, 600), (102, 765)):
-            with self.subTest(width=width):
-                output = self._process(self._synthetic_source(size=(width, 160)))
-                with Image.open(BytesIO(output)) as image:
-                    self.assertEqual(image.size, (expected_width, 1200))
-
-    def test_dimensions_preserve_aspect_ratio_and_max_size(self) -> None:
+    def test_output_size_never_upscales(self) -> None:
         self.assertEqual(
-            _calculate_output_size((437, 214), target_width=800, max_size=(600, 300)),
-            (600, 294),
+            _calculate_output_size((437, 214), max_size=(1200, 1200)),
+            (437, 214),
         )
 
-    def test_encode_webp_uses_decodable_webp(self) -> None:
+    def test_output_size_preserves_aspect_ratio_with_both_bounds(self) -> None:
+        self.assertEqual(
+            _calculate_output_size((1600, 1000), max_size=(1200, 600)),
+            (960, 600),
+        )
+
+    def test_encode_webp_uses_decodable_lossless_webp(self) -> None:
         with Image.new("RGB", (20, 10), "blue") as image:
-            output = _encode_webp(image, quality=90)
+            output = _encode_webp(image, lossless=True, quality=100)
         with Image.open(BytesIO(output)) as decoded:
             self.assertEqual(decoded.format, "WEBP")
+            self.assertEqual(decoded.getpixel((0, 0)), (0, 0, 255))
 
 
 if __name__ == "__main__":

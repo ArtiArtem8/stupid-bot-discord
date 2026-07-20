@@ -376,12 +376,9 @@ class WolframCog(BaseCog):
         output = await asyncio.to_thread(
             process_wolfram_plot,
             source,
-            target_width=config.WOLFRAM_PLOT_TARGET_WIDTH,
             max_size=config.WOLFRAM_PLOT_MAX_SIZE,
             max_source_pixels=config.WOLFRAM_PLOT_MAX_SOURCE_PIXELS,
             max_output_bytes=upload_budget,
-            quality=config.WOLFRAM_PLOT_QUALITY,
-            fallback_qualities=config.WOLFRAM_PLOT_FALLBACK_QUALITIES,
         )
 
         with io.BytesIO(output) as buffer:
@@ -390,10 +387,11 @@ class WolframCog(BaseCog):
                 result_url = _wolfram_result_url(result_query)
                 return await channel.send(
                     content=(
-                        f"{interaction.user.mention} **Plot:** `{query}`\n"
-                        f"**[View on Wolfram|Alpha]({result_url})**"
+                        f"{interaction.user.mention} [Wolfram]({result_url}) "
+                        + f"**Plot:** `{query}`"
                     ),
                     file=file,
+                    suppress_embeds=True,
                 )
             finally:
                 file.close()

@@ -319,6 +319,21 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
             "No displayable results found.\nAll results were filtered out.",
         )
 
+    async def test_text_results_keep_embed_preview_behavior(self) -> None:
+        cog, _ = self._make_cog()
+        interaction, channel = self._make_interaction()
+        result = WolframResult(
+            success=True,
+            pods=(Pod("Result", "Result", (SubPod("x = 1", None, None),)),),
+        )
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()):
+            await cog._send_text_results(interaction, result, "x")
+
+        send_kwargs = channel.send.await_args_list[-1].kwargs
+        self.assertIn("embed", send_kwargs)
+        self.assertNotIn("suppress_embeds", send_kwargs)
+
     async def test_invalid_channel_is_rejected_before_http(self) -> None:
         cog, client = self._make_cog()
         interaction, _ = self._make_interaction()
@@ -380,12 +395,16 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(file_seen.filename if file_seen else None, "wolfram_plot.webp")
         self.assertTrue(buffer_open_during_send)
         self.assertTrue(file_seen.fp.closed if file_seen else False)
+        send_kwargs = channel.send.await_args_list[-1].kwargs
+        content = send_kwargs["content"]
         self.assertEqual(
-            channel.send.await_args_list[-1].kwargs["content"],
-            "@plotter **Plot:** `sin(x)`\n"
-            + "**[View on Wolfram|Alpha](https://www.wolframalpha.com/"
-            + "input?i=plot+sin%28x%29)**",
+            content,
+            "@plotter [Wolfram](https://www.wolframalpha.com/"
+            + "input?i=plot+sin%28x%29) **Plot:** `sin(x)`",
         )
+        self.assertTrue(content.startswith("@plotter [Wolfram]("))
+        self.assertNotIn("\n", content)
+        self.assertTrue(send_kwargs["suppress_embeds"])
         self.assertEqual(
             feedback.await_args_list[-1].kwargs["description"],
             "Graph generated: https://discord.invalid/messages/1",

@@ -173,6 +173,20 @@ class TestWolframParsing(unittest.TestCase):
 
         self.assertEqual([pod.id for pod in result.pods], ["ImagePod:GraphData"])
 
+    def test_polar_plot_bypasses_ignored_title_pattern(self) -> None:
+        result = self.client._parse_xml(
+            """
+            <queryresult success="true">
+              <pod title="Polar plot" id="PolarPlot">
+                <subpod><img src="https://example.invalid/polar.gif" /></subpod>
+              </pod>
+            </queryresult>
+            """
+        )
+
+        self.assertEqual([pod.id for pod in result.pods], ["PolarPlot"])
+        self.assertEqual(result.plot_url, "https://example.invalid/polar.gif")
+
     def test_empty_pod_is_not_added(self) -> None:
         result = self.client._parse_xml(
             """
@@ -210,14 +224,16 @@ class TestWolframHTTP(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(session.calls[0][0], "https://api.wolframalpha.com/v2/query")
 
-    async def test_query_requests_approximate_target_plot_width(self) -> None:
+    async def test_query_requests_tuned_plot_width_without_mag(self) -> None:
         response = _Response(text='<queryresult success="false"/>')
         client, session = self._client(response)
 
         await client.query("plot sin(x)")
 
         params = session.calls[0][1]["params"]
-        self.assertEqual(params["plotwidth"], str(config.WOLFRAM_PLOT_TARGET_WIDTH))
+        self.assertEqual(config.WOLFRAM_PLOT_REQUEST_WIDTH, 400)
+        self.assertEqual(params["plotwidth"], "400")
+        self.assertNotIn("mag", params)
 
     async def test_query_429_has_specific_error_without_retry(self) -> None:
         error = aiohttp.ClientResponseError(

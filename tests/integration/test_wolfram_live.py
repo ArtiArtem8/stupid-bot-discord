@@ -52,12 +52,9 @@ class TestWolframLive(unittest.IsolatedAsyncioTestCase):
         output = await asyncio.to_thread(
             process_wolfram_plot,
             source,
-            target_width=config.WOLFRAM_PLOT_TARGET_WIDTH,
             max_size=config.WOLFRAM_PLOT_MAX_SIZE,
             max_source_pixels=config.WOLFRAM_PLOT_MAX_SOURCE_PIXELS,
             max_output_bytes=config.WOLFRAM_PLOT_MAX_UPLOAD_BYTES,
-            quality=config.WOLFRAM_PLOT_QUALITY,
-            fallback_qualities=config.WOLFRAM_PLOT_FALLBACK_QUALITIES,
         )
 
         self.assertLessEqual(len(output), config.WOLFRAM_PLOT_MAX_UPLOAD_BYTES)

@@ -14,17 +14,16 @@ class ImageOutputTooLargeError(ImageProcessingError):
 def _calculate_output_size(
     source_size: tuple[int, int],
     *,
-    target_width: int,
     max_size: tuple[int, int],
 ) -> tuple[int, int]:
-    """Calculate one aspect-preserving resize bounded by both dimensions."""
+    """Return the source size or an aspect-preserving downscaled size."""
     source_width, source_height = source_size
     max_width, max_height = max_size
-    if min(source_width, source_height, target_width, max_width, max_height) <= 0:
+    if min(source_width, source_height, max_width, max_height) <= 0:
         raise ImageProcessingError("Image dimensions must be positive")
 
     scale = min(
-        target_width / source_width,
+        1.0,
         max_width / source_width,
         max_height / source_height,
     )
@@ -34,14 +33,19 @@ def _calculate_output_size(
     )
 
 
-def _encode_webp(image: Image.Image, *, quality: int) -> bytes:
+def _encode_webp(
+    image: Image.Image,
+    *,
+    lossless: bool,
+    quality: int,
+) -> bytes:
     """Encode an image to WebP entirely in memory."""
     with BytesIO() as output:
         image.save(
             output,
             format="WEBP",
+            lossless=lossless,
             quality=quality,
-            optimize=True,
             method=6,
         )
         return output.getvalue()
@@ -50,31 +54,30 @@ def _encode_webp(image: Image.Image, *, quality: int) -> bytes:
 def _encode_with_budget(
     image: Image.Image,
     *,
-    qualities: tuple[int, ...],
     max_output_bytes: int,
 ) -> bytes:
-    """Return the first of at most two encoded qualities that fits the budget."""
+    """Try lossless WebP, then one high-quality lossy fallback."""
     if max_output_bytes <= 0:
         raise ImageOutputTooLargeError("Image upload budget must be positive")
 
-    for quality in qualities[:2]:
-        encoded = _encode_webp(image, quality=quality)
-        if len(encoded) <= max_output_bytes:
-            return encoded
+    lossless = _encode_webp(image, lossless=True, quality=100)
+    if len(lossless) <= max_output_bytes:
+        return lossless
+
+    lossy = _encode_webp(image, lossless=False, quality=95)
+    if len(lossy) <= max_output_bytes:
+        return lossy
     raise ImageOutputTooLargeError("Processed plot exceeds the upload budget")
 
 
 def process_wolfram_plot(
     source: bytes,
     *,
-    target_width: int,
     max_size: tuple[int, int],
     max_source_pixels: int,
     max_output_bytes: int,
-    quality: int,
-    fallback_qualities: tuple[int, ...],
 ) -> bytes:
-    """Resize and encode complete Wolfram plot bytes without cropping."""
+    """Downscale only when needed, then encode the complete plot as WebP."""
     if not source:
         raise ImageProcessingError("Wolfram plot response is empty")
     if max_source_pixels <= 0:
@@ -90,14 +93,17 @@ def process_wolfram_plot(
 
             output_size = _calculate_output_size(
                 opened.size,
-                target_width=target_width,
                 max_size=max_size,
             )
             with opened.convert("RGB") as rgb:
+                if output_size == rgb.size:
+                    return _encode_with_budget(
+                        rgb,
+                        max_output_bytes=max_output_bytes,
+                    )
                 with rgb.resize(output_size, Image.Resampling.LANCZOS) as resized:
                     return _encode_with_budget(
                         resized,
-                        qualities=(quality, *fallback_qualities),
                         max_output_bytes=max_output_bytes,
                     )
     except ImageProcessingError:
