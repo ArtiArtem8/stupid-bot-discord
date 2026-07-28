@@ -22,8 +22,11 @@ from api.wolfram import (
 )
 from cogs.wolfram_cog import (
     WolframCog,
+    WolframMode,
     _build_text_results_embed,
     _normalize_query,
+    _prepare_wolfram_query,
+    _strip_leading_query_directive,
 )
 from framework import FeedbackType, FeedbackUI
 from utils import ImageOutputTooLargeError
@@ -71,6 +74,50 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(ValueError):
                     _normalize_query(query)
 
+    def test_prepare_query_applies_default_mode(self) -> None:
+        self.assertEqual(
+            _prepare_wolfram_query("x^2 = 4", default_mode="solve"),
+            ("solve x^2 = 4", "solve"),
+        )
+        self.assertEqual(
+            _prepare_wolfram_query("sin(x)", default_mode="plot"),
+            ("plot sin(x)", "plot"),
+        )
+
+    def test_prepare_query_preserves_leading_directive(self) -> None:
+        cases: tuple[tuple[str, WolframMode, tuple[str, WolframMode]], ...] = (
+            ("plot sin(x)", "solve", ("plot sin(x)", "plot")),
+            ("PLOT sin(x)", "solve", ("PLOT sin(x)", "plot")),
+            ("solve x^2", "plot", ("solve x^2", "solve")),
+        )
+        for query, default_mode, expected in cases:
+            with self.subTest(query=query):
+                self.assertEqual(
+                    _prepare_wolfram_query(query, default_mode=default_mode),
+                    expected,
+                )
+
+    def test_prepare_query_ignores_plot_inside_sentence(self) -> None:
+        self.assertEqual(
+            _prepare_wolfram_query(
+                "explain this plot method",
+                default_mode="solve",
+            ),
+            ("solve explain this plot method", "solve"),
+        )
+
+    def test_strip_leading_query_directive_only(self) -> None:
+        cases = (
+            ("Solve x^2", "x^2"),
+            ("plot sin(x)", "sin(x)"),
+            ("PLOT sin(x)", "sin(x)"),
+            ("a plot of sin(x)", "a plot of sin(x)"),
+            ("result of solve operation", "result of solve operation"),
+        )
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(_strip_leading_query_directive(text), expected)
+
     def test_slash_parameters_enforce_query_length_range(self) -> None:
         solve_parameter = WolframCog.cmd_solve.parameters[0]
         plot_parameter = WolframCog.cmd_plot.parameters[0]
@@ -111,6 +158,16 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
             await cog._handle_query(interaction, "  sin(x)  ", mode="solve")
 
         client.query.assert_awaited_once_with("solve sin(x)")
+
+    async def test_explicit_plot_overrides_default_solve_for_api_request(self) -> None:
+        cog, client = self._make_cog()
+        interaction, _ = self._make_interaction()
+        client.query.return_value = WolframResult(success=False)
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()):
+            await cog._handle_query(interaction, "plot sin(x)", mode="solve")
+
+        client.query.assert_awaited_once_with("plot sin(x)")
 
     async def test_handle_query_rejects_whitespace_before_api_request(self) -> None:
         cog, client = self._make_cog()
@@ -196,7 +253,7 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
                 WolframResult(success=False, error_msg="No results found"),
                 query="sin(x)",
                 final_query="solve sin(x)",
-                mode="solve",
+                effective_mode="solve",
             )
 
         self.assertEqual(feedback.await_args_list[-1].kwargs["title"], "No Results")
@@ -230,7 +287,7 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
                 result,
                 query="sin(x)",
                 final_query="plot sin(x)",
-                mode="plot",
+                effective_mode="plot",
             )
 
         send_plot.assert_awaited_once_with(
@@ -250,13 +307,56 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
                 WolframResult(success=True),
                 query="sin(x)",
                 final_query="plot sin(x)",
-                mode="plot",
+                effective_mode="plot",
             )
 
         self.assertEqual(feedback.await_args_list[-1].kwargs["title"], "No Plot")
         self.assertEqual(
             feedback.await_args_list[-1].kwargs["description"],
             "No graph generated.",
+        )
+
+    async def test_solve_result_is_sent_as_text_even_when_query_mentions_plot(
+        self,
+    ) -> None:
+        cog, _ = self._make_cog()
+        interaction, _ = self._make_interaction()
+        result = WolframResult(
+            success=True,
+            pods=(
+                Pod(
+                    title="Plot",
+                    id="Plot",
+                    subpods=(
+                        SubPod(
+                            plaintext=None,
+                            image_url="https://example.invalid/plot.gif",
+                            image_title=None,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        with (
+            patch.object(cog, "_send_plot", new=AsyncMock()) as send_plot,
+            patch.object(
+                cog, "_send_text_results", new=AsyncMock()
+            ) as send_text_results,
+        ):
+            await cog._send_query_result(
+                interaction,
+                result,
+                query="explain this plot method",
+                final_query="solve explain this plot method",
+                effective_mode="solve",
+            )
+
+        send_plot.assert_not_awaited()
+        send_text_results.assert_awaited_once_with(
+            interaction,
+            result,
+            "explain this plot method",
         )
 
     def test_text_results_embed_skips_empty_pods_and_caps_fields(self) -> None:
@@ -319,6 +419,21 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
             "No displayable results found.\nAll results were filtered out.",
         )
 
+    async def test_text_results_keep_embed_preview_behavior(self) -> None:
+        cog, _ = self._make_cog()
+        interaction, channel = self._make_interaction()
+        result = WolframResult(
+            success=True,
+            pods=(Pod("Result", "Result", (SubPod("x = 1", None, None),)),),
+        )
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()):
+            await cog._send_text_results(interaction, result, "x")
+
+        send_kwargs = channel.send.await_args_list[-1].kwargs
+        self.assertIn("embed", send_kwargs)
+        self.assertNotIn("suppress_embeds", send_kwargs)
+
     async def test_invalid_channel_is_rejected_before_http(self) -> None:
         cog, client = self._make_cog()
         interaction, _ = self._make_interaction()
@@ -380,12 +495,16 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(file_seen.filename if file_seen else None, "wolfram_plot.webp")
         self.assertTrue(buffer_open_during_send)
         self.assertTrue(file_seen.fp.closed if file_seen else False)
+        send_kwargs = channel.send.await_args_list[-1].kwargs
+        content = send_kwargs["content"]
         self.assertEqual(
-            channel.send.await_args_list[-1].kwargs["content"],
-            "@plotter **Plot:** `sin(x)`\n"
-            + "**[View on Wolfram|Alpha](https://www.wolframalpha.com/"
-            + "input?i=plot+sin%28x%29)**",
+            content,
+            "@plotter [Wolfram](https://www.wolframalpha.com/"
+            + "input?i=plot+sin%28x%29) **Plot:** `sin(x)`",
         )
+        self.assertTrue(content.startswith("@plotter [Wolfram]("))
+        self.assertNotIn("\n", content)
+        self.assertTrue(send_kwargs["suppress_embeds"])
         self.assertEqual(
             feedback.await_args_list[-1].kwargs["description"],
             "Graph generated: https://discord.invalid/messages/1",

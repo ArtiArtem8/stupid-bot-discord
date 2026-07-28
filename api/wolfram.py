@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+_PI_APPROXIMATION_RE = re.compile(r"(?<![\w.])3\.14159\d*(?![\w.])")
 
 
 class PodType(StrEnum):
@@ -36,7 +37,7 @@ class PodType(StrEnum):
 
 def format_math_text(text: str) -> str:
     """Format mathematical text for better readability."""
-    text = re.sub(r"3\.14159\d+", "π", text)
+    text = _PI_APPROXIMATION_RE.sub("π", text)
     text = text.replace(" approx ", " ≈ ")
     return text
 
@@ -134,10 +135,12 @@ def _parse_unsuccessful_result(root: Element) -> WolframResult:
     error = root.find("error")
     if error is None:
         return WolframResult(success=False, error_msg="No results found")
+
     message = error.find("msg")
+    error_msg = message.text.strip() if message is not None and message.text else ""
     return WolframResult(
         success=False,
-        error_msg=message.text if message is not None else "Unknown API Error",
+        error_msg=error_msg or "Unknown API Error",
     )
 
 
@@ -154,7 +157,7 @@ def _parse_subpod(element: Element) -> SubPod:
 
 def _should_ignore_pod(*, title: str, pod_id: str) -> bool:
     """Return whether the existing pod filters should exclude a pod."""
-    if pod_id == "ImagePod:GraphData":
+    if "plot" in pod_id.lower() or pod_id == "ImagePod:GraphData":
         return False
     return title in WOLFRAM_IGNORED_TITLES or any(
         pattern in title for pattern in WOLFRAM_IGNORED_PATTERNS
@@ -250,7 +253,7 @@ class WolframClient:
             "output": "xml",
             "excludepodid": "Identity",
             # Wolfram treats this as an approximate graphics width, not a guarantee.
-            "plotwidth": str(config.WOLFRAM_PLOT_TARGET_WIDTH),
+            "plotwidth": str(config.WOLFRAM_PLOT_REQUEST_WIDTH),
         }
 
         try:

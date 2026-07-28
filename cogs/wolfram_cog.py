@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 from typing import Literal, override
 from urllib.parse import quote_plus
 
@@ -47,6 +48,12 @@ _WOLFRAM_RATE_LIMIT_MESSAGE = (
     "Wolfram|Alpha is temporarily rate-limited. Please try again later."
 )
 _MAX_TEXT_RESULT_FIELDS = 10
+_QUERY_DIRECTIVE_RE = re.compile(
+    r"^(solve|plot)\b",
+    flags=re.IGNORECASE,
+)
+
+type WolframMode = Literal["solve", "plot"]
 
 
 def _wolfram_result_url(query: str) -> str:
@@ -62,6 +69,28 @@ def _normalize_query(query: str) -> str:
     return normalized
 
 
+def _prepare_wolfram_query(
+    query: str,
+    *,
+    default_mode: WolframMode,
+) -> tuple[str, WolframMode]:
+    """Preserve an explicit leading mode or apply the command's default mode."""
+    match = _QUERY_DIRECTIVE_RE.match(query)
+    if match is None:
+        return f"{default_mode} {query}", default_mode
+
+    directive = match.group(1).casefold()
+    if directive == "plot":
+        return query, "plot"
+    return query, "solve"
+
+
+def _strip_leading_query_directive(text: str) -> str:
+    """Remove one leading Wolfram mode directive from display text."""
+    stripped = _QUERY_DIRECTIVE_RE.sub("", text, count=1).lstrip()
+    return stripped or text
+
+
 def _wolfram_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
     """Share cooldowns per user within each guild or direct-message context."""
     return interaction.guild_id, interaction.user.id
@@ -72,7 +101,7 @@ def _build_text_results_embed(result: WolframResult, query: str) -> SafeEmbed:
     title_text = next(
         (pod.get_joined_text() for pod in result.pods if pod.id == "Input"), query
     )
-    title_text = title_text.replace("solve ", "").replace("plot ", "")
+    title_text = _strip_leading_query_directive(title_text)
 
     embed = SafeEmbed(
         title="Expression:", description=f"`{title_text}`", color=config.Color.INFO
@@ -169,7 +198,7 @@ class WolframCog(BaseCog):
         await self._handle_query(interaction, message.content, mode="solve")
 
     async def _handle_query(
-        self, interaction: Interaction, query: str, mode: Literal["solve", "plot"]
+        self, interaction: Interaction, query: str, mode: WolframMode
     ) -> None:
         """Unified handler for API interaction."""
         try:
@@ -205,12 +234,15 @@ class WolframCog(BaseCog):
             await self._execute_query(interaction, query, mode=mode)
 
     async def _execute_query(
-        self, interaction: Interaction, query: str, *, mode: Literal["solve", "plot"]
+        self, interaction: Interaction, query: str, *, mode: WolframMode
     ) -> None:
         """Execute one normalized query while the shared concurrency slot is held."""
         if not self.wolfram_client:
             return
-        final_query = f"{mode} {query}" if not query.lower().startswith(mode) else query
+        final_query, effective_mode = _prepare_wolfram_query(
+            query,
+            default_mode=mode,
+        )
 
         try:
             result = await self.wolfram_client.query(final_query)
@@ -236,7 +268,7 @@ class WolframCog(BaseCog):
             result,
             query=query,
             final_query=final_query,
-            mode=mode,
+            effective_mode=effective_mode,
         )
 
     async def _send_query_result(
@@ -246,7 +278,7 @@ class WolframCog(BaseCog):
         *,
         query: str,
         final_query: str,
-        mode: Literal["solve", "plot"],
+        effective_mode: WolframMode,
     ) -> None:
         """Dispatch a parsed Wolfram result to the existing Discord feedback path."""
         if not result.success:
@@ -260,8 +292,7 @@ class WolframCog(BaseCog):
             )
             return
 
-        plot_expected = mode == "plot" or (mode == "solve" and "plot" in query.lower())
-        if plot_expected and (plot_url := result.plot_url):
+        if effective_mode == "plot" and (plot_url := result.plot_url):
             await self._send_plot(
                 interaction,
                 plot_url,
@@ -269,7 +300,7 @@ class WolframCog(BaseCog):
                 result_query=final_query,
             )
             return
-        if mode == "plot":
+        if effective_mode == "plot":
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -376,12 +407,9 @@ class WolframCog(BaseCog):
         output = await asyncio.to_thread(
             process_wolfram_plot,
             source,
-            target_width=config.WOLFRAM_PLOT_TARGET_WIDTH,
             max_size=config.WOLFRAM_PLOT_MAX_SIZE,
             max_source_pixels=config.WOLFRAM_PLOT_MAX_SOURCE_PIXELS,
             max_output_bytes=upload_budget,
-            quality=config.WOLFRAM_PLOT_QUALITY,
-            fallback_qualities=config.WOLFRAM_PLOT_FALLBACK_QUALITIES,
         )
 
         with io.BytesIO(output) as buffer:
@@ -390,10 +418,11 @@ class WolframCog(BaseCog):
                 result_url = _wolfram_result_url(result_query)
                 return await channel.send(
                     content=(
-                        f"{interaction.user.mention} **Plot:** `{query}`\n"
-                        f"**[View on Wolfram|Alpha]({result_url})**"
+                        f"{interaction.user.mention} [Wolfram]({result_url}) "
+                        + f"**Plot:** `{query}`"
                     ),
                     file=file,
+                    suppress_embeds=True,
                 )
             finally:
                 file.close()
