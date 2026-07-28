@@ -137,7 +137,7 @@ def _parse_unsuccessful_result(root: Element) -> WolframResult:
         return WolframResult(success=False, error_msg="No results found")
 
     message = error.find("msg")
-    error_msg = message.text if message is not None else None
+    error_msg = message.text.strip() if message is not None and message.text else ""
     return WolframResult(
         success=False,
         error_msg=error_msg or "Unknown API Error",

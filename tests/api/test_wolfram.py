@@ -101,11 +101,10 @@ class TestWolframParsing(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertEqual([pod.id for pod in result.pods], ["Plot"])
-        plot_url = result.plot_url
-        if plot_url is None:
-            self.fail("minimal plot XML did not expose a plot URL")
-        self.assertTrue(plot_url.startswith(("http://", "https://")))
-        self.assertNotIn("appid", plot_url.lower())
+        self.assertEqual(
+            result.plot_url,
+            "https://example.invalid/wolfram-plot.gif",
+        )
 
     def test_format_math_text(self) -> None:
         cases = (
@@ -181,6 +180,15 @@ class TestWolframParsing(unittest.TestCase):
                 """
                 <queryresult success="false">
                   <error><msg /></error>
+                </queryresult>
+                """,
+                "Unknown API Error",
+            ),
+            (
+                "blank message",
+                """
+                <queryresult success="false">
+                  <error><msg>   </msg></error>
                 </queryresult>
                 """,
                 "Unknown API Error",
@@ -330,6 +338,7 @@ class TestWolframHTTP(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(session.calls), 1)
         url, arguments = session.calls[0]
         self.assertEqual(url, "https://api.wolframalpha.com/v2/query")
+        self.assertEqual(set(arguments), {"params", "timeout"})
         self.assertEqual(config.WOLFRAM_PLOT_REQUEST_WIDTH, 400)
         self.assertEqual(
             arguments["params"],
@@ -356,6 +365,17 @@ class TestWolframHTTP(unittest.IsolatedAsyncioTestCase):
 
     async def test_query_non_rate_limit_http_error_is_wrapped(self) -> None:
         client, _ = self._client(_Response(error=_client_response_error(500)))
+
+        with self.assertRaisesRegex(
+            WolframAPIError,
+            "^Wolfram request failed$",
+        ):
+            await client.query("plot sin(x)")
+
+    async def test_query_client_error_is_wrapped(self) -> None:
+        client, _ = self._client(
+            _Response(error=aiohttp.ClientError("connection failed"))
+        )
 
         with self.assertRaisesRegex(
             WolframAPIError,
