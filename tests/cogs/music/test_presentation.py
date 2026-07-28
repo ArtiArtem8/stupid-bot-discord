@@ -3,24 +3,106 @@
 import unittest
 
 from api.music import MusicSession
-from cogs.music.presentation import build_session_summary_embed, format_track_link
+from api.music.models import PlaylistResponseData, PlayPlacement
+from cogs.music.presentation import (
+    build_playlist_added_embed,
+    build_session_summary_embed,
+    format_track_link,
+)
+from tests.api.music.helpers import make_playlist, make_track
 
 
 class TestTrackLinkFormatting(unittest.TestCase):
-    def test_formats_title_with_uri(self) -> None:
-        self.assertEqual(
-            format_track_link("A track", "https://example.com/track"),
-            "[A track](https://example.com/track)",
+    def test_formats_safe_and_hostile_titles_with_uri(self) -> None:
+        uri = "https://good.invalid"
+        cases = (
+            ("A track", "[A track](https://good.invalid)"),
+            ("**Bold**", r"[\*\*Bold\*\*](https://good.invalid)"),
+            ("Song [Live]", r"[Song \[Live\]](https://good.invalid)"),
+            (
+                "Song ](https://evil.invalid)",
+                r"[Song \](https://evil.invalid)](https://good.invalid)",
+            ),
+            (
+                "[fake](https://evil.invalid)",
+                r"[\[fake\](https://evil.invalid)](https://good.invalid)",
+            ),
+            (
+                r"Song \ Remix",
+                r"[Song \\ Remix](https://good.invalid)",
+            ),
+            (
+                "Line one\nLine two",
+                "[Line one Line two](https://good.invalid)",
+            ),
         )
 
-    def test_escapes_markdown_in_title(self) -> None:
-        self.assertEqual(
-            format_track_link("**Bold**", "https://example.com/track"),
-            r"[\*\*Bold\*\*](https://example.com/track)",
+        for title, expected in cases:
+            with self.subTest(title=title):
+                self.assertEqual(format_track_link(title, uri), expected)
+
+    def test_escapes_hostile_brackets_without_uri(self) -> None:
+        cases = (
+            ("Song [Live]", r"Song \[Live\]"),
+            (
+                "Song ](https://evil.invalid)",
+                r"Song \](https://evil.invalid)",
+            ),
+            (
+                "[fake](https://evil.invalid)",
+                r"\[fake\](https://evil.invalid)",
+            ),
         )
 
-    def test_omits_link_when_uri_is_missing(self) -> None:
-        self.assertEqual(format_track_link("A track", None), "A track")
+        for title, expected in cases:
+            with self.subTest(title=title):
+                self.assertEqual(format_track_link(title, None), expected)
+
+    def test_collapses_multiline_title_without_uri(self) -> None:
+        self.assertEqual(
+            format_track_link("Line one\nLine two", None), "Line one Line two"
+        )
+
+
+class TestPlaylistPresentation(unittest.TestCase):
+    def test_escapes_and_normalizes_playlist_name(self) -> None:
+        playlist = make_playlist(
+            "**Mix** [text](https://evil.invalid)\nSecond line",
+            [make_track("one")],
+        )
+        cases: dict[PlayPlacement, tuple[str, str]] = {
+            "next": (
+                "Плейлист добавлен в начало очереди",
+                (
+                    r"**\*\*Mix\*\* \[text](https://evil.invalid) "
+                    r"Second line**"
+                    "\nТреков: 1"
+                ),
+            ),
+            "end": (
+                (
+                    r"Добавлен плейлист **\*\*Mix\*\* "
+                    r"\[text](https://evil.invalid) Second line**"
+                ),
+                "Треков: 1",
+            ),
+        }
+
+        for placement, (expected_title, expected_description) in cases.items():
+            with self.subTest(placement=placement):
+                data: PlaylistResponseData = {
+                    "type": "playlist",
+                    "playlist": playlist,
+                    "placement": placement,
+                }
+                embed = build_playlist_added_embed(
+                    data,
+                    requester_name="Requester",
+                    requester_avatar_url="https://example.com/avatar.png",
+                )
+
+                self.assertEqual(embed.title, expected_title)
+                self.assertEqual(embed.description, expected_description)
 
 
 class TestSessionSummaryPresentation(unittest.TestCase):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
@@ -19,6 +20,7 @@ from api.music.models import (
 from utils import truncate_sequence, truncate_text
 
 MAX_TIMEDELTA_DAYS = 999_999_999
+_MARKDOWN_LINK_BRACKET_RE = re.compile(r"([\[\]])")
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,9 +49,35 @@ def format_duration(ms: int | float) -> str:
     return str(total)
 
 
+def _normalize_inline_text(text: str) -> str:
+    """Collapse line breaks in user-controlled inline text."""
+    return " ".join(text.splitlines())
+
+
+def _escape_markdown_text(text: str) -> str:
+    """Escape untrusted single-line Discord Markdown text."""
+    return discord.utils.escape_markdown(
+        _normalize_inline_text(text),
+        ignore_links=False,
+    )
+
+
+def _escape_markdown_link_label(text: str) -> str:
+    """Escape untrusted text embedded inside a Markdown link label."""
+    normalized = _normalize_inline_text(text)
+    parts = _MARKDOWN_LINK_BRACKET_RE.split(normalized)
+
+    return "".join(
+        f"\\{part}"
+        if part in ("[", "]")
+        else discord.utils.escape_markdown(part, ignore_links=False)
+        for part in parts
+    )
+
+
 def format_track_link(title: str, uri: str | None) -> str:
-    """Format an escaped track title, linking it only when a URI is available."""
-    escaped_title = discord.utils.escape_markdown(title)
+    """Format a safe track title, linking it only when a URI is available."""
+    escaped_title = _escape_markdown_link_label(title)
     if not uri:
         return escaped_title
     return f"[{escaped_title}]({uri})"
@@ -163,14 +191,15 @@ def build_playlist_added_embed(
 ) -> discord.Embed:
     """Build feedback for an added or immediately started playlist."""
     playlist = data["playlist"]
+    playlist_name = _escape_markdown_text(playlist.name)
     title_by_placement = {
         "now": "Плейлист запущен",
         "next": "Плейлист добавлен в начало очереди",
-        "end": f"Добавлен плейлист **{playlist.name}**",
+        "end": f"Добавлен плейлист **{playlist_name}**",
     }
     description = f"Треков: {len(playlist.tracks)}"
     if data["placement"] != "end":
-        description = f"**{playlist.name}**\n{description}"
+        description = f"**{playlist_name}**\n{description}"
     embed = discord.Embed(
         title=title_by_placement[data["placement"]],
         description=description,
