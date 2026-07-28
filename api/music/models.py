@@ -206,16 +206,6 @@ class TrackEndOutcome:
 
 
 @dataclass(frozen=True, slots=True)
-class TrackGroup:
-    """Helper class to group consecutive tracks."""
-
-    title: str
-    uri: str
-    skipped: bool
-    count: int
-
-
-@dataclass(frozen=True, slots=True)
 class TrackExceptionPayload:
     """Payload for track exception events dispatched to the bot layer."""
 

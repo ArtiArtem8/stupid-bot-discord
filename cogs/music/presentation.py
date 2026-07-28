@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import timedelta
 from itertools import groupby
 
 import discord
 
 import config
-from api.music import MusicSession, RepeatMode, Track, TrackGroup, TrackInfo
+from api.music import MusicSession, RepeatMode, Track, TrackInfo
 from api.music.models import (
     PlaylistResponseData,
     TrackExceptionPayload,
@@ -18,6 +19,16 @@ from api.music.models import (
 from utils import truncate_sequence, truncate_text
 
 MAX_TIMEDELTA_DAYS = 999_999_999
+
+
+@dataclass(frozen=True, slots=True)
+class _TrackGroup:
+    """Consecutive tracks grouped only for session-summary presentation."""
+
+    title: str
+    uri: str
+    skipped: bool
+    count: int
 
 
 def format_duration(ms: int | float) -> str:
@@ -57,19 +68,19 @@ def _format_session_stats(session: MusicSession) -> str:
     return "".join(stats_parts)
 
 
-def _group_consecutive_tracks(tracks: Sequence[TrackInfo]) -> list[TrackGroup]:
+def _group_consecutive_tracks(tracks: Sequence[TrackInfo]) -> list[_TrackGroup]:
     """Group consecutive tracks with the same title, URI, and skipped state."""
 
     def key(track: TrackInfo) -> tuple[str, str, bool]:
         return (track.title, track.uri, track.skipped)
 
     return [
-        TrackGroup(title, uri, skipped, count=sum(1 for _ in group))
+        _TrackGroup(title, uri, skipped, count=sum(1 for _ in group))
         for (title, uri, skipped), group in groupby(tracks, key)
     ]
 
 
-def _format_track_group(group: TrackGroup) -> str:
+def _format_track_group(group: _TrackGroup) -> str:
     """Format one grouped track for a session summary."""
     status_marker = "~~" if group.skipped else ""
     count_str = f" **×{group.count}**" if group.count > 1 else ""
