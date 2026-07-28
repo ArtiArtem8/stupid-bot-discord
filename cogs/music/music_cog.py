@@ -1,8 +1,6 @@
 """Music Cog Controller."""
 
 import logging
-from collections.abc import Sequence
-from itertools import groupby
 from typing import override
 
 import discord
@@ -16,19 +14,15 @@ from api.music import (
     MusicSession,
     QueueSnapshot,
     RepeatMode,
-    TrackGroup,
-    TrackInfo,
     VoiceCheckResult,
     VoiceJoinResult,
 )
 from api.music.healer import SessionHealer
 from api.music.models import (
     MusicResult,
-    PlaylistResponseData,
     PlayResponseData,
     QueuePlacement,
     TrackExceptionPayload,
-    TrackResponseData,
 )
 from api.music.protocols import ControllerManagerProtocol, HealerProtocol
 from api.music.service import (
@@ -41,17 +35,24 @@ from api.music.service import (
 from di.container import Container
 from framework import BaseCog, FeedbackUI, handle_errors
 from repositories.volume_repository import VolumeRepository
-from utils import truncate_sequence, truncate_text
 
-from .responder import MusicInteractionResponder
-from .ui import (
-    format_duration,
+from .feedback import (
     send_error,
     send_info,
     send_success,
     send_warning,
     send_warning_no_player,
 )
+from .presentation import (
+    build_playlist_added_embed,
+    build_repeat_embed,
+    build_rotate_embed,
+    build_session_summary_embed,
+    build_skip_embed,
+    build_track_added_embed,
+    build_track_exception_embed,
+)
+from .responder import MusicInteractionResponder
 from .views import (
     QueuePaginationAdapter,
     QueuePaginator,
@@ -138,7 +139,7 @@ class MusicCog(BaseCog):
         if not session.tracks:
             return
 
-        embed = self._create_session_summary_embed(session)
+        embed = build_session_summary_embed(session)
         view = SessionSummaryView(session=session, timeout=300.0)
 
         try:
@@ -157,103 +158,12 @@ class MusicCog(BaseCog):
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
 
-        embed = discord.Embed(
-            title="Не удалось воспроизвести трек",
-            description=(
-                f"[{payload.track.title}]({payload.track.uri})\n"
-                "**Причина:** Источник временно недоступен или не ответил."
-            ),
-            color=config.Color.WARNING,
-        )
-        if payload.track.artwork_url:
-            embed.set_thumbnail(url=payload.track.artwork_url)
+        embed = build_track_exception_embed(payload)
 
         try:
             await channel.send(embed=embed, delete_after=60)
         except Exception:
             logger.exception("Failed to send track exception message to %s", channel_id)
-
-    def _create_session_summary_embed(self, session: MusicSession) -> discord.Embed:
-        """Create session summary embed."""
-        embed = discord.Embed(
-            title="Сессия закончена",
-            color=config.Color.INFO,
-            timestamp=session.start_time,
-        )
-
-        stats_text = self._format_session_stats(session)
-        embed.add_field(name="В общем:", value=stats_text, inline=True)
-
-        tracks_text, text_lines = self._format_recent_tracks(session.tracks)
-        if text_lines == 1:
-            embed.set_thumbnail(url=session.tracks[-1].thumbnail_url)
-            embed.add_field(name="Трек:", value=tracks_text, inline=False)
-        else:
-            embed.add_field(name="Недавние треки:", value=tracks_text, inline=False)
-
-        return embed
-
-    def _format_session_stats(self, session: MusicSession) -> str:
-        """Format session statistics."""
-        total_tracks = len(session.tracks)
-        skipped_tracks = sum(1 for t in session.tracks if t.skipped)
-
-        stats_parts = [f"**Всего:** {total_tracks} шт."]
-
-        if skipped_tracks:
-            stats_parts.append(f" (скипов: {skipped_tracks})")
-
-        if len(session.participants) == 1:
-            stats_parts.append(f"\n**Заказчик:** <@{next(iter(session.participants))}>")
-        else:
-            stats_parts.append(f"\n**Заказчиков:** {len(session.participants)} чел.")
-
-        return "".join(stats_parts)
-
-    def _group_consecutive_tracks(
-        self, tracks: Sequence[TrackInfo]
-    ) -> list[TrackGroup]:
-        """Group consecutive tracks with the same parameters.
-
-        Tracks are considered the same if they have the same: title, uri, skipped.
-        """
-
-        def key(t: TrackInfo):
-            return (t.title, t.uri, t.skipped)
-
-        groups = [
-            TrackGroup(title, uri, skipped, count=sum(1 for _ in group))
-            for (title, uri, skipped), group in groupby(tracks, key)
-        ]
-        return groups
-
-    def _format_track_group(self, group: TrackGroup) -> str:
-        """Format one group of tracks for display."""
-        status_marker = "~~" if group.skipped else ""
-        count_str = f" **×{group.count}**" if group.count > 1 else ""
-        truncated_title = truncate_text(group.title, 45, placeholder="...")
-        track_str = f"[{discord.utils.escape_markdown(truncated_title)}]({group.uri})"
-        return f"{status_marker}{track_str}{count_str}{status_marker}"
-
-    def _format_recent_tracks(self, tracks: Sequence[TrackInfo]) -> tuple[str, int]:
-        """Format a list of recent tracks with grouping.
-
-        Args:
-            tracks: List of tracks from the session
-
-        Returns:
-            Tuple of (formatted text for embed field, number of track groups)
-
-        """
-        grouped = self._group_consecutive_tracks(tracks)
-        formatted_groups = [self._format_track_group(group) for group in grouped]
-        result = truncate_sequence(
-            reversed(formatted_groups),
-            max_length=config.MAX_EMBED_FIELD_LENGTH,
-            separator="\n",
-            placeholder="\n...",
-        )
-        return (result or "*(пусто)*", len(formatted_groups))
 
     @tasks.loop(seconds=config.MUSIC_AUTO_LEAVE_CHECK_INTERVAL)
     async def auto_leave_monitor(self) -> None:
@@ -445,67 +355,25 @@ class MusicCog(BaseCog):
             return
         await send_warning_no_player(interaction)
 
-    def _build_track_embed(
-        self, interaction: Interaction, data: TrackResponseData
-    ) -> discord.Embed:
-        track = data["track"]
-        title_by_placement = {
-            "now": "Сейчас играет",
-            "next": "Добавлено в начало очереди",
-            "end": "Добавлено в очередь",
-        }
-        embed = discord.Embed(
-            title=title_by_placement[data["placement"]],
-            description=f"[{track.title}]({track.uri})",
-            color=config.Color.INFO,
-        )
-        if track.artwork_url:
-            embed.set_thumbnail(url=track.artwork_url)
-        embed.add_field(name="Длительность", value=format_duration(track.length))
-        embed.set_footer(
-            text=f"Запросил: {interaction.user.display_name}",
-            icon_url=interaction.user.display_avatar.url,
-        )
-        return embed
-
-    def _build_playlist_embed(
-        self, interaction: Interaction, data: PlaylistResponseData
-    ) -> discord.Embed:
-        playlist = data["playlist"]
-        title_by_placement = {
-            "now": "Плейлист запущен",
-            "next": "Плейлист добавлен в начало очереди",
-            "end": f"Добавлен плейлист **{playlist.name}**",
-        }
-        description = f"Треков: {len(playlist.tracks)}"
-        if data["placement"] != "end":
-            description = f"**{playlist.name}**\n{description}"
-        embed = discord.Embed(
-            title=title_by_placement[data["placement"]],
-            description=description,
-            color=config.Color.INFO,
-        )
-        duration = sum(t.length for t in playlist.tracks)
-        embed.add_field(name="Длительность", value=format_duration(duration))
-        if playlist.tracks:
-            embed.set_thumbnail(url=playlist.tracks[0].artwork_url or "")
-        embed.set_footer(
-            text=f"Запросил: {interaction.user.display_name}",
-            icon_url=interaction.user.display_avatar.url,
-        )
-        return embed
-
     async def _send_play_feedback(
         self, interaction: Interaction, data: PlayResponseData, delay_sec: float
     ) -> None:
         match data["type"]:
             case "track":
-                embed = self._build_track_embed(interaction, data)
+                embed = build_track_added_embed(
+                    data,
+                    requester_name=interaction.user.display_name,
+                    requester_avatar_url=interaction.user.display_avatar.url,
+                )
                 await FeedbackUI.send(
                     interaction, embed=embed, delete_after=min(delay_sec, 480)
                 )
             case "playlist":
-                embed = self._build_playlist_embed(interaction, data)
+                embed = build_playlist_added_embed(
+                    data,
+                    requester_name=interaction.user.display_name,
+                    requester_avatar_url=interaction.user.display_avatar.url,
+                )
                 await FeedbackUI.send(
                     interaction, embed=embed, delete_after=min(delay_sec, 600)
                 )
@@ -547,18 +415,7 @@ class MusicCog(BaseCog):
             await send_warning(interaction, "Нечего пропускать", ephemeral=True)
             return
 
-        embed = discord.Embed(
-            title="Трек пропущен",
-            description=f"[{skipped.title}]({skipped.uri})" if skipped else "???",
-            color=config.Color.INFO,
-        )
-        if next_track:
-            embed.add_field(
-                name="Далее",
-                value=f"[{next_track.title}]({next_track.uri})",
-                inline=False,
-            )
-        embed.set_thumbnail(url=skipped.artwork_url if skipped else None)
+        embed = build_skip_embed(skipped, next_track)
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)
 
     @app_commands.command(name="queue", description="Очередь")
@@ -659,19 +516,7 @@ class MusicCog(BaseCog):
         moved_track = res.data["skipped"]
         next_track = res.data["next"]
 
-        embed = discord.Embed(
-            title="Трек перемещён в конец",
-            description=f"[{moved_track.title}]({moved_track.uri})",
-            color=config.Color.INFO,
-        )
-        embed.add_field(
-            name="Далее",
-            value=f"[{next_track.title}]({next_track.uri})"
-            if next_track
-            else "*Тот же самый трек*",
-            inline=False,
-        )
-        embed.set_thumbnail(url=moved_track.artwork_url)
+        embed = build_rotate_embed(moved_track, next_track)
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)
 
     @app_commands.command(name="repeat", description="Включить/выключить повтор.")
@@ -697,26 +542,7 @@ class MusicCog(BaseCog):
         if not result.is_success or not data:
             return await self._send_no_player_or_unavailable(interaction, result)
 
-        new_mode = data.get("mode")
-
-        match new_mode:
-            case RepeatMode.OFF:
-                msg = "Повтор **отключён**"
-            case RepeatMode.QUEUE:
-                msg = "Повтор очереди **включён**"
-            case RepeatMode.TRACK:
-                msg = "Повтор трека **включён**"
-            case _:
-                msg = "Режим повтора **неизвестен**"
-        color = (
-            config.Color.WARNING if new_mode is RepeatMode.OFF else config.Color.SUCCESS
-        )
-
-        embed = discord.Embed(
-            title="Залупливание",
-            description=msg,
-            color=color,
-        )
+        embed = build_repeat_embed(data.get("mode"))
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)
 
     @app_commands.command(name="pause", description="Пауза")

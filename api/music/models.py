@@ -206,16 +206,6 @@ class TrackEndOutcome:
 
 
 @dataclass(frozen=True, slots=True)
-class TrackGroup:
-    """Helper class to group consecutive tracks."""
-
-    title: str
-    uri: str
-    skipped: bool
-    count: int
-
-
-@dataclass(frozen=True, slots=True)
 class TrackExceptionPayload:
     """Payload for track exception events dispatched to the bot layer."""
 
@@ -264,7 +254,8 @@ class MusicSession:
             end_timestamp=utcnow(),  # Timestamp when the track has ended
         )
         self.tracks.append(track)
-        self.participants.add(requester_id or 0)
+        if requester_id is not None:
+            self.participants.add(requester_id)
 
 
 @dataclass(frozen=True, slots=True)

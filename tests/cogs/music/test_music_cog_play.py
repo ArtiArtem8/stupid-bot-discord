@@ -14,6 +14,10 @@ from api.music.models import (
     TrackResponseData,
 )
 from cogs.music.music_cog import MusicCog
+from cogs.music.presentation import (
+    build_playlist_added_embed,
+    build_track_added_embed,
+)
 from tests.api.music.helpers import make_playlist, make_track
 
 
@@ -111,7 +115,6 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         send_feedback.assert_awaited_once()
 
     def test_track_embed_titles_follow_placement(self) -> None:
-        cog = _make_cog()
         interaction = _make_interaction()
         track = make_track("one")
         cases: dict[PlayPlacement, str] = {
@@ -128,12 +131,15 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
                     "placement": placement,
                 }
 
-                embed = cog._build_track_embed(interaction, data)
+                embed = build_track_added_embed(
+                    data,
+                    requester_name=interaction.user.display_name,
+                    requester_avatar_url=interaction.user.display_avatar.url,
+                )
 
                 self.assertEqual(embed.title, expected_title)
 
     def test_playlist_embed_titles_follow_placement(self) -> None:
-        cog = _make_cog()
         interaction = _make_interaction()
         playlist = make_playlist("Mix", [make_track("one"), make_track("two")])
         cases: dict[PlayPlacement, str] = {
@@ -150,6 +156,10 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
                     "placement": placement,
                 }
 
-                embed = cog._build_playlist_embed(interaction, data)
+                embed = build_playlist_added_embed(
+                    data,
+                    requester_name=interaction.user.display_name,
+                    requester_avatar_url=interaction.user.display_avatar.url,
+                )
 
                 self.assertEqual(embed.title, expected_title)

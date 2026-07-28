@@ -1,36 +1,12 @@
-"""UI helpers for Music Cog."""
+"""Discord feedback helpers for the music cog."""
 
 import logging
-from datetime import timedelta
 
 from discord import Interaction
 
 from framework import FeedbackType, FeedbackUI
 
 logger = logging.getLogger(__name__)
-
-MAX_TIMEDELTA_DAYS = 999_999_999
-
-
-def format_duration(ms: int | float) -> str:
-    """Helper to convert milliseconds to timedelta stripping microseconds.
-
-    Note:
-        Lavalink returns 2**63 - 1 ms for live streams.
-
-    """
-    try:
-        total = timedelta(seconds=ms / 1_000.0)
-    except OverflowError:
-        total = timedelta(days=min(MAX_TIMEDELTA_DAYS, ms // 86_400_000))
-    except ValueError:
-        return "NaN"
-    total -= timedelta(microseconds=total.microseconds)
-    if total.days >= MAX_TIMEDELTA_DAYS - 1_000_000:
-        return "∞"
-    if total.days >= 14:
-        return str(total.days) + " days"
-    return str(total)
 
 
 async def send_error(interaction: Interaction, message: str) -> None:

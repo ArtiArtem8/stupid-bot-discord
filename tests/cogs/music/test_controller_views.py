@@ -68,7 +68,7 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(manager, "_safe_delete_message", safe_delete_message),
             patch(
-                "cogs.music.views.TrackControllerView", return_value=new_view
+                "cogs.music.views.controller.TrackControllerView", return_value=new_view
             ) as view_cls,
         ):
             await manager.create_for_user(
@@ -144,10 +144,12 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
                 new=AsyncMock(),
             ) as acknowledge,
-            patch("cogs.music.views.send_warning", new=AsyncMock()) as send_warning,
+            patch(
+                "cogs.music.views.controller.send_warning", new=AsyncMock()
+            ) as send_warning,
         ):
             skip_button = self._button(view, "btn_skip")
             callback = skip_button.callback
@@ -180,7 +182,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
                 new=acknowledge,
             ),
             patch.object(view, "_safe_update", safe_update),
@@ -219,7 +221,8 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
                 with (
                     patch(
-                        "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                        "cogs.music.views.controller.MusicInteractionResponder."
+                        + "acknowledge_component",
                         new=AsyncMock(),
                     ),
                     patch.object(view, "_safe_update", safe_update),
@@ -245,7 +248,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
                 new=AsyncMock(),
             ),
             patch.object(view, "_safe_update", safe_update),
@@ -283,10 +286,12 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
                 new=AsyncMock(),
             ),
-            patch("cogs.music.views.send_warning", new=AsyncMock()) as send_warning,
+            patch(
+                "cogs.music.views.controller.send_warning", new=AsyncMock()
+            ) as send_warning,
         ):
             pause_button = self._button(view, "btn_pause_resume")
             callback = pause_button.callback
@@ -308,11 +313,11 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
                 new=AsyncMock(),
             ),
             patch.object(view, "_safe_update", safe_update),
-            patch("cogs.music.views.time.monotonic", return_value=50.0),
+            patch("cogs.music.views.controller.time.monotonic", return_value=50.0),
         ):
             callback = self._button(view, "btn_pause_resume").callback
             self.assertIsNotNone(callback)
@@ -332,7 +337,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
                 new=AsyncMock(),
             ),
             patch.object(view, "_safe_update", safe_update),
@@ -357,7 +362,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
                 new=AsyncMock(),
             ),
             patch.object(view, "_safe_update", safe_update),
@@ -382,7 +387,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         interaction.user.id = 10
 
         with patch(
-            "cogs.music.views.MusicInteractionResponder.acknowledge_component",
+            "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
             new=AsyncMock(),
         ):
             callback = self._button(view, "btn_skip").callback
@@ -409,8 +414,10 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         interaction = MagicMock()
 
         with (
-            patch("cogs.music.views.logger.exception") as log_exception,
-            patch("cogs.music.views.send_warning", new=AsyncMock()) as send_warning,
+            patch("cogs.music.views.controller.logger.exception") as log_exception,
+            patch(
+                "cogs.music.views.controller.send_warning", new=AsyncMock()
+            ) as send_warning,
         ):
             await view.handle_player_io_error(interaction)
 
