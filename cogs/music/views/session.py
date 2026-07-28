@@ -13,7 +13,7 @@ from api.music import MusicSession
 from framework import BasePaginator, PaginationData
 from utils import TextPaginator, truncate_text
 
-from ..ui import send_warning
+from ..feedback import send_warning
 
 
 class SessionPaginationAdapter(PaginationData):

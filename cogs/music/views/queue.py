@@ -14,7 +14,7 @@ from api.music import QueueSnapshot, RepeatMode
 from framework import PRIMARY, BasePaginator, CallbackButton, PaginationData
 from utils import TextPaginator
 
-from ..ui import send_warning
+from ..feedback import send_warning
 
 type QueueRefreshCallback = Callable[[], Awaitable[QueueSnapshot | None]]
 

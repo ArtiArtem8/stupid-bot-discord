@@ -25,8 +25,8 @@ from api.music.protocols import ControllerManagerProtocol
 from api.music.service.connection_manager import ConnectionManager
 from utils.callables import callable_name
 
+from ..feedback import send_warning
 from ..responder import MusicInteractionResponder
-from ..ui import send_warning
 
 if TYPE_CHECKING:
     from api.music import MusicPlayer
