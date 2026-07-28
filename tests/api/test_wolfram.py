@@ -10,7 +10,12 @@ from unittest.mock import MagicMock, patch
 import aiohttp
 
 import config
-from api.wolfram import WolframAPIError, WolframClient, WolframRateLimitError
+from api.wolfram import (
+    WolframAPIError,
+    WolframClient,
+    WolframRateLimitError,
+    format_math_text,
+)
 
 WOLFRAM_XML_FIXTURE = (
     Path(__file__).parents[1] / "fixtures" / "wolfram" / "minimal_plot.xml"
@@ -82,6 +87,16 @@ class TestWolframParsing(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertEqual([pod.id for pod in result.pods], ["Plot"])
+
+    def test_pi_approximation_formatting(self) -> None:
+        cases = (
+            ("3.14159", "π"),
+            ("3.1415926535", "π"),
+            ("13.14159", "13.14159"),
+        )
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(format_math_text(text), expected)
 
     def test_plot_url_is_extracted_from_synthetic_response(self) -> None:
         result = self.client._parse_xml(WOLFRAM_XML_FIXTURE.read_text(encoding="utf-8"))

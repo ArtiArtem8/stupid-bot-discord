@@ -23,6 +23,9 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+_PI_APPROXIMATION_RE = re.compile(
+    r"(?<!\d)3\.14159\d*(?!\d)",
+)
 
 
 class PodType(StrEnum):
@@ -36,7 +39,7 @@ class PodType(StrEnum):
 
 def format_math_text(text: str) -> str:
     """Format mathematical text for better readability."""
-    text = re.sub(r"3\.14159\d+", "π", text)
+    text = _PI_APPROXIMATION_RE.sub("π", text)
     text = text.replace(" approx ", " ≈ ")
     return text
 
