@@ -23,9 +23,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-_PI_APPROXIMATION_RE = re.compile(
-    r"(?<!\d)3\.14159\d*(?!\d)",
-)
+_PI_APPROXIMATION_RE = re.compile(r"(?<![\w.])3\.14159\d*(?![\w.])")
 
 
 class PodType(StrEnum):
@@ -137,10 +135,12 @@ def _parse_unsuccessful_result(root: Element) -> WolframResult:
     error = root.find("error")
     if error is None:
         return WolframResult(success=False, error_msg="No results found")
+
     message = error.find("msg")
+    error_msg = message.text if message is not None else None
     return WolframResult(
         success=False,
-        error_msg=message.text if message is not None else "Unknown API Error",
+        error_msg=error_msg or "Unknown API Error",
     )
 
 
