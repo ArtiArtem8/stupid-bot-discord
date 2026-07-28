@@ -161,7 +161,8 @@ class TestWolframParsing(unittest.TestCase):
                 "error message",
                 """
                 <queryresult success="false">
-                  <error><msg>Invalid input</msg></error>
+                  <error><msg>  Invalid input
+                  </msg></error>
                 </queryresult>
                 """,
                 "Invalid input",
@@ -454,15 +455,34 @@ class TestWolframHTTP(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(WolframAPIError, "empty"):
             await client.fetch_plot_image("https://example.invalid/plot", max_bytes=32)
 
-    async def test_plot_download_client_error_is_wrapped(self) -> None:
-        response = _Response(error=aiohttp.ClientError("connection failed"))
-        client, _ = self._client(response)
+    async def test_plot_download_failures_are_wrapped(self) -> None:
+        cases = (
+            (
+                "HTTP response error",
+                _client_response_error(500),
+            ),
+            (
+                "client error",
+                aiohttp.ClientError("connection failed"),
+            ),
+            (
+                "timeout",
+                asyncio.TimeoutError(),
+            ),
+        )
 
-        with self.assertRaisesRegex(
-            WolframAPIError,
-            "^Plot download failed$",
-        ):
-            await client.fetch_plot_image("https://example.invalid/plot", max_bytes=32)
+        for description, error in cases:
+            with self.subTest(description=description):
+                client, _ = self._client(_Response(error=error))
+
+                with self.assertRaisesRegex(
+                    WolframAPIError,
+                    "^Plot download failed$",
+                ):
+                    await client.fetch_plot_image(
+                        "https://example.invalid/plot",
+                        max_bytes=32,
+                    )
 
     async def test_plot_download_429_has_specific_error_without_retry(self) -> None:
         client, session = self._client(_Response(error=_client_response_error(429)))
@@ -474,13 +494,6 @@ class TestWolframHTTP(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(len(session.calls), 1)
-
-    async def test_timeout_is_wrapped(self) -> None:
-        response = _Response(error=asyncio.TimeoutError())
-        client, _ = self._client(response)
-
-        with self.assertRaisesRegex(WolframAPIError, "download failed"):
-            await client.fetch_plot_image("https://example.invalid/plot", max_bytes=32)
 
     async def test_cancellation_propagates(self) -> None:
         response = _Response(chunks=(asyncio.CancelledError(),))
