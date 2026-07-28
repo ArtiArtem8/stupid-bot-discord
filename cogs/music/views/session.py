@@ -6,7 +6,7 @@ from typing import Self, override
 
 import discord
 from discord import Interaction, ui
-from discord.utils import escape_markdown, format_dt
+from discord.utils import format_dt
 
 import config
 from api.music import MusicSession
@@ -14,6 +14,7 @@ from framework import BasePaginator, PaginationData
 from utils import TextPaginator, truncate_text
 
 from ..feedback import send_warning
+from ..presentation import format_track_link
 
 
 class SessionPaginationAdapter(PaginationData):
@@ -33,7 +34,7 @@ class SessionPaginationAdapter(PaginationData):
             (
                 f"{format_dt(t.end_timestamp, 'T')} • {i}. "
                 f"{'~~' if t.skipped else ''}"
-                f"[{escape_markdown(truncate_text(t.title, 45))}]({t.uri})"
+                f"{format_track_link(truncate_text(t.title, 45), t.uri)}"
                 f"{'~~' if t.skipped else ''} "
                 f"{f'(<@{t.requester_id}>)' if t.requester_id else ''}"
             )

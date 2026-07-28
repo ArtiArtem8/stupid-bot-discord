@@ -7,7 +7,6 @@ from typing import Self, override
 
 import discord
 from discord import Interaction
-from discord.utils import escape_markdown
 
 import config
 from api.music import QueueSnapshot, RepeatMode
@@ -15,6 +14,7 @@ from framework import PRIMARY, BasePaginator, CallbackButton, PaginationData
 from utils import TextPaginator
 
 from ..feedback import send_warning
+from ..presentation import format_track_link
 
 type QueueRefreshCallback = Callable[[], Awaitable[QueueSnapshot | None]]
 
@@ -38,7 +38,7 @@ class QueuePaginationAdapter(PaginationData):
     def _build_paginator(self, snapshot: QueueSnapshot) -> TextPaginator:
         return TextPaginator(
             [
-                f"{i}. [{entry.track.title}]({entry.track.uri})"
+                f"{i}. {format_track_link(entry.track.title, entry.track.uri)}"
                 for i, entry in enumerate(snapshot.queue, 1)
             ],
             page_size=self.page_size,
@@ -55,7 +55,7 @@ class QueuePaginationAdapter(PaginationData):
             track = current.track
             embed.add_field(
                 name="Сейчас играет",
-                value=f"[{escape_markdown(track.title)}]({track.uri})",
+                value=format_track_link(track.title, track.uri),
                 inline=False,
             )
             if track.artwork_url:

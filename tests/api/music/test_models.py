@@ -5,6 +5,7 @@ from dataclasses import FrozenInstanceError
 
 from api.music.models import (
     MusicResultStatus,
+    MusicSession,
     PlaybackAttempt,
     QueueEntry,
     TrackRequester,
@@ -50,3 +51,17 @@ class TestPlaybackIdentityModels(unittest.TestCase):
         self.assertFalse(hasattr(entry, "__dict__"))
         with self.assertRaises(FrozenInstanceError):
             entry.__setattr__("entry_id", 5)
+
+
+class TestMusicSession(unittest.TestCase):
+    def test_track_without_requester_does_not_add_participant_zero(self) -> None:
+        session = MusicSession(guild_id=1)
+
+        session.add_track(
+            title="Track",
+            uri="https://example.com/track",
+            requester_id=None,
+            channel_id=None,
+        )
+
+        self.assertEqual(session.participants, set())

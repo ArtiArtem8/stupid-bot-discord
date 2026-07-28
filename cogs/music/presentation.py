@@ -48,8 +48,11 @@ def format_duration(ms: int | float) -> str:
 
 
 def format_track_link(title: str, uri: str | None) -> str:
-    """Format a track link using the existing presentation semantics."""
-    return f"[{title}]({uri})"
+    """Format an escaped track title, linking it only when a URI is available."""
+    escaped_title = discord.utils.escape_markdown(title)
+    if not uri:
+        return escaped_title
+    return f"[{escaped_title}]({uri})"
 
 
 def _format_session_stats(session: MusicSession) -> str:
@@ -85,10 +88,7 @@ def _format_track_group(group: _TrackGroup) -> str:
     status_marker = "~~" if group.skipped else ""
     count_str = f" **×{group.count}**" if group.count > 1 else ""
     truncated_title = truncate_text(group.title, 45, placeholder="...")
-    track_str = format_track_link(
-        discord.utils.escape_markdown(truncated_title),
-        group.uri,
-    )
+    track_str = format_track_link(truncated_title, group.uri)
     return f"{status_marker}{track_str}{count_str}{status_marker}"
 
 

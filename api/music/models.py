@@ -254,7 +254,8 @@ class MusicSession:
             end_timestamp=utcnow(),  # Timestamp when the track has ended
         )
         self.tracks.append(track)
-        self.participants.add(requester_id or 0)
+        if requester_id is not None:
+            self.participants.add(requester_id)
 
 
 @dataclass(frozen=True, slots=True)
