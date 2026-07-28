@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-import re
 from typing import Literal, override
 from urllib.parse import quote_plus
 
@@ -48,10 +47,6 @@ _WOLFRAM_RATE_LIMIT_MESSAGE = (
     "Wolfram|Alpha is temporarily rate-limited. Please try again later."
 )
 _MAX_TEXT_RESULT_FIELDS = 10
-_QUERY_DIRECTIVE_RE = re.compile(
-    r"^(solve|plot)\b",
-    flags=re.IGNORECASE,
-)
 
 type WolframMode = Literal["solve", "plot"]
 
@@ -69,28 +64,6 @@ def _normalize_query(query: str) -> str:
     return normalized
 
 
-def _prepare_wolfram_query(
-    query: str,
-    *,
-    default_mode: WolframMode,
-) -> tuple[str, WolframMode]:
-    """Preserve an explicit leading mode or apply the command's default mode."""
-    match = _QUERY_DIRECTIVE_RE.match(query)
-    if match is None:
-        return f"{default_mode} {query}", default_mode
-
-    directive = match.group(1).casefold()
-    if directive == "plot":
-        return query, "plot"
-    return query, "solve"
-
-
-def _strip_leading_query_directive(text: str) -> str:
-    """Remove one leading Wolfram mode directive from display text."""
-    stripped = _QUERY_DIRECTIVE_RE.sub("", text, count=1).lstrip()
-    return stripped or text
-
-
 def _wolfram_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
     """Share cooldowns per user within each guild or direct-message context."""
     return interaction.guild_id, interaction.user.id
@@ -98,13 +71,10 @@ def _wolfram_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
 
 def _build_text_results_embed(result: WolframResult, query: str) -> SafeEmbed:
     """Build an embed from the displayable text pods that fit Discord's limits."""
-    title_text = next(
-        (pod.get_joined_text() for pod in result.pods if pod.id == "Input"), query
-    )
-    title_text = _strip_leading_query_directive(title_text)
-
     embed = SafeEmbed(
-        title="Expression:", description=f"`{title_text}`", color=config.Color.INFO
+        title="Expression:",
+        description=f"`{query}`",
+        color=config.Color.INFO,
     )
     embed.set_author(name="StupidBot", icon_url=config.BOT_ICON)
 
@@ -239,13 +209,10 @@ class WolframCog(BaseCog):
         """Execute one normalized query while the shared concurrency slot is held."""
         if not self.wolfram_client:
             return
-        final_query, effective_mode = _prepare_wolfram_query(
-            query,
-            default_mode=mode,
-        )
+        wolfram_query = f"{mode} {query}"
 
         try:
-            result = await self.wolfram_client.query(final_query)
+            result = await self.wolfram_client.query(wolfram_query)
         except WolframRateLimitError:
             await FeedbackUI.send(
                 interaction,
@@ -267,8 +234,8 @@ class WolframCog(BaseCog):
             interaction,
             result,
             query=query,
-            final_query=final_query,
-            effective_mode=effective_mode,
+            wolfram_query=wolfram_query,
+            mode=mode,
         )
 
     async def _send_query_result(
@@ -277,8 +244,8 @@ class WolframCog(BaseCog):
         result: WolframResult,
         *,
         query: str,
-        final_query: str,
-        effective_mode: WolframMode,
+        wolfram_query: str,
+        mode: WolframMode,
     ) -> None:
         """Dispatch a parsed Wolfram result to the existing Discord feedback path."""
         if not result.success:
@@ -292,15 +259,15 @@ class WolframCog(BaseCog):
             )
             return
 
-        if effective_mode == "plot" and (plot_url := result.plot_url):
+        if mode == "plot" and (plot_url := result.plot_url):
             await self._send_plot(
                 interaction,
                 plot_url,
                 query,
-                result_query=final_query,
+                result_query=wolfram_query,
             )
             return
-        if effective_mode == "plot":
+        if mode == "plot":
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
