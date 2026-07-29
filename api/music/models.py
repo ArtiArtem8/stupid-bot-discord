@@ -38,6 +38,7 @@ class PlaylistResponseData(TypedDict):
 
     type: Literal["playlist"]
     playlist: Playlist
+    undo_entries: tuple[QueueEntry, ...]
     placement: PlayPlacement
     connection: NotRequired[VoiceJoinResult]
 
@@ -47,6 +48,7 @@ class TrackResponseData(TypedDict):
 
     type: Literal["track"]
     track: Track
+    undo_entries: tuple[QueueEntry, ...]
     placement: PlayPlacement
     connection: NotRequired[VoiceJoinResult]
 
@@ -194,6 +196,28 @@ class PlaybackAttempt:
 
     attempt_id: int
     entry: QueueEntry
+
+
+@dataclass(frozen=True, slots=True)
+class EnqueueOutcome:
+    """Entries created by one enqueue operation and its optional playback start."""
+
+    entries: tuple[QueueEntry, ...]
+    started_attempt: PlaybackAttempt | None
+
+    @property
+    def started_from_enqueue(self) -> bool:
+        """Whether this operation started one of the entries it created."""
+        attempt = self.started_attempt
+        return attempt is not None and any(
+            entry is attempt.entry for entry in self.entries
+        )
+
+    @property
+    def has_waiting_entries(self) -> bool:
+        """Whether this enqueue operation left at least one entry waiting."""
+        started_count = int(self.started_from_enqueue)
+        return len(self.entries) > started_count
 
 
 @dataclass(frozen=True, slots=True)

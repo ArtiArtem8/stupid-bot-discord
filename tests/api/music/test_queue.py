@@ -66,6 +66,52 @@ class TestQueueManager(unittest.TestCase):
         self.assertIs(queue.pop_next(), tracks[0])
         self.assertEqual(list(queue), [tracks[1]])
 
+    def test_remove_entries_returns_matches_in_queue_order(self) -> None:
+        first = make_entry("first", entry_id=1)
+        middle = make_entry("middle", entry_id=2)
+        last = make_entry("last", entry_id=3)
+        queue = QueueManager()
+        queue.extend((first, middle, last))
+
+        removed = queue.remove_entries((last, first))
+
+        self.assertEqual(removed, (first, last))
+        self.assertEqual(list(queue), [middle])
+
+    def test_remove_entries_rejects_lookalike_objects(self) -> None:
+        queued = make_entry("same", entry_id=1)
+        lookalike = make_entry("same", entry_id=1)
+        queue = QueueManager()
+        queue.append(queued)
+
+        self.assertEqual(queue.remove_entries((lookalike,)), ())
+        self.assertEqual(list(queue), [queued])
+
+    def test_remove_entries_with_empty_expected_preserves_queue(self) -> None:
+        entries = [make_entry("one"), make_entry("two", entry_id=2)]
+        queue = QueueManager()
+        queue.extend(entries)
+
+        self.assertEqual(queue.remove_entries(()), ())
+        self.assertEqual(list(queue), entries)
+
+    def test_remove_entries_preserves_interleaved_entries_relative_order(self) -> None:
+        requested = (
+            make_entry("requested-one", entry_id=1),
+            make_entry("requested-two", entry_id=3),
+        )
+        others = (
+            make_entry("other-one", entry_id=2),
+            make_entry("other-two", entry_id=4),
+        )
+        queue = QueueManager()
+        queue.extend((requested[0], others[0], requested[1], others[1]))
+
+        removed = queue.remove_entries(requested)
+
+        self.assertEqual(removed, requested)
+        self.assertEqual(list(queue), list(others))
+
     def test_next_peeks_without_removing(self) -> None:
         queue = QueueManager()
         track = make_entry("one")

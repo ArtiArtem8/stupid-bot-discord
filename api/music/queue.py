@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 from collections import deque
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 
 from .models import QueueEntry, RepeatMode
@@ -60,6 +60,25 @@ class QueueManager:
         if not self._queue:
             return None
         return self._queue.popleft()
+
+    def remove_entries(
+        self,
+        expected: Sequence[QueueEntry],
+    ) -> tuple[QueueEntry, ...]:
+        """Remove waiting entries matching any expected object by identity."""
+        if not expected:
+            return ()
+
+        expected_ids = {id(entry) for entry in expected}
+        remaining: deque[QueueEntry] = deque()
+        removed: list[QueueEntry] = []
+        for queued_entry in self._queue:
+            if id(queued_entry) in expected_ids:
+                removed.append(queued_entry)
+            else:
+                remaining.append(queued_entry)
+        self._queue = remaining
+        return tuple(removed)
 
     def shuffle(self) -> None:
         """Shuffle the queue."""

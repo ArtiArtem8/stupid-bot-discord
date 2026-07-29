@@ -3,6 +3,7 @@
 from .models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     ControllerDestroyReason,
+    EnqueueOutcome,
     MusicResult,
     MusicResultStatus,
     MusicSession,
@@ -27,6 +28,7 @@ __all__ = [
     "MUSIC_SERVICE_UNAVAILABLE_MESSAGE",
     "ControllerDestroyReason",
     "ControllerManagerProtocol",
+    "EnqueueOutcome",
     "HealerProtocol",
     "MusicPlayer",
     "MusicResult",
