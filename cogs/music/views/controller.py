@@ -23,10 +23,10 @@ from api.music import (
 from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
 from api.music.protocols import ControllerManagerProtocol
 from api.music.service.connection_manager import ConnectionManager
+from framework import FeedbackType, FeedbackUI, ack_component
 from utils.callables import callable_name
 
 from ..feedback import send_warning
-from ..responder import MusicInteractionResponder
 
 if TYPE_CHECKING:
     from api.music import MusicPlayer
@@ -499,16 +499,26 @@ class TrackControllerView(ui.View):
 
     async def _check_owner(self, interaction: Interaction) -> bool:
         if interaction.user.id != self.user_id:
-            await MusicInteractionResponder(interaction).send_private_failure(
-                "Это не ваш контроллер."
-            )
+            try:
+                await FeedbackUI.send(
+                    interaction,
+                    feedback_type=FeedbackType.WARNING,
+                    description="Это не ваш контроллер.",
+                    ephemeral=True,
+                    disable_report_btn=True,
+                )
+            except discord.HTTPException:
+                logger.debug(
+                    "Controller owner denial could not be sent.",
+                    exc_info=True,
+                )
             return False
         return True
 
     async def _prepare_action(self, interaction: Interaction) -> PlaybackAttempt | None:
         if not await self._check_owner(interaction):
             return None
-        await MusicInteractionResponder(interaction).acknowledge_component()
+        await ack_component(interaction)
         if self.player.current_attempt is not self.attempt:
             await self._request_stop(ControllerDestroyReason.STALE_VIEW)
             return None
