@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Self, override
 
@@ -9,14 +10,130 @@ import discord
 from discord import Interaction
 
 import config
-from api.music import QueueSnapshot, RepeatMode
-from framework import PRIMARY, BasePaginator, CallbackButton, PaginationData
+from api.music import MusicResult, QueueEntry, QueueSnapshot, RepeatMode
+from framework import (
+    DANGER,
+    PRIMARY,
+    BasePaginator,
+    CallbackButton,
+    FeedbackType,
+    FeedbackUI,
+    PaginationData,
+)
 from utils import TextPaginator
 
 from ..feedback import send_warning
 from ..presentation import format_track_link
+from ..responder import MusicInteractionResponder
+
+logger = logging.getLogger(__name__)
 
 type QueueRefreshCallback = Callable[[], Awaitable[QueueSnapshot | None]]
+type QueuedEntriesRemoveCallback = Callable[
+    [int, tuple[QueueEntry, ...], int],
+    Awaitable[MusicResult[tuple[QueueEntry, ...]]],
+]
+
+STALE_QUEUE_REQUEST_MESSAGE = (
+    "Ничего из этого запроса уже не ожидает в очереди. "
+    "Возможно, треки уже запустились или очередь была изменена."
+)
+
+
+class QueueUndoView(discord.ui.View):
+    """One-shot undo control for the waiting part of one enqueue request."""
+
+    def __init__(
+        self,
+        *,
+        guild_id: int,
+        expected_entries: tuple[QueueEntry, ...],
+        requester_id: int,
+        remove_callback: QueuedEntriesRemoveCallback,
+        timeout: float,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        self.guild_id = guild_id
+        self.expected_entries = expected_entries
+        self.requester_id = requester_id
+        self.remove_callback = remove_callback
+        self.remove_button = CallbackButton[Self](
+            self.remove,
+            label="Удалить",
+            style=DANGER,
+        )
+        self.add_item(self.remove_button)
+
+    @override
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        if interaction.user.id == self.requester_id:
+            return True
+        await interaction.response.send_message(
+            "Удалить из очереди может только автор запроса.",
+            ephemeral=True,
+        )
+        return False
+
+    async def remove(self, interaction: Interaction) -> None:
+        await MusicInteractionResponder(interaction).acknowledge_component()
+        message = interaction.message
+        if message is None:
+            logger.debug("Queue undo component has no source message.")
+            self.stop()
+            return
+
+        result = await self.remove_callback(
+            self.guild_id,
+            self.expected_entries,
+            self.requester_id,
+        )
+        if not result.is_success or not result.data:
+            self.stop()
+            await message.edit(view=None)
+            await interaction.followup.send(
+                STALE_QUEUE_REQUEST_MESSAGE,
+                ephemeral=True,
+            )
+            return
+
+        removed = result.data
+        self.stop()
+        description = f"Треков: {len(removed)}" if len(removed) > 1 else ""
+        embed = FeedbackUI.make_embed(
+            title="Удалено из очереди",
+            description=description,
+            feedback_type=FeedbackType.SUCCESS,
+        )
+        await message.edit(
+            embed=embed,
+            view=None,
+            delete_after=60,
+        )
+
+    @override
+    async def on_error(
+        self,
+        interaction: Interaction,
+        error: Exception,
+        item: discord.ui.Item[Self],
+        /,
+    ) -> None:
+        del item
+
+        logger.error(
+            "Queue undo interaction failed",
+            exc_info=error,
+        )
+        self.stop()
+
+        message = interaction.message
+        if message is None:
+            return
+
+        try:
+            await message.edit(view=None)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
 
 
 class QueuePaginationAdapter(PaginationData):

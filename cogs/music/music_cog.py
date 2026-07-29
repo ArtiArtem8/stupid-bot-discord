@@ -56,6 +56,7 @@ from .responder import MusicInteractionResponder
 from .views import (
     QueuePaginationAdapter,
     QueuePaginator,
+    QueueUndoView,
     SessionSummaryView,
     TrackControllerManager,
 )
@@ -365,18 +366,30 @@ class MusicCog(BaseCog):
                     requester_name=interaction.user.display_name,
                     requester_avatar_url=interaction.user.display_avatar.url,
                 )
-                await FeedbackUI.send(
-                    interaction, embed=embed, delete_after=min(delay_sec, 480)
-                )
+                delete_after = min(delay_sec, 480)
             case "playlist":
                 embed = build_playlist_added_embed(
                     data,
                     requester_name=interaction.user.display_name,
                     requester_avatar_url=interaction.user.display_avatar.url,
                 )
-                await FeedbackUI.send(
-                    interaction, embed=embed, delete_after=min(delay_sec, 600)
-                )
+                delete_after = min(delay_sec, 600)
+
+        view = None
+        if data["undo_entries"] and interaction.guild_id is not None:
+            view = QueueUndoView(
+                guild_id=interaction.guild_id,
+                expected_entries=data["undo_entries"],
+                requester_id=interaction.user.id,
+                remove_callback=self.service.remove_queued_entries,
+                timeout=delete_after,
+            )
+        await FeedbackUI.send(
+            interaction,
+            embed=embed,
+            view=view,
+            delete_after=delete_after,
+        )
 
     @app_commands.command(
         name="stop", description="Остановить воспроизведение и очистить очередь"

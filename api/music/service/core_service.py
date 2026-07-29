@@ -16,11 +16,13 @@ from api.music.errors import (
 from api.music.models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     ControllerDestroyReason,
+    EnqueueOutcome,
     MusicResult,
     MusicResultStatus,
     NodeNotConnectedError,
     PlayPlacement,
     PlayResponseData,
+    QueueEntry,
     QueuePlacement,
     QueueSnapshot,
     RepeatMode,
@@ -267,12 +269,16 @@ class CoreMusicService:
         if not playlist.tracks:
             return MusicResult(MusicResultStatus.FAILURE, "Nothing found")
 
-        response_placement = await self._enqueue_tracks_for_play(
+        outcome = await self._enqueue_tracks_for_play(
             player,
             playlist.tracks,
             requester_id,
             text_channel_id,
             placement=placement,
+        )
+        undo_entries = outcome.entries if outcome.has_waiting_entries else ()
+        response_placement: PlayPlacement = (
+            "now" if outcome.started_attempt is not None else placement
         )
         return MusicResult(
             MusicResultStatus.SUCCESS,
@@ -280,6 +286,7 @@ class CoreMusicService:
             data={
                 "type": "playlist",
                 "playlist": playlist,
+                "undo_entries": undo_entries,
                 "placement": response_placement,
                 "connection": connection_result,
             },
@@ -295,12 +302,16 @@ class CoreMusicService:
         *,
         placement: QueuePlacement,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        response_placement = await self._enqueue_tracks_for_play(
+        outcome = await self._enqueue_tracks_for_play(
             player,
             (track,),
             requester_id,
             text_channel_id,
             placement=placement,
+        )
+        undo_entries = outcome.entries if outcome.has_waiting_entries else ()
+        response_placement: PlayPlacement = (
+            "now" if outcome.started_attempt is not None else placement
         )
         return MusicResult(
             MusicResultStatus.SUCCESS,
@@ -308,6 +319,7 @@ class CoreMusicService:
             data={
                 "type": "track",
                 "track": track,
+                "undo_entries": undo_entries,
                 "placement": response_placement,
                 "connection": connection_result,
             },
@@ -321,10 +333,34 @@ class CoreMusicService:
         text_channel_id: int | None,
         *,
         placement: QueuePlacement,
-    ) -> PlayPlacement:
+    ) -> EnqueueOutcome:
         requester = TrackRequester(requester_id, text_channel_id)
-        started = await player.enqueue_tracks(tracks, requester, placement=placement)
-        return "now" if started is not None else placement
+        return await player.enqueue_tracks(tracks, requester, placement=placement)
+
+    async def remove_queued_entries(
+        self,
+        guild_id: int,
+        expected: Sequence[QueueEntry],
+        requester_id: int,
+    ) -> MusicResult[tuple[QueueEntry, ...]]:
+        """Remove exact waiting entries from the active guild player."""
+        player = self.connection.get_player(guild_id)
+        if player is None:
+            return self._missing_player_result(
+                guild_id,
+                context="remove queued entries",
+            )
+        removed = await player.remove_queued_entries(
+            expected,
+            requester_id=requester_id,
+        )
+        if not removed:
+            return MusicResult(MusicResultStatus.FAILURE, "Queued entries are stale")
+        return MusicResult(
+            MusicResultStatus.SUCCESS,
+            "Removed from queue",
+            data=removed,
+        )
 
     async def _handle_play_expected_failure(
         self, player: MusicPlayer, query: str, exc: Exception

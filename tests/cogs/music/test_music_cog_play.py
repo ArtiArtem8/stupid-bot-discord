@@ -18,7 +18,9 @@ from cogs.music.presentation import (
     build_playlist_added_embed,
     build_track_added_embed,
 )
-from tests.api.music.helpers import make_playlist, make_track
+from cogs.music.views import QueueUndoView
+from framework import FeedbackUI
+from tests.api.music.helpers import make_entry, make_playlist, make_track
 
 
 def _make_interaction() -> MagicMock:
@@ -27,6 +29,7 @@ def _make_interaction() -> MagicMock:
     interaction.user.display_name = "Requester"
     interaction.user.display_avatar.url = "https://example.com/avatar.png"
     interaction.channel_id = 777
+    interaction.guild_id = 123
     return interaction
 
 
@@ -61,10 +64,12 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         guild = MagicMock(id=123)
         channel = MagicMock()
         interaction = _make_interaction()
-        track = make_track("one")
+        entry = make_entry("one", requester_id=42)
+        track = entry.track
         data: TrackResponseData = {
             "type": "track",
             "track": track,
+            "undo_entries": (entry,),
             "placement": "next",
         }
         result = MusicResult(MusicResultStatus.SUCCESS, "ok", data=data)
@@ -116,7 +121,8 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
 
     def test_track_embed_titles_follow_placement(self) -> None:
         interaction = _make_interaction()
-        track = make_track("one")
+        entry = make_entry("one", requester_id=42)
+        track = entry.track
         cases: dict[PlayPlacement, str] = {
             "now": "Сейчас играет",
             "next": "Добавлено в начало очереди",
@@ -128,6 +134,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
                 data: TrackResponseData = {
                     "type": "track",
                     "track": track,
+                    "undo_entries": (entry,),
                     "placement": placement,
                 }
 
@@ -138,6 +145,129 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
                 )
 
                 self.assertEqual(embed.title, expected_title)
+
+    async def test_queued_track_feedback_has_undo_for_end_and_next(self) -> None:
+        interaction = _make_interaction()
+        entry = make_entry("one", requester_id=42)
+        cog = _make_cog()
+        cog.service = MagicMock()
+        cog.service.remove_queued_entries = AsyncMock()
+
+        for placement in ("end", "next"):
+            with self.subTest(placement=placement):
+                data: TrackResponseData = {
+                    "type": "track",
+                    "track": entry.track,
+                    "undo_entries": (entry,),
+                    "placement": placement,
+                }
+                with patch.object(FeedbackUI, "send", new=AsyncMock()) as send:
+                    await cog._send_play_feedback(interaction, data, 120)
+
+                send.assert_awaited_once()
+                send_call = send.await_args
+                if send_call is None:
+                    self.fail("Expected queued-track feedback")
+                view = send_call.kwargs["view"]
+                self.assertIsInstance(view, QueueUndoView)
+                self.assertEqual(view.remove_button.label, "Удалить")
+                self.assertEqual(view.expected_entries, (entry,))
+                self.assertEqual(view.timeout, 120)
+
+    async def test_immediate_track_feedback_has_no_undo_view(self) -> None:
+        interaction = _make_interaction()
+        entry = make_entry("one", requester_id=42)
+        data: TrackResponseData = {
+            "type": "track",
+            "track": entry.track,
+            "undo_entries": (),
+            "placement": "now",
+        }
+        cog = _make_cog()
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()) as send:
+            await cog._send_play_feedback(interaction, data, 120)
+
+        send_call = send.await_args
+        if send_call is None:
+            self.fail("Expected immediate-track feedback")
+        self.assertIsNone(send_call.kwargs["view"])
+
+    async def test_single_track_playlist_now_has_no_undo_view(self) -> None:
+        interaction = _make_interaction()
+        entry = make_entry("one", requester_id=42)
+        playlist = make_playlist("Mix", [entry.track])
+        data: PlaylistResponseData = {
+            "type": "playlist",
+            "playlist": playlist,
+            "undo_entries": (),
+            "placement": "now",
+        }
+        cog = _make_cog()
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()) as send:
+            await cog._send_play_feedback(interaction, data, 120)
+
+        send_call = send.await_args
+        if send_call is None:
+            self.fail("Expected playlist feedback")
+        self.assertIsNone(send_call.kwargs["view"])
+
+    async def test_multi_track_playlist_now_has_undo_for_all_entries(self) -> None:
+        interaction = _make_interaction()
+        entries = (
+            make_entry("one", entry_id=1, requester_id=42),
+            make_entry("two", entry_id=2, requester_id=42),
+        )
+        playlist = make_playlist("Mix", [entry.track for entry in entries])
+        data: PlaylistResponseData = {
+            "type": "playlist",
+            "playlist": playlist,
+            "undo_entries": entries,
+            "placement": "now",
+        }
+        cog = _make_cog()
+        cog.service = MagicMock()
+        cog.service.remove_queued_entries = AsyncMock()
+
+        with patch.object(FeedbackUI, "send", new=AsyncMock()) as send:
+            await cog._send_play_feedback(interaction, data, 120)
+
+        send_call = send.await_args
+        if send_call is None:
+            self.fail("Expected playlist feedback")
+        view = send_call.kwargs["view"]
+        self.assertIsInstance(view, QueueUndoView)
+        self.assertIs(view.expected_entries, entries)
+
+    async def test_queued_playlist_has_undo_for_end_and_next(self) -> None:
+        interaction = _make_interaction()
+        entries = (
+            make_entry("one", entry_id=1, requester_id=42),
+            make_entry("two", entry_id=2, requester_id=42),
+        )
+        playlist = make_playlist("Mix", [entry.track for entry in entries])
+        cog = _make_cog()
+        cog.service = MagicMock()
+        cog.service.remove_queued_entries = AsyncMock()
+
+        for placement in ("end", "next"):
+            with self.subTest(placement=placement):
+                data: PlaylistResponseData = {
+                    "type": "playlist",
+                    "playlist": playlist,
+                    "undo_entries": entries,
+                    "placement": placement,
+                }
+                with patch.object(FeedbackUI, "send", new=AsyncMock()) as send:
+                    await cog._send_play_feedback(interaction, data, 120)
+
+                send_call = send.await_args
+                if send_call is None:
+                    self.fail("Expected queued playlist feedback")
+                view = send_call.kwargs["view"]
+                self.assertIsInstance(view, QueueUndoView)
+                self.assertIs(view.expected_entries, entries)
 
     def test_playlist_embed_titles_follow_placement(self) -> None:
         interaction = _make_interaction()
@@ -153,6 +283,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
                 data: PlaylistResponseData = {
                     "type": "playlist",
                     "playlist": playlist,
+                    "undo_entries": (),
                     "placement": placement,
                 }
 

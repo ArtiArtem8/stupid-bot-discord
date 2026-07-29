@@ -257,21 +257,34 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         await player.enqueue_tracks(tracks, None, placement="end")
         self.assertEqual(_tracks(player), [existing.track, *tracks])
 
-    async def test_enqueue_tracks_with_empty_sequence_returns_none(self) -> None:
+    async def test_enqueue_tracks_with_empty_sequence_returns_empty_outcome(
+        self,
+    ) -> None:
         player = _make_player(current=make_entry("current"))
-        self.assertIsNone(await player.enqueue_tracks((), None, placement="end"))
+        outcome = await player.enqueue_tracks((), None, placement="end")
+        self.assertEqual(outcome.entries, ())
+        self.assertIsNone(outcome.started_attempt)
         self.assertTrue(player.queue.is_empty)
 
-    async def test_enqueue_tracks_starts_first_track_when_idle(self) -> None:
+    async def test_enqueue_tracks_returns_created_entries_and_started_attempt(
+        self,
+    ) -> None:
         first, second = make_track("first"), make_track("second")
         player = _make_player()
         with patch.object(player, "play", new=AsyncMock()) as play_mock:
-            started = await player.enqueue_tracks(
+            outcome = await player.enqueue_tracks(
                 (first, second), None, placement="end"
             )
-        self.assertIsNotNone(started)
-        self.assertIs(_require_attempt(started).entry.track, first)
-        self.assertEqual(_tracks(player), [second])
+        started = _require_attempt(outcome.started_attempt)
+        self.assertEqual(len(outcome.entries), 2)
+        self.assertIs(started.entry, outcome.entries[0])
+        self.assertIs(outcome.entries[0].track, first)
+        self.assertIs(outcome.entries[1].track, second)
+        self.assertEqual(
+            [entry.entry_id for entry in outcome.entries],
+            [1, 2],
+        )
+        self.assertEqual(list(player.queue), [outcome.entries[1]])
         play_mock.assert_awaited_once_with(
             first, start_time=0, volume=None, pause=False
         )
@@ -289,8 +302,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         queued = make_track("queued")
         player = _make_player(current=current)
         with patch.object(player, "play", new=AsyncMock()) as play_mock:
-            started = await player.enqueue_tracks((queued,), None, placement="end")
-        self.assertIsNone(started)
+            outcome = await player.enqueue_tracks((queued,), None, placement="end")
+        self.assertIsNone(outcome.started_attempt)
         self.assertIs(player.current_entry, current)
         play_mock.assert_not_awaited()
 
@@ -301,6 +314,232 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         await player.enqueue_tracks(first, None, placement="next")
         await player.enqueue_tracks(second, None, placement="next")
         self.assertEqual(_tracks(player), [*second, *first])
+
+    async def test_remove_queued_entries_removes_single_entry(self) -> None:
+        expected = make_entry("expected", entry_id=2, requester_id=42)
+        player = _make_player(current=make_entry("current"))
+        player.queue.append(expected)
+
+        removed = await player.remove_queued_entries((expected,), requester_id=42)
+
+        self.assertEqual(removed, (expected,))
+        self.assertTrue(player.queue.is_empty)
+
+    async def test_remove_queued_entries_with_empty_expected_changes_nothing(
+        self,
+    ) -> None:
+        queued = make_entry("queued", entry_id=2, requester_id=42)
+        player = _make_player(current=make_entry("current"))
+        player.queue.append(queued)
+
+        removed = await player.remove_queued_entries((), requester_id=42)
+
+        self.assertEqual(removed, ())
+        self.assertEqual(list(player.queue), [queued])
+
+    async def test_remove_queued_entries_removes_entire_waiting_playlist(
+        self,
+    ) -> None:
+        current = make_entry("other-current", requester_id=99)
+        player = _make_player(current=current)
+        tracks = (make_track("one"), make_track("two"), make_track("three"))
+        outcome = await player.enqueue_tracks(
+            tracks,
+            TrackRequester(42),
+            placement="end",
+        )
+
+        removed = await player.remove_queued_entries(
+            outcome.entries,
+            requester_id=42,
+        )
+
+        self.assertEqual(removed, outcome.entries)
+        self.assertTrue(player.queue.is_empty)
+        self.assertIs(player.current_entry, current)
+
+    async def test_remove_queued_entries_ignores_playlist_entry_now_playing(
+        self,
+    ) -> None:
+        player = _make_player()
+        tracks = (make_track("one"), make_track("two"), make_track("three"))
+        with patch.object(player, "play", new=AsyncMock()):
+            outcome = await player.enqueue_tracks(
+                tracks,
+                TrackRequester(42),
+                placement="end",
+            )
+
+        removed = await player.remove_queued_entries(
+            outcome.entries,
+            requester_id=42,
+        )
+
+        self.assertEqual(removed, outcome.entries[1:])
+        self.assertIs(player.current_entry, outcome.entries[0])
+        self.assertTrue(player.queue.is_empty)
+
+    async def test_remove_queued_entries_removes_only_playlist_remainder(
+        self,
+    ) -> None:
+        entries = tuple(
+            make_entry(identifier, entry_id=index, requester_id=42)
+            for index, identifier in enumerate(("one", "two", "three", "four"), 1)
+        )
+        player = _make_player(current=entries[2])
+        player.queue.append(entries[3])
+
+        removed = await player.remove_queued_entries(entries, requester_id=42)
+
+        self.assertEqual(removed, (entries[3],))
+        self.assertIs(player.current_entry, entries[2])
+
+    async def test_remove_queued_entries_preserves_repeat_and_current_attempt(
+        self,
+    ) -> None:
+        current = make_entry("current", entry_id=1, requester_id=42)
+        queued = make_entry("queued", entry_id=2, requester_id=42)
+        player = _make_player(current=current)
+        player.repeat.mode = RepeatMode.QUEUE
+        player.queue.append(queued)
+        current_attempt = _require_attempt(player.current_attempt)
+
+        removed = await player.remove_queued_entries(
+            (current, queued),
+            requester_id=42,
+        )
+
+        self.assertEqual(removed, (queued,))
+        self.assertIs(player.current_attempt, current_attempt)
+        self.assertIs(player.current_entry, current)
+        self.assertIs(player.repeat.mode, RepeatMode.QUEUE)
+
+        player.queue.append(current)
+        self.assertEqual(list(player.queue), [current])
+
+    async def test_remove_queued_entries_preserves_other_requests_in_order(
+        self,
+    ) -> None:
+        requested = (
+            make_entry("requested-one", entry_id=2, requester_id=42),
+            make_entry("requested-two", entry_id=4, requester_id=42),
+        )
+        others = (
+            make_entry("other-user", entry_id=3, requester_id=99),
+            make_entry("other-request", entry_id=5, requester_id=42),
+        )
+        player = _make_player(current=make_entry("current"))
+        player.queue.extend((requested[0], others[0], requested[1], others[1]))
+
+        removed = await player.remove_queued_entries(requested, requester_id=42)
+
+        self.assertEqual(removed, requested)
+        self.assertEqual(list(player.queue), list(others))
+
+    async def test_remove_queued_entries_keeps_equal_tracks_from_other_request(
+        self,
+    ) -> None:
+        other = make_entry("same", entry_id=2, requester_id=42)
+        expected = make_entry("same", entry_id=3, requester_id=42)
+        player = _make_player(current=make_entry("current"))
+        player.queue.extend((other, expected))
+
+        removed = await player.remove_queued_entries((expected,), requester_id=42)
+
+        self.assertEqual(removed, (expected,))
+        self.assertEqual(list(player.queue), [other])
+
+    async def test_remove_queued_entries_follows_playlist_entries_after_shuffle(
+        self,
+    ) -> None:
+        requested = (
+            make_entry("one", entry_id=2, requester_id=42),
+            make_entry("two", entry_id=3, requester_id=42),
+        )
+        other = make_entry("other", entry_id=4, requester_id=99)
+        player = _make_player(current=make_entry("current"))
+        player.queue.extend((*requested, other))
+
+        def reverse_entries(entries: list[QueueEntry]) -> None:
+            entries.reverse()
+
+        with patch(
+            "api.music.queue.random.shuffle",
+            side_effect=reverse_entries,
+        ):
+            player.queue.shuffle()
+
+        removed = await player.remove_queued_entries(requested, requester_id=42)
+
+        self.assertEqual(removed, tuple(reversed(requested)))
+        self.assertEqual(list(player.queue), [other])
+
+    async def test_remove_queued_entries_rejects_mixed_requesters_atomically(
+        self,
+    ) -> None:
+        own = make_entry("own", entry_id=2, requester_id=42)
+        foreign = make_entry("foreign", entry_id=3, requester_id=99)
+        player = _make_player(current=make_entry("current"))
+        player.queue.extend((own, foreign))
+
+        removed = await player.remove_queued_entries(
+            (own, foreign),
+            requester_id=42,
+        )
+
+        self.assertEqual(removed, ())
+        self.assertEqual(list(player.queue), [own, foreign])
+
+    async def test_old_entries_cannot_remove_new_player_entries_with_same_ids(
+        self,
+    ) -> None:
+        old_entries = (
+            make_entry("old-one", entry_id=1, requester_id=42),
+            make_entry("old-two", entry_id=2, requester_id=42),
+        )
+        replacements = (
+            make_entry("new-one", entry_id=1, requester_id=42),
+            make_entry("new-two", entry_id=2, requester_id=42),
+        )
+        new_player = _make_player(current=make_entry("current", entry_id=3))
+        new_player.queue.extend(replacements)
+
+        removed = await new_player.remove_queued_entries(
+            old_entries,
+            requester_id=42,
+        )
+
+        self.assertEqual(removed, ())
+        self.assertEqual(list(new_player.queue), list(replacements))
+
+    async def test_concurrent_remove_queued_entries_has_one_nonempty_result(
+        self,
+    ) -> None:
+        expected = (
+            make_entry("one", entry_id=2, requester_id=42),
+            make_entry("two", entry_id=3, requester_id=42),
+        )
+        player = _make_player(current=make_entry("current"))
+        player.queue.extend(expected)
+
+        results = await asyncio.gather(
+            player.remove_queued_entries(expected, requester_id=42),
+            player.remove_queued_entries(expected, requester_id=42),
+        )
+
+        self.assertEqual(sum(bool(result) for result in results), 1)
+        self.assertTrue(player.queue.is_empty)
+
+    async def test_stale_player_cannot_remove_queued_entries(self) -> None:
+        expected = make_entry("expected", entry_id=2, requester_id=42)
+        player = _make_player(current=make_entry("current"))
+        player.queue.append(expected)
+        player.mark_stale()
+
+        removed = await player.remove_queued_entries((expected,), requester_id=42)
+
+        self.assertEqual(removed, ())
+        self.assertEqual(list(player.queue), [expected])
 
     async def test_concurrent_idle_enqueue_starts_only_one_initial_track(self) -> None:
         player = _make_player()
@@ -321,8 +560,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0)
             release.set()
             first_result, second_result = await asyncio.gather(first, second)
-        self.assertIsNotNone(first_result)
-        self.assertIsNone(second_result)
+        self.assertIsNotNone(first_result.started_attempt)
+        self.assertIsNone(second_result.started_attempt)
         self.assertEqual(mocked.await_count, 1)
         self.assertEqual([track.identifier for track in _tracks(player)], ["second"])
 
@@ -568,7 +807,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             release.set()
             enqueued, (skipped, started) = await asyncio.gather(enqueue, skip)
         self.assertEqual(
-            _require_attempt(enqueued).entry, _require_attempt(skipped).entry
+            _require_attempt(enqueued.started_attempt).entry,
+            _require_attempt(skipped).entry,
         )
         self.assertEqual(_require_attempt(started).entry.track.identifier, "second")
 
@@ -627,15 +867,16 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
                     patch.object(player, "play", new=AsyncMock()) as play_mock,
                 ):
                     await player.stop_and_clear()
-                    started = await player.enqueue_tracks(
+                    enqueue_outcome = await player.enqueue_tracks(
                         (queued,), None, placement="end"
                     )
                     outcome = await player.handle_track_end(current.track, reason)
 
-                self.assertEqual(_require_attempt(started).entry.track, queued)
+                started = _require_attempt(enqueue_outcome.started_attempt)
+                self.assertEqual(started.entry.track, queued)
                 self.assertEqual(_require_attempt(outcome.ended_attempt).entry, current)
                 self.assertIsNone(outcome.started_attempt)
-                self.assertEqual(player.current_entry, _require_attempt(started).entry)
+                self.assertEqual(player.current_entry, started.entry)
                 self.assertEqual(play_mock.await_count, 1)
 
     async def test_multiple_pending_attempts_do_not_block_current_finish(self) -> None:

@@ -93,6 +93,7 @@ class TestPlaylistPresentation(unittest.TestCase):
                 data: PlaylistResponseData = {
                     "type": "playlist",
                     "playlist": playlist,
+                    "undo_entries": (),
                     "placement": placement,
                 }
                 embed = build_playlist_added_embed(

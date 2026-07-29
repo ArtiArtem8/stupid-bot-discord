@@ -12,6 +12,7 @@ import discord
 import mafic
 
 from .models import (
+    EnqueueOutcome,
     PlaybackAttempt,
     QueueEntry,
     QueuePlacement,
@@ -177,10 +178,10 @@ class MusicPlayer(mafic.Player[discord.Client]):
         requester: TrackRequester | None,
         *,
         placement: QueuePlacement,
-    ) -> PlaybackAttempt | None:
+    ) -> EnqueueOutcome:
         """Create entries, enqueue them, and start one if idle."""
         if not tracks:
-            return None
+            return EnqueueOutcome((), None)
         async with self._transition_lock:
             entries = tuple(self._new_entry(track, requester) for track in tracks)
             if placement == "end":
@@ -188,16 +189,34 @@ class MusicPlayer(mafic.Player[discord.Client]):
             else:
                 self.queue.extend_front(entries)
             if self._current_attempt is not None:
-                return None
+                return EnqueueOutcome(entries, None)
             queued_state = self.queue.snapshot()
             entry = self.queue.pop_next()
             if entry is None:
-                return None
+                return EnqueueOutcome(entries, None)
             try:
-                return await self._start_entry_unlocked(entry)
+                started = await self._start_entry_unlocked(entry)
             except (Exception, asyncio.CancelledError):
                 self.queue.restore(queued_state)
                 raise
+            return EnqueueOutcome(entries, started)
+
+    async def remove_queued_entries(
+        self,
+        expected: Sequence[QueueEntry],
+        *,
+        requester_id: int,
+    ) -> tuple[QueueEntry, ...]:
+        """Remove exact waiting requests without affecting playback."""
+        async with self._transition_lock:
+            if self._is_stale or not expected:
+                return ()
+            if any(
+                entry.requester is None or entry.requester.user_id != requester_id
+                for entry in expected
+            ):
+                return ()
+            return self.queue.remove_entries(expected)
 
     async def skip(
         self,
