@@ -140,7 +140,6 @@ class CoreMusicService:
         so do not use it as the only source of truth for whether the bot is in voice.
         """
         raw_voice_client = guild.voice_client
-        player = self.connection.get_player(guild.id)
 
         await self.ui.controller.destroy_for_guild(
             guild.id, ControllerDestroyReason.VOICE_DISCONNECT
@@ -148,25 +147,20 @@ class CoreMusicService:
         await self.end_session(guild.id)
         self.state.cancel_timer(guild.id)
 
-        if player:
-            player.clear_queue()
+        if isinstance(raw_voice_client, MusicPlayer):
+            raw_voice_client.clear_queue()
 
         if raw_voice_client is None:
             return MusicResult(MusicResultStatus.FAILURE, "Not connected")
 
-        await self.connection.disconnect(guild, force=True)
+        disconnected = await self.connection.disconnect(guild, force=True)
 
-        if isinstance(raw_voice_client, mafic.Player) and (
-            not isinstance(raw_voice_client, MusicPlayer)
-            or not self.connection.is_player_usable(raw_voice_client)
-            or self.connection.is_known_unavailable()
-        ):
-            return MusicResult(
-                MusicResultStatus.FAILURE,
-                MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
-            )
-
-        return MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
+        if disconnected:
+            return MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
+        return MusicResult(
+            MusicResultStatus.ERROR,
+            "Не удалось отключиться от голосового канала.",
+        )
 
     async def play(
         self,

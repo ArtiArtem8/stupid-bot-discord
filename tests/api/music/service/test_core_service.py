@@ -6,6 +6,7 @@ from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
+import discord
 import mafic
 
 from api.music.models import (
@@ -20,6 +21,7 @@ from api.music.models import (
     TrackRequester,
     VoiceCheckResult,
 )
+from api.music.player import MusicPlayer
 from api.music.service.core_service import CoreMusicService
 from tests.api.music.helpers import make_entry, make_playlist, make_track
 
@@ -727,27 +729,185 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         player.stop_and_clear.assert_awaited_once()
         handle_failure.assert_awaited_once_with(player, error)
 
-    async def test_leave_stale_voice_returns_unavailable_after_local_cleanup(
+    async def test_leave_usable_music_player_succeeds_from_disconnect_result(
         self,
     ) -> None:
-        guild = MagicMock()
-        guild.id = 123
-        guild.voice_client = object()
+        guild = MagicMock(id=123)
+        player = MagicMock(spec=MusicPlayer)
+        guild.voice_client = player
+        disconnect = AsyncMock(return_value=True)
+        destroy = AsyncMock()
+
+        with (
+            patch.object(self.connection, "disconnect", disconnect),
+            patch.object(self.ui.controller, "destroy_for_guild", destroy),
+            patch.object(self.service, "end_session", AsyncMock()),
+        ):
+            result = await self.service.leave(guild)
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        self.assertEqual(result.message, "Disconnected")
+        player.clear_queue.assert_called_once_with()
+        disconnect.assert_awaited_once_with(guild, force=True)
+        self.connection.is_player_usable.assert_not_called()
+        self.connection.is_known_unavailable.assert_not_called()
+
+    async def test_leave_stale_music_player_clears_raw_queue_and_succeeds(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        player = MagicMock(spec=MusicPlayer)
+        guild.voice_client = player
         self.connection.get_player.return_value = None
-        self.connection.disconnect = AsyncMock()
-        self.connection.is_known_unavailable.return_value = False
-        self.ui.controller.destroy_for_guild = AsyncMock()
+        disconnect = AsyncMock(return_value=True)
+
+        with (
+            patch.object(self.connection, "disconnect", disconnect),
+            patch.object(self.ui.controller, "destroy_for_guild", AsyncMock()),
+            patch.object(self.service, "end_session", AsyncMock()),
+        ):
+            result = await self.service.leave(guild)
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        player.clear_queue.assert_called_once_with()
+        self.connection.get_player.assert_not_called()
+        self.connection.is_player_usable.assert_not_called()
+
+    async def test_leave_succeeds_when_lavalink_is_known_unavailable(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        player = MagicMock(spec=MusicPlayer)
+        guild.voice_client = player
+        self.connection.is_known_unavailable.return_value = True
+
+        with (
+            patch.object(self.connection, "disconnect", AsyncMock(return_value=True)),
+            patch.object(self.ui.controller, "destroy_for_guild", AsyncMock()),
+            patch.object(self.service, "end_session", AsyncMock()),
+        ):
+            result = await self.service.leave(guild)
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        self.connection.is_known_unavailable.assert_not_called()
+
+    async def test_leave_generic_voice_client_succeeds_from_disconnect_result(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        guild.voice_client = MagicMock(spec=discord.VoiceProtocol)
+        disconnect = AsyncMock(return_value=True)
+
+        with (
+            patch.object(self.connection, "disconnect", disconnect),
+            patch.object(self.ui.controller, "destroy_for_guild", AsyncMock()),
+            patch.object(self.service, "end_session", AsyncMock()),
+        ):
+            result = await self.service.leave(guild)
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        self.assertEqual(result.message, "Disconnected")
+        disconnect.assert_awaited_once_with(guild, force=True)
+
+    async def test_leave_returns_error_when_voice_client_remains(self) -> None:
+        guild = MagicMock(id=123)
+        guild.voice_client = MagicMock(spec=discord.VoiceProtocol)
+
+        with (
+            patch.object(self.connection, "disconnect", AsyncMock(return_value=False)),
+            patch.object(self.ui.controller, "destroy_for_guild", AsyncMock()),
+            patch.object(self.service, "end_session", AsyncMock()),
+        ):
+            result = await self.service.leave(guild)
+
+        self.assertIs(result.status, MusicResultStatus.ERROR)
+        self.assertEqual(
+            result.message,
+            "Не удалось отключиться от голосового канала.",
+        )
+        self.assertNotEqual(result.message, MUSIC_SERVICE_UNAVAILABLE_MESSAGE)
+
+    async def test_leave_already_disconnected_keeps_local_cleanup(self) -> None:
+        guild = MagicMock(id=123)
+        guild.voice_client = None
+        disconnect = AsyncMock()
+        destroy = AsyncMock()
         end_session = AsyncMock()
 
         with (
-            patch("api.music.service.core_service.mafic.Player", object),
+            patch.object(self.connection, "disconnect", disconnect),
+            patch.object(self.ui.controller, "destroy_for_guild", destroy),
             patch.object(self.service, "end_session", end_session),
         ):
             result = await self.service.leave(guild)
 
-        self.connection.disconnect.assert_awaited_once_with(guild, force=True)
         self.assertIs(result.status, MusicResultStatus.FAILURE)
-        self.assertEqual(result.message, MUSIC_SERVICE_UNAVAILABLE_MESSAGE)
+        self.assertEqual(result.message, "Not connected")
+        destroy.assert_awaited_once_with(
+            guild.id,
+            ControllerDestroyReason.VOICE_DISCONNECT,
+        )
+        end_session.assert_awaited_once_with(guild.id)
+        self.state.cancel_timer.assert_called_once_with(guild.id)
+        disconnect.assert_not_awaited()
+
+    async def test_leave_preserves_session_cleanup_order(self) -> None:
+        guild = MagicMock(id=123)
+        player = MagicMock(spec=MusicPlayer)
+        guild.voice_client = player
+        events: list[str] = []
+
+        async def destroy(*_: object) -> None:
+            events.append("destroy")
+
+        async def end_session(_: int) -> None:
+            events.append("end_session")
+
+        def cancel_timer(_: int) -> None:
+            events.append("cancel_timer")
+
+        def clear_queue() -> None:
+            events.append("clear_queue")
+
+        async def disconnect(*_args: object, **_kwargs: object) -> bool:
+            events.append("disconnect")
+            return True
+
+        player.clear_queue.side_effect = clear_queue
+
+        with (
+            patch.object(
+                self.ui.controller,
+                "destroy_for_guild",
+                AsyncMock(side_effect=destroy),
+            ) as destroy_for_guild,
+            patch.object(
+                self.service,
+                "end_session",
+                AsyncMock(side_effect=end_session),
+            ) as end,
+            patch.object(
+                self.state,
+                "cancel_timer",
+                MagicMock(side_effect=cancel_timer),
+            ) as cancel,
+            patch.object(
+                self.connection,
+                "disconnect",
+                AsyncMock(side_effect=disconnect),
+            ) as disconnect_voice,
+        ):
+            result = await self.service.leave(guild)
+
+        self.assertIs(result.status, MusicResultStatus.SUCCESS)
+        self.assertEqual(
+            events,
+            ["destroy", "end_session", "cancel_timer", "clear_queue", "disconnect"],
+        )
+        destroy_for_guild.assert_awaited_once()
+        end.assert_awaited_once()
+        cancel.assert_called_once()
+        disconnect_voice.assert_awaited_once()
 
     async def test_join_returns_unavailable_when_apply_volume_http_not_found(
         self,

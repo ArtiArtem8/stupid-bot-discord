@@ -446,12 +446,12 @@ class ConnectionManager:
         except Exception:
             logger.debug("Failed to cleanup stale voice client locally", exc_info=True)
 
-    async def disconnect(self, guild: discord.Guild, force: bool = False) -> None:
-        """Disconnect the bot from voice, including stale/dead music clients."""
+    async def disconnect(self, guild: discord.Guild, force: bool = False) -> bool:
+        """Disconnect from voice and report whether the guild has no voice client."""
         voice_client = guild.voice_client
         if not voice_client:
             logger.debug("No voice client to disconnect in guild: %s", guild.id)
-            return
+            return True
 
         logger.debug(
             "Disconnecting from channel: %s",
@@ -462,7 +462,7 @@ class ConnectionManager:
             voice_client
         ):
             await self._detach_unusable_player(guild, voice_client)
-            return
+            return guild.voice_client is None
 
         try:
             await voice_client.disconnect(force=force)
@@ -476,12 +476,14 @@ class ConnectionManager:
                     type(exc).__name__,
                 )
                 await self.detach_stale_voice_client(guild, voice_client)
-            return
+            return guild.voice_client is None
         except Exception:
             logger.debug("Unexpected voice disconnect failure", exc_info=True)
             await self.detach_stale_voice_client(guild, voice_client)
-            return
+            return guild.voice_client is None
 
         # Even a successful disconnect can leave a VoiceProtocol cached in edge cases.
-        with contextlib.suppress(Exception):
-            await maybe_coroutine(voice_client.cleanup)
+        if guild.voice_client is voice_client:
+            with contextlib.suppress(Exception):
+                await maybe_coroutine(voice_client.cleanup)
+        return guild.voice_client is None
