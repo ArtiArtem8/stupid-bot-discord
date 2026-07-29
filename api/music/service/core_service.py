@@ -179,7 +179,10 @@ class CoreMusicService:
 
         player = self.connection.get_player(guild.id)
         if player is None:
-            return self._lost_player_result()
+            return MusicResult(
+                MusicResultStatus.ERROR,
+                "Плеер потерял соединение. Попробуй запустить трек ещё раз.",
+            )
 
         self._record_interaction_if_possible(guild.id, requester_id, text_channel_id)
         try:
@@ -203,12 +206,6 @@ class CoreMusicService:
             connection_result[0].status,
             "Connection failed",
             data=connection_result,
-        )
-
-    def _lost_player_result(self) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        return MusicResult(
-            MusicResultStatus.ERROR,
-            "Плеер потерял соединение. Попробуй запустить трек ещё раз.",
         )
 
     def _record_interaction_if_possible(

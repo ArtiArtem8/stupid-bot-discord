@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum, auto
-from typing import Literal, NotRequired, Self, TypedDict, TypeVar
+from typing import Literal, NotRequired, TypedDict, TypeVar
 
 import discord
 import mafic
@@ -153,24 +153,6 @@ class TrackInfo:
     thumbnail_url: str | None = None
     start_timestamp: datetime | None = None
     end_timestamp: datetime = field(default_factory=utcnow)
-
-
-@dataclass(slots=True, frozen=True)
-class TrackId:
-    id: str
-
-    @classmethod
-    def from_track(cls, track: mafic.Track) -> Self:
-        """Create TrackId from a Track object."""
-        _id = track.identifier
-        return cls(_id)
-
-    @classmethod
-    def from_any(cls, id: int | str | mafic.Track) -> Self:
-        """Universal constructor that accepts multiple types."""
-        if isinstance(id, mafic.Track):
-            return cls.from_track(id)
-        return cls(str(id))
 
 
 @dataclass(frozen=True, slots=True)
