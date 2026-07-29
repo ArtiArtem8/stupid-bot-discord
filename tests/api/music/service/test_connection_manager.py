@@ -588,6 +588,154 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         invalidate_player.assert_awaited_once_with(player)
         invalidate_node_and_players.assert_not_awaited()
 
+    async def test_disconnect_returns_true_without_voice_client(self) -> None:
+        guild = MagicMock(id=123)
+        guild.voice_client = None
+
+        result = await self.manager.disconnect(guild)
+
+        self.assertIs(result, True)
+
+    async def test_disconnect_returns_true_when_disconnect_clears_cache(self) -> None:
+        guild = MagicMock(id=123)
+        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        guild.voice_client = voice_client
+
+        async def disconnect(*, force: bool) -> None:
+            self.assertTrue(force)
+            guild.voice_client = None
+
+        voice_client.disconnect = AsyncMock(side_effect=disconnect)
+
+        result = await self.manager.disconnect(guild, force=True)
+
+        self.assertIs(result, True)
+        voice_client.disconnect.assert_awaited_once_with(force=True)
+        voice_client.cleanup.assert_not_called()
+
+    async def test_disconnect_returns_true_when_cleanup_clears_cache(self) -> None:
+        guild = MagicMock(id=123)
+        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        guild.voice_client = voice_client
+        voice_client.disconnect = AsyncMock()
+        voice_client.cleanup.side_effect = lambda: setattr(guild, "voice_client", None)
+
+        result = await self.manager.disconnect(guild, force=True)
+
+        self.assertIs(result, True)
+        voice_client.disconnect.assert_awaited_once_with(force=True)
+        voice_client.cleanup.assert_called_once()
+
+    async def test_disconnect_returns_true_after_expected_lavalink_failure(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        player = _FakeMusicPlayer(guild, MagicMock())
+        guild.voice_client = player
+        disconnect = AsyncMock(side_effect=mafic.HTTPNotFound("missing"))
+
+        async def invalidate_player(_: MusicPlayer) -> None:
+            guild.voice_client = None
+
+        with (
+            patch.object(player, "disconnect", disconnect, create=True),
+            patch.object(self.manager, "is_player_usable", return_value=True),
+            patch.object(
+                self.manager,
+                "invalidate_player",
+                AsyncMock(side_effect=invalidate_player),
+            ) as invalidate,
+        ):
+            result = await self.manager.disconnect(guild, force=True)
+
+        self.assertIs(result, True)
+        disconnect.assert_awaited_once_with(force=True)
+        invalidate.assert_awaited_once_with(player)
+
+    async def test_disconnect_returns_true_after_unexpected_failure_cleanup(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        guild.voice_client = voice_client
+        voice_client.disconnect = AsyncMock(side_effect=RuntimeError("failed"))
+
+        async def detach(
+            _guild: discord.Guild, _voice_client: discord.VoiceProtocol
+        ) -> None:
+            guild.voice_client = None
+
+        with patch.object(
+            self.manager,
+            "detach_stale_voice_client",
+            AsyncMock(side_effect=detach),
+        ) as detach_stale:
+            result = await self.manager.disconnect(guild, force=True)
+
+        self.assertIs(result, True)
+        detach_stale.assert_awaited_once_with(guild, voice_client)
+
+    async def test_disconnect_returns_true_after_unusable_player_detach(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        player = _FakeMusicPlayer(guild, MagicMock())
+        guild.voice_client = player
+
+        async def detach(_guild: discord.Guild, _player: MusicPlayer) -> None:
+            guild.voice_client = None
+
+        with (
+            patch.object(self.manager, "is_player_usable", return_value=False),
+            patch.object(
+                self.manager,
+                "_detach_unusable_player",
+                AsyncMock(side_effect=detach),
+            ) as detach_unusable,
+        ):
+            result = await self.manager.disconnect(guild, force=True)
+
+        self.assertIs(result, True)
+        detach_unusable.assert_awaited_once_with(guild, player)
+
+    async def test_disconnect_returns_false_when_cleanup_keeps_voice_client(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        guild.voice_client = voice_client
+        voice_client.disconnect = AsyncMock()
+
+        result = await self.manager.disconnect(guild, force=True)
+
+        self.assertIs(result, False)
+        self.assertIs(guild.voice_client, voice_client)
+
+    async def test_disconnect_returns_false_when_voice_client_is_replaced(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        old_client = MagicMock(spec=discord.VoiceProtocol)
+        new_client = MagicMock(spec=discord.VoiceProtocol)
+        guild.voice_client = old_client
+
+        async def disconnect(*, force: bool) -> None:
+            self.assertTrue(force)
+            guild.voice_client = new_client
+
+        def destructive_old_cleanup() -> None:
+            guild.voice_client = None
+
+        old_client.disconnect = AsyncMock(side_effect=disconnect)
+        old_client.cleanup.side_effect = destructive_old_cleanup
+
+        result = await self.manager.disconnect(guild, force=True)
+
+        self.assertIs(result, False)
+        self.assertIs(guild.voice_client, new_client)
+        old_client.disconnect.assert_awaited_once_with(force=True)
+        old_client.cleanup.assert_not_called()
+
     @patch("api.music.service.connection_manager.mafic.NodePool")
     async def test_stale_player_is_unusable_even_when_node_available(
         self, mock_pool_class: Any

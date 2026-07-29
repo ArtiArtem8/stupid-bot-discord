@@ -2,6 +2,7 @@
 
 import asyncio
 import unittest
+from collections.abc import Awaitable
 from typing import Any, cast, override
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -29,6 +30,16 @@ class _ResponseStub:
 
     async def _defer(self, **_: Any) -> None:
         self.type = discord.InteractionResponseType.deferred_channel_message
+
+
+async def _await_operation(
+    responder: object,
+    operation: Awaitable[MusicResult[None]],
+    *,
+    ephemeral: bool = False,
+) -> MusicResult[None]:
+    del responder, ephemeral
+    return await operation
 
 
 class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
@@ -141,3 +152,110 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         interaction.response.defer.assert_awaited_once()
         interaction.response.send_message.assert_not_awaited()
         interaction.edit_original_response.assert_awaited_once()
+
+    async def test_leave_success_sends_disconnected_message(self) -> None:
+        guild = MagicMock()
+        interaction = MagicMock(guild=guild)
+        service_leave = AsyncMock(
+            return_value=MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
+        )
+
+        with (
+            patch.object(self.cog.service, "leave", service_leave),
+            patch(
+                "cogs.music.music_cog.MusicInteractionResponder.await_with_defer_budget",
+                autospec=True,
+                side_effect=_await_operation,
+            ),
+            patch(
+                "cogs.music.music_cog.send_info",
+                new_callable=AsyncMock,
+            ) as send_info,
+            patch.object(
+                self.cog,
+                "_send_no_player_or_unavailable",
+                new_callable=AsyncMock,
+            ) as send_no_player,
+            patch(
+                "cogs.music.music_cog.send_error",
+                new_callable=AsyncMock,
+            ) as send_error,
+        ):
+            await cast(Any, MusicCog.leave).callback(self.cog, interaction)
+
+        send_info.assert_awaited_once_with(
+            interaction,
+            "Отключился",
+            title="До свидания ❤️",
+        )
+        send_no_player.assert_not_awaited()
+        send_error.assert_not_awaited()
+
+    async def test_leave_not_connected_uses_no_player_warning(self) -> None:
+        guild = MagicMock()
+        interaction = MagicMock(guild=guild)
+        result: MusicResult[None] = MusicResult(
+            MusicResultStatus.FAILURE,
+            "Not connected",
+        )
+
+        with (
+            patch.object(
+                self.cog.service,
+                "leave",
+                AsyncMock(return_value=result),
+            ),
+            patch(
+                "cogs.music.music_cog.MusicInteractionResponder.await_with_defer_budget",
+                autospec=True,
+                side_effect=_await_operation,
+            ),
+            patch.object(
+                self.cog,
+                "_send_no_player_or_unavailable",
+                new_callable=AsyncMock,
+            ) as send_no_player,
+            patch(
+                "cogs.music.music_cog.send_error",
+                new_callable=AsyncMock,
+            ) as send_error,
+        ):
+            await cast(Any, MusicCog.leave).callback(self.cog, interaction)
+
+        send_no_player.assert_awaited_once_with(interaction, result)
+        send_error.assert_not_awaited()
+
+    async def test_leave_disconnect_error_uses_send_error(self) -> None:
+        guild = MagicMock()
+        interaction = MagicMock(guild=guild)
+        message = "Не удалось отключиться от голосового канала."
+        result: MusicResult[None] = MusicResult(
+            MusicResultStatus.ERROR,
+            message,
+        )
+
+        with (
+            patch.object(
+                self.cog.service,
+                "leave",
+                AsyncMock(return_value=result),
+            ),
+            patch(
+                "cogs.music.music_cog.MusicInteractionResponder.await_with_defer_budget",
+                autospec=True,
+                side_effect=_await_operation,
+            ),
+            patch.object(
+                self.cog,
+                "_send_no_player_or_unavailable",
+                new_callable=AsyncMock,
+            ) as send_no_player,
+            patch(
+                "cogs.music.music_cog.send_error",
+                new_callable=AsyncMock,
+            ) as send_error,
+        ):
+            await cast(Any, MusicCog.leave).callback(self.cog, interaction)
+
+        send_error.assert_awaited_once_with(interaction, message)
+        send_no_player.assert_not_awaited()
