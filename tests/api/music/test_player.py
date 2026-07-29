@@ -257,6 +257,64 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         await player.enqueue_tracks(tracks, None, placement="end")
         self.assertEqual(_tracks(player), [existing.track, *tracks])
 
+    async def test_end_enqueue_starts_existing_head_and_keeps_new_entry_waiting(
+        self,
+    ) -> None:
+        player = _make_player()
+        existing = make_entry("existing", entry_id=9)
+        new_track = make_track("new")
+        player.queue.append(existing)
+
+        with patch.object(player, "play", new=AsyncMock()) as play:
+            outcome = await player.enqueue_tracks(
+                (new_track,),
+                TrackRequester(42),
+                placement="end",
+            )
+
+        started = _require_attempt(outcome.started_attempt)
+        self.assertIs(started.entry, existing)
+        self.assertEqual(len(outcome.entries), 1)
+        new_entry = outcome.entries[0]
+        self.assertIs(new_entry.track, new_track)
+        self.assertFalse(outcome.started_from_enqueue)
+        self.assertTrue(outcome.has_waiting_entries)
+        self.assertEqual(list(player.queue), [new_entry])
+        self.assertIs(player.current_entry, existing)
+        play.assert_awaited_once_with(
+            existing.track,
+            start_time=0,
+            volume=None,
+            pause=False,
+        )
+
+    async def test_next_enqueue_starts_new_entry_before_existing_head(self) -> None:
+        player = _make_player()
+        existing = make_entry("existing", entry_id=9)
+        new_track = make_track("new")
+        player.queue.append(existing)
+
+        with patch.object(player, "play", new=AsyncMock()) as play:
+            outcome = await player.enqueue_tracks(
+                (new_track,),
+                TrackRequester(42),
+                placement="next",
+            )
+
+        started = _require_attempt(outcome.started_attempt)
+        new_entry = outcome.entries[0]
+        self.assertIs(started.entry, new_entry)
+        self.assertTrue(outcome.started_from_enqueue)
+        self.assertFalse(outcome.has_waiting_entries)
+        self.assertEqual(list(player.queue), [existing])
+        self.assertIs(player.current_entry, new_entry)
+        play.assert_awaited_once_with(
+            new_track,
+            start_time=0,
+            volume=None,
+            pause=False,
+        )
+
     async def test_enqueue_tracks_with_empty_sequence_returns_empty_outcome(
         self,
     ) -> None:

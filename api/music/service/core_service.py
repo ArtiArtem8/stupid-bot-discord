@@ -278,7 +278,7 @@ class CoreMusicService:
         )
         undo_entries = outcome.entries if outcome.has_waiting_entries else ()
         response_placement: PlayPlacement = (
-            "now" if outcome.started_attempt is not None else placement
+            "now" if outcome.started_from_enqueue else placement
         )
         return MusicResult(
             MusicResultStatus.SUCCESS,
@@ -311,7 +311,7 @@ class CoreMusicService:
         )
         undo_entries = outcome.entries if outcome.has_waiting_entries else ()
         response_placement: PlayPlacement = (
-            "now" if outcome.started_attempt is not None else placement
+            "now" if outcome.started_from_enqueue else placement
         )
         return MusicResult(
             MusicResultStatus.SUCCESS,

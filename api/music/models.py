@@ -206,9 +206,17 @@ class EnqueueOutcome:
     started_attempt: PlaybackAttempt | None
 
     @property
+    def started_from_enqueue(self) -> bool:
+        """Whether this operation started one of the entries it created."""
+        attempt = self.started_attempt
+        return attempt is not None and any(
+            entry is attempt.entry for entry in self.entries
+        )
+
+    @property
     def has_waiting_entries(self) -> bool:
         """Whether this enqueue operation left at least one entry waiting."""
-        started_count = int(self.started_attempt is not None)
+        started_count = int(self.started_from_enqueue)
         return len(self.entries) > started_count
 
 
