@@ -13,7 +13,6 @@ from api.music import (
     QueueSnapshot,
     RepeatMode,
 )
-from cogs.music.responder import MusicInteractionResponder
 from cogs.music.views import (
     QueuePaginationAdapter,
     QueuePaginator,
@@ -187,7 +186,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         expected = make_entry("expected", requester_id=42)
         events: list[str] = []
 
-        async def acknowledge() -> None:
+        async def acknowledge(_interaction: object) -> None:
             events.append("acknowledge")
 
         async def remove_entries(
@@ -220,9 +219,8 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(view.is_finished())
 
         with (
-            patch.object(
-                MusicInteractionResponder,
-                "acknowledge_component",
+            patch(
+                "cogs.music.views.queue.ack_component",
                 new=AsyncMock(side_effect=acknowledge),
             ) as acknowledge_mock,
             patch.object(
@@ -239,7 +237,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             await view.remove(interaction)
 
         self.assertEqual(events, ["acknowledge", "remove"])
-        acknowledge_mock.assert_awaited_once_with()
+        acknowledge_mock.assert_awaited_once_with(interaction)
         remove.assert_awaited_once_with(123, (expected,), 42)
         self.assertTrue(view.is_finished())
         edit.assert_awaited_once()
@@ -286,16 +284,15 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         interaction.message = message
 
         with (
-            patch.object(
-                MusicInteractionResponder,
-                "acknowledge_component",
+            patch(
+                "cogs.music.views.queue.ack_component",
                 new=AsyncMock(),
             ) as acknowledge,
             patch.object(message, "edit", new=AsyncMock()),
         ):
             task = asyncio.create_task(view.remove(interaction))
             await callback_started.wait()
-            acknowledge.assert_awaited_once_with()
+            acknowledge.assert_awaited_once_with(interaction)
             self.assertFalse(task.done())
             self.assertFalse(view.is_finished())
             release_callback.set()
@@ -329,9 +326,8 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         success_embed = MagicMock()
 
         with (
-            patch.object(
-                MusicInteractionResponder,
-                "acknowledge_component",
+            patch(
+                "cogs.music.views.queue.ack_component",
                 new=AsyncMock(),
             ),
             patch.object(
@@ -385,9 +381,8 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(view.is_finished())
 
         with (
-            patch.object(
-                MusicInteractionResponder,
-                "acknowledge_component",
+            patch(
+                "cogs.music.views.queue.ack_component",
                 new=AsyncMock(),
             ),
             patch.object(
@@ -424,14 +419,13 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         interaction.user.id = 42
         interaction.message = None
 
-        with patch.object(
-            MusicInteractionResponder,
-            "acknowledge_component",
+        with patch(
+            "cogs.music.views.queue.ack_component",
             new=AsyncMock(),
         ) as acknowledge:
             await view.remove(interaction)
 
-        acknowledge.assert_awaited_once_with()
+        acknowledge.assert_awaited_once_with(interaction)
         remove.assert_not_awaited()
         self.assertTrue(view.is_finished())
 
@@ -524,9 +518,8 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         edit_error = _make_http_error(discord.HTTPException, 500)
 
         with (
-            patch.object(
-                MusicInteractionResponder,
-                "acknowledge_component",
+            patch(
+                "cogs.music.views.queue.ack_component",
                 new=AsyncMock(),
             ),
             patch.object(FeedbackUI, "make_embed", return_value=MagicMock()),
@@ -561,9 +554,8 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         interaction.message = message
 
         with (
-            patch.object(
-                MusicInteractionResponder,
-                "acknowledge_component",
+            patch(
+                "cogs.music.views.queue.ack_component",
                 new=AsyncMock(),
             ),
             self.assertRaises(RuntimeError),

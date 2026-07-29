@@ -33,10 +33,6 @@ class PrefixBlockerCog(commands.Cog):
         ] = {}
         self._lock = asyncio.Lock()
 
-    def _is_guild_command(self, cmd: Command) -> bool:
-        """Determine if a command is guild-only based on available attributes."""
-        return is_guild_command(cmd)
-
     def _requires_admin(self, cmd: Command) -> bool:
         perms = cmd.default_permissions
         if perms is not None:
@@ -54,7 +50,7 @@ class PrefixBlockerCog(commands.Cog):
             is_admin = message.author.guild_permissions.administrator
 
         for cmd in self.bot.tree.get_commands():
-            if not is_guild and self._is_guild_command(cmd):
+            if not is_guild and is_guild_command(cmd):
                 continue
             if self._requires_admin(cmd) and not is_admin:
                 continue

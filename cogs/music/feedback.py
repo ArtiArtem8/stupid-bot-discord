@@ -9,13 +9,19 @@ from framework import FeedbackType, FeedbackUI
 logger = logging.getLogger(__name__)
 
 
-async def send_error(interaction: Interaction, message: str) -> None:
+async def send_error(
+    interaction: Interaction,
+    message: str,
+    *,
+    ephemeral: bool = False,
+) -> None:
     """Send an error feedback."""
     await FeedbackUI.send(
         interaction,
         feedback_type=FeedbackType.ERROR,
         description=message,
         delete_after=600,
+        ephemeral=ephemeral,
     )
 
 
@@ -47,6 +53,8 @@ async def send_info(
     message: str,
     delete_after: float | None = 60,
     title: str | None = None,
+    *,
+    ephemeral: bool = False,
 ) -> None:
     """Send info feedback."""
     await FeedbackUI.send(
@@ -55,6 +63,7 @@ async def send_info(
         description=message,
         title=title,
         delete_after=delete_after,
+        ephemeral=ephemeral,
     )
 
 

@@ -276,6 +276,12 @@ class ConnectionManager:
         async with lock:
             return await self._join_unlocked(guild, channel)
 
+    async def _connect_new_player(
+        self, channel: discord.VoiceChannel | discord.StageChannel
+    ) -> VoiceJoinResult:
+        await channel.connect(cls=music_player_factory, timeout=8.0)
+        return VoiceCheckResult.SUCCESS, None
+
     async def _join_unlocked(
         self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
     ) -> VoiceJoinResult:
@@ -374,12 +380,6 @@ class ConnectionManager:
             await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         return VoiceCheckResult.MOVED_CHANNELS, old_channel
-
-    async def _connect_new_player(
-        self, channel: discord.VoiceChannel | discord.StageChannel
-    ) -> VoiceJoinResult:
-        await channel.connect(cls=music_player_factory, timeout=8.0)
-        return VoiceCheckResult.SUCCESS, None
 
     async def _handle_join_io_failure(
         self, guild: discord.Guild, exc: Exception

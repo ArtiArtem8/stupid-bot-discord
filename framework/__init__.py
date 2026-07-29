@@ -6,6 +6,7 @@ from framework.exceptions import (
     NoGuildError,
 )
 from framework.feedback_ui import FeedbackType, FeedbackUI
+from framework.interaction_flow import ack_component, run_with_defer
 from framework.pagination import (
     DANGER,
     PRIMARY,
@@ -29,6 +30,8 @@ __all__ = [
     "ManagedView",
     "NoGuildError",
     "PaginationData",
+    "ack_component",
     "handle_errors",
     "is_owner_app",
+    "run_with_defer",
 ]

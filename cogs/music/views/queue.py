@@ -19,12 +19,12 @@ from framework import (
     FeedbackType,
     FeedbackUI,
     PaginationData,
+    ack_component,
 )
 from utils import TextPaginator
 
 from ..feedback import send_warning
 from ..presentation import format_track_link
-from ..responder import MusicInteractionResponder
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class QueueUndoView(discord.ui.View):
         return False
 
     async def remove(self, interaction: Interaction) -> None:
-        await MusicInteractionResponder(interaction).acknowledge_component()
+        await ack_component(interaction)
         message = interaction.message
         if message is None:
             logger.debug("Queue undo component has no source message.")

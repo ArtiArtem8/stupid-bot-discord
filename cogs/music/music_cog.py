@@ -33,7 +33,7 @@ from api.music.service import (
     UIOrchestrator,
 )
 from di.container import Container
-from framework import BaseCog, FeedbackUI, handle_errors
+from framework import BaseCog, FeedbackUI, handle_errors, run_with_defer
 from repositories.volume_repository import VolumeRepository
 
 from .feedback import (
@@ -52,7 +52,6 @@ from .presentation import (
     build_track_added_embed,
     build_track_exception_embed,
 )
-from .responder import MusicInteractionResponder
 from .views import (
     QueuePaginationAdapter,
     QueuePaginator,
@@ -194,6 +193,7 @@ class MusicCog(BaseCog):
             from_channel=from_channel,
             delete_after=60,
             warn_on_failure=True,
+            ephemeral=True,
         )
 
     @app_commands.command(
@@ -222,16 +222,20 @@ class MusicCog(BaseCog):
         placement: QueuePlacement,
     ) -> None:
         guild = await self._require_guild(interaction)
-        responder = MusicInteractionResponder(interaction)
         if not query.strip():
-            await responder.send_private_failure("Укажите название или ссылку на трек.")
+            await send_warning(
+                interaction,
+                "Укажите название или ссылку на трек.",
+                ephemeral=True,
+            )
             return
 
         channel = await self._get_voice_channel_for_play(interaction)
         if not channel:
             return
 
-        result = await responder.await_with_defer_budget(
+        result = await run_with_defer(
+            interaction,
             self.service.play(
                 guild,
                 channel,
@@ -239,7 +243,7 @@ class MusicCog(BaseCog):
                 interaction.user.id,
                 interaction.channel_id,
                 placement=placement,
-            )
+            ),
         )
 
         data = await self._resolve_play_response_data(interaction, result, channel)
@@ -259,8 +263,10 @@ class MusicCog(BaseCog):
             or not interaction.user.voice
             or not interaction.user.voice.channel
         ):
-            await MusicInteractionResponder(interaction).send_private_failure(
-                "Вы должны быть в голосовом канале!"
+            await send_warning(
+                interaction,
+                "Вы должны быть в голосовом канале!",
+                ephemeral=True,
             )
             return None
         return interaction.user.voice.channel
@@ -272,8 +278,10 @@ class MusicCog(BaseCog):
         channel: discord.VoiceChannel | discord.StageChannel,
     ) -> tuple[VoiceCheckResult, discord.abc.GuildChannel | None]:
         """Join on behalf of `/join`; `/play` delegates connection to the service."""
-        return await MusicInteractionResponder(interaction).await_with_defer_budget(
-            self.service.join(guild, channel)
+        return await run_with_defer(
+            interaction,
+            self.service.join(guild, channel),
+            ephemeral=True,
         )
 
     async def _resolve_play_response_data(
@@ -316,6 +324,7 @@ class MusicCog(BaseCog):
             channel=channel,
             from_channel=from_channel,
             delete_after=60,
+            ephemeral=False,
         )
         return False
 
@@ -328,20 +337,34 @@ class MusicCog(BaseCog):
         *,
         delete_after: float | None = None,
         warn_on_failure: bool = False,
+        ephemeral: bool = False,
     ) -> None:
         msg = _format_voice_result_message(result, channel, from_channel)
         if result.status is MusicResultStatus.ERROR:
-            await send_error(interaction, msg)
+            await send_error(interaction, msg, ephemeral=ephemeral)
             return
         if result.status is MusicResultStatus.FAILURE:
             if warn_on_failure:
                 await send_warning(
-                    interaction, msg, ephemeral=True, delete_after=delete_after
+                    interaction,
+                    msg,
+                    ephemeral=ephemeral,
+                    delete_after=delete_after,
                 )
             else:
-                await send_info(interaction, msg, delete_after=delete_after)
+                await send_info(
+                    interaction,
+                    msg,
+                    delete_after=delete_after,
+                    ephemeral=ephemeral,
+                )
             return
-        await send_info(interaction, msg, delete_after=delete_after)
+        await send_info(
+            interaction,
+            msg,
+            delete_after=delete_after,
+            ephemeral=ephemeral,
+        )
 
     async def _send_no_player_or_unavailable(
         self, interaction: Interaction, result: MusicResult[object]
@@ -486,16 +509,23 @@ class MusicCog(BaseCog):
     @handle_errors()
     async def leave(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
-        res = await MusicInteractionResponder(interaction).await_with_defer_budget(
-            self.service.leave(guild)
+        res = await run_with_defer(
+            interaction,
+            self.service.leave(guild),
+            ephemeral=True,
         )
         match res.status:
             case MusicResultStatus.SUCCESS:
-                await send_info(interaction, "Отключился", title="До свидания ❤️")
+                await send_info(
+                    interaction,
+                    "Отключился",
+                    title="До свидания ❤️",
+                    ephemeral=True,
+                )
             case MusicResultStatus.FAILURE:
                 await self._send_no_player_or_unavailable(interaction, res)
             case MusicResultStatus.ERROR:
-                await send_error(interaction, res.message)
+                await send_error(interaction, res.message, ephemeral=True)
 
     @app_commands.command(name="shuffle", description="Перемешать")
     @app_commands.guild_only()

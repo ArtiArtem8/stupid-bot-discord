@@ -5,10 +5,12 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
+import discord
 from discord import Client, Interaction, ui
 
 from api.music.models import ControllerDestroyReason, PlaybackAttempt
 from cogs.music.views import TrackControllerManager, TrackControllerView
+from framework import FeedbackType, FeedbackUI
 from tests.api.music.helpers import make_entry
 
 
@@ -144,7 +146,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.ack_component",
                 new=AsyncMock(),
             ) as acknowledge,
             patch(
@@ -156,11 +158,64 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(callback)
             await callback(interaction)
 
-        acknowledge.assert_awaited_once()
+        acknowledge.assert_awaited_once_with(interaction)
         player.skip.assert_awaited_once_with(expected=attempt)
         on_stop.assert_awaited_once_with(view, ControllerDestroyReason.SKIP)
         send_warning.assert_not_awaited()
         self.assertTrue(view.is_finished())
+
+    async def test_unauthorized_interaction_warns_without_ack_or_operation(
+        self,
+    ) -> None:
+        attempt = PlaybackAttempt(1, make_entry("track"))
+        view, player, _ = self._make_view(attempt)
+        interaction = MagicMock()
+        interaction.user.id = 99
+
+        with (
+            patch(
+                "cogs.music.views.controller.ack_component",
+                new=AsyncMock(),
+            ) as acknowledge,
+            patch.object(FeedbackUI, "send", new=AsyncMock()) as send,
+        ):
+            callback = self._button(view, "btn_restart").callback
+            self.assertIsNotNone(callback)
+            await callback(interaction)
+
+        send.assert_awaited_once_with(
+            interaction,
+            feedback_type=FeedbackType.WARNING,
+            description="Это не ваш контроллер.",
+            ephemeral=True,
+            disable_report_btn=True,
+        )
+        acknowledge.assert_not_awaited()
+        player.seek_attempt.assert_not_awaited()
+
+    async def test_owner_denial_http_error_is_best_effort(self) -> None:
+        attempt = PlaybackAttempt(1, make_entry("track"))
+        view, player, _ = self._make_view(attempt)
+        interaction = MagicMock()
+        interaction.user.id = 99
+        response = MagicMock(status=500, reason="test")
+        error = discord.HTTPException(response, "failed")
+
+        with (
+            patch(
+                "cogs.music.views.controller.ack_component",
+                new=AsyncMock(),
+            ) as acknowledge,
+            patch.object(FeedbackUI, "send", new=AsyncMock(side_effect=error)),
+            patch("cogs.music.views.controller.logger.debug") as debug,
+        ):
+            callback = self._button(view, "btn_restart").callback
+            self.assertIsNotNone(callback)
+            await callback(interaction)
+
+        acknowledge.assert_not_awaited()
+        player.seek_attempt.assert_not_awaited()
+        debug.assert_called_once()
 
     async def test_restart_acknowledges_before_player_seek(self) -> None:
         calls: list[str] = []
@@ -177,12 +232,12 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         interaction = MagicMock()
         interaction.user.id = 10
 
-        async def acknowledge(_responder: object) -> None:
+        async def acknowledge(_interaction: object) -> None:
             calls.append("ack")
 
         with (
             patch(
-                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.ack_component",
                 new=acknowledge,
             ),
             patch.object(view, "_safe_update", safe_update),
@@ -221,8 +276,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
                 with (
                     patch(
-                        "cogs.music.views.controller.MusicInteractionResponder."
-                        + "acknowledge_component",
+                        "cogs.music.views.controller.ack_component",
                         new=AsyncMock(),
                     ),
                     patch.object(view, "_safe_update", safe_update),
@@ -248,7 +302,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.ack_component",
                 new=AsyncMock(),
             ),
             patch.object(view, "_safe_update", safe_update),
@@ -286,7 +340,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.ack_component",
                 new=AsyncMock(),
             ),
             patch(
@@ -313,7 +367,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.ack_component",
                 new=AsyncMock(),
             ),
             patch.object(view, "_safe_update", safe_update),
@@ -337,7 +391,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.ack_component",
                 new=AsyncMock(),
             ),
             patch.object(view, "_safe_update", safe_update),
@@ -362,7 +416,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
+                "cogs.music.views.controller.ack_component",
                 new=AsyncMock(),
             ),
             patch.object(view, "_safe_update", safe_update),
@@ -387,7 +441,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         interaction.user.id = 10
 
         with patch(
-            "cogs.music.views.controller.MusicInteractionResponder.acknowledge_component",
+            "cogs.music.views.controller.ack_component",
             new=AsyncMock(),
         ):
             callback = self._button(view, "btn_skip").callback
