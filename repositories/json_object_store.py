@@ -5,7 +5,7 @@ from typing import Protocol
 
 from utils.json_types import JsonObject
 
-type JsonUpdater = Callable[[JsonObject], None | Awaitable[None]]
+type JsonUpdater = Callable[[JsonObject], Awaitable[None] | None]
 
 
 class JsonObjectStore(Protocol):
