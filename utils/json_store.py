@@ -10,7 +10,7 @@ from utils.json_types import JsonEncodableObject, JsonObject
 from utils.json_utils import get_json, save_json
 
 type JsonDict = JsonObject
-type Updater = Callable[[JsonObject], None | Awaitable[None]]
+type Updater = Callable[[JsonObject], Awaitable[None] | None]
 
 
 @dataclass(slots=True)
