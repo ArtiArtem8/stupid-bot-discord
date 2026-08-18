@@ -62,9 +62,7 @@ def classify_music_exception(exc: Exception) -> UserFacingMusicError:
             MusicErrorCode.PLAYER_DISCONNECTED,
             "Плеер потерял соединение. Попробуйте запустить трек ещё раз.",
         )
-    if isinstance(exc, NODE_TRANSPORT_ERRORS) or isinstance(
-        exc, (TimeoutError, NodeNotConnectedError)
-    ):
+    if isinstance(exc, (*NODE_TRANSPORT_ERRORS, TimeoutError, NodeNotConnectedError)):
         return UserFacingMusicError(
             MusicErrorCode.MUSIC_NODE_UNAVAILABLE,
             MUSIC_SERVICE_UNAVAILABLE_MESSAGE,

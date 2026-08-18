@@ -446,13 +446,7 @@ class MusicEventHandlers:
         after: discord.VoiceState,
         bot_channel: discord.abc.Connectable,
     ) -> bool:
-        is_relevant = before.channel == bot_channel or after.channel == bot_channel
-
-        if before.channel == bot_channel == after.channel:
-            if before.deaf != after.deaf or before.self_deaf != after.self_deaf:
-                is_relevant = True
-
-        return is_relevant
+        return bot_channel in (before.channel, after.channel)
 
     async def _on_voice_state_update(
         self,
@@ -497,14 +491,13 @@ class MusicEventHandlers:
                     empty_reason,
                 )
                 self.state.start_timer(guild_id, empty_reason)
-        else:
-            if self.state.is_timer_active(guild_id):
-                logger.info(
-                    "Channel %s in guild %s is no longer empty. Cancelling timer.",
-                    channel.name,
-                    guild_id,
-                )
-                self.state.cancel_timer(guild_id)
+        elif self.state.is_timer_active(guild_id):
+            logger.info(
+                "Channel %s in guild %s is no longer empty. Cancelling timer.",
+                channel.name,
+                guild_id,
+            )
+            self.state.cancel_timer(guild_id)
 
     def _empty_channel_reason(
         self, channel: discord.VoiceChannel | discord.StageChannel

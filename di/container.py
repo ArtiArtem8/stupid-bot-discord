@@ -397,7 +397,7 @@ class Container:
     @override
     def __repr__(self) -> str:
         with self._lock:
-            service_names = [_get_type_name(t) for t in self._registry.keys()]
+            service_names = [_get_type_name(t) for t in self._registry]
             return (
                 f"Container(services={len(service_names)}, registered={service_names})"
             )

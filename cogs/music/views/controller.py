@@ -230,9 +230,9 @@ def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
     func_name = callable_name(func)
 
     async def wrapper(
-        self: "TrackControllerView",
+        self: TrackControllerView,
         interaction: Interaction,
-        button: ui.Button["TrackControllerView"],
+        button: ui.Button[TrackControllerView],
     ) -> None:
         try:
             await func(self, interaction, button)
@@ -364,7 +364,7 @@ class TrackControllerView(ui.View):
     async def _loop(self) -> None:
         """Background loop to update embed and check track state."""
         failure_count = 0
-        MAX_FAILURES = 3
+        max_failures = 3
 
         try:
             while self._running:
@@ -374,7 +374,7 @@ class TrackControllerView(ui.View):
 
                 if not current_attempt:
                     failure_count = await self._handle_missing_track(
-                        failure_count, MAX_FAILURES
+                        failure_count, max_failures
                     )
                     if failure_count is None:
                         return

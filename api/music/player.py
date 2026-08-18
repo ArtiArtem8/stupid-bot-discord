@@ -90,7 +90,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 ),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Timed out moving to channel %s in guild %s",
                 channel.id,

@@ -49,19 +49,18 @@ class OnMessageCog(commands.Cog):
                 f"{attr} (type changed): "
                 f"{type(before).__name__} -> {type(after).__name__}"
             )
-        elif isinstance(before, str) and isinstance(after, str):
+        if isinstance(before, str) and isinstance(after, str):
             return (
                 f"{attr}: '{truncate_text(before, 100, mode='middle')}'"
                 f" -> '{truncate_text(after, 100, mode='middle')}'"
             )
-        elif isinstance(before, Sized) and isinstance(after, Sized):
+        if isinstance(before, Sized) and isinstance(after, Sized):
             return f"{attr}: {len(before)} -> {len(after)}"
-        elif isinstance(before, bool):
+        if isinstance(before, bool):
             return f"{attr}: {before} -> {after}"
-        else:
-            before_summ = "exists" if before else "None"
-            after_summ = "exists" if after else "None"
-            return f"{attr}: {before_summ} -> {after_summ}"
+        before_summ = "exists" if before else "None"
+        after_summ = "exists" if after else "None"
+        return f"{attr}: {before_summ} -> {after_summ}"
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: Message, after: Message) -> None:

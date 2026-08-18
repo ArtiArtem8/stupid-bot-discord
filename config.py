@@ -19,11 +19,11 @@ DISCORD_BOT_OWNER_ID = os.environ.get("DISCORD_BOT_OWNER_ID")
 WOLFRAM_APP_ID = os.environ.get("WOLFRAM_APP_ID")
 # Lavalink Music Server
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
-LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", 2333))
+LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", "2333"))
 LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "")
 LAVALINK_SECURE = os.getenv("LAVALINK_SECURE", "false").lower() == "true"
 LAVALINK_NODE_LABEL = os.getenv("LAVALINK_NODE_LABEL", "MAIN")
-LAVALINK_CONNECT_RETRY_DELAY = float(os.getenv("LAVALINK_CONNECT_RETRY_DELAY", 30.0))
+LAVALINK_CONNECT_RETRY_DELAY = float(os.getenv("LAVALINK_CONNECT_RETRY_DELAY", "30.0"))
 
 
 # --- Directory structure ---

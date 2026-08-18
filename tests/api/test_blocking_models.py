@@ -5,7 +5,7 @@ Covers history updates, timestamping, and serialization roundtrips.
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from api.blocking_models import BlockedUser
@@ -13,7 +13,7 @@ from api.blocking_models import BlockedUser
 
 class TestBlockingModels(unittest.TestCase):
     def test_add_block_entry_sets_blocked_and_appends_history(self) -> None:
-        fixed = datetime(2025, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+        fixed = datetime(2025, 1, 2, 3, 4, 5, tzinfo=UTC)
         with patch("api.blocking_models.utcnow", return_value=fixed):
             user = BlockedUser(
                 user_id=1,
@@ -41,7 +41,7 @@ class TestBlockingModels(unittest.TestCase):
         self.assertEqual(len(user.name_history), 0)
 
     def test_update_name_history_updates_when_username_changes(self) -> None:
-        fixed = datetime(2025, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+        fixed = datetime(2025, 1, 2, 3, 4, 5, tzinfo=UTC)
         with patch("api.blocking_models.utcnow", return_value=fixed):
             user = BlockedUser(
                 user_id=1,

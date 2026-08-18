@@ -26,12 +26,12 @@ async def main() -> None:
     )
     args = parser.parse_args(namespace=Arguments())
 
-    for dir in [
+    for directory in [
         config.DATA_DIR,
         config.BACKUP_DIR,
         config.COGS_DIR,
     ]:
-        dir.mkdir(parents=True, exist_ok=True)
+        directory.mkdir(parents=True, exist_ok=True)
 
     setup_logging(config.ENCODING)
 

@@ -442,7 +442,8 @@ class MusicCog(BaseCog):
             return
 
         if not res.is_success or not res.data:
-            return await send_error(interaction, res.message)
+            await send_error(interaction, res.message)
+            return
 
         skipped = res.data["before"]
         next_track = res.data["after"]
@@ -496,7 +497,8 @@ class MusicCog(BaseCog):
         guild = await self._require_guild(interaction)
         if value is None:
             vol = await self.service.get_volume(guild.id)
-            return await send_info(interaction, f"Громкость: {vol}%")
+            await send_info(interaction, f"Громкость: {vol}%")
+            return
 
         res = await self.service.set_volume(guild.id, value)
         if res.is_success:
@@ -583,7 +585,8 @@ class MusicCog(BaseCog):
 
         data = result.data
         if not result.is_success or not data:
-            return await self._send_no_player_or_unavailable(interaction, result)
+            await self._send_no_player_or_unavailable(interaction, result)
+            return
 
         embed = build_repeat_embed(data.get("mode"))
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)

@@ -4,7 +4,7 @@ import logging.config
 
 def setup_logging(encoding: str = "utf-8") -> None:
     """Initialize logging configuration."""
-    LOGGING_CONFIG = {
+    logging_config = {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
@@ -60,4 +60,4 @@ def setup_logging(encoding: str = "utf-8") -> None:
         },
     }
 
-    logging.config.dictConfig(LOGGING_CONFIG)
+    logging.config.dictConfig(logging_config)

@@ -85,7 +85,7 @@ class StupidBot(commands.Bot):
         logger.debug(
             "bot's owner: %s (%s)",
             self.owner_id,
-            self.owner_ids if self.owner_ids else "Not a group",
+            self.owner_ids or "Not a group",
         )
 
     @tasks.loop(seconds=11)

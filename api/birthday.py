@@ -74,11 +74,12 @@ async def safe_fetch_member(
                 return None
             logger.exception("Error fetching member %s", user_id)
             raise
+    return None
 
 
 def create_birthday_list_embed(
     guild_name: str,
-    entries: Collection["BirthdayListEntry"],
+    entries: Collection[BirthdayListEntry],
     max_field_length: int = 1024,
 ) -> discord.Embed:
     """Create a Discord embed representing a list of birthdays.
@@ -123,11 +124,11 @@ def create_birthday_list_embed(
         separator="\n",
     )
 
-    MAX_FIELDS = 25
-    MAX_TOTAL = 6000
+    max_fields = 25
+    max_total = 6000
 
     for page_num, page_text in enumerate(paginator.pages, 1):
-        if len(embed.fields) >= MAX_FIELDS:
+        if len(embed.fields) >= max_fields:
             break
 
         field_name = (
@@ -138,7 +139,7 @@ def create_birthday_list_embed(
         field_name = truncate_text(field_name, width=256)
 
         projected_total = len(embed) + len(field_name) + len(page_text)
-        if projected_total > MAX_TOTAL:
+        if projected_total > max_total:
             break
 
         embed.add_field(name=field_name, value=page_text, inline=False)

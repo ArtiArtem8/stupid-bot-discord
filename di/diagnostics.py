@@ -37,4 +37,3 @@ class Diagnostics:
 
     def print_graph(self) -> None:
         """Print the dependency graph (simplified)."""
-        pass

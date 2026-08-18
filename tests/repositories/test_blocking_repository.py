@@ -5,7 +5,7 @@ Covers CRUD, history roundtrips, and guild/user query paths.
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import cast, override
 
 from api.blocking_models import BlockedUser, BlockHistoryEntry, NameHistoryEntry
@@ -289,7 +289,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(users, [])
 
     async def test_roundtrip_block_history_and_name_history(self) -> None:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         earlier = now - timedelta(days=1)
 
         user = BlockedUser(

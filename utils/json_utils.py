@@ -66,7 +66,7 @@ def get_json(
     path = Path(filename)
     if not path.exists():
         return None
-    with open(path, encoding=encoding) as data_file:
+    with path.open(encoding=encoding) as data_file:
         payload: object = json.load(fp=data_file)  # pyright: ignore[reportAny]
     if not is_json_object(payload):
         raise ValueError(f"Expected a JSON object in {path}")
@@ -96,7 +96,7 @@ def save_json(
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            with open(temp_path, "w", encoding=encoding) as outfile:
+            with temp_path.open("w", encoding=encoding) as outfile:
                 json.dump(
                     payload, outfile, sort_keys=True, indent=4, ensure_ascii=False
                 )
@@ -136,5 +136,5 @@ def clear_json(
     # Validate default is valid JSON
     json.loads(default)
 
-    with open(path, "w", encoding=encoding) as outfile:
+    with path.open("w", encoding=encoding) as outfile:
         outfile.write(default)

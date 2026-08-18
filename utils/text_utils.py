@@ -122,7 +122,7 @@ def truncate_text(
         right_part = text[-right_len:] if right_len > 0 else ""
         return f"{text[:left_len]}{placeholder}{right_part}"
 
-    elif mode == "start":
+    if mode == "start":
         return f"{placeholder}{text[-content_len:]}"
     return f"{text[:content_len]}{placeholder}"
 
@@ -209,10 +209,13 @@ class TextPaginator:
         sep_len = len(separator)
 
         for line in input_lines:
-            if len(line) > max_length:
-                line = truncate_text(line, width=max_length)
+            display_line = (
+                truncate_text(line, width=max_length)
+                if len(line) > max_length
+                else line
+            )
 
-            line_len = len(line)
+            line_len = len(display_line)
             cost = sep_len + line_len if current_page else line_len
 
             is_full_len = (current_len + cost) > max_length
@@ -221,10 +224,10 @@ class TextPaginator:
             if is_full_len or is_full_count:
                 if current_page:
                     self._pages.append(separator.join(current_page))
-                current_page = [line]
+                current_page = [display_line]
                 current_len = line_len
             else:
-                current_page.append(line)
+                current_page.append(display_line)
                 current_len += cost
 
         if current_page:

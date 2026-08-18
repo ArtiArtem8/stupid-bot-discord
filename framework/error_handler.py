@@ -26,14 +26,14 @@ class CustomErrorCommandTree(app_commands.CommandTree[discord.Client]):
                 "⛔ Доступ к командам запрещён.", ephemeral=True
             )
             return
-        elif isinstance(error, NoGuildError):
+        if isinstance(error, NoGuildError):
             await interaction.response.send_message(
                 "Команда может быть использована только на сервере",
                 ephemeral=True,
                 silent=True,
             )
             return
-        elif isinstance(error, app_commands.CommandOnCooldown):
+        if isinstance(error, app_commands.CommandOnCooldown):
             expire_at = utcnow() + timedelta(seconds=error.retry_after)
             await interaction.response.send_message(
                 f"Время ожидания: {discord.utils.format_dt(expire_at, 'R')}",
@@ -41,7 +41,7 @@ class CustomErrorCommandTree(app_commands.CommandTree[discord.Client]):
                 silent=True,
             )
             return
-        elif isinstance(error, app_commands.CheckFailure):
+        if isinstance(error, app_commands.CheckFailure):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -50,7 +50,7 @@ class CustomErrorCommandTree(app_commands.CommandTree[discord.Client]):
                 ephemeral=True,
             )
             return
-        elif isinstance(error, StupidBotError):
+        if isinstance(error, StupidBotError):
             # Handle our custom domain exceptions
             await FeedbackUI.send(
                 interaction,

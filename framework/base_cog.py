@@ -142,5 +142,3 @@ class GenericBaseCog[BotT: commands.Bot](commands.Cog):
 
 class BaseCog(GenericBaseCog[commands.Bot]):
     """Default BaseCog locked to standard commands.Bot."""
-
-    pass

@@ -206,4 +206,4 @@ class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
     async def get_all_guild_ids(self) -> list[int]:
         """Get list of all guild IDs in the store."""
         data = await self._store.read()
-        return [int(k) for k in data.keys() if k.isdigit()]
+        return [int(k) for k in data if k.isdigit()]

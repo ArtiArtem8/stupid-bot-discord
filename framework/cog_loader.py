@@ -1,8 +1,8 @@
 import asyncio
 import logging
-import os
 import time
 import typing
+from pathlib import Path
 
 from discord.ext import commands
 
@@ -47,7 +47,7 @@ class CogLoader:
                 try:
                     if (
                         module.__file__
-                        and os.stat(module.__file__).st_mtime > last_check
+                        and Path(module.__file__).stat().st_mtime > last_check
                     ):
                         extensions.add(name)
                 except OSError:
