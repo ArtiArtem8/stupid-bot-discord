@@ -61,7 +61,7 @@ def handle_errors[CogT, T, **P]() -> Callable[
                         "Не удалось выполнить действие в Discord. Попробуйте ещё раз."
                     ),
                     delete_after=600,
-                    error_info=str(e),
+                    error_info=type(e).__name__,
                 )
             except Exception as e:
                 logger.exception("Unexpected error in %s", func_name)
@@ -71,7 +71,7 @@ def handle_errors[CogT, T, **P]() -> Callable[
                     title="Внутренняя ошибка",
                     description="Внутренняя ошибка. Детали записаны в лог.",
                     delete_after=600,
-                    error_info=str(e),
+                    error_info=type(e).__name__,
                 )
             return None
 

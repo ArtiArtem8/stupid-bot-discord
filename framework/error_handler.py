@@ -42,6 +42,13 @@ class CustomErrorCommandTree(app_commands.CommandTree[discord.Client]):
             )
             return
         elif isinstance(error, app_commands.CheckFailure):
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                title="Доступ запрещён",
+                description="Проверка доступа к команде не пройдена.",
+                ephemeral=True,
+            )
             return
         elif isinstance(error, StupidBotError):
             # Handle our custom domain exceptions
@@ -69,9 +76,10 @@ class CustomErrorCommandTree(app_commands.CommandTree[discord.Client]):
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.ERROR,
-            title=str(error),
+            title="Внутренняя ошибка",
+            description="Не удалось выполнить команду. Детали записаны в лог.",
             delete_after=300,
-            ephemeral=False,
-            error_info=str(error),
+            ephemeral=True,
+            error_info=type(error).__name__,
         )
-        logger.error(f"Unhandled app command error: {error}", exc_info=error)
+        logger.error("Unhandled app command error: %s", error, exc_info=error)
