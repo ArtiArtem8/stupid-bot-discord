@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Self
 
 import config
-from utils import get_json, save_json
+from utils import AsyncJsonFileStore
 from utils.json_types import JsonObject
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class UptimeData:
 
     @classmethod
     def from_json(cls, obj: Mapping[str, object] | None) -> Self | None:
-        if obj is None:
+        if not obj:
             return None
         return cls(
             last_shutdown=cls._to_float(obj.get("last_shutdown")),
@@ -41,14 +41,22 @@ class UptimeData:
 
 
 class UptimeManager:
-    def __init__(self):
+    def __init__(self, store: AsyncJsonFileStore | None = None):
         self.start_time: float = time.time()
         self.last_activity_str = "N/A"
-        self._restore_uptime()
+        self._store = store or AsyncJsonFileStore(config.LAST_RUN_FILE, backup_amount=1)
+        self._persistence_available = True
 
-    def _restore_uptime(self):
+    async def restore_uptime(self) -> None:
         """Logic to resume accumulated uptime if restart was quick."""
-        last_run = UptimeData.from_json(get_json(config.LAST_RUN_FILE))
+        try:
+            last_run = UptimeData.from_json(await self._store.read())
+        except Exception:
+            self._persistence_available = False
+            logger.exception(
+                "Failed to restore uptime; preserving the existing state file"
+            )
+            return
         if last_run is None:
             return
 
@@ -63,12 +71,14 @@ class UptimeManager:
                 disconnect_time,
             )
 
-    def save_state(self) -> float:
+    async def save_state(self) -> float:
         """Saves the current uptime state to file."""
         current_uptime = time.time() - self.start_time
         state = UptimeData(last_shutdown=time.time(), accumulated_uptime=current_uptime)
+        if not self._persistence_available:
+            return current_uptime
         try:
-            save_json(config.LAST_RUN_FILE, state.to_json(), backup_amount=1)
+            await self._store.write(state.to_json())
         except Exception:
             logger.exception("Failed to save state")
         return current_uptime

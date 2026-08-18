@@ -51,9 +51,13 @@ class StupidBot(commands.Bot):
         self.uptime_manager = uptime_manager or UptimeManager()
         self.cog_loader = cog_loader or CogLoader(self, watch=watch_cogs)
 
-    def save_state(self) -> float:
+    async def restore_state(self) -> None:
+        """Restore persisted uptime before the bot starts."""
+        await self.uptime_manager.restore_uptime()
+
+    async def save_state(self) -> float:
         """Saves the current uptime state to file."""
-        return self.uptime_manager.save_state()
+        return await self.uptime_manager.save_state()
 
     @override
     async def setup_hook(self) -> None:
@@ -104,7 +108,7 @@ class StupidBot(commands.Bot):
 
     @tasks.loop(seconds=config.AUTOSAVE_UPTIME_INTERVAL)
     async def autosave_task(self):
-        uptime = self.save_state()
+        uptime = await self.save_state()
         logger.debug("Autosaved uptime: %.0f seconds", uptime)
 
     @update_activity_task.before_loop

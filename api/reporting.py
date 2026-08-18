@@ -10,11 +10,11 @@ from discord import DMChannel, Interaction
 from discord.ui import Modal, TextInput
 
 import config
-from utils import SafeEmbed
+from utils import AsyncJsonFileStore, SafeEmbed
 from utils.json_types import JsonObject, JsonValue
-from utils.json_utils import get_json, save_json
 
 logger = logging.getLogger(__name__)
+_report_store = AsyncJsonFileStore(config.REPORT_FILE)
 
 
 class UserInfoDict(TypedDict):
@@ -108,25 +108,57 @@ def _create_report_embed(report: ReportDataDict) -> discord.Embed:
     return embed
 
 
-async def submit_report(interaction: Interaction, reason: str) -> str:
-    """Main entry point: Saves report and notifies devs."""
+async def submit_report(
+    interaction: Interaction, reason: str
+) -> tuple[ReportDataDict, int | None]:
+    """Persist a report and return its configured notification channel."""
     report = _build_report_data(interaction, reason)
+    report_channel_id: int | None = None
 
-    data: JsonObject = get_json(config.REPORT_FILE) or {}
-    reports = data.get("reports")
-    if not isinstance(reports, list):
-        reports = []
-        data["reports"] = reports
-    reports.append(cast(JsonValue, cast(object, report)))
-    save_json(config.REPORT_FILE, data)
+    def _updater(data: JsonObject) -> None:
+        nonlocal report_channel_id
+        reports = data.get("reports")
+        if reports is None:
+            reports = []
+            data["reports"] = reports
+        elif not isinstance(reports, list):
+            raise ValueError("Report data has an invalid reports list")
+        reports.append(cast(JsonValue, cast(object, report)))
+
+        raw_channel_id = data.get("report_channel_id")
+        if isinstance(raw_channel_id, int) and not isinstance(raw_channel_id, bool):
+            report_channel_id = raw_channel_id
+
+    await _report_store.update(_updater)
     logger.info("New report: %s", report["report_id"])
+    return report, report_channel_id
 
-    report_channel_id = data.get("report_channel_id")
-    if isinstance(report_channel_id, int):
-        channel = interaction.client.get_channel(report_channel_id)
-        if isinstance(channel, discord.abc.Messageable):
+
+async def set_report_channel(channel_id: int) -> None:
+    """Persist the developer channel without replacing concurrent reports."""
+
+    def _updater(data: JsonObject) -> None:
+        data["report_channel_id"] = channel_id
+
+    await _report_store.update(_updater)
+
+
+async def _notify_report(
+    interaction: Interaction, report: ReportDataDict, report_channel_id: int | None
+) -> None:
+    if report_channel_id is None:
+        return
+
+    channel = interaction.client.get_channel(report_channel_id)
+    if isinstance(channel, discord.abc.Messageable):
+        try:
             await channel.send(embed=_create_report_embed(report))
-    return report["report_id"]
+        except discord.HTTPException:
+            logger.exception(
+                "Failed to notify report channel %s for report %s",
+                report_channel_id,
+                report["report_id"],
+            )
 
 
 class ReportModal(Modal, title="Отправить отчёт о баге"):
@@ -152,7 +184,13 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
 
     @override
     async def on_submit(self, interaction: Interaction):
-        report_id = await submit_report(interaction, self.reason.value)
+        report, report_channel_id = await submit_report(interaction, self.reason.value)
+        embed = SafeEmbed(
+            title="Спасибо за отчёт!",
+            description=f"-# Ваш персональный ID: `{report['report_id']}`",
+            color=config.Color.SUCCESS,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
         if interaction.message:
             try:
@@ -162,13 +200,7 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
                     "Failed to remove report button from message %s",
                     interaction.message.id,
                 )
-
-        embed = SafeEmbed(
-            title="Спасибо за отчёт!",
-            description=f"-# Ваш персональный ID: `{report_id}`",
-            color=config.Color.SUCCESS,
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await _notify_report(interaction, report, report_channel_id)
 
 
 async def handle_report_button(

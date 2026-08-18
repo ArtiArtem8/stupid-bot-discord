@@ -40,6 +40,7 @@ async def main() -> None:
         return
 
     bot = StupidBot(watch_cogs=args.watch)
+    await bot.restore_state()
 
     logger.info("Starting bot...")
     try:
@@ -49,7 +50,7 @@ async def main() -> None:
         logger.info("Keyboard Interrupt detected.")
         raise
     finally:
-        uptime = bot.save_state()
+        uptime = await bot.save_state()
         logger.info(f"Bot stopped. Final saved uptime: {uptime:.0f}s")
 
 
