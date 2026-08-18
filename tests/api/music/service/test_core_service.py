@@ -93,6 +93,22 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.connection.mark_node_unavailable.assert_not_awaited()
         self.connection.detach_stale_voice_client.assert_not_awaited()
 
+    async def test_join_applies_saved_volume_once_after_successful_connection(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        channel = MagicMock()
+        player = MagicMock()
+        player.set_volume = AsyncMock()
+        self.connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        self.connection.get_player.return_value = player
+        self.volume_repo.get_volume = AsyncMock(return_value=80)
+
+        result = await self.service.join(guild, channel)
+
+        self.assertEqual(result, (VoiceCheckResult.SUCCESS, None))
+        player.set_volume.assert_awaited_once_with(80)
+
     async def test_player_io_failure_uses_player_scope_with_safe_message(
         self,
     ) -> None:

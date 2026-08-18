@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Sequence
 from typing import TypeVar
@@ -106,31 +105,12 @@ class CoreMusicService:
             if player:
                 vol = await self.volume_repo.get_volume(guild.id)
                 try:
-                    await self._apply_volume(player, vol)
+                    await player.set_volume(vol)
                 except EXPECTED_LAVALINK_IO_ERRORS as exc:
                     await self._handle_player_io_failure(player, exc)
                     return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
 
         return result, old_channel
-
-    async def _apply_volume(self, player: MusicPlayer, volume: int) -> None:
-        """Apply volume with a short retry while the voice connection stabilizes."""
-        retry_delays = (0.0, 0.3, 0.6)
-        for delay in retry_delays:
-            if delay:
-                await asyncio.sleep(delay)
-            try:
-                if player.connected:
-                    await player.set_volume(volume)
-                    return
-            except mafic.PlayerNotConnected:
-                continue
-
-        logger.warning(
-            "Failed to apply volume %s for guild %s (player not connected)",
-            volume,
-            player.guild.id,
-        )
 
     async def leave(self, guild: discord.Guild) -> MusicResult[None]:
         """Leave voice channel and clean local music state.
