@@ -1,8 +1,4 @@
-"""Base class for some cogs in StupidBot.
-
-This provides centralized functionality like blocked user checks and guild
-validation, reducing repetition across cogs.
-"""
+"""Shared interaction checks and guild validation for Discord cogs."""
 
 import logging
 from typing import override
@@ -18,52 +14,26 @@ logger = logging.getLogger(__name__)
 
 
 class GenericBaseCog[BotT: commands.Bot](commands.Cog):
-    """Base helper class for StupidBot cogs.
-
-    Provides:
-    - Centralized interaction_check for blocked users (raises BlockedUserError).
-    - Helper for requiring guild context in commands.
-
-    """
+    """Own blocked-user enforcement shared by application-command cogs."""
 
     def __init__(self, bot: BotT) -> None:
-        """Initialize the base cog.
-
-        Args:
-            bot: The bot instance.
-
-        """
         super().__init__()
         self.bot = bot
         self._cog = self.__class__.__name__
 
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:  # pyright: ignore[reportUnusedParameter]
-        """Return True to skip the blocked-user check for this interaction.
-
-        This function **can** be a coroutine
-        """
+        """Return whether to skip blocking; overrides may be sync or async."""
         return False
 
     @override
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        """Centralized check for blocked users.
+        """Log and reject blocked interactions before command dispatch.
 
-        Runs before every app command interaction. If the user is blocked in the
-        guild, raises :py:exc:`BlockedUserError` (handled globally in main.py).
-
-        Logs the command attempt before checking for blocked users.
-
-        Subclasses can override should_bypass_block to bypass block checks.
-
-        Args:
-            interaction: The Discord interaction.
-
-        Returns:
-            `True` if the check passes.
+        Subclasses can override :meth:`should_bypass_block` for commands that
+        blocked users must still be able to invoke.
 
         Raises:
             BlockedUserError: If the user is blocked.
-
         """
         self._log_command(interaction)
 
@@ -83,17 +53,10 @@ class GenericBaseCog[BotT: commands.Bot](commands.Cog):
         return True
 
     async def _require_guild(self, interaction: discord.Interaction) -> discord.Guild:
-        """Ensure the interaction is in a guild and raise :py:exc:`NoGuildError` if not.
-
-        Args:
-            interaction: The Discord interaction.
-
-        Returns:
-            The guild object.
+        """Return the interaction guild or reject direct-message use.
 
         Raises:
-            NoGuildError: If no guild.
-
+            NoGuildError: If the interaction has no guild.
         """
         if not (guild := interaction.guild):
             logger.debug(
@@ -105,16 +68,6 @@ class GenericBaseCog[BotT: commands.Bot](commands.Cog):
         return guild
 
     def _log_command(self, interaction: discord.Interaction) -> None:
-        """Log command invocation details.
-
-        Currently logs the command name, user ID, and guild/channel context
-
-        Log level: `INFO`
-
-        Args:
-            interaction: The interaction context
-
-        """
         user = interaction.user
         user_display = user.global_name or user.name
 

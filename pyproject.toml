@@ -119,10 +119,6 @@ ignore = [
     "D102",
     "D104",
     "D107",
-    "D203",
-    "D205",
-    "D213",
-    "D401",
     "RUF001",
 ]
 
@@ -132,11 +128,14 @@ ignore = [
 "api/reporting.py" = ["DTZ005"]
 "api/wolfram.py" = ["N817"]
 "cogs/birthday_cog.py" = ["DTZ011"]
-"tests/**/*.py" = ["DTZ001"]
+"tests/**/*.py" = ["D103", "DTZ001"]
 "tests/api/test_birthday.py" = ["N818"]
 "tests/di/test_container.py" = ["N803"]
 "utils/birthday_utils.py" = ["DTZ007"]
 "utils/json_utils.py" = ["DTZ005"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.mccabe]
 max-complexity = 8
@@ -146,6 +145,10 @@ known-first-party = ["cogs", "utils"]
 
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

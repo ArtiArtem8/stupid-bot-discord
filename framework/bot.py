@@ -22,18 +22,14 @@ class DevServer:
 
 
 class StupidBot(commands.Bot):
+    """Discord runtime owner for cogs, background tasks, and uptime state."""
+
     def __init__(
         self,
         watch_cogs: bool = False,
         uptime_manager: UptimeManager | None = None,
         cog_loader: CogLoader | None = None,
     ) -> None:
-        """Initialize the StupidBot instance.
-
-        Sets up the command prefix, intents, and initializes various
-        attributes related to the bot's uptime and activity monitoring.
-        Calls the method to load previous uptime data.
-        """
         intents = Intents.default()
         intents.presences = True
         intents.message_content = True
@@ -56,7 +52,7 @@ class StupidBot(commands.Bot):
         await self.uptime_manager.restore_uptime()
 
     async def save_state(self) -> float:
-        """Saves the current uptime state to file."""
+        """Persist accumulated uptime and return the saved duration in seconds."""
         return await self.uptime_manager.save_state()
 
     @override
@@ -71,10 +67,6 @@ class StupidBot(commands.Bot):
         self.cog_loader.start_watcher()
 
     async def on_ready(self) -> None:
-        """Event handler for when the bot is ready.
-
-        Logs the bot's username and ID, and starts the timer and autosave tasks.
-        """
         logger.info("Bot is ready -------------------------")
         logger.info(
             "Logged in as %s (ID: %s) (API Version: %s)",
@@ -90,10 +82,7 @@ class StupidBot(commands.Bot):
 
     @tasks.loop(seconds=11)
     async def update_activity_task(self) -> None:
-        """Task to periodically update the bot's activity with its uptime.
-
-        The uptime is formatted using :func:`format_duration_ru` and the
-        """
+        """Refresh presence only when the formatted uptime changes."""
         uptime = time.time() - self.uptime_manager.start_time
         formatted_time = format_duration_ru(int(uptime), depth=2)
         activity_str = f"жизнь уже {formatted_time}."

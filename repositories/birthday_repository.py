@@ -27,7 +27,7 @@ def _decode_guild_config(guild_id: int, raw: object) -> BirthdayGuildConfig | No
 
 
 class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
-    """Repository for managing birthday data asynchronously."""
+    """Persist per-guild birthday aggregates through one owned JSON store."""
 
     def __init__(self, store: JsonObjectStore | None = None) -> None:
         self._store = store or AsyncJsonFileStore(config.BIRTHDAY_FILE)

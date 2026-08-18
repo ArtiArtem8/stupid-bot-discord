@@ -13,7 +13,9 @@ class Diagnostics:
 
     def check_registrations(self) -> list[str]:
         """Verify that all registered singletons can be resolved.
-        Returns a list of error messages, if any.
+
+        Resolution constructs each singleton and may therefore run its startup
+        side effects. Failures are logged and returned as diagnostic messages.
         """
         errors: list[str] = []
         registrations = self._container.get_registrations()
@@ -21,12 +23,9 @@ class Diagnostics:
         logger.info("Running diagnostics on %s services...", len(registrations))
 
         for interface, reg in registrations.items():
-            # We mostly care about validating Singletons at startup to fail fast
             if reg.lifecycle is Lifecycle.SINGLETON:
                 try:
-                    # ! DANGEROUS!
-                    # Dry run resolution
-                    # Note: This will instantiate them!
+                    # Singleton validation intentionally constructs each service.
                     self._container.resolve(interface)
                 except Exception as exc:
                     error_msg = f"Failed to resolve {interface.__name__}: {exc!s}"

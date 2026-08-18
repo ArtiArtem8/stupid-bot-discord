@@ -1,6 +1,4 @@
-"""Tests for birthday model behavior and sorting helpers.
-Covers user parsing and guild list ordering with mocked guild data.
-"""
+"""Tests for birthday model behavior and sorting helpers."""
 
 from __future__ import annotations
 

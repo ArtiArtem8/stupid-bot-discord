@@ -1,6 +1,4 @@
-"""Tests for blocking manager operations.
-Covers block/unblock flows and blocked-state lookup behavior.
-"""
+"""Tests for blocking manager operations."""
 
 from __future__ import annotations
 

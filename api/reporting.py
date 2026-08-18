@@ -206,5 +206,5 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
 async def handle_report_button(
     interaction: discord.Interaction, error_info: str | None = None
 ) -> None:
-    """Callback handler for report button - shows modal."""
+    """Open the report-submission modal."""
     await interaction.response.send_modal(ReportModal(error_info))

@@ -1,6 +1,4 @@
-"""Tests for music connection manager behaviors.
-Covers node initialization, player retrieval, and join logic outcomes.
-"""
+"""Tests for music connection manager behavior."""
 
 import asyncio
 import unittest

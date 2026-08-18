@@ -15,6 +15,13 @@ type Updater = Callable[[JsonObject], Awaitable[None] | None]
 
 @dataclass(slots=True)
 class AsyncJsonFileStore:
+    """Async access to one mutable JSON object file.
+
+    Each instance owns its synchronization lock. A process must therefore share
+    one authoritative store instance for a path; concurrent instances for the
+    same file are not serialized. Physical file operations run in worker threads.
+    """
+
     path: str | PathLike[str]
     backup_amount: int = 3
     backup_dir: Path | None = None
@@ -28,10 +35,12 @@ class AsyncJsonFileStore:
     )
 
     async def read(self) -> JsonObject:
+        """Read the current object, returning an empty object for a missing file."""
         data = await asyncio.to_thread(get_json, self.path, encoding=self.encoding)
         return {} if data is None else data
 
     async def write(self, data: JsonEncodableObject) -> None:
+        """Replace the stored object while serializing writes through this instance."""
         async with self._lock:
             await self._write_unlocked(data)
 
@@ -46,7 +55,12 @@ class AsyncJsonFileStore:
         )
 
     async def update(self, updater: Updater) -> JsonObject:
-        """Lock + read + mutate + write, returning the final data."""
+        """Apply one atomic mutation to the stored JSON object.
+
+        Concurrent updates through this store instance are serialized. The
+        updater may mutate synchronously or asynchronously. A no-op mutation
+        returns the current object without rewriting the file or rotating backups.
+        """
         async with self._lock:
             data = await self.read()
             original = freeze_json_object(data)

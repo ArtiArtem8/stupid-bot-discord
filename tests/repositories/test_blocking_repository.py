@@ -1,6 +1,4 @@
-"""Tests for blocking repository storage behaviors.
-Covers CRUD, history roundtrips, and guild/user query paths.
-"""
+"""Tests for blocking repository storage behavior."""
 
 from __future__ import annotations
 
@@ -403,7 +401,6 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         self.repo = BlockingRepository(self.store)
 
     async def test_get_existing_blocked_user(self) -> None:
-        """Test retrieving a specific user that is currently blocked."""
         key = (111111111111111111, 222222222222222222)
         user = await self.repo.get(key)
 
@@ -417,7 +414,6 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(user.block_history[0].reason, "violation_a")
 
     async def test_get_existing_unblocked_user_with_history(self) -> None:
-        """Test retrieving a user who was blocked but is now unblocked."""
         key = (111111111111111111, 333333333333333333)
         user = await self.repo.get(key)
 
@@ -430,7 +426,6 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(user.unblock_history[1].reason, "amnesty")
 
     async def test_get_all_users_across_guilds(self) -> None:
-        """Test that get_all retrieves users from all guilds correctly."""
         all_users = await self.repo.get_all()
 
         self.assertEqual(len(all_users), 3)
@@ -444,7 +439,6 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(user_ids, expected_ids)
 
     async def test_get_all_for_specific_guild(self) -> None:
-        """Test retrieving users for a single guild."""
         guild_id = 111111111111111111
         users = await self.repo.get_all_for_guild(guild_id)
 
@@ -454,7 +448,6 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         self.assertIn(333333333333333333, user_ids)
 
     async def test_save_new_user_to_existing_guild(self) -> None:
-        """Test adding a completely new user to an existing guild structure."""
         guild_id = 111111111111111111
         new_user_id = 666666666666666666
 
@@ -481,7 +474,6 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(block_history), 1)
 
     async def test_save_user_to_new_guild(self) -> None:
-        """Test saving a user creates a new guild entry if it doesn't exist."""
         new_guild_id = 777777777777777777
         user_id = 888888888888888888
 
@@ -498,7 +490,6 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         self.assertIn(str(user_id), users_map)
 
     async def test_data_integrity_after_save(self) -> None:
-        """Ensure that saving a user doesn't corrupt other users in the guild."""
         guild_id = 111111111111111111
         user_id = 222222222222222222
 
@@ -522,7 +513,6 @@ class TestBlockingRepositoryWithRealData(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(other_user["current_username"], "user_two")
 
     async def test_missing_fields_defaults(self) -> None:
-        """Test handling of users with missing optional fields."""
         incomplete_data: JsonObject = {
             "999": {
                 "users": {

@@ -29,7 +29,6 @@ class ServerMonitorCog(BaseCog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
-        """Save role snapshot when a member leaves."""
         if member.bot:
             return
 
@@ -45,7 +44,6 @@ class ServerMonitorCog(BaseCog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
-        """Restore roles when a member rejoins."""
         if member.bot:
             return
 
@@ -89,7 +87,6 @@ class ServerMonitorCog(BaseCog):
     async def monitor_enable(
         self, interaction: discord.Interaction, ttl_days: int | None = None
     ) -> None:
-        """Enable server monitoring."""
         guild = await self._require_guild(interaction)
 
         if not guild.me.guild_permissions.manage_roles:
@@ -132,7 +129,6 @@ class ServerMonitorCog(BaseCog):
 
     @monitor.command(name="disable", description="Отключить мониторинг сервера")
     async def monitor_disable(self, interaction: discord.Interaction) -> None:
-        """Disable server monitoring."""
         guild = await self._require_guild(interaction)
 
         if not await monitor_manager.is_enabled(guild.id):
@@ -163,7 +159,6 @@ class ServerMonitorCog(BaseCog):
         description="Показать статус мониторинга и список сохранённых участников",
     )
     async def monitor_status(self, interaction: discord.Interaction) -> None:
-        """Show monitoring status and snapshot list."""
         guild = await self._require_guild(interaction)
 
         enabled = await monitor_manager.is_enabled(guild.id)
@@ -215,7 +210,6 @@ class ServerMonitorCog(BaseCog):
     async def monitor_forget(
         self, interaction: discord.Interaction, user: discord.User
     ) -> None:
-        """Forget a member's role snapshot."""
         guild = await self._require_guild(interaction)
 
         deleted = await monitor_manager.delete_snapshot(guild.id, user.id)
@@ -246,7 +240,6 @@ class ServerMonitorCog(BaseCog):
     async def monitor_restore(
         self, interaction: discord.Interaction, user: discord.Member
     ) -> None:
-        """Manually restore a member's roles."""
         guild = await self._require_guild(interaction)
 
         snapshot = await monitor_manager.get_snapshot(guild.id, user.id)
@@ -303,7 +296,6 @@ class ServerMonitorCog(BaseCog):
 
     @tasks.loop(hours=24)
     async def cleanup_task(self) -> None:
-        """Background task to clean up expired snapshots."""
         logger.debug("Running cleanup task for expired snapshots")
 
         for guild in self.bot.guilds:
@@ -318,10 +310,5 @@ class ServerMonitorCog(BaseCog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+    """Register the guild-monitoring cog."""
     await bot.add_cog(ServerMonitorCog(bot))

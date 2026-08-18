@@ -1,14 +1,4 @@
-"""Birthday management system with automatic congratulations.
-
-Provides:
-- Birthday registration and removal
-- Automatic daily checks and congratulations
-- Birthday role management
-- Birthday list viewing with sorting
-
-Configuration:
-    Requires BIRTHDAY_FILE, BIRTHDAY_CHECK_INTERVAL in config.py
-"""
+"""Birthday commands and daily congratulation orchestration."""
 
 import logging
 import secrets
@@ -45,14 +35,13 @@ async def safe_role_edit(
     """Safely add or remove a role.
 
     Args:
-        member: Member to modify
-        role: Role to add/remove
-        operation: Either "add" or "remove"
-        logger: Logger for warnings
+        member: Member to modify.
+        role: Role to add or remove.
+        operation: Requested role operation.
 
     Returns:
-        True if successful, False otherwise
-
+        ``True`` when Discord accepted the edit, otherwise ``False`` for an
+        expected permission or request failure.
     """
     try:
         match operation:
@@ -301,17 +290,6 @@ class BirthdayCog(BaseCog):
     )
     @app_commands.guild_only()
     async def set_birthday(self, interaction: Interaction, date_input: str) -> None:
-        """Set your birthday in the system.
-
-        Args:
-            interaction: Command interaction
-            date_input: Birthday date string
-
-        Examples:
-            /setbirthday 15-05-2000
-            /setbirthday 2000-05-15
-
-        """
         try:
             normalized_date = parse_birthday(date_input)
         except ValueError:
@@ -364,7 +342,6 @@ class BirthdayCog(BaseCog):
         channel: discord.TextChannel,
         role: discord.Role | None = None,
     ) -> None:
-        """Configure birthday system for the server."""
         guild = await self._require_guild(interaction)
 
         try:
@@ -400,7 +377,6 @@ class BirthdayCog(BaseCog):
     )
     @app_commands.guild_only()
     async def remove_birthday(self, interaction: Interaction) -> None:
-        """Remove your birthday from the system."""
         guild = await self._require_guild(interaction)
         config = await birthday_manager.get_guild_config(guild.id)
 
@@ -443,7 +419,6 @@ class BirthdayCog(BaseCog):
     async def list_birthdays(
         self, interaction: Interaction, ephemeral: bool = True
     ) -> None:
-        """Display all birthdays in the guild, sorted by closest to today."""
         guild = await self._require_guild(interaction)
         config = await birthday_manager.get_guild_config(guild.id)
         if not config:
@@ -484,10 +459,5 @@ class BirthdayCog(BaseCog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+    """Register the birthday cog."""
     await bot.add_cog(BirthdayCog(bot))

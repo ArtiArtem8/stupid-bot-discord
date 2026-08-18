@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 class QuestionCog(BaseCog):
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
-        # predictions
         self.answers = secrets.SystemRandom().sample(
             CAPABILITIES, min(len(CAPABILITIES), config.MAX_ANSWER_SAMPLE_SIZE)
         )
@@ -73,16 +72,12 @@ class QuestionCog(BaseCog):
     async def _add_to_history(
         self, user_id: str, question: str, answer: str
     ) -> str | None:
-        """Add a question to the global answers.
+        """Store one normalized question without overwriting an existing answer.
 
-        Args:
-            user_id: The ID of the user who asked the question.
-            question: The question asked.
-            answer: The answer to the question.
-
-        Returns:
-            The existing answer if the user already asked the question, None otherwise.
-
+        The history store serializes the read-modify-write operation for this cog
+        instance. The existing answer is returned when the same user already asked
+        the normalized question; otherwise the new answer is persisted and
+        ``None`` is returned.
         """
         filtered_text = str_local(question)
         existing_answer: str | None = None
@@ -109,10 +104,5 @@ class QuestionCog(BaseCog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+    """Register the question cog."""
     await bot.add_cog(QuestionCog(bot))

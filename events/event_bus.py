@@ -60,7 +60,7 @@ class EventBus:
         finally:
             duration = (time.perf_counter() - start_time) * 1000
             self._latencies[event.event_name].append(duration)
-            # Keep latency list size manageable
+            # Bound telemetry memory while retaining recent latency samples.
             if len(self._latencies[event.event_name]) > 100:
                 self._latencies[event.event_name].pop(0)
 

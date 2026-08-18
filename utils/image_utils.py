@@ -77,7 +77,26 @@ def process_wolfram_plot(
     max_source_pixels: int,
     max_output_bytes: int,
 ) -> bytes:
-    """Downscale only when needed, then encode the complete plot as WebP."""
+    """Validate and encode a complete Wolfram plot as WebP.
+
+    The image is decoded entirely in memory. It is downscaled only when either
+    source dimension exceeds ``max_size``; aspect ratio is preserved. Encoding
+    first tries lossless WebP and then one quality-95 lossy fallback.
+
+    Args:
+        source: Encoded source image bytes.
+        max_size: Maximum output width and height in pixels.
+        max_source_pixels: Maximum decoded width-times-height budget.
+        max_output_bytes: Maximum encoded upload size in bytes.
+
+    Returns:
+        The complete encoded WebP image.
+
+    Raises:
+        ImageProcessingError: If input is empty, invalid, unsafe to decode, or
+            exceeds the source limits.
+        ImageOutputTooLargeError: If neither encoding fits ``max_output_bytes``.
+    """
     if not source:
         raise ImageProcessingError("Wolfram plot response is empty")
     if max_source_pixels <= 0:

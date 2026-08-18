@@ -117,18 +117,17 @@ class OnMessageCog(commands.Cog):
         answers: Sequence[str],
         threshold: int = config.FUZZY_THRESHOLD_DEFAULT,
     ) -> str | None:
-        """Process a message to check if it matches one of the given "quests" and
-        return a random answer if it does.
+        """Return a random answer when a message fuzzy-matches a known phrase.
 
         Args:
-            message: The message to process.
-            quests: A sequence of strings to match against the message content.
-            answers: A sequence of strings to return if the message matches.
-            threshold: The minimum score required for a match.
+            message: Message whose content is compared.
+            quests: Candidate phrases.
+            answers: Non-empty answer choices.
+            threshold: Minimum fuzzy-match score.
 
         Returns:
-            A random answer if the message matches, None otherwise.
-
+            A repeatable answer when a candidate meets the threshold, otherwise
+            ``None``.
         """
         fuzzy_results = extract(
             message.content,
@@ -157,15 +156,13 @@ class OnMessageCog(commands.Cog):
         summary_factory: Callable[[T], object],
         debug_factory: Callable[[T], object],
     ) -> None:
-        """Helper to log a section with INFO summary and lazy DEBUG details.
+        """Log a cheap summary and defer detailed rendering until DEBUG is enabled.
 
         Args:
-            self: Self with logger.
-            label: The log label (e.g., "Attachments").
-            data: The object to check for truthiness before logging.
-            summary_factory: Lambda returning the lightweight INFO payload.
-            debug_factory: Lambda returning the expensive DEBUG payload.
-
+            label: Label used by both log records.
+            data: Value whose absence suppresses the section.
+            summary_factory: Build the INFO payload.
+            debug_factory: Build the DEBUG payload only when needed.
         """
         if not data:
             return
@@ -255,10 +252,5 @@ class OnMessageCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+    """Register the message-listener cog."""
     await bot.add_cog(OnMessageCog(bot))

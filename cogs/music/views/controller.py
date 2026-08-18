@@ -34,14 +34,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MUSIC_PLAYER_EMOJIS = {
-    # Bar Components
     "bar_left_full": "<:whitelineleftrounded:1447917292766626005>",
     "bar_mid_full": "<:whiteline:1447917290782724126>",
     "bar_right_full": "<:whitelinerightrounded:1447917295304446103>",
     "bar_left_empty": "<:graylineleftrounded:1447917287263830157>",
     "bar_mid_empty": "<:grayline:1447917284726411445>",
     "bar_right_empty": "<:graylinerightrounded:1447917289067515956>",
-    # Controls
     "restart": "<:restart:1447913966939406366>",
     "back_10": "<:replay10:1447914002482200720>",
     "play": "<:play:1447913953345929311>",
@@ -51,7 +49,7 @@ MUSIC_PLAYER_EMOJIS = {
     "musical_note": "<:musicalnote:1447968776128565358>",
 }
 
-# Must match the 10 shown by the seek button icons
+# Keep the seek interval aligned with the value shown by the button icons.
 _SEEK_STEP_MS = 10_000
 
 
@@ -61,13 +59,6 @@ class TrackControllerManager(ControllerManagerProtocol):
         bot: commands.Bot,
         connection_manager: ConnectionManager,
     ) -> None:
-        """Initialize the TrackControllerManager.
-
-        Args:
-            bot: The bot instance.
-            connection_manager: Owner of player lifecycle invalidation.
-
-        """
         self.bot = bot
         self.connection = connection_manager
         self.controllers: dict[int, TrackControllerView] = {}
@@ -161,6 +152,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         expected_attempt_id: int | None = None,
     ) -> None:
         """Destroys the controller for a guild.
+
         If requesting_view is provided, only destroys if current active view.
         """
         async with self._locks[guild_id]:
@@ -273,7 +265,6 @@ class TrackControllerView(ui.View):
         self.update_interval = 20
         self._running = True
 
-        # State Cache
         self._is_paused_cache: bool = False
         self._pause_start_time: float | None = None
         self._frozen_position: int = 0

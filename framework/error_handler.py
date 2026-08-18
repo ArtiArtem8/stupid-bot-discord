@@ -51,7 +51,6 @@ class CustomErrorCommandTree(app_commands.CommandTree[discord.Client]):
             )
             return
         if isinstance(error, StupidBotError):
-            # Handle our custom domain exceptions
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
@@ -61,7 +60,7 @@ class CustomErrorCommandTree(app_commands.CommandTree[discord.Client]):
             )
             return
 
-        # Unpack CommandInvokeError if it wraps a StupidBotError
+        # discord.py wraps callback exceptions before invoking this handler.
         original = getattr(error, "original", None)
         if isinstance(original, StupidBotError):
             await FeedbackUI.send(

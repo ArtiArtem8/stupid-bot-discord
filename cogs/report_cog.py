@@ -1,14 +1,4 @@
-"""Report system provides a way to report issues with the bot.
-the report saves in a json file and send into a private devs channel to review.
-
-admin cog is not universal, so interactions checks are manually added here.
-
-This cog requires setting an owner ID to use this command :
-- via configuration file - DISCORD_BOT_OWNER_ID
-- or manually - self.bot.owner_id: int = ?
-- for multiple owners only - self.bot.owner_ids: Collection[int]
-  don't set both at the same time
-"""
+"""Issue-report commands and owner-only report-channel configuration."""
 
 import logging
 
@@ -24,15 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
-    """Generate cooldown key for rate limiting.
-
-    Args:
-        interaction: Command interaction
-
-    Returns:
-        Tuple of (guild_id, user_id) for cooldown tracking
-
-    """
+    """Share report cooldowns per user within each guild or DM context."""
     return (
         interaction.guild.id if interaction.guild else None,
         interaction.user.id,
@@ -40,11 +22,7 @@ def get_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
 
 
 class ReportCog(BaseCog):
-    """Bug reporting system with developer notification.
-
-    Configuration:
-        Set report channel using /set-report-channel (owner only)
-    """
+    """Bug-report submission and owner-only channel configuration."""
 
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
@@ -77,10 +55,5 @@ class ReportCog(BaseCog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+    """Register the reporting cog."""
     await bot.add_cog(ReportCog(bot))

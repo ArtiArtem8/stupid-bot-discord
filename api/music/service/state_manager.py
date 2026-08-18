@@ -25,7 +25,6 @@ class StateManager:
         self.sessions: dict[int, MusicSession] = {}
         self._track_start_times_dt: dict[tuple[int, int], datetime.datetime] = {}
 
-        # Auto-leave tracking
         self.empty_channel_timers: dict[int, EmptyTimerInfo] = {}
 
     def get_session(self, guild_id: int) -> MusicSession | None:
@@ -50,7 +49,6 @@ class StateManager:
 
     def record_track_start(self, guild_id: int, attempt: PlaybackAttempt) -> None:
         self.get_or_create_session(guild_id)
-        # Using utcnow() as in original
         self._track_start_times_dt[(guild_id, attempt.attempt_id)] = utcnow()
 
     def record_history(

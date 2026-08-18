@@ -12,8 +12,6 @@ from api.birthday_models import (
     BirthdayGuildConfig,
     BirthdayListEntry,
 )
-
-# Import Repository
 from repositories.birthday_repository import BirthdayRepository
 from utils import TextPaginator, truncate_text
 
@@ -23,17 +21,15 @@ logger = logging.getLogger(__name__)
 def parse_birthday(date_str: str) -> str:
     """Parse a birthday date string into a standardized format.
 
-
     Args:
-        date_str: A string representing a date in either DD-MM-YYYY or YYYY-MM-DD format
+        date_str: Date in DD-MM-YYYY or YYYY-MM-DD format.
 
     Returns:
-        A string representing the parsed date in DD-MM-YYYY format
+        The date in DD-MM-YYYY format.
 
     Raises:
         ValueError: If the date string is invalid or does not match either of the
-            supported formats
-
+            supported formats.
     """
     for fmt in (config.DATE_FORMAT, "%Y-%m-%d"):
         try:

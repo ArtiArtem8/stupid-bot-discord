@@ -12,11 +12,15 @@ from utils.json_types import JsonObject
 
 @dataclass(frozen=True, slots=True)
 class VolumeData:
+    """Persisted playback volume for one guild."""
+
     guild_id: int
     volume: int
 
 
 class VolumeRepository(BaseRepository[VolumeData, int]):
+    """Persist music volume settings through the music subsystem's JSON store."""
+
     def __init__(self, store: JsonObjectStore | None = None) -> None:
         self._store = store or AsyncJsonFileStore(config.MUSIC_VOLUME_FILE)
 

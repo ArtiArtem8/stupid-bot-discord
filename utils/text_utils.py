@@ -6,20 +6,20 @@ from typing import Literal
 
 
 def random_answer(text: str, answers: list[str]) -> str:
-    """Generates a deterministic pseudo-random answer from a list of possible answers
-    based on the input text.
+    """Choose a repeatable answer derived from normalized message text.
 
-    This function calculates a pseudo-random index using the characters of the
-    input text. The index is used to select an answer from the provided list of
-    answers.
+    This is presentation logic, not secure or statistically random selection.
+    Equal input text produces the same index within and across processes.
 
     Args:
-        text (str): The input text which influences the pseudo-random selection.
-        answers (list[str]): A list of potential answers to choose from.
+        text: Text that determines the selection.
+        answers: Non-empty answer choices.
 
     Returns:
-        str: A pseudo-randomly selected answer from the list of answers.
+        One item from ``answers``.
 
+    Raises:
+        ZeroDivisionError: If ``answers`` is empty.
     """
     k = 1
     for v, i in enumerate(text.lower()):
@@ -38,34 +38,31 @@ def random_answer(text: str, answers: list[str]) -> str:
 
 @lru_cache(maxsize=10)
 def str_local(text: str) -> str:
-    """Filter a string by removing characters not
-    in the local alphabet.
+    """Normalize text to lowercase Russian, ASCII letters, and digits.
 
-    Args:
-        text (str): The string to filter.
-
-    Returns:
-        str: The filtered string.
-
+    Whitespace, punctuation, and characters outside that fixed mask are removed.
+    Results are cached for the ten most recently used input strings.
     """
     mask = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя" + ascii_lowercase + digits
     return "".join(i for i in text.lower() if i in mask)
 
 
 def format_list(strlist: list[str], cut: int, theme: bool = True) -> list[str]:
-    """Format a list of strings into a single string with a given cut-off length (cut).
+    """Insert separators and line breaks into a list of display fragments.
+
+    The input list is mutated in place and returned. ``cut`` is a soft running
+    width: it decides where to append a comma and newline but does not truncate
+    long items.
+    When ``theme`` is true and the first two items would cross ``cut``, the first
+    item receives a trailing newline instead of a comma.
 
     Args:
-        strlist (list[str]): The list of strings to format.
-        cut (int): The maximum length of the output string. If this is exceeded by the
-        sum of the lengths of the strings in strlist, strings are concatenated with a
-        comma and newline.
-        theme (bool, optional): If True, the first string is checked for length against
-        cut and if it exceeds it, it is terminated with a newline. Defaults to True.
+        strlist: Fragments to modify.
+        cut: Soft line-width threshold in characters.
+        theme: Apply the special first-item handling.
 
     Returns:
-        list[str]: The formatted list of strings.
-
+        The same list instance after separator insertion.
     """
     jolen = 0
     char = " "
@@ -93,21 +90,17 @@ def truncate_text(
     placeholder: str = "...",
     mode: Literal["end", "start", "middle"] = "end",
 ) -> str:
-    """Truncates a string to a maximum width using a configurable strategy.
+    """Truncate text to ``width`` characters using one of three cut positions.
 
     Args:
-        text: The source string to be shortened.
-        width: The maximum allowed length of the result.
-        placeholder: The string to append/insert where text is cut. Defaults to "...".
-        mode: The truncation strategy.
-            - "end": Truncates the tail (e.g., "filename...").
-            - "middle": Truncates the center (e.g., "file...ame").
-            - "start": Truncates the head (e.g., "...name").
-            Defaults to "end".
+        text: Source text.
+        width: Hard maximum result length.
+        placeholder: Marker inserted at the cut.
+        mode: Cut the end, start, or middle of the source.
 
     Returns:
-        The truncated string fitting strictly within the specified width.
-
+        ``text`` unchanged when it already fits, otherwise a string no longer
+        than ``width``.
     """
     if len(text) <= width:
         return text
@@ -134,18 +127,20 @@ def truncate_sequence(
     separator: str = "\n",
     placeholder: str = "...",
 ) -> str:
-    """Joins a sequence of strings and truncates the result at a boundary (separator)
-    to fit strictly within a maximum length.
+    """Join complete items up to a hard length limit.
+
+    Truncation prefers an item boundary. Only an oversized first item is cut
+    internally with :func:`truncate_text`. The placeholder is included in the
+    length budget whenever items are omitted.
 
     Args:
-        items: An iterable of strings to join.
-        max_length: The hard limit for the final string length.
-        separator: The string used to join items. Defaults to newline.
-        placeholder: Appended when truncation occurs. Defaults to "...".
+        items: Strings to join; the iterable is consumed once.
+        max_length: Hard result length limit.
+        separator: Text placed between complete items.
+        placeholder: Marker appended when content is omitted.
 
     Returns:
-        A string guaranteed to be <= max_length.
-
+        A string no longer than ``max_length`` when the limit is non-negative.
     """
     if max_length <= 0:
         return ""
@@ -185,9 +180,10 @@ def truncate_sequence(
 
 
 class TextPaginator:
-    """Paginate pre-formatted strings.
+    """Split pre-formatted lines by both item count and character budget.
 
-    Handles joining and strict length limits.
+    Each overlong input item is truncated before placement. Empty input produces
+    no pages. The returned page list is owned by the paginator.
     """
 
     __slots__ = ("_pages", "_total_count")
@@ -235,8 +231,10 @@ class TextPaginator:
 
     @property
     def pages(self) -> list[str]:
+        """Pages in display order."""
         return self._pages
 
     @property
     def total_items(self) -> int:
+        """Number of input items before pagination."""
         return self._total_count

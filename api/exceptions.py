@@ -18,7 +18,7 @@ class DataAccessError(InfrastructureError):
     """Exception for data retrieval/persistence errors."""
 
 
-# Music Specific
+# Music-specific errors
 class MusicError(StupidBotError):
     """Base exception for music module errors."""
 

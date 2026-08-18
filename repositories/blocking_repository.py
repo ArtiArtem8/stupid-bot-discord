@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
+    """Persist per-guild blocked-user records through one owned JSON store."""
+
     def __init__(self, store: JsonObjectStore | None = None) -> None:
         self._store = store or AsyncJsonFileStore(config.BLOCKED_USERS_FILE)
 

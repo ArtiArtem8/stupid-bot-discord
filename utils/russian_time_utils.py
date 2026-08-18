@@ -155,17 +155,17 @@ class DurationUXConfig:
 
     @property
     def day_seconds(self) -> int:
-        """Return the number of seconds in one day."""
+        """Number of seconds in one day."""
         return DAY_SECONDS
 
     @property
     def month_seconds(self) -> int:
-        """Return the approximate number of seconds in a month."""
+        """Approximate number of seconds in a configured month."""
         return int(self.month_days * DAY_SECONDS)
 
     @property
     def year_seconds(self) -> int:
-        """Return the approximate number of seconds in a year."""
+        """Approximate number of seconds in a configured year."""
         return int(self.year_days * DAY_SECONDS)
 
     def min_significant_seconds(self, unit: TimeUnit) -> int:
@@ -191,6 +191,7 @@ class DurationBreakdown:
 
     @property
     def is_zero(self) -> bool:
+        """Whether the breakdown represents a zero duration."""
         return not self.parts or (
             len(self.parts) == 1
             and self.parts[0].unit == TimeUnit.SECOND
@@ -199,15 +200,18 @@ class DurationBreakdown:
 
 
 def plural_ru(value: int, forms: UnitForms) -> str:
-    """Choose a Russian nominative counting form for a number.
+    """Choose the Russian counting form for ``value``.
+
+    Use this for cardinal phrases such as ``"1 день"``, ``"2 дня"``, and
+    ``"5 дней"``. The sign is ignored, and values ending in 11-14 use the many
+    form regardless of their final digit.
 
     Args:
-        value: The value to inflect.
-        forms: A (one, few, many) triplet.
+        value: Number whose grammatical form should be selected.
+        forms: Forms for one, few, and many.
 
     Returns:
-        The correct Russian nominative counting form.
-
+        The form matching Russian cardinal-number rules.
     """
     n = abs(value)
     if n % 10 == 1 and n % 100 != 11:

@@ -1,6 +1,4 @@
-"""Tests for dependency injection container behavior.
-Covers registration, resolution, lifecycles, and concurrency safety.
-"""
+"""Tests for dependency injection container behavior."""
 
 from __future__ import annotations
 

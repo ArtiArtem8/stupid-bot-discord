@@ -127,7 +127,6 @@ class AdminCog(BaseCog):
     async def block(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ) -> None:
-        """Block a user from using the bot."""
         guild = await self._require_guild(interaction)
         if await block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
@@ -155,7 +154,6 @@ class AdminCog(BaseCog):
     async def unblock(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ) -> None:
-        """Unblock a user from using the bot."""
         guild = await self._require_guild(interaction)
         if not await block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
@@ -186,7 +184,6 @@ class AdminCog(BaseCog):
         user: discord.Member,
         ephemeral: bool = True,
     ) -> None:
-        """Display detailed block history for a user."""
         guild = await self._require_guild(interaction)
         user_entry = await block_manager.get_user(guild.id, user.id)
 
@@ -236,7 +233,6 @@ class AdminCog(BaseCog):
             inline=False,
         )
 
-        # Recent events (merge and sort block/unblock history)
         all_events = sorted(
             [(e.timestamp, "BLOCK", e) for e in user_entry.block_history]
             + [(e.timestamp, "UNBLOCK", e) for e in user_entry.unblock_history],
@@ -269,7 +265,6 @@ class AdminCog(BaseCog):
                 inline=False,
             )
 
-        # Name history
         if user_entry.name_history[:21]:
             name_changes: list[str] = []
             for name_entry in sorted(
@@ -292,7 +287,6 @@ class AdminCog(BaseCog):
                 value=names_value,
             )
 
-        # Statistics
         first_block_ts = format_dt(user_entry.block_history[0].timestamp, "D")
         stats = [
             f"• Всего блокировок: {len(user_entry.block_history)}",
@@ -310,7 +304,6 @@ class AdminCog(BaseCog):
             inline=False,
         )
 
-        # Footer with danger level
         danger_level = format_danger_level(len(user_entry.block_history))
         embed.set_footer(text=f"Уровень проблемности: {danger_level}")
 
@@ -333,7 +326,6 @@ class AdminCog(BaseCog):
         show_details: bool = False,
         ephemeral: bool = True,
     ) -> None:
-        """Display all currently blocked users with basic information."""
         guild = await self._require_guild(interaction)
         all_users = await block_manager.get_guild_users(guild.id)
         blocked_users = [u for u in all_users if u.is_blocked]
@@ -405,7 +397,6 @@ class AdminCog(BaseCog):
     async def delete_message(
         self, interaction: discord.Interaction, message_id: str
     ) -> None:
-        """Silently deletes a message by ID."""
         try:
             channel = interaction.channel
             if channel is None or not isinstance(channel, discord.abc.Messageable):
@@ -428,10 +419,5 @@ class AdminCog(BaseCog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+    """Register the administration cog."""
     await bot.add_cog(AdminCog(bot))

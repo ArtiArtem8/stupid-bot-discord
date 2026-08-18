@@ -93,7 +93,6 @@ class MusicCog(BaseCog):
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
 
-        # Dependency Injection Setup
         self.container = Container()
         self.container.register(commands.Bot, factory=lambda _c: bot)
         self.container.register(ConnectionManager)
@@ -131,7 +130,6 @@ class MusicCog(BaseCog):
     async def on_music_session_end(
         self, _guild_id: int, session: MusicSession, channel_id: int
     ) -> None:
-        """Handle music session end event."""
         channel = self.bot.get_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
@@ -150,7 +148,6 @@ class MusicCog(BaseCog):
 
     @commands.Cog.listener()
     async def on_music_track_exception(self, payload: TrackExceptionPayload) -> None:
-        """Handle dispatched track exception payloads."""
         channel_id = payload.channel_id
         if not channel_id:
             return
@@ -652,10 +649,5 @@ class MusicCog(BaseCog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+    """Register the music cog."""
     await bot.add_cog(MusicCog(bot))

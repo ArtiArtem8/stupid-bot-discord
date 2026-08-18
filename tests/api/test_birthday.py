@@ -1,6 +1,4 @@
-"""Tests for birthday helpers and manager workflows.
-Covers parsing, member fetch fallbacks, and config CRUD outcomes.
-"""
+"""Tests for birthday helpers and manager workflows."""
 
 from __future__ import annotations
 

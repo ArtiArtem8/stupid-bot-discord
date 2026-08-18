@@ -54,7 +54,8 @@ EXPECTED_PLAY_ERRORS = (
 
 
 class CoreMusicService:
-    """Core Service facade for the Music module.
+    """Coordinate music operations without duplicating component state.
+
     Delegates responsibility to specialized managers.
     """
 

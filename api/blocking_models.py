@@ -41,6 +41,8 @@ class GuildData(TypedDict):
 
 @dataclass
 class BlockHistoryEntry:
+    """One administrator action in a user's block or unblock history."""
+
     admin_id: int
     reason: str | None
     timestamp: datetime
@@ -65,6 +67,8 @@ class BlockHistoryEntry:
 
 @dataclass
 class NameHistoryEntry:
+    """One previously observed Discord username and its observation time."""
+
     username: str
     timestamp: datetime
 
@@ -86,6 +90,8 @@ class NameHistoryEntry:
 
 @dataclass
 class BlockedUser:
+    """Per-guild blocking state and audit history for one Discord user."""
+
     user_id: int
     current_username: str
     current_global_name: str | None
@@ -115,7 +121,7 @@ class BlockedUser:
         self.blocked = False
 
     def update_name_history(self, username: str, global_name: str | None) -> bool:
-        """Update name history if different from current. Returns True if updated."""
+        """Record a changed username and return whether stored names changed."""
         if self.current_username != username or (
             self.current_global_name != global_name and global_name is not None
         ):

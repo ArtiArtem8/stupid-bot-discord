@@ -1,6 +1,4 @@
-"""Tests for music state manager sessions and timers.
-Covers session lifecycle, timer control, and expiry detection.
-"""
+"""Tests for music state manager sessions and timers."""
 
 import time
 import unittest

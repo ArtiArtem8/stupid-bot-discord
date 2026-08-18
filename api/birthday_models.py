@@ -13,7 +13,7 @@ from utils.birthday_utils import calculate_days_until_birthday, format_birthday_
 
 
 class BirthdayListEntry(TypedDict):
-    """TypedDict for birthday list display entries."""
+    """One presentation-ready birthday list row."""
 
     days_until: int
     date: str
@@ -22,7 +22,7 @@ class BirthdayListEntry(TypedDict):
 
 
 class BirthdayUserDict(TypedDict):
-    """TypedDict for raw birthday user JSON structure."""
+    """Stored JSON shape for one birthday user."""
 
     name: str
     birthday: str
@@ -30,7 +30,7 @@ class BirthdayUserDict(TypedDict):
 
 
 class BirthdayGuildDict(TypedDict):
-    """TypedDict for raw guild birthday JSON structure."""
+    """Stored JSON shape for one guild's birthday configuration."""
 
     Server_name: str
     Channel_id: str
@@ -40,7 +40,7 @@ class BirthdayGuildDict(TypedDict):
 
 @dataclass
 class BirthdayUser:
-    """Dataclass for internal birthday user representation."""
+    """One guild member's birthday and sent-congratulation history."""
 
     user_id: int
     name: str
@@ -92,6 +92,8 @@ class BirthdayUser:
 
 @dataclass
 class BirthdayGuildConfig:
+    """Birthday delivery settings and users for one Discord guild."""
+
     guild_id: int
     server_name: str
     channel_id: int
@@ -115,9 +117,10 @@ class BirthdayGuildConfig:
         return False
 
     def get_birthdays_today(self, today: date) -> list[BirthdayUser]:
-        """Get list of users whose birthday is today.
+        """Return users due for a congratulation on ``today``.
 
-        Uses utils.birthday_utils.is_birthday_today to handle leap year logic.
+        Already-congratulated users are excluded. Feb. 29 handling follows
+        :func:`utils.birthday_utils.is_birthday_today`.
         """
         return [
             user

@@ -26,6 +26,8 @@ class EmbedKwargs(TypedDict, total=False):
 
 @dataclass(frozen=True, slots=True)
 class EmbedLimits:
+    """Discord embed character and field-count limits."""
+
     title: int = 256
     description: int = 4096
     field_name: int = 256
@@ -60,6 +62,13 @@ class CharacterLimitExceededError(SafeEmbedError):
 
 
 class SafeEmbed(discord.Embed):
+    """Discord embed that truncates text and enforces aggregate limits.
+
+    Title and description overflow is truncated at construction. Field helpers
+    either raise a limit-specific error or, with ``strict=False``, retain the
+    valid portion and return the same embed for chaining.
+    """
+
     def __init__(
         self,
         *,
@@ -93,6 +102,22 @@ class SafeEmbed(discord.Embed):
     def safe_add_field(
         self, *, name: str, value: str, inline: bool = True, strict: bool = True
     ) -> Self:
+        """Add one field without exceeding per-field or aggregate limits.
+
+        Args:
+            name: Field name; overlong text is truncated.
+            value: Field value; overlong text is truncated.
+            inline: Forwarded to Discord's field layout.
+            strict: Raise when field count or total embed size is exhausted.
+
+        Returns:
+            This embed for method chaining.
+
+        Raises:
+            FieldLimitExceededError: If no field slot remains in strict mode.
+            CharacterLimitExceededError: If the aggregate character budget is
+                exhausted in strict mode.
+        """
         name = truncate_text(str(name), self._limits.field_name)
         value = truncate_text(str(value), self._limits.field_value)
 
@@ -120,6 +145,13 @@ class SafeEmbed(discord.Embed):
         separator: str = "\n",
         strict: bool = True,
     ) -> Self:
+        """Paginate lines into repeated embed fields.
+
+        ``page_size`` limits lines per field while the embed field-value limit
+        supplies the character budget. Later field names receive a Russian page
+        suffix. In non-strict mode, aggregate overflow truncates the final added
+        value, while pages beyond the field-count limit are omitted.
+        """
         paginator = TextPaginator(
             lines,
             page_size=page_size,
@@ -149,17 +181,16 @@ class SafeEmbed(discord.Embed):
         inline: bool = False,
         strict: bool = True,
     ) -> Self:
-        """Adds a field where the value is wrapped in a code block.
-        Truncation happens inside the code block to preserve formatting.
+        """Add a field whose value remains inside a complete code fence.
+
+        The language tag and fence overhead are reserved before content is
+        truncated, so the resulting field never loses its closing fence.
         """
-        # Calculate overhead: ```lang\n...```
-        # overhead = 3 (```) + len(lang) + 1 (\n) + 1 (\n) + 3 (```)
-        # However, we need to respect the field value limit (1024)
+        # Two three-backtick fences, the language tag, and two newlines.
         overhead = len(lang) + 8
         available = self._limits.field_value - overhead
 
         if len(value) > available:
-            # We need to truncate the content, not the whole string
             value = truncate_text(value, available)
 
         code_value = f"```{lang}\n{value}\n```"
@@ -176,18 +207,17 @@ class SafeEmbed(discord.Embed):
         inline: bool = False,
         strict: bool = True,
     ) -> Self:
-        """Conditionally adds a field to the embed if the condition is truthy.
+        """Add a field when ``condition`` is truthy.
 
         Args:
-            condition: The condition to check. If truthy, the field will be added.
-            name: The name/title of the embed field.
-            value: The content/value of the embed field.
-            inline: Whether the field should be displayed inline. Defaults to False.
-            strict: Whether to apply strict validation when adding the field.
+            condition: Value controlling whether the field is added.
+            name: Field name.
+            value: Field value.
+            inline: Forwarded to Discord's field layout.
+            strict: Forwarded to :meth:`safe_add_field`.
 
         Returns:
-            Self: Returns the embed object for method chaining.
-
+            This embed whether or not a field was added.
         """
         if condition:
             return self.safe_add_field(

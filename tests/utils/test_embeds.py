@@ -1,6 +1,4 @@
-"""Tests for safe embed utilities and limits.
-Covers truncation, field limits, and fluent helper behavior.
-"""
+"""Tests for safe embed utilities and limits."""
 
 from __future__ import annotations
 
@@ -227,7 +225,6 @@ class TestSafeEmbed(unittest.TestCase):
         self.assertIsInstance(e, SafeEmbed)
 
     def test_add_field_pages_adds_second_page_name_suffix(self) -> None:
-        # Ensures idx > 1 branch runs and the "(стр. N)" suffix is used.
         limits = EmbedLimits(field_value=12, max_fields=5)
         e = SafeEmbed(limits=limits)
 

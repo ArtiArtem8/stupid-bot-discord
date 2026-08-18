@@ -1,6 +1,4 @@
-"""Tests for blocked-user model behavior.
-Covers history updates, timestamping, and serialization roundtrips.
-"""
+"""Tests for blocked-user model behavior."""
 
 from __future__ import annotations
 

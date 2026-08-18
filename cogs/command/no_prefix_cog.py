@@ -62,6 +62,7 @@ class PrefixBlockerCog(commands.Cog):
         self, guild_id: int | None
     ) -> dict[str, app_commands.AppCommand]:
         """Fetch current AppCommands.
+
         Cached to avoid extra HTTP traffic.
         """
         async with self._lock:
@@ -76,7 +77,6 @@ class PrefixBlockerCog(commands.Cog):
                 c.name: c for c in global_cmds
             }
 
-            # Also fetch guild commands if requested
             if guild_id is not None and self.bot.get_guild(guild_id) is not None:
                 guild = self.bot.get_guild(guild_id)
                 if guild is not None:
@@ -91,6 +91,7 @@ class PrefixBlockerCog(commands.Cog):
         self, *, key: str, root_name: str, message: Message
     ) -> str:
         """Prefer AppCommand mention formatting (clickable).
+
         For subcommands, Discord uses the root command ID: </root sub:ID>.
         """
         guild_id = message.guild.id if message.guild else None
@@ -170,10 +171,5 @@ class PrefixBlockerCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+    """Register the prefix-warning cog."""
     await bot.add_cog(PrefixBlockerCog(bot))
