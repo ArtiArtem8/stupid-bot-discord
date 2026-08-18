@@ -94,7 +94,7 @@ class ConfirmDeleteView(discord.ui.View):
         self.guild_id = guild_id
 
     @discord.ui.button(label="Да", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: Interaction, _: Button[Self]):
+    async def confirm(self, interaction: Interaction, _: Button[Self]) -> None:
         if interaction.user.id != self.user_id:
             await FeedbackUI.send(
                 interaction,
@@ -174,16 +174,16 @@ class BirthdayCog(BaseCog):
         Set BIRTHDAY_CHECK_INTERVAL in config for check frequency (seconds)
     """
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
         self.birthday_timer.start()
 
     @override
-    async def cog_unload(self):
+    async def cog_unload(self) -> None:
         self.birthday_timer.cancel()
 
     @tasks.loop(seconds=config.BIRTHDAY_CHECK_INTERVAL)
-    async def birthday_timer(self):
+    async def birthday_timer(self) -> None:
         """Main timer loop for birthday checks."""
         today = date.today()
         guild_ids = await birthday_manager.get_all_guild_ids()
@@ -191,10 +191,10 @@ class BirthdayCog(BaseCog):
             await self._process_guild(guild_id, today)
 
     @birthday_timer.before_loop
-    async def before_birthday_timer(self):
+    async def before_birthday_timer(self) -> None:
         await self.bot.wait_until_ready()
 
-    async def _process_guild(self, guild_id: int, today: date):
+    async def _process_guild(self, guild_id: int, today: date) -> None:
         """Process birthday checks for a single server.
 
         Args:
@@ -300,7 +300,7 @@ class BirthdayCog(BaseCog):
         date_input="Дата рождения (например: 15-05-2000 или 2000-05-15)"
     )
     @app_commands.guild_only()
-    async def set_birthday(self, interaction: Interaction, date_input: str):
+    async def set_birthday(self, interaction: Interaction, date_input: str) -> None:
         """Set your birthday in the system.
 
         Args:
@@ -363,7 +363,7 @@ class BirthdayCog(BaseCog):
         interaction: Interaction,
         channel: discord.TextChannel,
         role: discord.Role | None = None,
-    ):
+    ) -> None:
         """Configure birthday system for the server."""
         guild = await self._require_guild(interaction)
 
@@ -399,7 +399,7 @@ class BirthdayCog(BaseCog):
         name="remove-birthday", description="Удалить свой день рождения из системы"
     )
     @app_commands.guild_only()
-    async def remove_birthday(self, interaction: Interaction):
+    async def remove_birthday(self, interaction: Interaction) -> None:
         """Remove your birthday from the system."""
         guild = await self._require_guild(interaction)
         config = await birthday_manager.get_guild_config(guild.id)
@@ -440,7 +440,9 @@ class BirthdayCog(BaseCog):
     @app_commands.guild_only()
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(ephemeral="Скрыть сообщение после выполнения")
-    async def list_birthdays(self, interaction: Interaction, ephemeral: bool = True):
+    async def list_birthdays(
+        self, interaction: Interaction, ephemeral: bool = True
+    ) -> None:
         """Display all birthdays in the guild, sorted by closest to today."""
         guild = await self._require_guild(interaction)
         config = await birthday_manager.get_guild_config(guild.id)
@@ -481,7 +483,7 @@ class BirthdayCog(BaseCog):
         await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     """Setup.
 
     Args:

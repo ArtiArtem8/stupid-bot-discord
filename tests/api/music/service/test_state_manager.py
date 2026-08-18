@@ -15,10 +15,10 @@ from tests.api.music.helpers import make_entry
 
 class TestStateManager(unittest.TestCase):
     @override
-    def setUp(self):
+    def setUp(self) -> None:
         self.manager = StateManager()
 
-    def test_get_or_create_session(self):
+    def test_get_or_create_session(self) -> None:
         session = self.manager.get_or_create_session(123)
         self.assertEqual(session.guild_id, 123)
         self.assertEqual(self.manager.get_session(123), session)
@@ -26,7 +26,7 @@ class TestStateManager(unittest.TestCase):
         session2 = self.manager.get_or_create_session(123)
         self.assertIs(session2, session)
 
-    def test_end_session(self):
+    def test_end_session(self) -> None:
         self.manager.get_or_create_session(123)
         attempt = PlaybackAttempt(1, make_entry("track"))
         self.manager.record_track_start(123, attempt)
@@ -38,7 +38,7 @@ class TestStateManager(unittest.TestCase):
         self.assertIsNone(self.manager.get_session(123))
         self.assertNotIn((123, attempt.attempt_id), self.manager._track_start_times_dt)
 
-    def test_timers(self):
+    def test_timers(self) -> None:
         self.manager.start_timer(123, "empty")
         self.assertTrue(self.manager.is_timer_active(123))
         self.assertIn(123, self.manager.empty_channel_timers)
@@ -46,7 +46,9 @@ class TestStateManager(unittest.TestCase):
         self.manager.cancel_timer(123)
         self.assertFalse(self.manager.is_timer_active(123))
 
-    def test_late_end_preserves_new_attempt_start_and_records_old_requester(self):
+    def test_late_end_preserves_new_attempt_start_and_records_old_requester(
+        self,
+    ) -> None:
         first = PlaybackAttempt(
             1,
             make_entry("same", entry_id=1, requester_id=10),
@@ -77,7 +79,7 @@ class TestStateManager(unittest.TestCase):
             self.fail("expected active session")
         self.assertTrue(session.tracks[-1].skipped)
 
-    def test_get_expired_timers(self):
+    def test_get_expired_timers(self) -> None:
         self.manager.start_timer(123, "test")
         self.manager.empty_channel_timers[123]["timestamp"] = time.monotonic() - 100
 

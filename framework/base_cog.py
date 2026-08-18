@@ -26,7 +26,7 @@ class GenericBaseCog[BotT: commands.Bot](commands.Cog):
 
     """
 
-    def __init__(self, bot: BotT):
+    def __init__(self, bot: BotT) -> None:
         """Initialize the base cog.
 
         Args:

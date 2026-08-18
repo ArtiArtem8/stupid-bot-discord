@@ -27,7 +27,7 @@ class StupidBot(commands.Bot):
         watch_cogs: bool = False,
         uptime_manager: UptimeManager | None = None,
         cog_loader: CogLoader | None = None,
-    ):
+    ) -> None:
         """Initialize the StupidBot instance.
 
         Sets up the command prefix, intents, and initializes various
@@ -107,11 +107,11 @@ class StupidBot(commands.Bot):
         )
 
     @tasks.loop(seconds=config.AUTOSAVE_UPTIME_INTERVAL)
-    async def autosave_task(self):
+    async def autosave_task(self) -> None:
         uptime = await self.save_state()
         logger.debug("Autosaved uptime: %.0f seconds", uptime)
 
     @update_activity_task.before_loop
     @autosave_task.before_loop
-    async def before_tasks(self):
+    async def before_tasks(self) -> None:
         await self.wait_until_ready()

@@ -12,12 +12,12 @@ logger = logging.getLogger("StupidBot")
 
 
 class CogLoader:
-    def __init__(self, bot: commands.Bot, watch: bool = False):
+    def __init__(self, bot: commands.Bot, watch: bool = False) -> None:
         self.bot = bot
         self.enable_watch = watch
         self._watcher_task = None
 
-    async def load_cogs(self):
+    async def load_cogs(self) -> None:
         for file_path in config.COGS_DIR.rglob("*_cog.py"):
             if file_path.name.startswith("_"):
                 continue
@@ -32,7 +32,7 @@ class CogLoader:
                 logger.exception("Failed to load %s", module_name)
                 raise
 
-    def start_watcher(self):
+    def start_watcher(self) -> None:
         if self.enable_watch:
             self._watcher_task = self.bot.loop.create_task(self._cog_watcher())
             logger.info("Cog watcher enabled (argument provided).")

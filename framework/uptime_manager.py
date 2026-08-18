@@ -41,7 +41,7 @@ class UptimeData:
 
 
 class UptimeManager:
-    def __init__(self, store: AsyncJsonFileStore | None = None):
+    def __init__(self, store: AsyncJsonFileStore | None = None) -> None:
         self.start_time: float = time.time()
         self.last_activity_str = "N/A"
         self._store = store or AsyncJsonFileStore(config.LAST_RUN_FILE, backup_amount=1)

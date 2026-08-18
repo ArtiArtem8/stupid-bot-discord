@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 class OnMessageCog(commands.Cog):
     """Log, auto-respond to greetings and common phrases."""
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
     @commands.Cog.listener()
-    async def on_message(self, message: Message):
+    async def on_message(self, message: Message) -> None:
         self._log_message(message)
         if message.author.bot:
             return
@@ -64,7 +64,7 @@ class OnMessageCog(commands.Cog):
             return f"{attr}: {before_summ} -> {after_summ}"
 
     @commands.Cog.listener()
-    async def on_message_edit(self, before: Message, after: Message):
+    async def on_message_edit(self, before: Message, after: Message) -> None:
         changes: list[str] = []
 
         attr_whitelist = [
@@ -99,16 +99,17 @@ class OnMessageCog(commands.Cog):
 
             self._log_message(after, is_edit=True)
 
-    async def quest_process_message(self, message: Message):
+    async def quest_process_message(self, message: Message) -> None:
         if len(message.content) < 5:
             return
         res = self.process_fuzzy_message(message, MORNING_QUEST, MORNING_ANSWERS)
         if res:
-            return await message.channel.send(res)
+            await message.channel.send(res)
+            return
 
         res = self.process_fuzzy_message(message, EVENING_QUEST, EVENING_ANSWERS)
         if res:
-            return await message.channel.send(res)
+            await message.channel.send(res)
 
     def process_fuzzy_message(
         self,
@@ -254,7 +255,7 @@ class OnMessageCog(commands.Cog):
         )
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     """Setup.
 
     Args:

@@ -74,7 +74,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         self._active_messages: dict[int, tuple[int, int]] = {}
         self._locks = defaultdict(asyncio.Lock)
 
-    async def _safe_delete_message(self, channel_id: int, message_id: int):
+    async def _safe_delete_message(self, channel_id: int, message_id: int) -> None:
         """Safely delete a message, handling missing channels/messages."""
         try:
             channel = self.bot.get_channel(channel_id)
@@ -106,7 +106,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         channel: discord.abc.Messageable,
         player: MusicPlayer,
         attempt: PlaybackAttempt,
-    ):
+    ) -> None:
         """Creates a new controller, replacing any existing one safely."""
         async with self._locks[guild_id]:
             logger.debug("Manager: Setup controller for guild %s", guild_id)
@@ -286,7 +286,7 @@ class TrackControllerView(ui.View):
         return self.attempt.attempt_id
 
     @override
-    def stop(self):
+    def stop(self) -> None:
         """Stops the updater loop and interaction."""
         logger.debug("Stopping %s", self.__class__.__name__)
         self._running = False
@@ -358,10 +358,10 @@ class TrackControllerView(ui.View):
         )
         return f"{start_cap}{middle}{end_cap}"
 
-    def start_updater(self):
+    def start_updater(self) -> None:
         self._task = asyncio.create_task(self._loop())
 
-    async def _loop(self):
+    async def _loop(self) -> None:
         """Background loop to update embed and check track state."""
         failure_count = 0
         MAX_FAILURES = 3
@@ -466,7 +466,7 @@ class TrackControllerView(ui.View):
         await self._safe_update()
         return False
 
-    def update_buttons_state(self):
+    def update_buttons_state(self) -> None:
         for child in self.children:
             if isinstance(child, ui.Button) and child.custom_id == "btn_pause_resume":
                 child.emoji = (
@@ -476,7 +476,7 @@ class TrackControllerView(ui.View):
                 )
                 break
 
-    async def _safe_update(self, force: bool = False):
+    async def _safe_update(self, force: bool = False) -> None:
         """Updates the message with rate limiting."""
         if not self.message:
             logger.debug("View: Message not found. Stopping.")

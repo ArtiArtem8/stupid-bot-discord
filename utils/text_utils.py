@@ -199,7 +199,7 @@ class TextPaginator:
         page_size: int = 25,
         max_length: int = 1024,
         separator: str = "\n",
-    ):
+    ) -> None:
         self._pages: list[str] = []
         input_lines = list(lines)
         self._total_count = len(input_lines)

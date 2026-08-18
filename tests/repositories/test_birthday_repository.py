@@ -21,7 +21,7 @@ from utils.json_types import JsonObject
 class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
     """Test cases for BirthdayGuildConfig methods."""
 
-    async def test_get_sorted_birthday_list_empty_users(self):
+    async def test_get_sorted_birthday_list_empty_users(self) -> None:
         """Test get_sorted_birthday_list with no users."""
         config = BirthdayGuildConfig(guild_id=123, server_name="Test", channel_id=999)
         mock_guild = Mock()
@@ -33,7 +33,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(entries, [])
 
-    async def test_get_sorted_birthday_list_sorting(self):
+    async def test_get_sorted_birthday_list_sorting(self) -> None:
         """Test that birthdays are sorted by proximity to reference date."""
         config = BirthdayGuildConfig(guild_id=123, server_name="Test", channel_id=999)
 
@@ -64,7 +64,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         # Verify days_until calculation roughly
         self.assertEqual(entries[0]["days_until"], 4)
 
-    async def test_get_sorted_birthday_list_discord_member_name(self):
+    async def test_get_sorted_birthday_list_discord_member_name(self) -> None:
         """Test that method prefers Discord nickname over stored name."""
         config = BirthdayGuildConfig(1, "Test", 999)
         user = BirthdayUser(10, "StoredName", "01-01-2000")
@@ -81,7 +81,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(entries[0]["name"], "DiscordNick")
 
-    def test_get_birthdays_today(self):
+    def test_get_birthdays_today(self) -> None:
         """Test filtering users who have a birthday today."""
         config = BirthdayGuildConfig(1, "Test", 999)
 
@@ -99,7 +99,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].user_id, 1)
 
-    async def test_leap_year_birthday_handling(self):
+    async def test_leap_year_birthday_handling(self) -> None:
         """Test calculation of birthdays for leap year babies (Feb 29)."""
         config = BirthdayGuildConfig(1, "Test", 999)
         mock_guild = Mock()
@@ -134,7 +134,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         # Feb 29 is the 60th day of 2028. Jan 1 is 1st. 60 - 1 = 59 days away.
         self.assertEqual(entries_2028[0]["days_until"], 59)
 
-    def test_get_birthdays_today_leap_year(self):
+    def test_get_birthdays_today_leap_year(self) -> None:
         """Test filtering leap year birthdays on actual leap day and non-leap years."""
         config = BirthdayGuildConfig(1, "Test", 999)
         leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
@@ -149,7 +149,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         matches_strict = config.get_birthdays_today(non_leap_day)
         self.assertEqual(len(matches_strict), 1)
 
-    async def test_leap_year_birthday_handling_feb28_non_leap(self):
+    async def test_leap_year_birthday_handling_feb28_non_leap(self) -> None:
         """Test that Feb 29 birthday is celebrated on Feb 28 in non-leap years."""
         config = BirthdayGuildConfig(1, "Test", 999)
 
@@ -164,7 +164,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0].name, "LeapBaby")
 
-    async def test_leap_year_birthday_handling_feb28_leap(self):
+    async def test_leap_year_birthday_handling_feb28_leap(self) -> None:
         """Test that Feb 29 birthday is NOT celebrated on Feb 28 in leap years."""
         config = BirthdayGuildConfig(1, "Test", 999)
         leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
@@ -176,7 +176,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         matches = config.get_birthdays_today(today_leap_28)
         self.assertEqual(len(matches), 0)
 
-    async def test_leap_year_birthday_handling_feb29_leap(self):
+    async def test_leap_year_birthday_handling_feb29_leap(self) -> None:
         """Test that Feb 29 birthday is celebrated on Feb 29 in leap years."""
         config = BirthdayGuildConfig(1, "Test", 999)
         leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
@@ -188,7 +188,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         matches = config.get_birthdays_today(today_leap_29)
         self.assertEqual(len(matches), 1)
 
-    async def test_calculate_days_until_birthday_leap_logic(self):
+    async def test_calculate_days_until_birthday_leap_logic(self) -> None:
         """Test calculation of days until birthday with leap logic."""
         bday_str = "29-02-2000"
 
@@ -204,11 +204,11 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
     """Test cases for BirthdayRepository CRUD operations."""
 
     @override
-    def setUp(self):
+    def setUp(self) -> None:
         self.store = InMemoryJsonStore()
         self.repo = BirthdayRepository(self.store)
 
-    async def test_save_and_get_guild(self):
+    async def test_save_and_get_guild(self) -> None:
         """Test saving a guild config and retrieving it."""
         config = BirthdayGuildConfig(
             guild_id=123, server_name="MyServer", channel_id=456, birthday_role_id=789
@@ -230,12 +230,12 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
         self.assertIn(1, loaded.users)
         self.assertEqual(loaded.users[1].name, "User")
 
-    async def test_get_nonexistent_returns_none(self):
+    async def test_get_nonexistent_returns_none(self) -> None:
         """Test get returns None for missing guild."""
         result = await self.repo.get(99999)
         self.assertIsNone(result)
 
-    async def test_get_all(self):
+    async def test_get_all(self) -> None:
         """Test retrieving all valid guild configs."""
         c1 = BirthdayGuildConfig(1, "G1", 100)
         c2 = BirthdayGuildConfig(2, "G2", 200)
@@ -249,7 +249,7 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
         ids = {g.guild_id for g in all_guilds}
         self.assertEqual(ids, {1, 2})
 
-    async def test_delete(self):
+    async def test_delete(self) -> None:
         """Test deleting a guild config."""
         c1 = BirthdayGuildConfig(1, "G1", 100)
         await self.repo.save(c1)
@@ -259,7 +259,7 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
         result = await self.repo.get(1)
         self.assertIsNone(result)
 
-    async def test_get_all_handles_corrupt_data(self):
+    async def test_get_all_handles_corrupt_data(self) -> None:
         """Test that get_all skips invalid entries without crashing."""
         bad_data: JsonObject = {
             "1": {"Server_name": "Valid", "Channel_id": "1", "Users": {}},

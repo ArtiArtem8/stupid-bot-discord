@@ -94,7 +94,7 @@ class AdminCog(BaseCog):
     Requires administrator permissions for all commands.
     """
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
 
     @override
@@ -126,7 +126,7 @@ class AdminCog(BaseCog):
     @app_commands.guild_only()
     async def block(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
-    ):
+    ) -> None:
         """Block a user from using the bot."""
         guild = await self._require_guild(interaction)
         if await block_manager.is_user_blocked(guild.id, user.id):
@@ -154,7 +154,7 @@ class AdminCog(BaseCog):
     @app_commands.guild_only()
     async def unblock(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
-    ):
+    ) -> None:
         """Unblock a user from using the bot."""
         guild = await self._require_guild(interaction)
         if not await block_manager.is_user_blocked(guild.id, user.id):
@@ -185,7 +185,7 @@ class AdminCog(BaseCog):
         interaction: discord.Interaction,
         user: discord.Member,
         ephemeral: bool = True,
-    ):
+    ) -> None:
         """Display detailed block history for a user."""
         guild = await self._require_guild(interaction)
         user_entry = await block_manager.get_user(guild.id, user.id)
@@ -332,7 +332,7 @@ class AdminCog(BaseCog):
         interaction: discord.Interaction,
         show_details: bool = False,
         ephemeral: bool = True,
-    ):
+    ) -> None:
         """Display all currently blocked users with basic information."""
         guild = await self._require_guild(interaction)
         all_users = await block_manager.get_guild_users(guild.id)
@@ -402,7 +402,9 @@ class AdminCog(BaseCog):
     @is_owner_app()
     @app_commands.describe(message_id="ID сообщения для удаления")
     @app_commands.default_permissions(administrator=True)
-    async def delete_message(self, interaction: discord.Interaction, message_id: str):
+    async def delete_message(
+        self, interaction: discord.Interaction, message_id: str
+    ) -> None:
         """Silently deletes a message by ID."""
         try:
             channel = interaction.channel
@@ -425,7 +427,7 @@ class AdminCog(BaseCog):
             await interaction.response.send_message("Нет прав.", ephemeral=True)
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     """Setup.
 
     Args:

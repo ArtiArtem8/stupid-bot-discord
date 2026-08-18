@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class QuestionCog(BaseCog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
         # predictions
         self.answers = secrets.SystemRandom().sample(
@@ -35,7 +35,7 @@ class QuestionCog(BaseCog):
         name="ask",
         description="Магический шар, задай любой вопрос",
     )
-    async def q(self, interaction: Interaction, *, text: str):
+    async def q(self, interaction: Interaction, *, text: str) -> None:
         logger.info(
             "User %s(%s) asked: %s",
             interaction.user,
@@ -108,7 +108,7 @@ class QuestionCog(BaseCog):
         return existing_answer
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     """Setup.
 
     Args:

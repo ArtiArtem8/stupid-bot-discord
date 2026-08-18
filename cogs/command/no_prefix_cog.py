@@ -25,7 +25,7 @@ from cogs.command.prefix_suggestions import (
 class PrefixBlockerCog(commands.Cog):
     """Redirect users from prefix commands to slash commands."""
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.logger = logging.getLogger("PrefixBlockerCog")
         self._app_cmd_cache: dict[
@@ -169,7 +169,7 @@ class PrefixBlockerCog(commands.Cog):
             self.logger.exception("Failed to send prefix warning")
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     """Setup.
 
     Args:

@@ -183,7 +183,7 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
             self.reason.default = error_info
 
     @override
-    async def on_submit(self, interaction: Interaction):
+    async def on_submit(self, interaction: Interaction) -> None:
         report, report_channel_id = await submit_report(interaction, self.reason.value)
         embed = SafeEmbed(
             title="Спасибо за отчёт!",

@@ -47,7 +47,7 @@ def _as_music_player(player: _FakeMusicPlayer) -> MusicPlayer:
 
 class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
     @override
-    def setUp(self):
+    def setUp(self) -> None:
         self.bot = MagicMock()
         self.bot.get_guild = MagicMock()
         self.manager = ConnectionManager(self.bot)
@@ -58,7 +58,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(player_patch.stop)
 
     @patch("api.music.service.connection_manager.mafic.NodePool")
-    async def test_initialize_connects_node(self, mock_pool_class: Any):
+    async def test_initialize_connects_node(self, mock_pool_class: Any) -> None:
         mock_pool_instance = MagicMock()
         mock_pool_instance.nodes = []
         mock_pool_instance.add_node = AsyncMock()
@@ -79,7 +79,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             player_cls=_FakeMusicPlayer,
         )
 
-    async def test_get_player_returns_player(self):
+    async def test_get_player_returns_player(self) -> None:
         guild_mock = MagicMock()
         player_instance = _FakeMusicPlayer(guild_mock)
         guild_mock.voice_client = player_instance
@@ -91,7 +91,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(player, player_instance)
 
-    async def test_get_player_hides_stale_player_when_node_unavailable(self):
+    async def test_get_player_hides_stale_player_when_node_unavailable(self) -> None:
         guild_mock = MagicMock()
         guild_mock.voice_client = _FakeMusicPlayer(guild_mock)
         self.bot.get_guild.return_value = guild_mock
@@ -105,7 +105,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
     @patch("api.music.service.connection_manager.mafic.NodePool")
     async def test_get_player_hides_player_with_node_not_in_pool(
         self, mock_pool_class: Any
-    ):
+    ) -> None:
         guild_mock = MagicMock()
 
         mock_pool = MagicMock()
@@ -123,7 +123,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
     @patch("api.music.service.connection_manager.mafic.NodePool")
     async def test_get_player_hides_player_with_unavailable_node(
         self, mock_pool_class: Any
-    ):
+    ) -> None:
         guild_mock = MagicMock()
 
         node = MagicMock(label="down", available=False)
@@ -222,7 +222,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(result)
 
-    async def test_join_already_connected(self):
+    async def test_join_already_connected(self) -> None:
         guild = MagicMock()
 
         vc = MagicMock(spec=discord.VoiceClient)
@@ -239,7 +239,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res, VoiceCheckResult.ALREADY_CONNECTED)
         self.assertIsNone(old)
 
-    async def test_join_returns_unavailable_without_connecting_voice(self):
+    async def test_join_returns_unavailable_without_connecting_voice(self) -> None:
         guild = MagicMock()
         guild.voice_client = None
         channel = MagicMock(spec=discord.VoiceChannel)
@@ -253,7 +253,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(old)
         channel.connect.assert_not_called()
 
-    async def test_join_connects_new_player_when_service_is_available(self):
+    async def test_join_connects_new_player_when_service_is_available(self) -> None:
         guild = MagicMock()
         guild.id = 123
         guild.voice_client = None
@@ -355,7 +355,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second_result, (VoiceCheckResult.SUCCESS, None))
         self.assertEqual(max_active, 1)
 
-    async def test_join_cleans_stale_player_when_node_unavailable(self):
+    async def test_join_cleans_stale_player_when_node_unavailable(self) -> None:
         guild = MagicMock()
         player = _FakeMusicPlayer(guild)
         guild.voice_client = player
@@ -928,7 +928,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         guild.change_voice_state.assert_not_awaited()
         cleanup.assert_not_called()
 
-    async def test_disconnect_suppresses_http_not_found_and_cleans_local_state(self):
+    async def test_disconnect_suppresses_http_not_found_and_cleans_local_state(
+        self,
+    ) -> None:
         guild = MagicMock()
         guild.id = 123
         player = _FakeMusicPlayer(guild)
@@ -953,7 +955,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
     @patch("api.music.service.connection_manager.mafic.NodePool")
     async def test_repeated_ensure_available_uses_retry_cooldown(
         self, mock_pool_class: Any
-    ):
+    ) -> None:
         mock_pool_instance = MagicMock()
         mock_pool_instance.nodes = []
         mock_pool_instance.add_node = AsyncMock(side_effect=RuntimeError("down"))
@@ -973,7 +975,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool_instance.add_node.assert_awaited_once()
 
     @patch("api.music.service.connection_manager.mafic.NodePool")
-    async def test_ensure_available_retries_after_cooldown(self, mock_pool_class: Any):
+    async def test_ensure_available_retries_after_cooldown(
+        self, mock_pool_class: Any
+    ) -> None:
         mock_pool_instance = MagicMock()
         mock_pool_instance.nodes = []
         mock_pool_instance.add_node = AsyncMock(side_effect=RuntimeError("down"))
@@ -994,7 +998,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
     @patch("api.music.service.connection_manager.mafic.NodePool")
     async def test_initialize_closes_failed_node_and_raises_safe_message(
         self, mock_pool_class: Any
-    ):
+    ) -> None:
         mock_pool_instance = MagicMock()
         mock_pool_instance.nodes = []
         mock_pool_instance.add_node = AsyncMock(
@@ -1021,7 +1025,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
     @patch("api.music.service.connection_manager.mafic.NodePool")
     async def test_start_lazy_connect_schedules_one_background_attempt(
         self, mock_pool_class: Any
-    ):
+    ) -> None:
         mock_pool_instance = MagicMock()
         mock_pool_instance.nodes = []
         mock_pool_instance.close = AsyncMock()
@@ -1039,7 +1043,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool_instance.close.assert_awaited_once()
 
     @patch("api.music.service.connection_manager.mafic.NodePool")
-    async def test_cleanup_cancels_pending_lazy_connect(self, mock_pool_class: Any):
+    async def test_cleanup_cancels_pending_lazy_connect(
+        self, mock_pool_class: Any
+    ) -> None:
         mock_pool_instance = MagicMock()
         mock_pool_instance.nodes = []
         mock_pool_instance.close = AsyncMock()
@@ -1139,7 +1145,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
     @patch("api.music.service.connection_manager.mafic.NodePool")
     async def test_mark_node_unavailable_sets_cooldown_and_removes_node(
         self, mock_pool_class: Any
-    ):
+    ) -> None:
         node = MagicMock(label="down", available=False)
         mock_pool_instance = MagicMock()
         mock_pool_instance.nodes = []
@@ -1166,7 +1172,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
     @patch("api.music.service.connection_manager.mafic.NodePool")
     async def test_mark_node_unavailable_closes_node_not_in_pool(
         self, mock_pool_class: Any
-    ):
+    ) -> None:
         node = MagicMock(label="missing")
         node.close = AsyncMock()
         mock_pool_instance = MagicMock()

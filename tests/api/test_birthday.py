@@ -52,7 +52,7 @@ class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
         member = object()
 
         class FakeHTTPException(Exception):
-            def __init__(self, status: int):
+            def __init__(self, status: int) -> None:
                 super().__init__()
                 self.status = status
 

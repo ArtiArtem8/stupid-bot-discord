@@ -648,7 +648,7 @@ class MusicCog(BaseCog):
         )
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     """Setup.
 
     Args:

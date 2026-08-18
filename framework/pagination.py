@@ -160,7 +160,7 @@ class BasePaginator(ManagedView):
         """Create embed for current page."""
         return self.data.make_embed(self.page)
 
-    async def prepare(self):
+    async def prepare(self) -> None:
         """Prepare the paginator for use.
 
         This method fetches the total number of pages and updates the  buttons.

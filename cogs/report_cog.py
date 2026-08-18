@@ -46,14 +46,14 @@ class ReportCog(BaseCog):
         Set report channel using /set-report-channel (owner only)
     """
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
 
     @app_commands.command(
         name="report", description="Отправить отчет о баге или проблеме"
     )
     @app_commands.checks.cooldown(1, 60, key=get_cooldown_key)
-    async def report(self, interaction: Interaction):
+    async def report(self, interaction: Interaction) -> None:
         await interaction.response.send_modal(ReportModal())
 
     @app_commands.command(
@@ -66,7 +66,7 @@ class ReportCog(BaseCog):
     @is_owner_app()
     async def set_report_channel(
         self, interaction: Interaction, channel: discord.TextChannel
-    ):
+    ) -> None:
         await set_report_channel(channel.id)
         await FeedbackUI.send(
             interaction,
@@ -76,7 +76,7 @@ class ReportCog(BaseCog):
         )
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     """Setup.
 
     Args:

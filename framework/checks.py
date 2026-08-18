@@ -1,8 +1,10 @@
+from collections.abc import Callable
+
 from discord import Interaction, app_commands
 from discord.ext import commands
 
 
-def is_owner_app():
+def is_owner_app[T]() -> Callable[[T], T]:
     """Slash-command owner check (uses Bot.is_owner)."""
 
     async def predicate(interaction: Interaction) -> bool:
