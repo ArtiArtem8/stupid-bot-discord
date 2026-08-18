@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Collection
-from datetime import datetime
+from datetime import date, datetime
 
 import discord
 
@@ -155,18 +155,46 @@ class BirthdayManager:
     async def get_guild_config(self, guild_id: int) -> BirthdayGuildConfig | None:
         return await self.repo.get(guild_id)
 
-    async def get_or_create_guild_config(
-        self, guild_id: int, server_name: str, channel_id: int
+    async def set_user_birthday(
+        self,
+        guild_id: int,
+        server_name: str,
+        channel_id: int,
+        user_id: int,
+        user_name: str,
+        birthday: str,
     ) -> BirthdayGuildConfig:
-        existing = await self.repo.get(guild_id)
-        if existing is not None:
-            return existing
-        new_config = BirthdayGuildConfig(guild_id, server_name, channel_id)
-        await self.repo.save(new_config)
-        return new_config
+        return await self.repo.set_user_birthday(
+            guild_id,
+            server_name,
+            channel_id,
+            user_id,
+            user_name,
+            birthday,
+        )
 
-    async def save_guild_config(self, guild_config: BirthdayGuildConfig) -> None:
-        await self.repo.save(guild_config)
+    async def configure_guild(
+        self,
+        guild_id: int,
+        server_name: str,
+        channel_id: int,
+        birthday_role_id: int | None,
+    ) -> BirthdayGuildConfig:
+        return await self.repo.configure_guild(
+            guild_id, server_name, channel_id, birthday_role_id
+        )
+
+    async def clear_user_birthday(
+        self, guild_id: int, user_id: int
+    ) -> tuple[bool, bool]:
+        return await self.repo.clear_user_birthday(guild_id, user_id)
+
+    async def record_congratulation(
+        self, guild_id: int, user_id: int, congratulation_date: date
+    ) -> bool:
+        return await self.repo.record_congratulation(
+            guild_id, user_id, congratulation_date
+        )
 
     async def delete_guild_config(self, guild_id: int) -> bool:
         existing = await self.repo.get(guild_id)

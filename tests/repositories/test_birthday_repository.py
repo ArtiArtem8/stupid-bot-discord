@@ -4,6 +4,7 @@ Covers guild config persistence, sorting helpers, and invalid data handling.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import unittest
 from datetime import date
@@ -278,3 +279,35 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
         # Only guild "1" is valid
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].guild_id, 1)
+
+    async def test_concurrent_user_updates_preserve_both_birthdays(self) -> None:
+        await asyncio.gather(
+            self.repo.set_user_birthday(123, "Guild", 456, 1, "One", "01-01-2000"),
+            self.repo.set_user_birthday(123, "Guild", 456, 2, "Two", "02-02-2000"),
+        )
+
+        loaded = await self.repo.get(123)
+
+        self.assertIsNotNone(loaded)
+        if loaded is None:
+            self.fail("expected saved birthday guild config")
+        self.assertEqual(set(loaded.users), {1, 2})
+
+    async def test_semantic_update_rejects_invalid_existing_guild(self) -> None:
+        store = InMemoryJsonStore({"123": {}})
+        repo = BirthdayRepository(store)
+
+        with self.assertRaises(ValueError):
+            await repo.set_user_birthday(123, "Guild", 456, 1, "One", "01-01-2000")
+
+        self.assertEqual(store.data, {"123": {}})
+
+    async def test_clear_missing_birthday_is_noop(self) -> None:
+        await self.repo.save(BirthdayGuildConfig(123, "Guild", 456))
+        calls_before = self.store.update_calls
+
+        guild_exists, cleared = await self.repo.clear_user_birthday(123, 1)
+
+        self.assertTrue(guild_exists)
+        self.assertFalse(cleared)
+        self.assertEqual(self.store.update_calls, calls_before + 1)

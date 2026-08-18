@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from datetime import date
 from typing import cast, override
 
 import config
@@ -79,6 +81,127 @@ class BirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
             data.pop(str(key), None)
 
         await self._store.update(_updater)
+
+    async def _update_guild(
+        self,
+        guild_id: int,
+        mutation: Callable[[BirthdayGuildConfig | None], BirthdayGuildConfig | None],
+    ) -> BirthdayGuildConfig | None:
+        """Apply one guild mutation to the latest stored aggregate."""
+        result: BirthdayGuildConfig | None = None
+        guild_key = str(guild_id)
+
+        def _updater(data: JsonObject) -> None:
+            nonlocal result
+            raw = data.get(guild_key)
+            current = None if raw is None else _decode_guild_config(guild_id, raw)
+            if raw is not None and current is None:
+                raise ValueError(f"Invalid birthday config for guild {guild_id}")
+
+            result = mutation(current)
+            if result is None:
+                data.pop(guild_key, None)
+                return
+            data[guild_key] = cast(JsonValue, cast(object, result.to_dict()))
+
+        await self._store.update(_updater)
+        return result
+
+    async def set_user_birthday(
+        self,
+        guild_id: int,
+        server_name: str,
+        channel_id: int,
+        user_id: int,
+        user_name: str,
+        birthday: str,
+    ) -> BirthdayGuildConfig:
+        """Set one user's birthday without replacing concurrent guild changes."""
+
+        def _mutation(
+            current: BirthdayGuildConfig | None,
+        ) -> BirthdayGuildConfig:
+            guild_config = current or BirthdayGuildConfig(
+                guild_id, server_name, channel_id
+            )
+            user = guild_config.get_or_create_user(user_id, user_name)
+            user.birthday = birthday
+            return guild_config
+
+        result = await self._update_guild(guild_id, _mutation)
+        if result is None:
+            raise RuntimeError("Birthday mutation unexpectedly deleted guild config")
+        return result
+
+    async def configure_guild(
+        self,
+        guild_id: int,
+        server_name: str,
+        channel_id: int,
+        birthday_role_id: int | None,
+    ) -> BirthdayGuildConfig:
+        """Update birthday delivery settings on the latest guild config."""
+
+        def _mutation(
+            current: BirthdayGuildConfig | None,
+        ) -> BirthdayGuildConfig:
+            guild_config = current or BirthdayGuildConfig(
+                guild_id, server_name, channel_id
+            )
+            guild_config.channel_id = channel_id
+            guild_config.birthday_role_id = birthday_role_id
+            return guild_config
+
+        result = await self._update_guild(guild_id, _mutation)
+        if result is None:
+            raise RuntimeError("Birthday mutation unexpectedly deleted guild config")
+        return result
+
+    async def clear_user_birthday(
+        self, guild_id: int, user_id: int
+    ) -> tuple[bool, bool]:
+        """Clear one birthday and return (guild exists, birthday was present)."""
+        guild_exists = False
+        cleared = False
+
+        def _mutation(
+            current: BirthdayGuildConfig | None,
+        ) -> BirthdayGuildConfig | None:
+            nonlocal guild_exists, cleared
+            if current is None:
+                return None
+            guild_exists = True
+            user = current.get_user(user_id)
+            if user is None or not user.has_birthday():
+                return current
+            user.clear_birthday()
+            cleared = True
+            return current
+
+        await self._update_guild(guild_id, _mutation)
+        return guild_exists, cleared
+
+    async def record_congratulation(
+        self, guild_id: int, user_id: int, congratulation_date: date
+    ) -> bool:
+        """Record a sent congratulation without replacing concurrent changes."""
+        recorded = False
+
+        def _mutation(
+            current: BirthdayGuildConfig | None,
+        ) -> BirthdayGuildConfig | None:
+            nonlocal recorded
+            if current is None:
+                return None
+            user = current.get_user(user_id)
+            if user is None or user.was_congratulated_today(congratulation_date):
+                return current
+            user.add_congratulation(congratulation_date)
+            recorded = True
+            return current
+
+        await self._update_guild(guild_id, _mutation)
+        return recorded
 
     async def get_all_guild_ids(self) -> list[int]:
         """Get list of all guild IDs in the store."""

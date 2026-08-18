@@ -104,8 +104,23 @@ class ConfirmDeleteView(discord.ui.View):
             )
             return
 
-        config = await birthday_manager.get_guild_config(self.guild_id)
-        if not config:
+        try:
+            guild_exists, cleared = await birthday_manager.clear_user_birthday(
+                self.guild_id, self.user_id
+            )
+        except Exception as exc:
+            logging.getLogger("BirthdayCog").error(
+                "Error saving birthday file after deletion: %s", exc
+            )
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.ERROR,
+                title="Ошибка",
+                description="Произошла ошибка при удалении дня рождения",
+                ephemeral=True,
+            )
+            return
+        if not guild_exists:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
@@ -113,8 +128,7 @@ class ConfirmDeleteView(discord.ui.View):
                 ephemeral=True,
             )
             return
-        user = config.get_user(self.user_id)
-        if not user or not user.has_birthday():
+        if not cleared:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -122,26 +136,12 @@ class ConfirmDeleteView(discord.ui.View):
                 ephemeral=True,
             )
             return
-
-        user.clear_birthday()
-        try:
-            await birthday_manager.save_guild_config(config)
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.SUCCESS,
-                description="Ваш день рождения удалён",
-                ephemeral=True,
-            )
-        except Exception as e:
-            logging.getLogger("BirthdayCog").error(
-                "Error saving birthday file after deletion: %s", e
-            )
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.ERROR,
-                title="Ошибка",
-                description="Произошла ошибка при удалении дня рождения",
-            )
+        await FeedbackUI.send(
+            interaction,
+            feedback_type=FeedbackType.SUCCESS,
+            description="Ваш день рождения удалён",
+            ephemeral=True,
+        )
 
     @discord.ui.button(label="Нет", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: Interaction, _: Button[Self]) -> None:
@@ -223,7 +223,7 @@ class BirthdayCog(BaseCog):
         birthday_users = config.get_birthdays_today(today)
         await self._cleanup_roles(guild, config, today, role)
         for user in birthday_users:
-            await self._handle_birthday(guild, channel, role, user, today, config)
+            await self._handle_birthday(guild, channel, role, user, today)
 
     async def _cleanup_roles(
         self,
@@ -259,7 +259,6 @@ class BirthdayCog(BaseCog):
         role: discord.Role | None,
         user: BirthdayUser,
         today: date,
-        guild_config: BirthdayGuildConfig,
     ) -> None:
         """Handle birthday congratulations and role assignment.
 
@@ -269,7 +268,6 @@ class BirthdayCog(BaseCog):
             role: Optional birthday role
             user: User with birthday
             today: Current date
-            guild_config: Guild configuration
 
         """
         member = await safe_fetch_member(guild, user.user_id)
@@ -290,8 +288,7 @@ class BirthdayCog(BaseCog):
 
             await channel.send(embed=embed)
 
-            user.add_congratulation(today)
-            await birthday_manager.save_guild_config(guild_config)
+            await birthday_manager.record_congratulation(guild.id, user.user_id, today)
 
         except Exception as e:
             logger.error(f"Error handling birthday for {user.user_id}: {e}")
@@ -326,18 +323,15 @@ class BirthdayCog(BaseCog):
                 ephemeral=True,
             )
         guild = await self._require_guild(interaction)
-        config = await birthday_manager.get_or_create_guild_config(
-            guild_id=guild.id,
-            server_name=guild.name,
-            channel_id=interaction.channel_id or 0,
-        )
-        user = config.get_or_create_user(
-            user_id=interaction.user.id,
-            name=interaction.user.name,
-        )
-        user.birthday = normalized_date
         try:
-            await birthday_manager.save_guild_config(config)
+            await birthday_manager.set_user_birthday(
+                guild_id=guild.id,
+                server_name=guild.name,
+                channel_id=interaction.channel_id or 0,
+                user_id=interaction.user.id,
+                user_name=interaction.user.name,
+                birthday=normalized_date,
+            )
             msg = f"Ваш день рождения записан: {normalized_date}"
             await FeedbackUI.send(
                 interaction,
@@ -374,15 +368,13 @@ class BirthdayCog(BaseCog):
         """Configure birthday system for the server."""
         guild = await self._require_guild(interaction)
 
-        config = await birthday_manager.get_or_create_guild_config(
-            guild_id=guild.id,
-            server_name=guild.name,
-            channel_id=channel.id,
-        )
-        config.channel_id = channel.id
-        config.birthday_role_id = role.id if role else None
         try:
-            await birthday_manager.save_guild_config(config)
+            await birthday_manager.configure_guild(
+                guild_id=guild.id,
+                server_name=guild.name,
+                channel_id=channel.id,
+                birthday_role_id=role.id if role else None,
+            )
             response: str = f"Настройки обновлены:\n- Канал: {channel.mention}"
             if role:
                 response += f"\n- Роль: {role.mention}"
