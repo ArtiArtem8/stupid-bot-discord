@@ -27,7 +27,7 @@ class QuestionCog(BaseCog):
             CAPABILITIES, min(len(CAPABILITIES), config.MAX_ANSWER_SAMPLE_SIZE)
         )
         self._history_store = AsyncJsonFileStore(config.ANSWER_FILE, backup_amount=2)
-        logger.info("Initialized %d /ask answer slots", len(self.answers))
+        logger.info("Initial /ask answers: %s", self.answers)
 
     @app_commands.command(
         name="ask",
@@ -35,21 +35,22 @@ class QuestionCog(BaseCog):
     )
     async def q(self, interaction: Interaction, *, text: str):
         logger.info(
-            "User %s invoked /ask with %d characters",
+            "User %s(%s) asked: %s",
+            interaction.user,
             interaction.user.id,
-            len(text),
+            text,
         )
         prev_message = await self._add_to_history(
             str(interaction.user.id), text, self.answers[0]
         )
         if prev_message:
-            logger.info("Returning prior /ask answer for user %s", interaction.user.id)
+            logger.info("User already asked: %s -> %s", text, prev_message)
             await interaction.response.send_message(prev_message)
             return
 
         self.answers.append(random_answer(text, answers=CAPABILITIES))
         reply = self.answers.pop(0)
-        logger.debug("Rotated /ask answer queue")
+        logger.info(f"{reply} -> {self.answers[:2]}...{self.answers[-2:]}")
 
         await interaction.response.send_message(reply)
 
