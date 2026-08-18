@@ -98,7 +98,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         player: MusicPlayer,
         attempt: PlaybackAttempt,
     ) -> None:
-        """Create a controller after replacing any existing guild controller."""
+        """Replace any existing guild controller with one for the current attempt."""
         async with self._locks[guild_id]:
             logger.debug("Manager: Setup controller for guild %s", guild_id)
             if player.current_attempt is not attempt:
@@ -212,7 +212,7 @@ type ButtonCallback = Callable[
 
 
 def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
-    """Handle button-callback exceptions through the view's feedback path.
+    """Handle exceptions raised by controller button callbacks.
 
     Catches mafic.PlayerNotConnected and mafic.PlayerException exceptions,
     stopping the view and calling the on_stop_callback if provided.

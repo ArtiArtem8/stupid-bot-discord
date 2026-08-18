@@ -554,7 +554,7 @@ class SessionHealer(HealerProtocol):
         )
 
     async def _hard_disconnect(self, guild_id: int, player: MusicPlayer) -> None:
-        """Disconnect through ConnectionManager so stale voice state is cleaned."""
+        """Disconnect through ConnectionManager and clean up stale voice state."""
         try:
             await self.connection.disconnect(player.guild, force=True)
         except Exception:

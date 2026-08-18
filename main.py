@@ -16,7 +16,7 @@ class Arguments(argparse.Namespace):
 
 
 async def main() -> None:
-    """Run the Discord bot and own its shutdown lifecycle."""
+    """Run the Discord bot until shutdown."""
     parser = argparse.ArgumentParser(description="Run the Discord bot.")
     parser.add_argument(
         "-w",

@@ -62,11 +62,12 @@ class CharacterLimitExceededError(SafeEmbedError):
 
 
 class SafeEmbed(discord.Embed):
-    """Discord embed that truncates text and enforces aggregate limits.
+    """Discord embed that applies configured text and field limits.
 
-    Title and description overflow is truncated at construction. Field helpers
-    either raise a limit-specific error or, with ``strict=False``, retain the
-    valid portion and return the same embed for chaining.
+    Construction and setter overrides truncate supported text fields. Field
+    helpers truncate per-field content and check field-count and aggregate
+    budgets. Exhausted budgets raise a limit-specific error in strict mode; in
+    non-strict mode, a field is omitted or its value is truncated.
     """
 
     def __init__(
