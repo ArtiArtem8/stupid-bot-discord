@@ -186,7 +186,6 @@ class BirthdayCog(BaseCog):
     async def birthday_timer(self):
         """Main timer loop for birthday checks."""
         today = date.today()
-        # birthday_manager.get_all_guild_ids is now async
         guild_ids = await birthday_manager.get_all_guild_ids()
         for guild_id in guild_ids:
             await self._process_guild(guild_id, today)
