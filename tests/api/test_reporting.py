@@ -136,7 +136,10 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(events, ["persist", "respond", "edit", "notify"])
         response_send.assert_awaited_once()
-        self.assertTrue(response_send.await_args.kwargs["ephemeral"])
+        response_call = response_send.await_args
+        if response_call is None:
+            self.fail("expected the modal response to be sent")
+        self.assertTrue(response_call.kwargs["ephemeral"])
 
     def test_build_report_data_basic(self) -> None:
         interaction = cast(

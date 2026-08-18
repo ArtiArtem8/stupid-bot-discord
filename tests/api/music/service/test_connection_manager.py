@@ -605,7 +605,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             patch.object(self.manager, "invalidate_player", invalidate_player),
             patch.object(self.manager, "mark_node_unavailable", mark_node_unavailable),
         ):
-            result = await self.manager._reuse_or_move_player(player, new_channel)
+            result = await self.manager._reuse_or_move_player(
+                _as_music_player(player), new_channel
+            )
 
         self.assertEqual(
             result,
@@ -636,7 +638,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
                 invalidate_player,
             ),
         ):
-            result = await self.manager._reuse_or_move_player(player, new_channel)
+            result = await self.manager._reuse_or_move_player(
+                _as_music_player(player), new_channel
+            )
 
         self.assertEqual(
             result,

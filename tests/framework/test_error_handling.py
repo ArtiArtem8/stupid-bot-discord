@@ -26,7 +26,10 @@ class TestCommandTreeErrors(unittest.IsolatedAsyncioTestCase):
             )
 
         send.assert_awaited_once()
-        kwargs = send.await_args.kwargs
+        send_call = send.await_args
+        if send_call is None:
+            self.fail("expected feedback to be sent")
+        kwargs = send_call.kwargs
         self.assertIs(kwargs["feedback_type"], FeedbackType.WARNING)
         self.assertTrue(kwargs["ephemeral"])
         self.assertNotIn("private check detail", str(kwargs))
@@ -43,7 +46,10 @@ class TestCommandTreeErrors(unittest.IsolatedAsyncioTestCase):
         ):
             await CustomErrorCommandTree.on_error(tree, interaction, error)
 
-        kwargs = send.await_args.kwargs
+        send_call = send.await_args
+        if send_call is None:
+            self.fail("expected feedback to be sent")
+        kwargs = send_call.kwargs
         self.assertEqual(kwargs["title"], "Внутренняя ошибка")
         self.assertTrue(kwargs["ephemeral"])
         self.assertEqual(kwargs["error_info"], "AppCommandError")
@@ -66,6 +72,9 @@ class TestHandleErrors(unittest.IsolatedAsyncioTestCase):
         ):
             await TestCog().command(interaction)
 
-        kwargs = send.await_args.kwargs
+        send_call = send.await_args
+        if send_call is None:
+            self.fail("expected feedback to be sent")
+        kwargs = send_call.kwargs
         self.assertEqual(kwargs["error_info"], "RuntimeError")
         self.assertNotIn("private exception detail", str(kwargs))
