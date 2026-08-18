@@ -465,7 +465,7 @@ class SessionHealer(HealerProtocol):
 
     @override
     async def capture_and_heal(self, guild_id: int) -> bool:
-        """Main entry point to attempt a session recovery."""
+        """Attempt to recover one guild's interrupted session."""
         async with self._locks[guild_id]:
             logger.info("Attempting to heal session for guild %s", guild_id)
 
@@ -520,7 +520,7 @@ class SessionHealer(HealerProtocol):
             player.clear_queue()
 
     async def _create_snapshot(self, player: MusicPlayer) -> PlayerStateSnapshot:
-        """Extracts deep state from the player."""
+        """Extract the player state required to restore its session."""
         voice_channel_id = _get_voice_channel_id(player.channel)
         if not voice_channel_id and (vc_client := player.guild.voice_client):
             voice_channel_id = _get_voice_channel_id(vc_client.channel)
@@ -554,7 +554,7 @@ class SessionHealer(HealerProtocol):
         )
 
     async def _hard_disconnect(self, guild_id: int, player: MusicPlayer) -> None:
-        """Forcefully disconnect via ConnectionManager stale voice state is cleaned."""
+        """Disconnect through ConnectionManager so stale voice state is cleaned."""
         try:
             await self.connection.disconnect(player.guild, force=True)
         except Exception:

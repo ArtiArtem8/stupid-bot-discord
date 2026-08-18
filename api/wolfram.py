@@ -301,7 +301,7 @@ class WolframClient:
             raise WolframAPIError("Plot download failed") from error
 
     def _parse_xml(self, xml_content: str) -> WolframResult:
-        """Parses raw XML into structured dataclasses."""
+        """Parse raw XML into structured dataclasses."""
         try:
             root = ET.fromstring(xml_content, forbid_dtd=True)
         except (ET.ParseError, DefusedXmlException):

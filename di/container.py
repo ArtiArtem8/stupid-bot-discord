@@ -385,7 +385,7 @@ class Container:
         interface: type[T] | None = None,
         lifecycle: Lifecycle = Lifecycle.SINGLETON,
     ) -> Callable[[type[T]], type[T]]:
-        """Decorator that registers a class immediately."""
+        """Register a class immediately when the decorator is applied."""
 
         def decorator(cls: type[T]) -> type[T]:
             register_interface = interface or cls

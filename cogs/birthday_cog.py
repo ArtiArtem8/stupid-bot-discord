@@ -173,7 +173,7 @@ class BirthdayCog(BaseCog):
 
     @tasks.loop(seconds=config.BIRTHDAY_CHECK_INTERVAL)
     async def birthday_timer(self) -> None:
-        """Main timer loop for birthday checks."""
+        """Check registered birthdays and deliver due congratulations."""
         today = date.today()
         guild_ids = await birthday_manager.get_all_guild_ids()
         for guild_id in guild_ids:

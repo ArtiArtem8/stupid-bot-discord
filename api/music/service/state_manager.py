@@ -34,7 +34,7 @@ class StateManager:
         return self.sessions.setdefault(guild_id, MusicSession(guild_id=guild_id))
 
     def end_session(self, guild_id: int) -> MusicSession | None:
-        """Removes and returns the session for a guild."""
+        """Remove and return the session for a guild."""
         session = self.sessions.pop(guild_id, None)
         self.clear_track_start_times(guild_id)
         return session

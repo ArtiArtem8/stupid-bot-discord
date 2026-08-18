@@ -72,7 +72,7 @@ class UptimeManager:
             )
 
     async def save_state(self) -> float:
-        """Saves the current uptime state to file."""
+        """Save the current uptime state and return its duration in seconds."""
         current_uptime = time.time() - self.start_time
         state = UptimeData(last_shutdown=time.time(), accumulated_uptime=current_uptime)
         if not self._persistence_available:

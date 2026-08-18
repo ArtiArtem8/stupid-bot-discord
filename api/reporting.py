@@ -43,7 +43,7 @@ class ReportDataDict(TypedDict):
 
 
 def _build_report_data(interaction: Interaction, reason: str) -> ReportDataDict:
-    """Constructs the report dictionary."""
+    """Construct the stored report data."""
     create_date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
 
     channel_name = "Unknown"
@@ -76,7 +76,7 @@ def _build_report_data(interaction: Interaction, reason: str) -> ReportDataDict:
 
 
 def _create_report_embed(report: ReportDataDict) -> discord.Embed:
-    """Formats the report for Discord."""
+    """Format a stored report for Discord."""
     embed = SafeEmbed(
         title="Отчёт",
         color=config.Color.INFO,

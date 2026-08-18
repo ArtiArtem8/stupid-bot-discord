@@ -75,7 +75,6 @@ class SafeEmbed(discord.Embed):
         limits: EmbedLimits = DEFAULT_LIMITS,
         **kwargs: Unpack[EmbedKwargs],
     ) -> None:
-        """An embed that enforces Discord's limits on various fields."""
         super().__init__(**kwargs)
         self._limits = limits
 

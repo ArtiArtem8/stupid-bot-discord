@@ -619,7 +619,7 @@ def format_duration_ru(
     use_tilde: bool = False,
     config: DurationUXConfig | None = None,
 ) -> str:
-    """Convenience wrapper: calculate and format in one call.
+    """Calculate and format a Russian duration in one call.
 
     Args:
         total_seconds: Duration in seconds. Can be negative.

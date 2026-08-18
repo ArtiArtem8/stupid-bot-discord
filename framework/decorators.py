@@ -23,7 +23,7 @@ type CommandCallback[CogT, T, **P] = Callable[
 def handle_errors[CogT, T, **P]() -> Callable[
     [CommandCallback[CogT, T, P]], CommandCallback[CogT, T | None, P]
 ]:
-    """Decorator to add error handling to asynchronous functions.
+    """Add Discord feedback handling to an asynchronous command callback.
 
     This decorator wraps the provided function to catch and handle
     exceptions that may occur during its execution, specifically
@@ -48,7 +48,7 @@ def handle_errors[CogT, T, **P]() -> Callable[
             *args: P.args,
             **kwargs: P.kwargs,
         ) -> T | None:
-            """Wrapper that adds error handling."""
+            """Run the callback and convert failures into Discord feedback."""
             try:
                 return await func(self, interaction, *args, **kwargs)
             except discord.DiscordException as e:

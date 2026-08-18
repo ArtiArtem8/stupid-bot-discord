@@ -98,7 +98,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         player: MusicPlayer,
         attempt: PlaybackAttempt,
     ) -> None:
-        """Creates a new controller, replacing any existing one safely."""
+        """Create a controller after replacing any existing guild controller."""
         async with self._locks[guild_id]:
             logger.debug("Manager: Setup controller for guild %s", guild_id)
             if player.current_attempt is not attempt:
@@ -182,7 +182,7 @@ class TrackControllerManager(ControllerManagerProtocol):
     async def _cleanup_existing(
         self, guild_id: int, reason: ControllerDestroyReason
     ) -> None:
-        """Internal helper to clean up resources. Assumes lock is held."""
+        """Clean up controller resources while the guild lock is held."""
         logger.debug(
             "Manager: Destroying controller for guild %s (reason=%s)",
             guild_id,
@@ -212,7 +212,7 @@ type ButtonCallback = Callable[
 
 
 def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
-    """Decorator to handle exceptions in button callbacks.
+    """Handle button-callback exceptions through the view's feedback path.
 
     Catches mafic.PlayerNotConnected and mafic.PlayerException exceptions,
     stopping the view and calling the on_stop_callback if provided.
@@ -278,7 +278,7 @@ class TrackControllerView(ui.View):
 
     @override
     def stop(self) -> None:
-        """Stops the updater loop and interaction."""
+        """Stop the updater loop and interaction."""
         logger.debug("Stopping %s", self.__class__.__name__)
         self._running = False
         if self._task and self._task is not asyncio.current_task():
@@ -468,7 +468,7 @@ class TrackControllerView(ui.View):
                 break
 
     async def _safe_update(self, force: bool = False) -> None:
-        """Updates the message with rate limiting."""
+        """Update the message without exceeding the local rate limit."""
         if not self.message:
             logger.debug("View: Message not found. Stopping.")
             self.stop()
