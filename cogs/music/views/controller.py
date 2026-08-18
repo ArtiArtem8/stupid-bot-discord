@@ -109,7 +109,7 @@ class TrackControllerManager(ControllerManagerProtocol):
     ):
         """Creates a new controller, replacing any existing one safely."""
         async with self._locks[guild_id]:
-            logger.debug(f"Manager: Setup controller for guild {guild_id}")
+            logger.debug("Manager: Setup controller for guild %s", guild_id)
             if player.current_attempt is not attempt:
                 logger.debug("Manager: Aborting stale controller creation")
                 return
@@ -147,8 +147,8 @@ class TrackControllerManager(ControllerManagerProtocol):
                     "Manager: Controller active for attempt %s", attempt.attempt_id
                 )
 
-            except Exception as e:
-                logger.exception(f"Failed to send controller: {e}")
+            except Exception:
+                logger.exception("Failed to send controller")
                 view.stop()
 
     @override
@@ -391,8 +391,8 @@ class TrackControllerView(ui.View):
         except asyncio.CancelledError:
             logger.debug("View Loop Cancelled")
             raise
-        except Exception as e:
-            logger.exception("View Loop Error: %s", e)
+        except Exception:
+            logger.exception("View loop failed")
 
     async def _request_stop(self, reason: ControllerDestroyReason) -> None:
         self.stop()

@@ -177,6 +177,7 @@ class CoreMusicService:
         except EXPECTED_PLAY_ERRORS as exc:
             return await self._handle_play_expected_failure(player, query, exc)
         except Exception as exc:
+            logger.exception("Error in play")
             return self._handle_play_unexpected_failure(exc)
 
     def _connection_failure_result(
@@ -352,7 +353,6 @@ class CoreMusicService:
     def _handle_play_unexpected_failure(
         self, exc: Exception
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        logger.exception("Error in play")
         safe_error = classify_music_exception(exc)
         return MusicResult(MusicResultStatus.ERROR, safe_error.message)
 

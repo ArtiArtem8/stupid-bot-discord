@@ -65,14 +65,14 @@ async def safe_fetch_member(
             return await guild.fetch_member(user_id)
         except (discord.NotFound, discord.Forbidden):
             return None
-        except discord.HTTPException as e:
-            if e.status >= 500 and attempt == 1:
-                logger.debug("Server error fetching member %s: %s", user_id, e)
+        except discord.HTTPException as exc:
+            if exc.status >= 500 and attempt == 1:
+                logger.debug("Server error fetching member %s: %s", user_id, exc)
                 await asyncio.sleep(2)
                 continue
-            logger.exception("Error fetching member %s: %s", user_id, e)
-            if e.status in (400, 403, 404):
+            if exc.status in (400, 403, 404):
                 return None
+            logger.exception("Error fetching member %s", user_id)
             raise
 
 

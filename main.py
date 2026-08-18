@@ -51,7 +51,7 @@ async def main() -> None:
         raise
     finally:
         uptime = await bot.save_state()
-        logger.info(f"Bot stopped. Final saved uptime: {uptime:.0f}s")
+        logger.info("Bot stopped. Final saved uptime: %.0fs", uptime)
 
 
 if __name__ == "__main__":

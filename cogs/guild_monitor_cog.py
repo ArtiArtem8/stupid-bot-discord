@@ -313,10 +313,8 @@ class ServerMonitorCog(BaseCog):
                     logger.info(
                         "Cleaned up %d expired snapshots in guild %d", removed, guild.id
                     )
-            except Exception as e:
-                logger.error(
-                    "Error cleaning up guild %d: %s", guild.id, e, exc_info=True
-                )
+            except Exception:
+                logger.exception("Error cleaning up guild %d", guild.id)
 
 
 async def setup(bot: commands.Bot) -> None:

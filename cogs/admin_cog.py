@@ -192,8 +192,10 @@ class AdminCog(BaseCog):
 
         if not user_entry or not user_entry.block_history:
             logger.info(
-                f"No block history found for user {user.id} "
-                + f"in guild {guild.name} ({guild.id})"
+                "No block history found for user %s in guild %s (%s)",
+                user.id,
+                guild.name,
+                guild.id,
             )
             await FeedbackUI.send(
                 interaction,
@@ -204,8 +206,10 @@ class AdminCog(BaseCog):
             return
 
         logger.info(
-            f"Displaying block history for user {user.id} "
-            + f"in guild {guild.name} ({guild.id})"
+            "Displaying block history for user %s in guild %s (%s)",
+            user.id,
+            guild.name,
+            guild.id,
         )
         embed = SafeEmbed(
             title="Полная история блокировок",
@@ -312,7 +316,7 @@ class AdminCog(BaseCog):
 
         await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
-        logger.info(f"Displayed blockinfo for user {user.id} in guild {guild.id}")
+        logger.info("Displayed blockinfo for user %s in guild %s", user.id, guild.id)
 
     @app_commands.command(
         name="list-blocked", description="Показать всех заблокированных пользователей"
@@ -335,7 +339,7 @@ class AdminCog(BaseCog):
         blocked_users = [u for u in all_users if u.is_blocked]
 
         if not blocked_users:
-            logger.info(f"No blocked users found in guild {guild.id}")
+            logger.info("No blocked users found in guild %s", guild.id)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
@@ -343,7 +347,7 @@ class AdminCog(BaseCog):
                 ephemeral=ephemeral,
             )
             return
-        logger.info(f"Found {len(blocked_users)} blocked users in guild {guild.id} ")
+        logger.info("Found %s blocked users in guild %s", len(blocked_users), guild.id)
         embed = SafeEmbed(
             title=f"Заблокированные пользователи ({len(blocked_users)})",
             color=config.Color.INFO,

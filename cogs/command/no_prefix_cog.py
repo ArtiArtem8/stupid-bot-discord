@@ -165,8 +165,8 @@ class PrefixBlockerCog(commands.Cog):
                 delete_after=delete_after,
                 silent=True,
             )
-        except Exception as e:
-            self.logger.error("Failed to send prefix warning: %s", e)
+        except Exception:
+            self.logger.exception("Failed to send prefix warning")
 
 
 async def setup(bot: commands.Bot):

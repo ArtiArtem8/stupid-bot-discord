@@ -108,9 +108,9 @@ class ConfirmDeleteView(discord.ui.View):
             guild_exists, cleared = await birthday_manager.clear_user_birthday(
                 self.guild_id, self.user_id
             )
-        except Exception as exc:
-            logging.getLogger("BirthdayCog").error(
-                "Error saving birthday file after deletion: %s", exc
+        except Exception:
+            logger.exception(
+                "Failed to save birthday removal for user %s", self.user_id
             )
             await FeedbackUI.send(
                 interaction,
@@ -289,8 +289,8 @@ class BirthdayCog(BaseCog):
 
             await birthday_manager.record_congratulation(guild.id, user.user_id, today)
 
-        except Exception as e:
-            logger.error(f"Error handling birthday for {user.user_id}: {e}")
+        except Exception:
+            logger.exception("Failed to handle birthday for user %s", user.user_id)
 
     @app_commands.command(
         name="setbirthday",
@@ -338,8 +338,8 @@ class BirthdayCog(BaseCog):
                 description=msg,
                 ephemeral=True,
             )
-        except Exception as e:
-            logger.error("Error saving birthday: %s", e)
+        except Exception:
+            logger.exception("Failed to save birthday for user %s", interaction.user.id)
 
             await FeedbackUI.send(
                 interaction,
@@ -383,8 +383,10 @@ class BirthdayCog(BaseCog):
                 description=response,
                 ephemeral=True,
             )
-        except Exception as e:
-            logger.error("Error saving configuration: %s", e)
+        except Exception:
+            logger.exception(
+                "Failed to save birthday configuration for guild %s", guild.id
+            )
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,

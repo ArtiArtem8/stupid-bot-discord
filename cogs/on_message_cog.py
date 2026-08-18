@@ -39,8 +39,8 @@ class OnMessageCog(commands.Cog):
             return
         try:
             await self.quest_process_message(message)
-        except Exception as e:
-            logger.error("Failed to process message %s: %s", message.content, e)
+        except Exception:
+            logger.exception("Failed to process message %s", message.id)
 
     def _format_change(self, attr: str, before: object, after: object) -> str:
         """Smart diff formatting by type."""
@@ -170,9 +170,9 @@ class OnMessageCog(commands.Cog):
         if not data:
             return
         if log_data := summary_factory(data):
-            logger.info(f"{label}: %s", log_data)
+            logger.info("%s: %s", label, log_data)
         if logger.isEnabledFor(logging.DEBUG) and (log_data := debug_factory(data)):
-            logger.debug(f"Full {label.lower()}: %s", log_data)
+            logger.debug("Full %s: %s", label.lower(), log_data)
 
     def _log_message(self, message: Message, *, is_edit: bool = False) -> None:
         """Log message with structured INFO summaries and lazy DEBUG details."""

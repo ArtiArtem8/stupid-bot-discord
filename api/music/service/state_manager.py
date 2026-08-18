@@ -122,6 +122,6 @@ class StateManager:
         expired_guild_ids = [guild_id for guild_id, _ in expired_timers]
 
         for guild_id, reason in expired_timers:
-            logger.info(f"Auto-leave timer expired for guild {guild_id} ({reason})")
+            logger.info("Auto-leave timer expired for guild %s (%s)", guild_id, reason)
 
         return expired_guild_ids

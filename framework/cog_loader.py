@@ -57,6 +57,6 @@ class CogLoader:
                     await self.bot.reload_extension(ext)
                     logger.info("Reloaded %s", ext)
                 except Exception:
-                    logger.exception(f"Failed to reload {ext}")
+                    logger.exception("Failed to reload %s", ext)
             last_check = time.time()
             await asyncio.sleep(1)
