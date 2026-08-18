@@ -4,6 +4,7 @@ Provides a `/ask` command that gives random answers to user questions,
 with answer history tracking to prevent duplicate questions.
 """
 
+import asyncio
 import logging
 import secrets
 
@@ -26,6 +27,7 @@ class QuestionCog(BaseCog):
         self.answers = secrets.SystemRandom().sample(
             CAPABILITIES, min(len(CAPABILITIES), config.MAX_ANSWER_SAMPLE_SIZE)
         )
+        self._answer_lock = asyncio.Lock()
         self._history_store = AsyncJsonFileStore(config.ANSWER_FILE, backup_amount=2)
         logger.info("Initial /ask answers: %s", self.answers)
 
@@ -40,17 +42,31 @@ class QuestionCog(BaseCog):
             interaction.user.id,
             text,
         )
-        prev_message = await self._add_to_history(
-            str(interaction.user.id), text, self.answers[0]
-        )
-        if prev_message:
-            logger.info("User already asked: %s -> %s", text, prev_message)
-            await interaction.response.send_message(prev_message)
-            return
+        queue_preview: tuple[list[str], list[str]] | None = None
 
-        self.answers.append(random_answer(text, answers=CAPABILITIES))
-        reply = self.answers.pop(0)
-        logger.info(f"{reply} -> {self.answers[:2]}...{self.answers[-2:]}")
+        async with self._answer_lock:
+            prev_message = await self._add_to_history(
+                str(interaction.user.id),
+                text,
+                self.answers[0],
+            )
+
+            if prev_message is not None:
+                reply = prev_message
+            else:
+                self.answers.append(random_answer(text, answers=CAPABILITIES))
+                reply = self.answers.pop(0)
+                queue_preview = (self.answers[:2], self.answers[-2:])
+
+        if prev_message is not None:
+            logger.info("User already asked: %s -> %s", text, prev_message)
+        elif queue_preview is not None:
+            logger.info(
+                "%s -> %s...%s",
+                reply,
+                queue_preview[0],
+                queue_preview[1],
+            )
 
         await interaction.response.send_message(reply)
 
