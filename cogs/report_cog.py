@@ -16,10 +16,9 @@ import discord
 from discord import Interaction, app_commands
 from discord.ext import commands
 
-import config
 from api import ReportModal
+from api.reporting import set_report_channel
 from framework import BaseCog, FeedbackType, FeedbackUI, is_owner_app
-from utils import get_json, save_json
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +67,7 @@ class ReportCog(BaseCog):
     async def set_report_channel(
         self, interaction: Interaction, channel: discord.TextChannel
     ):
-        report_data = get_json(config.REPORT_FILE) or {}
-        report_data["report_channel_id"] = channel.id
-        save_json(config.REPORT_FILE, report_data)
+        await set_report_channel(channel.id)
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,

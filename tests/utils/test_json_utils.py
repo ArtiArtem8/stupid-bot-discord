@@ -44,12 +44,17 @@ class TestGetJson(unittest.TestCase):
         result = json_utils.get_json(self._path)
         self.assertIsNone(result)
 
-    def test_get_json_invalid_returns_none(self) -> None:
+    def test_get_json_invalid_raises(self) -> None:
         self._path.write_text("{not json", encoding="utf-8")
 
-        result = json_utils.get_json(self._path)
+        with self.assertRaises(json.JSONDecodeError):
+            json_utils.get_json(self._path)
 
-        self.assertIsNone(result)
+    def test_get_json_non_object_raises(self) -> None:
+        self._path.write_text("[]", encoding="utf-8")
+
+        with self.assertRaises(ValueError):
+            json_utils.get_json(self._path)
 
     def test_get_json_valid_returns_dict(self) -> None:
         payload: JsonObject = {"a": 1, "b": {"c": True}}

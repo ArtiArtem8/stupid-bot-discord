@@ -60,17 +60,17 @@ def get_json(
 ) -> JsonObject | None:
     """Reads a JSON file and returns its content as a dictionary.
 
-    If the file does not exist or the content is not a valid JSON, returns None.
+    A missing file returns ``None``. Existing unreadable, malformed, or non-object
+    files raise instead of being treated as empty state.
     """
     path = Path(filename)
     if not path.exists():
         return None
-    try:
-        with open(path, encoding=encoding) as data_file:
-            payload: object = json.load(fp=data_file)  # pyright: ignore[reportAny]
-            return payload if is_json_object(payload) else None
-    except (json.JSONDecodeError, OSError):
-        return None
+    with open(path, encoding=encoding) as data_file:
+        payload: object = json.load(fp=data_file)  # pyright: ignore[reportAny]
+    if not is_json_object(payload):
+        raise ValueError(f"Expected a JSON object in {path}")
+    return payload
 
 
 def save_json(

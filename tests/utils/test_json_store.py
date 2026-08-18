@@ -81,6 +81,32 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["key2"], 42)
         self.assertIn("nested", result)
 
+    async def test_update_does_not_overwrite_malformed_existing_file(self) -> None:
+        malformed = "{not json"
+        self.test_file.write_text(malformed, encoding="utf-8")
+        store = AsyncJsonFileStore(
+            path=self.test_file,
+            backup_dir=self.backup_dir,
+        )
+
+        with self.assertRaises(json.JSONDecodeError):
+            await store.update(lambda data: data.update({"replacement": True}))
+
+        self.assertEqual(self.test_file.read_text(encoding="utf-8"), malformed)
+
+    async def test_noop_update_does_not_write_or_rotate_backup(self) -> None:
+        initial = {"value": 1}
+        self.test_file.write_text(json.dumps(initial), encoding="utf-8")
+        store = AsyncJsonFileStore(
+            path=self.test_file,
+            backup_dir=self.backup_dir,
+        )
+
+        result = await store.update(lambda _data: None)
+
+        self.assertEqual(result, initial)
+        self.assertFalse(self.backup_dir.exists())
+
     async def test_write_creates_new_file(self) -> None:
         """Test that write creates a new file when it doesn't exist."""
         store = AsyncJsonFileStore(

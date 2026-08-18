@@ -107,8 +107,8 @@ class ConnectionManager:
         return guild is not None and guild.voice_client is player
 
     def is_player_usable(self, player: object) -> bool:
-        """Return whether a current player uses an available node in this pool."""
-        if not self.is_current_player(player):
+        """Return whether a current, connected player uses an available node."""
+        if not self.is_current_player(player) or not player.connected:
             return False
 
         node = self.get_player_node(player)
@@ -279,7 +279,10 @@ class ConnectionManager:
     async def _connect_new_player(
         self, channel: discord.VoiceChannel | discord.StageChannel
     ) -> VoiceJoinResult:
-        await channel.connect(cls=music_player_factory, timeout=8.0)
+        player = await channel.connect(cls=music_player_factory, timeout=8.0)
+        if not self.is_player_usable(player):
+            await self.invalidate_player(player)
+            return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         return VoiceCheckResult.SUCCESS, None
 
     async def _join_unlocked(
@@ -377,6 +380,9 @@ class ConnectionManager:
             await player.move_to(channel, timeout=5.0)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             logger.warning("Lavalink voice client failure: %s", type(exc).__name__)
+            await self.invalidate_player(player)
+            return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
+        if not self.is_player_usable(player):
             await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         return VoiceCheckResult.MOVED_CHANNELS, old_channel

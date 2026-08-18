@@ -21,10 +21,17 @@ from api.music.service.connection_manager import ConnectionManager
 
 
 class _FakeMusicPlayer:
-    def __init__(self, guild: MagicMock, node: object | None = None) -> None:
+    def __init__(
+        self,
+        guild: MagicMock,
+        node: object | None = None,
+        *,
+        connected: bool = True,
+    ) -> None:
         self.guild = guild
         self._node = node
         self._is_stale = False
+        self.connected = connected
 
     @property
     def is_stale(self) -> bool:
@@ -199,6 +206,22 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result)
 
+    @patch("api.music.service.connection_manager.mafic.NodePool")
+    def test_disconnected_current_player_is_not_usable(
+        self, mock_pool_class: Any
+    ) -> None:
+        guild = MagicMock(id=123)
+        node = MagicMock(available=True)
+        player = _FakeMusicPlayer(guild, node, connected=False)
+        guild.voice_client = player
+        self.bot.get_guild.return_value = guild
+        mock_pool_class.return_value.nodes = [node]
+        manager = ConnectionManager(self.bot)
+
+        result = manager.is_player_usable(player)
+
+        self.assertFalse(result)
+
     async def test_join_already_connected(self):
         guild = MagicMock()
 
@@ -234,11 +257,15 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         guild = MagicMock()
         guild.id = 123
         guild.voice_client = None
+        player = _FakeMusicPlayer(guild)
         channel = MagicMock(spec=discord.VoiceChannel)
-        channel.connect = AsyncMock()
+        channel.connect = AsyncMock(return_value=player)
         ensure_available = AsyncMock(return_value=True)
 
-        with patch.object(self.manager, "ensure_available", ensure_available):
+        with (
+            patch.object(self.manager, "ensure_available", ensure_available),
+            patch.object(self.manager, "is_player_usable", return_value=True),
+        ):
             result = await self.manager.join(guild, channel)
 
         self.assertEqual(result, (VoiceCheckResult.SUCCESS, None))
@@ -246,6 +273,30 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             cls=music_player_factory,
             timeout=8.0,
         )
+
+    @patch("api.music.service.connection_manager.mafic.NodePool")
+    async def test_join_rejects_disconnected_player_returned_by_connect(
+        self, mock_pool_class: Any
+    ) -> None:
+        guild = MagicMock(id=123, voice_client=None)
+        node = MagicMock(available=True)
+        player = _FakeMusicPlayer(guild, node, connected=False)
+        guild.voice_client = player
+        self.bot.get_guild.return_value = guild
+        mock_pool_class.return_value.nodes = [node]
+        manager = ConnectionManager(self.bot)
+        channel = MagicMock(spec=discord.VoiceChannel)
+        channel.connect = AsyncMock(return_value=player)
+        invalidate_player = AsyncMock()
+
+        with patch.object(manager, "invalidate_player", invalidate_player):
+            result = await manager.join(guild, channel)
+
+        self.assertEqual(
+            result,
+            (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
+        )
+        invalidate_player.assert_awaited_once_with(player)
 
     async def test_connect_timeout_does_not_invalidate_node(self) -> None:
         guild = MagicMock(id=123, voice_client=None)
@@ -554,7 +605,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             patch.object(self.manager, "invalidate_player", invalidate_player),
             patch.object(self.manager, "mark_node_unavailable", mark_node_unavailable),
         ):
-            result = await self.manager._reuse_or_move_player(player, new_channel)
+            result = await self.manager._reuse_or_move_player(
+                _as_music_player(player), new_channel
+            )
 
         self.assertEqual(
             result,
@@ -562,6 +615,39 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         )
         invalidate_player.assert_awaited_once_with(player)
         mark_node_unavailable.assert_not_awaited()
+
+    async def test_move_that_loses_readiness_returns_unavailable(self) -> None:
+        guild = MagicMock(id=123)
+        old_channel = MagicMock(spec=discord.VoiceChannel)
+        new_channel = MagicMock(spec=discord.VoiceChannel)
+        player = _FakeMusicPlayer(guild, MagicMock(available=True))
+        move_to = AsyncMock()
+        invalidate_player = AsyncMock()
+
+        with (
+            patch.object(player, "channel", old_channel, create=True),
+            patch.object(player, "move_to", move_to, create=True),
+            patch.object(
+                self.manager,
+                "is_player_usable",
+                side_effect=(True, False),
+            ),
+            patch.object(
+                self.manager,
+                "invalidate_player",
+                invalidate_player,
+            ),
+        ):
+            result = await self.manager._reuse_or_move_player(
+                _as_music_player(player), new_channel
+            )
+
+        self.assertEqual(
+            result,
+            (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
+        )
+        move_to.assert_awaited_once_with(new_channel, timeout=5.0)
+        invalidate_player.assert_awaited_once_with(player)
 
     async def test_disconnect_timeout_uses_only_player_scope(self) -> None:
         guild = MagicMock(id=123)

@@ -6,7 +6,7 @@ from os import PathLike
 from pathlib import Path
 
 from config import ENCODING
-from utils.json_types import JsonEncodableObject, JsonObject
+from utils.json_types import JsonEncodableObject, JsonObject, freeze_json_object
 from utils.json_utils import get_json, save_json
 
 type JsonDict = JsonObject
@@ -29,7 +29,7 @@ class AsyncJsonFileStore:
 
     async def read(self) -> JsonObject:
         data = await asyncio.to_thread(get_json, self.path, encoding=self.encoding)
-        return data or {}
+        return {} if data is None else data
 
     async def write(self, data: JsonEncodableObject) -> None:
         async with self._lock:
@@ -49,8 +49,10 @@ class AsyncJsonFileStore:
         """Lock + read + mutate + write, returning the final data."""
         async with self._lock:
             data = await self.read()
+            original = freeze_json_object(data)
             result = updater(data)
             if inspect.isawaitable(result):
                 await result
-            await self._write_unlocked(data)
+            if data != original:
+                await self._write_unlocked(data)
             return data
