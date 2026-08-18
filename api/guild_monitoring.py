@@ -69,20 +69,29 @@ def _decode_guild_data(data: JsonObject) -> GuildData:
     return GuildData(enabled, ttl_days, members)
 
 
+def _decode_role_ids(raw: object) -> list[int] | None:
+    if not isinstance(raw, list):
+        return None
+
+    role_ids: list[int] = []
+    for role_id in cast(list[object], raw):
+        if isinstance(role_id, bool) or not isinstance(role_id, int):
+            return None
+        role_ids.append(role_id)
+
+    return role_ids
+
+
 def _decode_snapshot(user_key: str, raw: object) -> MemberSnapshot | None:
     if not user_key.isdigit() or not is_json_object(raw):
         return None
 
-    roles = raw.get("roles")
+    role_ids = _decode_role_ids(raw.get("roles"))
+    if role_ids is None:
+        return None
+
     username = raw.get("username")
     left_at_raw = raw.get("left_at")
-    if not isinstance(roles, list):
-        return None
-    role_ids: list[int] = []
-    for role_id in roles:
-        if isinstance(role_id, bool) or not isinstance(role_id, int):
-            return None
-        role_ids.append(role_id)
     if not isinstance(username, str) or not isinstance(left_at_raw, str):
         return None
 
@@ -90,9 +99,16 @@ def _decode_snapshot(user_key: str, raw: object) -> MemberSnapshot | None:
         left_at = datetime.fromisoformat(left_at_raw)
     except ValueError:
         return None
+
     if left_at.tzinfo is None:
         return None
-    return MemberSnapshot(int(user_key), username, role_ids, left_at)
+
+    return MemberSnapshot(
+        user_id=int(user_key),
+        username=username,
+        roles=role_ids,
+        left_at=left_at,
+    )
 
 
 def _write_guild_data(data: JsonObject, guild_data: GuildData) -> None:
