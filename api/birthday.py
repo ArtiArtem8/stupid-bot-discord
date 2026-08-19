@@ -68,7 +68,6 @@ async def safe_fetch_member(
                 continue
             if exc.status in (400, 403, 404):
                 return None
-            logger.exception("Error fetching member %s", user_id)
             raise
     return None
 

@@ -298,6 +298,22 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
             1, ControllerDestroyReason.VOICE_DISCONNECT
         )
 
+    async def test_delayed_validation_logs_unexpected_background_failure(self) -> None:
+        player = MagicMock(connected=False, current=None)
+        self.connection.get_player.return_value = player
+        self.ui.controller.destroy_for_guild.side_effect = RuntimeError(
+            "programming failure"
+        )
+
+        with (
+            patch("api.music.service.event_handlers.asyncio.sleep", new=AsyncMock()),
+            self.assertLogs(
+                "api.music.service.event_handlers",
+                level="ERROR",
+            ),
+        ):
+            await self.handlers._validate_voice_transition_recovery(1, player)
+
     async def test_node_unavailable_marks_connection_and_cleans_music_state(
         self,
     ) -> None:

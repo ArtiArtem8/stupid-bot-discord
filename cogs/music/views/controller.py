@@ -201,8 +201,12 @@ class TrackControllerManager(ControllerManagerProtocol):
             chan_id, msg_id = message_info
             try:
                 await self._safe_delete_message(chan_id, msg_id)
-            except Exception as e:
-                logger.warning("Failed to delete message: %s", e)
+            except Exception:
+                logger.exception(
+                    "Failed to delete controller message %s in channel %s",
+                    msg_id,
+                    chan_id,
+                )
 
 
 type ButtonCallback = Callable[
@@ -490,19 +494,13 @@ class TrackControllerView(ui.View):
 
     async def _check_owner(self, interaction: Interaction) -> bool:
         if interaction.user.id != self.user_id:
-            try:
-                await FeedbackUI.send(
-                    interaction,
-                    feedback_type=FeedbackType.WARNING,
-                    description="Это не ваш контроллер.",
-                    ephemeral=True,
-                    disable_report_btn=True,
-                )
-            except discord.HTTPException:
-                logger.debug(
-                    "Controller owner denial could not be sent.",
-                    exc_info=True,
-                )
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Это не ваш контроллер.",
+                ephemeral=True,
+                disable_report_btn=True,
+            )
             return False
         return True
 

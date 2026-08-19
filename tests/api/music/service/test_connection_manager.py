@@ -353,6 +353,63 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second_result, (VoiceCheckResult.SUCCESS, None))
         self.assertEqual(max_active, 1)
 
+    async def test_join_propagates_unexpected_connect_failure(self) -> None:
+        guild = MagicMock(id=123, voice_client=None)
+        channel = MagicMock(spec=discord.VoiceChannel)
+        error = RuntimeError("programming failure")
+        channel.connect = AsyncMock(side_effect=error)
+
+        with (
+            patch.object(
+                self.manager,
+                "ensure_available",
+                new=AsyncMock(return_value=True),
+            ),
+            self.assertRaises(RuntimeError) as raised,
+        ):
+            await self.manager.join(guild, channel)
+
+        self.assertIs(raised.exception, error)
+
+    async def test_join_translates_discord_client_failure(self) -> None:
+        guild = MagicMock(id=123, voice_client=None)
+        channel = MagicMock(spec=discord.VoiceChannel)
+        channel.connect = AsyncMock(
+            side_effect=discord.ClientException("already connected")
+        )
+        detach = AsyncMock()
+
+        with (
+            patch.object(
+                self.manager,
+                "ensure_available",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(
+                self.manager,
+                "_detach_voice_client_after_failed_connect",
+                detach,
+            ),
+        ):
+            result = await self.manager.join(guild, channel)
+
+        self.assertEqual(result, (VoiceCheckResult.CONNECTION_FAILED, None))
+        detach.assert_awaited_once_with(guild)
+
+    async def test_lazy_connect_logs_unexpected_failure_at_boundary(self) -> None:
+        with (
+            patch.object(
+                self.manager,
+                "ensure_available",
+                new=AsyncMock(side_effect=RuntimeError("programming failure")),
+            ),
+            self.assertLogs(
+                "api.music.service.connection_manager",
+                level="ERROR",
+            ),
+        ):
+            await self.manager._run_lazy_connect()
+
     async def test_join_cleans_stale_player_when_node_unavailable(self) -> None:
         guild = MagicMock()
         player = _FakeMusicPlayer(guild)

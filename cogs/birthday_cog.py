@@ -177,7 +177,10 @@ class BirthdayCog(BaseCog):
         today = date.today()
         guild_ids = await birthday_manager.get_all_guild_ids()
         for guild_id in guild_ids:
-            await self._process_guild(guild_id, today)
+            try:
+                await self._process_guild(guild_id, today)
+            except Exception:
+                logger.exception("Failed to process birthdays for guild %s", guild_id)
 
     @birthday_timer.before_loop
     async def before_birthday_timer(self) -> None:
@@ -293,39 +296,29 @@ class BirthdayCog(BaseCog):
         try:
             normalized_date = parse_birthday(date_input)
         except ValueError:
-            return await FeedbackUI.send(
+            await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description="Неверный формат даты. Используйте ДД-ММ-ГГГГ / ГГГГ-ММ-ДД",
                 ephemeral=True,
             )
+            return
         guild = await self._require_guild(interaction)
-        try:
-            await birthday_manager.set_user_birthday(
-                guild_id=guild.id,
-                server_name=guild.name,
-                channel_id=interaction.channel_id or 0,
-                user_id=interaction.user.id,
-                user_name=interaction.user.name,
-                birthday=normalized_date,
-            )
-            msg = f"Ваш день рождения записан: {normalized_date}"
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.SUCCESS,
-                description=msg,
-                ephemeral=True,
-            )
-        except Exception:
-            logger.exception("Failed to save birthday for user %s", interaction.user.id)
-
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.ERROR,
-                title="Ошибка",
-                description="Произошла ошибка сохранения данных.",
-                ephemeral=True,
-            )
+        await birthday_manager.set_user_birthday(
+            guild_id=guild.id,
+            server_name=guild.name,
+            channel_id=interaction.channel_id or 0,
+            user_id=interaction.user.id,
+            user_name=interaction.user.name,
+            birthday=normalized_date,
+        )
+        msg = f"Ваш день рождения записан: {normalized_date}"
+        await FeedbackUI.send(
+            interaction,
+            feedback_type=FeedbackType.SUCCESS,
+            description=msg,
+            ephemeral=True,
+        )
 
     @app_commands.command(
         name="setup-birthdays",
@@ -344,33 +337,21 @@ class BirthdayCog(BaseCog):
     ) -> None:
         guild = await self._require_guild(interaction)
 
-        try:
-            await birthday_manager.configure_guild(
-                guild_id=guild.id,
-                server_name=guild.name,
-                channel_id=channel.id,
-                birthday_role_id=role.id if role else None,
-            )
-            response: str = f"Настройки обновлены:\n- Канал: {channel.mention}"
-            if role:
-                response += f"\n- Роль: {role.mention}"
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.SUCCESS,
-                description=response,
-                ephemeral=True,
-            )
-        except Exception:
-            logger.exception(
-                "Failed to save birthday configuration for guild %s", guild.id
-            )
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.ERROR,
-                title="Ошибка",
-                description="Произошла ошибка сохранения данных.",
-                ephemeral=True,
-            )
+        await birthday_manager.configure_guild(
+            guild_id=guild.id,
+            server_name=guild.name,
+            channel_id=channel.id,
+            birthday_role_id=role.id if role else None,
+        )
+        response: str = f"Настройки обновлены:\n- Канал: {channel.mention}"
+        if role:
+            response += f"\n- Роль: {role.mention}"
+        await FeedbackUI.send(
+            interaction,
+            feedback_type=FeedbackType.SUCCESS,
+            description=response,
+            ephemeral=True,
+        )
 
     @app_commands.command(
         name="remove-birthday", description="Удалить свой день рождения из системы"

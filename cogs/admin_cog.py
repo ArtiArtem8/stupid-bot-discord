@@ -390,25 +390,43 @@ class AdminCog(BaseCog):
     async def delete_message(
         self, interaction: discord.Interaction, message_id: str
     ) -> None:
-        try:
-            channel = interaction.channel
-            if channel is None or not isinstance(channel, discord.abc.Messageable):
-                await interaction.response.send_message(
-                    "Невозможно удалить сообщение в этом канале.", ephemeral=True
-                )
-                return
-            msg = await channel.fetch_message(int(message_id))
+        channel = interaction.channel
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Невозможно удалить сообщение в этом канале.",
+                ephemeral=True,
+            )
+            return
 
+        try:
+            msg = await channel.fetch_message(int(message_id))
             await msg.delete()
-            await interaction.response.send_message(
-                "Удалено.", ephemeral=True, delete_after=1.0
-            )
         except (discord.NotFound, ValueError):
-            await interaction.response.send_message(
-                "Сообщение не найдено.", ephemeral=True
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Сообщение не найдено.",
+                ephemeral=True,
             )
-        except Exception:
-            await interaction.response.send_message("Нет прав.", ephemeral=True)
+            return
+        except discord.Forbidden:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Нет прав.",
+                ephemeral=True,
+            )
+            return
+
+        await FeedbackUI.send(
+            interaction,
+            feedback_type=FeedbackType.SUCCESS,
+            description="Удалено.",
+            ephemeral=True,
+            delete_after=1.0,
+        )
 
 
 async def setup(bot: commands.Bot) -> None:

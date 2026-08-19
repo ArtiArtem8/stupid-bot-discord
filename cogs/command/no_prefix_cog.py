@@ -101,7 +101,7 @@ class PrefixBlockerCog(commands.Cog):
             if root is None:
                 return f"`/{key}`"
             return root.mention
-        except Exception:
+        except discord.HTTPException:
             return f"`/{key}`"
 
     @commands.Cog.listener()
@@ -166,8 +166,12 @@ class PrefixBlockerCog(commands.Cog):
                 delete_after=delete_after,
                 silent=True,
             )
-        except Exception:
-            self.logger.exception("Failed to send prefix warning")
+        except discord.HTTPException as exc:
+            self.logger.warning(
+                "Discord rejected prefix warning (HTTP %s, code %s)",
+                exc.status,
+                exc.code,
+            )
 
 
 async def setup(bot: commands.Bot) -> None:

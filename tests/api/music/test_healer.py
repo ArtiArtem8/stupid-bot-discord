@@ -64,6 +64,29 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         healer = SessionHealer(MagicMock(), connection, StateManager(), MagicMock(), ui)
         return healer, connection, ui
 
+    async def test_refresh_track_propagates_unexpected_failure(self) -> None:
+        healer, _, _ = self._make_warm_restore_healer()
+        entry = make_entry("restore")
+        player = MagicMock()
+        error = RuntimeError("programming failure")
+        player.fetch_tracks = AsyncMock(side_effect=error)
+
+        with self.assertRaises(RuntimeError) as raised:
+            await healer._resolve_fresh_track_for_restore(player, entry.track)
+
+        self.assertIs(raised.exception, error)
+
+    async def test_hard_disconnect_propagates_unexpected_failure(self) -> None:
+        healer, connection, _ = self._make_warm_restore_healer()
+        player = MagicMock()
+        error = RuntimeError("programming failure")
+        connection.disconnect = AsyncMock(side_effect=error)
+
+        with self.assertRaises(RuntimeError) as raised:
+            await healer._hard_disconnect(player)
+
+        self.assertIs(raised.exception, error)
+
     async def test_exact_restore_attempt_confirmation_succeeds(self) -> None:
         connection = MagicMock()
         connection.is_player_usable.return_value = True

@@ -41,14 +41,6 @@ class EmbedLimits:
 DEFAULT_LIMITS = EmbedLimits()
 
 
-class FieldLimitExceededError(ValueError):
-    """Raised when the maximum number of embed fields is exceeded."""
-
-    def __init__(self, limit: int) -> None:
-        super().__init__(f"Embed field limit reached ({limit}).")
-        self.limit = limit
-
-
 class CharacterLimitExceededError(ValueError):
     """Raised when the total character limit of the embed is exceeded."""
 
@@ -110,7 +102,7 @@ class SafeEmbed(discord.Embed):
             This embed for method chaining.
 
         Raises:
-            FieldLimitExceededError: If no field slot remains in strict mode.
+            ValueError: If no field slot remains in strict mode.
             CharacterLimitExceededError: If the aggregate character budget is
                 exhausted in strict mode.
         """
@@ -119,7 +111,9 @@ class SafeEmbed(discord.Embed):
 
         if len(self.fields) >= self._limits.max_fields:
             if strict:
-                raise FieldLimitExceededError(self._limits.max_fields)
+                raise ValueError(
+                    f"Embed field limit reached ({self._limits.max_fields})."
+                )
             return self
 
         projected = len(self) + len(name) + len(value)
@@ -158,7 +152,9 @@ class SafeEmbed(discord.Embed):
         for idx, page in enumerate(paginator.pages, 1):
             if len(self.fields) >= self._limits.max_fields:
                 if strict:
-                    raise FieldLimitExceededError(self._limits.max_fields)
+                    raise ValueError(
+                        f"Embed field limit reached ({self._limits.max_fields})."
+                    )
                 break
 
             page_name = name if idx == 1 else f"{name} (стр. {idx})"

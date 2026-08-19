@@ -153,11 +153,13 @@ async def _notify_report(
     if isinstance(channel, discord.abc.Messageable):
         try:
             await channel.send(embed=_create_report_embed(report))
-        except discord.HTTPException:
-            logger.exception(
-                "Failed to notify report channel %s for report %s",
+        except discord.HTTPException as exc:
+            logger.warning(
+                "Failed to notify report channel %s for report %s (HTTP %s, code %s)",
                 report_channel_id,
                 report["report_id"],
+                exc.status,
+                exc.code,
             )
 
 

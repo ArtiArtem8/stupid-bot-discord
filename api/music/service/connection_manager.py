@@ -69,16 +69,15 @@ class ConnectionManager:
 
             except Exception as exc:
                 self._initialized = False
-                self._last_connect_error = str(exc)
+                self._last_connect_error = type(exc).__name__
                 self._next_connect_retry_at = (
                     time.monotonic() + config.LAVALINK_CONNECT_RETRY_DELAY
                 )
                 await self._close_failed_node(node)
                 await self._cleanup_unavailable_nodes()
-                logger.warning(
-                    "Lavalink node is unavailable; music commands will fail softly."
+                logger.exception(
+                    "Failed to initialize Lavalink; music commands will fail softly"
                 )
-                logger.debug("Failed to initialize Mafic node", exc_info=True)
                 raise NodeNotConnectedError(MUSIC_SERVICE_UNAVAILABLE_MESSAGE) from exc
 
     async def _close_failed_node(self, node: mafic.Node[commands.Bot]) -> None:
@@ -206,7 +205,7 @@ class ConnectionManager:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.debug("Unexpected lazy Lavalink connection failure", exc_info=True)
+            logger.exception("Unexpected lazy Lavalink connection failure")
 
     async def cleanup(self) -> None:
         """Cancel pending connection work and close Mafic resources."""
@@ -309,8 +308,12 @@ class ConnectionManager:
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             await self._handle_join_io_failure(guild, exc)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
-        except Exception:
-            logger.exception("Failed to join voice channel")
+        except discord.ClientException as exc:
+            logger.warning(
+                "Discord voice connection failed for guild %s with %s",
+                guild.id,
+                type(exc).__name__,
+            )
             await self._detach_voice_client_after_failed_connect(guild)
             return VoiceCheckResult.CONNECTION_FAILED, None
 
@@ -379,7 +382,12 @@ class ConnectionManager:
         try:
             await player.move_to(channel, timeout=5.0)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            logger.warning("Lavalink voice client failure: %s", type(exc).__name__)
+            logger.warning(
+                "Lavalink voice move failed for guild %s to channel %s with %s",
+                player.guild.id,
+                channel.id,
+                type(exc).__name__,
+            )
             await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         if not self.is_player_usable(player):
@@ -490,6 +498,11 @@ class ConnectionManager:
 
         # Even a successful disconnect can leave a VoiceProtocol cached in edge cases.
         if guild.voice_client is voice_client:
-            with contextlib.suppress(Exception):
+            try:
                 await maybe_coroutine(voice_client.cleanup)
+            except Exception:
+                logger.exception(
+                    "Failed to cleanup disconnected voice client for guild %s",
+                    guild.id,
+                )
         return guild.voice_client is None

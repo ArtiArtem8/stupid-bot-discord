@@ -207,6 +207,25 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result.status, MusicResultStatus.ERROR)
         self.assertIn("Плеер потерял соединение", result.message)
 
+    async def test_play_propagates_unexpected_loader_failure(self) -> None:
+        guild = MagicMock(id=123)
+        player = MagicMock()
+        error = RuntimeError("programming failure")
+        player.fetch_tracks = AsyncMock(side_effect=error)
+        self.connection.get_player.return_value = player
+
+        with (
+            patch.object(
+                self.service,
+                "join",
+                new=AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None)),
+            ),
+            self.assertRaises(RuntimeError) as raised,
+        ):
+            await self.service.play(guild, MagicMock(), "query", 1, 2)
+
+        self.assertIs(raised.exception, error)
+
     async def test_play_returns_failure_for_empty_fetch(self) -> None:
         guild = MagicMock(id=123)
         player = MagicMock()
@@ -584,6 +603,39 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(result.status, MusicResultStatus.FAILURE)
         self.assertEqual(result.message, MUSIC_SERVICE_UNAVAILABLE_MESSAGE)
+
+    async def test_set_volume_propagates_unexpected_player_failure(self) -> None:
+        error = RuntimeError("programming failure")
+        player = MagicMock()
+        player.set_volume = AsyncMock(side_effect=error)
+        self.connection.get_player.return_value = player
+        self.volume_repo.save = AsyncMock()
+
+        with self.assertRaises(RuntimeError) as raised:
+            await self.service.set_volume(123, 80)
+
+        self.assertIs(raised.exception, error)
+
+    async def test_auto_leave_isolates_each_expired_guild(self) -> None:
+        first = MagicMock(id=1)
+        second = MagicMock(id=2)
+        self.state.check_auto_leave = AsyncMock(return_value=[1, 2])
+        self.bot.get_guild.side_effect = [first, second]
+        self.service.leave = AsyncMock(
+            side_effect=[
+                RuntimeError("first guild failed"),
+                MusicResult(MusicResultStatus.SUCCESS, "Disconnected"),
+            ]
+        )
+
+        with self.assertLogs(
+            "api.music.service.core_service",
+            level="ERROR",
+        ):
+            await self.service.check_auto_leave()
+
+        self.assertEqual(self.service.leave.await_count, 2)
+        self.state.clear_expired_timers.assert_called_once_with([2])
 
     async def test_skip_uses_atomic_player_result_without_pre_reading_queue(
         self,

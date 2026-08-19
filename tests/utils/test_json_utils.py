@@ -166,6 +166,23 @@ class TestCreateBackup(unittest.TestCase):
         backups = list(self._backup_dir.glob("repo_*.json"))
         self.assertLessEqual(len(backups), 4)
 
+    def test_create_backup_raises_after_final_copy_failure(self) -> None:
+        with (
+            patch("utils.json_utils.shutil.copy", side_effect=OSError("disk full")),
+            patch("utils.json_utils.time.sleep"),
+            self.assertRaises(OSError),
+        ):
+            json_utils._create_backup(
+                self._file,
+                max_backups=2,
+                backup_dir=self._backup_dir,
+            )
+
+        self.assertEqual(
+            self._file.read_text(encoding="utf-8"),
+            json.dumps({"v": 1}),
+        )
+
 
 class TestClearJson(unittest.TestCase):
     @override

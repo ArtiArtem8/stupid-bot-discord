@@ -449,9 +449,6 @@ class SessionHealer(HealerProtocol):
                 type(exc).__name__,
             )
             return track
-        except Exception:
-            logger.debug("Unexpected restore track refresh failure", exc_info=True)
-            return track
 
         if isinstance(result, mafic.Playlist):
             if result.tracks:
@@ -478,7 +475,7 @@ class SessionHealer(HealerProtocol):
                 snapshot = await self._create_snapshot(player)
                 self.snapshots[guild_id] = snapshot
 
-                await self._hard_disconnect(guild_id, player)
+                await self._hard_disconnect(player)
 
                 await asyncio.sleep(2.0)
 
@@ -553,12 +550,9 @@ class SessionHealer(HealerProtocol):
             session=session,
         )
 
-    async def _hard_disconnect(self, guild_id: int, player: MusicPlayer) -> None:
+    async def _hard_disconnect(self, player: MusicPlayer) -> None:
         """Disconnect through ConnectionManager and clean up stale voice state."""
-        try:
-            await self.connection.disconnect(player.guild, force=True)
-        except Exception:
-            logger.exception("Failed to hard disconnect for guild %s", guild_id)
+        await self.connection.disconnect(player.guild, force=True)
 
     async def _restore_session(self, snapshot: PlayerStateSnapshot) -> bool:
         """Rebuild the player from the snapshot using ConnectionManager safeguards."""

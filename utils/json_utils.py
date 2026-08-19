@@ -38,6 +38,9 @@ def _create_backup(
 
     Old backup deletion is best-effort. Copying is retried three times with a
     short blocking backoff; callers must move this function off an event loop.
+
+    Raises:
+        OSError: If the backup cannot be copied after all retries.
     """
     target_dir = backup_dir or BACKUP_DIR
     if not target_dir.exists():
@@ -60,6 +63,8 @@ def _create_backup(
         except OSError:
             if i < 2:
                 time.sleep(0.1 * (i + 1))
+            else:
+                raise
 
 
 def get_json(

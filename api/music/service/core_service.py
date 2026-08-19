@@ -177,9 +177,6 @@ class CoreMusicService:
             )
         except EXPECTED_PLAY_ERRORS as exc:
             return await self._handle_play_expected_failure(player, query, exc)
-        except Exception as exc:
-            logger.exception("Error in play")
-            return self._handle_play_unexpected_failure(exc)
 
     def _connection_failure_result(
         self, connection_result: VoiceJoinResult
@@ -351,12 +348,6 @@ class CoreMusicService:
         )
         return MusicResult(status, safe_error.message)
 
-    def _handle_play_unexpected_failure(
-        self, exc: Exception
-    ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        safe_error = classify_music_exception(exc)
-        return MusicResult(MusicResultStatus.ERROR, safe_error.message)
-
     async def stop(
         self,
         guild_id: int,
@@ -483,9 +474,6 @@ class CoreMusicService:
                 await player.set_volume(volume)
             except EXPECTED_LAVALINK_IO_ERRORS as exc:
                 return await self._handle_player_io_failure(player, exc)
-            except Exception as exc:
-                logger.warning("Failed to apply volume: %s", exc)
-                return MusicResult(MusicResultStatus.ERROR, "Failed to apply volume")
         return MusicResult(MusicResultStatus.SUCCESS, "Volume set", data=volume)
 
     async def get_volume(self, guild_id: int) -> int:
@@ -567,9 +555,13 @@ class CoreMusicService:
         """Check for guilds that have been empty for too long."""
         expired_guild_ids = await self.state.check_auto_leave()
         for guild_id in expired_guild_ids:
-            guild = self.bot.get_guild(guild_id)
-            if guild:
-                await self.leave(guild)
+            try:
+                guild = self.bot.get_guild(guild_id)
+                if guild:
+                    await self.leave(guild)
+            except Exception:
+                logger.exception("Failed to auto-leave guild %s", guild_id)
+                continue
             self.state.clear_expired_timers([guild_id])
 
     async def end_session(self, guild_id: int) -> None:

@@ -383,6 +383,11 @@ class MusicEventHandlers:
                 guild_id,
             )
             raise
+        except Exception:
+            logger.exception(
+                "Voice transition validation failed for guild %s",
+                guild_id,
+            )
         finally:
             self._recent_voice_transitions.pop(guild_id, None)
             current_task = asyncio.current_task()

@@ -35,14 +35,6 @@ class DependencyNotFoundError(LookupError):
     """Raised when a dependency cannot be resolved."""
 
 
-class CircularDependencyError(RuntimeError):
-    """Raised when a circular dependency is detected."""
-
-
-class RegistrationError(ValueError):
-    """Raised when a service registration is invalid."""
-
-
 @dataclass(slots=True, frozen=True, kw_only=True)
 class ServiceRegistration:
     """Immutable record of a registered service."""
@@ -105,7 +97,7 @@ def _unwrap_optional_type(type_hint: object) -> tuple[bool, ServiceKey | None]:
 def _get_init_type_hints(implementation: ServiceKey) -> dict[str, object]:
     try:
         return cast(dict[str, object], get_type_hints(implementation.__init__))
-    except Exception:
+    except (NameError, TypeError):
         return {}
 
 
@@ -170,7 +162,7 @@ class Container:
         - ``register(IService, factory=lambda c: ConcreteService())``
         """
         if implementation is not None and factory is not None:
-            raise RegistrationError("Cannot provide both implementation and factory.")
+            raise ValueError("Cannot provide both implementation and factory.")
 
         implementation_type: ServiceKey | None
         if implementation is None and factory is None:
@@ -180,7 +172,7 @@ class Container:
         elif inspect.isclass(implementation):
             implementation_type = implementation
         else:
-            raise RegistrationError(
+            raise ValueError(
                 f"Implementation must be a class, got {type(implementation)}"
             )
 
@@ -210,7 +202,7 @@ class Container:
     ) -> object:
         if interface in resolution_stack:
             stack = " -> ".join(_get_type_name(t) for t in resolution_stack)
-            raise CircularDependencyError(
+            raise RuntimeError(
                 f"Circular dependency detected: {stack} -> {_get_type_name(interface)}"
             )
 
@@ -273,7 +265,7 @@ class Container:
             return self._inject_dependencies(registration.implementation, stack)
 
         interface_name = next(iter(stack), None)
-        raise RegistrationError(
+        raise RuntimeError(
             f"Invalid registration state for {_get_type_name(interface_name)}"
         )
 
@@ -353,13 +345,8 @@ class Container:
                         instance.close()
                     elif isinstance(instance, SupportsDispose):
                         instance.dispose()
-                except Exception as e:
-                    logger.warning(
-                        "Error closing %s: %s",
-                        type(instance).__name__,
-                        e,
-                        exc_info=True,
-                    )
+                except Exception:
+                    logger.exception("Error closing %s", type(instance).__name__)
 
             self._instances.clear()
 

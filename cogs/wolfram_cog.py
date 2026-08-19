@@ -344,9 +344,6 @@ class WolframCog(BaseCog):
             )
         except (WolframAPIError, ImageProcessingError):
             await self._send_plot_error(interaction)
-        except Exception:
-            logger.exception("Unexpected Wolfram image pipeline failure")
-            await self._send_plot_error(interaction)
 
     async def _upload_plot(
         self,

@@ -556,6 +556,21 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
 
         feedback.assert_not_awaited()
 
+    async def test_unexpected_plot_failure_propagates_to_command_boundary(self) -> None:
+        cog, client = self._make_cog()
+        interaction, _ = self._make_interaction()
+        error = RuntimeError("programming failure")
+        client.fetch_plot_image.side_effect = error
+
+        with (
+            patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback,
+            self.assertRaises(RuntimeError) as raised,
+        ):
+            await cog._send_plot(interaction, "https://example.invalid/plot", "sin(x)")
+
+        self.assertIs(raised.exception, error)
+        feedback.assert_not_awaited()
+
     async def test_cog_load_creates_one_client_for_persistent_session(self) -> None:
         cog = object.__new__(WolframCog)
         cog.client_session = None

@@ -24,13 +24,9 @@ class CogLoader:
             rel_path = file_path.relative_to(config.BASE_DIR)
             module_name = ".".join(rel_path.parts).removesuffix(".py")
             logger.debug("Relative path: %s", rel_path)
-            try:
-                logger.debug("Loading: %s", module_name)
-                await self.bot.load_extension(module_name)
-                logger.info("Loaded: %s", module_name)
-            except Exception:
-                logger.exception("Failed to load %s", module_name)
-                raise
+            logger.debug("Loading: %s", module_name)
+            await self.bot.load_extension(module_name)
+            logger.info("Loaded: %s", module_name)
 
     def start_watcher(self) -> None:
         if self.enable_watch:
