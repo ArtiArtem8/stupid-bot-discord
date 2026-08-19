@@ -4,11 +4,12 @@ import logging
 from typing import override
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 from discord.utils import maybe_coroutine
 
 from api.blocking import block_manager
-from framework.exceptions import BlockedUserError, NoGuildError
+from framework.exceptions import BlockedUserError
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ class GenericBaseCog[BotT: commands.Bot](commands.Cog):
         """Return the interaction guild or reject direct-message use.
 
         Raises:
-            NoGuildError: If the interaction has no guild.
+            app_commands.NoPrivateMessage: If the interaction has no guild.
         """
         if not (guild := interaction.guild):
             logger.debug(
@@ -64,7 +65,7 @@ class GenericBaseCog[BotT: commands.Bot](commands.Cog):
                 self._cog,
                 interaction.user.id,
             )
-            raise NoGuildError()
+            raise app_commands.NoPrivateMessage()
         return guild
 
     def _log_command(self, interaction: discord.Interaction) -> None:

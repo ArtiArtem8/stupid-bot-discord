@@ -5,6 +5,7 @@ to users via Discord interactions. It supports various feedback types (Success,
 Info, Warning, Error), custom embeds, and automatic report button generation for errors.
 """
 
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
@@ -17,6 +18,8 @@ from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAn
 
 import config
 from utils import SafeEmbed
+
+logger = logging.getLogger(__name__)
 
 type ReportCallback = Callable[[discord.Interaction, str | None], Awaitable[None]]
 
@@ -166,7 +169,26 @@ class FeedbackUI:
         payload = FeedbackPayload(
             resolved_embed, resolved_view, delete_after, ephemeral
         )
-        await FeedbackUI._send_payload(interaction, payload)
+        try:
+            await FeedbackUI._send_payload(interaction, payload)
+        except discord.InteractionResponded:
+            logger.warning(
+                "Feedback response raced with another response for interaction %s",
+                interaction.id,
+            )
+        except discord.NotFound as exc:
+            logger.warning(
+                "Feedback target no longer exists for interaction %s (Discord code %s)",
+                interaction.id,
+                exc.code,
+            )
+        except discord.HTTPException as exc:
+            logger.warning(
+                "Discord rejected feedback for interaction %s (HTTP %s, code %s)",
+                interaction.id,
+                exc.status,
+                exc.code,
+            )
 
     @staticmethod
     def _resolve_embed(

@@ -171,3 +171,26 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
 
         interaction.edit_original_response.assert_awaited_once()
         interaction.followup.send.assert_not_awaited()
+
+    async def test_expired_interaction_is_not_retried(self) -> None:
+        response = MagicMock(status=404, reason="Not Found")
+        expired = discord.NotFound(
+            response,
+            {"code": 10062, "message": "Unknown interaction"},
+        )
+        interaction = MagicMock()
+        interaction.id = 123
+        interaction.response.is_done.return_value = False
+        interaction.response.send_message = AsyncMock(side_effect=expired)
+        interaction.followup.send = AsyncMock()
+        interaction.edit_original_response = AsyncMock()
+
+        with self.assertLogs("framework.feedback_ui", level="WARNING"):
+            await FeedbackUI.send(
+                cast(discord.Interaction, interaction),
+                description="Too late",
+            )
+
+        interaction.response.send_message.assert_awaited_once()
+        interaction.followup.send.assert_not_awaited()
+        interaction.edit_original_response.assert_not_awaited()

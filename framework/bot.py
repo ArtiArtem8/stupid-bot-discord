@@ -10,7 +10,7 @@ import config
 from api.reporting import handle_report_button
 from framework import FeedbackUI
 from framework.cog_loader import CogLoader
-from framework.error_handler import CustomErrorCommandTree
+from framework.error_handler import handle_app_command_error
 from framework.uptime_manager import UptimeManager
 from utils import format_duration_ru
 
@@ -37,9 +37,9 @@ class StupidBot(commands.Bot):
         super().__init__(
             command_prefix=config.BOT_PREFIX,
             intents=intents,
-            tree_cls=CustomErrorCommandTree,
             help_command=None,
         )
+        self.tree.error(handle_app_command_error)
         self.owner_id = (
             int(config.DISCORD_BOT_OWNER_ID) if config.DISCORD_BOT_OWNER_ID else None
         )

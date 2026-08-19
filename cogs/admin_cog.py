@@ -19,7 +19,7 @@ from discord.utils import format_dt
 
 import config
 from api import block_manager
-from framework import BaseCog, FeedbackType, FeedbackUI, handle_errors, is_owner_app
+from framework import BaseCog, FeedbackType, FeedbackUI, is_owner_app
 from resources import ACTION_TITLES
 from utils import SafeEmbed, truncate_sequence, truncate_text
 
@@ -107,13 +107,6 @@ class AdminCog(BaseCog):
     @app_commands.default_permissions(administrator=True)
     async def error(self, _: discord.Interaction) -> NoReturn:
         raise RuntimeError("Test error")
-
-    @app_commands.command(name="error-test-handled", description="Тестирование ошибок")
-    @is_owner_app()
-    @app_commands.default_permissions(administrator=True)
-    @handle_errors()
-    async def error_handled(self, _: discord.Interaction) -> NoReturn:
-        raise RuntimeError("Test handled error")
 
     @app_commands.command(
         name="block", description="Заблокировать пользователя от использования бота."
