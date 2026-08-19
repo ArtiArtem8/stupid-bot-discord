@@ -162,7 +162,7 @@ class AdminCog(BaseCog):
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
 
     @app_commands.command(
-        name="blockinfo",
+        name="block-info",
         description="Показать подробную информацию о блокировках пользователя.",
     )
     @app_commands.describe(

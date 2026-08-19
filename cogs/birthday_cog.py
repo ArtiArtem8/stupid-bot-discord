@@ -285,7 +285,7 @@ class BirthdayCog(BaseCog):
             logger.exception("Failed to handle birthday for user %s", user.user_id)
 
     @app_commands.command(
-        name="setbirthday",
+        name="set-birthday",
         description="Установить свой день рождения (формат: ДД-ММ-ГГГГ или ГГГГ-ММ-ДД)",
     )
     @app_commands.describe(
@@ -391,7 +391,7 @@ class BirthdayCog(BaseCog):
         )
 
     @app_commands.command(
-        name="list_birthdays",
+        name="list-birthdays",
         description="Список дней рождений на сервере, отсортированные по ближайшим",
     )
     @app_commands.guild_only()

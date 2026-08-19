@@ -16,8 +16,8 @@
   - Supports YouTube, SoundCloud, and Yandex Music with the right Lavalink plugins.
   - The bot starts without Lavalink, but music commands stay unavailable until Lavalink is reachable.
 - **WolframAlpha integration**: `/solve`, `/plot`.
-- **Administration tools**: `/block`, `/unblock`, `/blockinfo`, `/list-blocked`.
-- **Birthday system**: `/setbirthday`, `/setup-birthdays`, `/remove-birthday`, `/list_birthdays`.
+- **Administration tools**: `/block`, `/unblock`, `/block-info`, `/list-blocked`.
+- **Birthday system**: `/set-birthday`, `/setup-birthdays`, `/remove-birthday`, `/list-birthdays`.
 - **Feedback reports**: `/report`, `/set-report-channel`.
 - **Utilities**: deterministic Magic 8-Ball answers, greeting reactions, and Russian time formatting.
 
