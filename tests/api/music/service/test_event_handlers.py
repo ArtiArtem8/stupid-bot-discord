@@ -511,7 +511,9 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         player = self._make_player()
         track = make_track("video-403", length=292000)
         track.source = "youtube"
-        track.position = 184360
+        track.position = 0
+        player.current_attempt = player.resolve_current_attempt(track)
+        player.position = 184360
 
         with self.assertLogs(
             "api.music.service.event_handlers",
@@ -539,7 +541,9 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         player = self._make_player()
         track = make_track("stuck-video")
         track.source = "youtube"
-        track.position = 42000
+        track.position = 0
+        player.current_attempt = player.resolve_current_attempt(track)
+        player.position = 42000
         event = MagicMock(
             player=player,
             track=track,
@@ -560,6 +564,49 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         self.assertIn("id=stuck-video", warning)
         self.assertIn("position_ms=42000", warning)
         self.assertIn("threshold_ms=10000", warning)
+
+    async def test_non_current_exception_does_not_borrow_player_position(self) -> None:
+        player = self._make_player()
+        track = make_track("pending-failure", length=180000)
+        track.position = 0
+        pending_attempt = player.resolve_current_attempt(track)
+        player.current_attempt = player.resolve_current_attempt(
+            make_track("current-playback")
+        )
+        player.position = 99000
+
+        with self.assertLogs(
+            "api.music.service.event_handlers",
+            level="WARNING",
+        ) as captured:
+            await self._handle_track_exception(player, track)
+
+        warning = captured.records[0].getMessage()
+        self.assertIn(f"attempt={pending_attempt.attempt_id}", warning)
+        self.assertIn("position_ms=None/180000", warning)
+        self.assertNotIn("position_ms=99000", warning)
+
+    async def test_non_current_stuck_does_not_borrow_player_position(self) -> None:
+        player = self._make_player()
+        track = make_track("pending-stuck", length=180000)
+        track.position = 0
+        pending_attempt = player.resolve_current_attempt(track)
+        player.current_attempt = player.resolve_current_attempt(
+            make_track("current-playback")
+        )
+        player.position = 99000
+        event = MagicMock(player=player, track=track, threshold_ms=10000)
+
+        with self.assertLogs(
+            "api.music.service.event_handlers",
+            level="WARNING",
+        ) as captured:
+            await self.handlers._on_track_stuck(event)
+
+        warning = captured.records[0].getMessage()
+        self.assertIn(f"attempt={pending_attempt.attempt_id}", warning)
+        self.assertIn("position_ms=None", warning)
+        self.assertNotIn("position_ms=99000", warning)
 
     async def test_interleaved_next_failure_same_identifier_dispatches_again(
         self,

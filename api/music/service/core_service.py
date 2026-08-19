@@ -162,7 +162,9 @@ class CoreMusicService:
         if check_result.status is not MusicResultStatus.SUCCESS:
             return self._connection_failure_result(connection_result)
 
-        player = self.connection.get_player(guild.id)
+        player = self.connection.get_player(
+            guild.id, failure_context="play_after_join_validation"
+        )
         if player is None:
             return MusicResult(
                 MusicResultStatus.ERROR,

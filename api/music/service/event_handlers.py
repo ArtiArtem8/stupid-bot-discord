@@ -178,6 +178,7 @@ class MusicEventHandlers:
         message = compact_external_log_text(event.exception.get("message"))
         cause = compact_external_log_text(event.exception.get("cause"))
         title = compact_external_log_text(track.title, limit=TRACK_TITLE_TEXT_LIMIT)
+        position = player.position if player.current_attempt is attempt else None
         message_format = (
             "Track playback/source failure guild=%s attempt=%s "
             + "source=%s id=%s title=%r position_ms=%s/%s severity=%s "
@@ -190,7 +191,7 @@ class MusicEventHandlers:
             track.source,
             track.identifier,
             title,
-            track.position,
+            position,
             track.length,
             severity,
             message,
@@ -223,6 +224,7 @@ class MusicEventHandlers:
             event.track.title,
             limit=TRACK_TITLE_TEXT_LIMIT,
         )
+        position = player.position if player.current_attempt is attempt else None
         message_format = (
             "Track stuck guild=%s attempt=%s source=%s id=%s title=%r "
             + "position_ms=%s threshold_ms=%s"
@@ -234,7 +236,7 @@ class MusicEventHandlers:
             event.track.source,
             event.track.identifier,
             title,
-            event.track.position,
+            position,
             event.threshold_ms,
         )
         await self.ui.controller.destroy_for_guild(
