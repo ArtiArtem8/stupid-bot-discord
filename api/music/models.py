@@ -25,11 +25,7 @@ type QueuePlacement = Literal["end", "next"]
 type PlayPlacement = Literal["now", "end", "next"]
 
 
-class MusicError(Exception):
-    """Base exception for Music API errors."""
-
-
-class NodeNotConnectedError(MusicError):
+class NodeNotConnectedError(RuntimeError):
     """Raised when Lavalink node is not connected."""
 
 

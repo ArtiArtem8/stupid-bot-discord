@@ -1,3 +1,3 @@
-from .container import Container, ContainerError, DependencyNotFoundError, Lifecycle
+from .container import Container, DependencyNotFoundError, Lifecycle
 
-__all__ = ["Container", "ContainerError", "DependencyNotFoundError", "Lifecycle"]
+__all__ = ["Container", "DependencyNotFoundError", "Lifecycle"]

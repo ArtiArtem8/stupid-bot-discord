@@ -9,7 +9,6 @@ from utils.embeds import (
     EmbedLimits,
     FieldLimitExceededError,
     SafeEmbed,
-    SafeEmbedError,
 )
 from utils.image_utils import (
     ImageOutputTooLargeError,
@@ -37,7 +36,6 @@ __all__ = [
     "ImageOutputTooLargeError",
     "ImageProcessingError",
     "SafeEmbed",
-    "SafeEmbedError",
     "TextPaginator",
     "calculate_days_until_birthday",
     "clear_json",

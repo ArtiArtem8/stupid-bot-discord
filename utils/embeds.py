@@ -41,11 +41,7 @@ class EmbedLimits:
 DEFAULT_LIMITS = EmbedLimits()
 
 
-class SafeEmbedError(ValueError):
-    """Base exception for SafeEmbed errors."""
-
-
-class FieldLimitExceededError(SafeEmbedError):
+class FieldLimitExceededError(ValueError):
     """Raised when the maximum number of embed fields is exceeded."""
 
     def __init__(self, limit: int) -> None:
@@ -53,7 +49,7 @@ class FieldLimitExceededError(SafeEmbedError):
         self.limit = limit
 
 
-class CharacterLimitExceededError(SafeEmbedError):
+class CharacterLimitExceededError(ValueError):
     """Raised when the total character limit of the embed is exceeded."""
 
     def __init__(self, limit: int) -> None:

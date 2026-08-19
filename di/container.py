@@ -31,19 +31,15 @@ class Lifecycle(Enum):
     TRANSIENT = auto()
 
 
-class ContainerError(Exception):
-    """Base class for container errors."""
-
-
-class DependencyNotFoundError(ContainerError):
+class DependencyNotFoundError(LookupError):
     """Raised when a dependency cannot be resolved."""
 
 
-class CircularDependencyError(ContainerError):
+class CircularDependencyError(RuntimeError):
     """Raised when a circular dependency is detected."""
 
 
-class RegistrationError(ContainerError):
+class RegistrationError(ValueError):
     """Raised when a service registration is invalid."""
 
 

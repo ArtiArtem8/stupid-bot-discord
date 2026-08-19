@@ -11,7 +11,6 @@ from utils.embeds import (
     EmbedLimits,
     FieldLimitExceededError,
     SafeEmbed,
-    SafeEmbedError,
 )
 from utils.text_utils import truncate_text
 
@@ -91,7 +90,7 @@ class TestSafeEmbed(unittest.TestCase):
         with self.assertRaises(FieldLimitExceededError) as caught:
             e.safe_add_field(name="n", value="v", strict=True)
 
-        self.assertIsInstance(caught.exception, SafeEmbedError)
+        self.assertIsInstance(caught.exception, ValueError)
         self.assertEqual(caught.exception.limit, limits.max_fields)
         self.assertEqual(str(caught.exception), "Embed field limit reached (0).")
         self.assertEqual(len(e.fields), 0)
@@ -111,7 +110,7 @@ class TestSafeEmbed(unittest.TestCase):
         with self.assertRaises(CharacterLimitExceededError) as caught:
             e.safe_add_field(name="N" * 10, value="V" * 10, strict=True)
 
-        self.assertIsInstance(caught.exception, SafeEmbedError)
+        self.assertIsInstance(caught.exception, ValueError)
         self.assertEqual(caught.exception.limit, limits.max_total)
         self.assertEqual(
             str(caught.exception), "Embed total character limit reached (15)."
