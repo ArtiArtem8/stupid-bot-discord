@@ -26,7 +26,7 @@ async def _wrap_callback_error(error: Exception) -> app_commands.CommandInvokeEr
     async def callback(_interaction: discord.Interaction) -> None:
         raise error
 
-    command = app_commands.Command(
+    command: app_commands.Command[app_commands.Group, ..., None] = app_commands.Command(
         name="failing-command",
         description="Exercise discord.py callback error wrapping",
         callback=callback,
