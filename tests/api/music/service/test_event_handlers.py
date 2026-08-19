@@ -93,11 +93,19 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         track: mafic.Track,
         *,
         message: str = "load failed",
+        severity: str = "common",
+        cause: str = "backend failure",
+        cause_stack_trace: str = "full stack trace",
     ) -> None:
         event = MagicMock()
         event.player = player
         event.track = track
-        event.exception = {"message": message, "severity": "COMMON"}
+        event.exception = {
+            "message": message,
+            "severity": severity,
+            "cause": cause,
+            "causeStackTrace": cause_stack_trace,
+        }
 
         await self.handlers._on_track_exception(event)
 
@@ -298,6 +306,22 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
             1, ControllerDestroyReason.VOICE_DISCONNECT
         )
 
+    async def test_delayed_validation_logs_unexpected_background_failure(self) -> None:
+        player = MagicMock(connected=False, current=None)
+        self.connection.get_player.return_value = player
+        self.ui.controller.destroy_for_guild.side_effect = RuntimeError(
+            "programming failure"
+        )
+
+        with (
+            patch("api.music.service.event_handlers.asyncio.sleep", new=AsyncMock()),
+            self.assertLogs(
+                "api.music.service.event_handlers",
+                level="ERROR",
+            ),
+        ):
+            await self.handlers._validate_voice_transition_recovery(1, player)
+
     async def test_node_unavailable_marks_connection_and_cleans_music_state(
         self,
     ) -> None:
@@ -366,9 +390,14 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         player = self._make_player()
         track = make_track("same-failure")
 
-        await self._handle_track_exception(player, track)
-        await self._handle_track_exception(player, track)
+        with self.assertLogs(
+            "api.music.service.event_handlers",
+            level="WARNING",
+        ) as captured:
+            await self._handle_track_exception(player, track)
+            await self._handle_track_exception(player, track)
 
+        self.assertEqual(len(captured.records), 1)
         self.assertEqual(self.bot.dispatch.call_count, 1)
         self.ui.controller.destroy_for_guild.assert_awaited_once_with(
             123,
@@ -380,9 +409,14 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         player = self._make_player()
         track = make_track("exception-before-end")
 
-        await self._handle_track_exception(player, track)
-        await self._handle_load_failed_end(player, track)
+        with self.assertLogs(
+            "api.music.service.event_handlers",
+            level="WARNING",
+        ) as captured:
+            await self._handle_track_exception(player, track)
+            await self._handle_load_failed_end(player, track)
 
+        self.assertEqual(len(captured.records), 1)
         self.assertEqual(self.bot.dispatch.call_count, 1)
         player.handle_track_end.assert_awaited_once_with(
             track, mafic.EndReason.LOAD_FAILED
@@ -403,8 +437,19 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         player = self._make_player()
         track = make_track("end-fallback")
 
-        await self._handle_load_failed_end(player, track)
+        with self.assertLogs(
+            "api.music.service.event_handlers",
+            level="WARNING",
+        ) as captured:
+            await self._handle_load_failed_end(player, track)
 
+        self.assertEqual(len(captured.records), 1)
+        warning = captured.records[0].getMessage()
+        self.assertIn("attempt=1", warning)
+        self.assertIn("source=test", warning)
+        self.assertIn("id=end-fallback", warning)
+        self.assertIn("reason=load_failed", warning)
+        self.assertNotIn("cause=", warning)
         self.bot.dispatch.assert_called_once()
         event_name, payload = self.bot.dispatch.call_args.args
         self.assertEqual(event_name, "music_track_exception")
@@ -416,6 +461,152 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
             ControllerDestroyReason.TRACK_END,
             expected_attempt_id=1,
         )
+
+    async def test_multiline_dns_exception_logs_one_bounded_warning(self) -> None:
+        player = self._make_player()
+        track = make_track("dns-video", length=148000)
+        track.source = "youtube"
+        message = (
+            "All clients failed to load the item.\n\n"
+            + "Client [ANDROID_VR] failed: java.net.UnknownHostException: "
+            + "www.youtube.com: Name or service not known\n"
+            + "\tat vendor.stack.Frame.method(Frame.java:1)\n" * 100
+        )
+        cause = (
+            "dev.lavalink.youtube.AllClientsFailedException: All clients failed.\n"
+            + "Client [ANDROID_VR] failed: java.net.UnknownHostException: "
+            + "www.youtube.com\n"
+            + "\tat vendor.stack.Other.method(Other.java:2)\n" * 100
+        )
+
+        with self.assertLogs(
+            "api.music.service.event_handlers",
+            level="WARNING",
+        ) as captured:
+            await self._handle_track_exception(
+                player,
+                track,
+                message=message,
+                severity="suspicious",
+                cause=cause,
+                cause_stack_trace="STACK_TRACE_MUST_NOT_APPEAR",
+            )
+
+        self.assertEqual(len(captured.records), 1)
+        warning = captured.records[0].getMessage()
+        self.assertNotIn("\n", warning)
+        self.assertNotIn("\r", warning)
+        self.assertLessEqual(len(warning), 1000)
+        self.assertIn("guild=123", warning)
+        self.assertIn("attempt=1", warning)
+        self.assertIn("source=youtube", warning)
+        self.assertIn("id=dns-video", warning)
+        self.assertIn("severity=suspicious", warning)
+        self.assertIn("UnknownHostException", warning)
+        self.assertIn("www.youtube.com", warning)
+        self.assertIn("…", warning)
+        self.assertNotIn("STACK_TRACE_MUST_NOT_APPEAR", warning)
+
+    async def test_http_403_exception_logs_source_position_and_cause(self) -> None:
+        player = self._make_player()
+        track = make_track("video-403", length=292000)
+        track.source = "youtube"
+        track.position = 0
+        player.current_attempt = player.resolve_current_attempt(track)
+        player.position = 184360
+
+        with self.assertLogs(
+            "api.music.service.event_handlers",
+            level="WARNING",
+        ) as captured:
+            await self._handle_track_exception(
+                player,
+                track,
+                message="Something broke when playing the track.",
+                severity="fault",
+                cause="java.lang.RuntimeException: Not success status code: 403",
+            )
+
+        self.assertEqual(len(captured.records), 1)
+        warning = captured.records[0].getMessage()
+        self.assertIn("attempt=1", warning)
+        self.assertIn("source=youtube", warning)
+        self.assertIn("id=video-403", warning)
+        self.assertIn("position_ms=184360/292000", warning)
+        self.assertIn("severity=fault", warning)
+        self.assertIn("cause='java.lang.RuntimeException", warning)
+        self.assertIn("status code: 403", warning)
+
+    async def test_track_stuck_warning_includes_attempt_and_threshold(self) -> None:
+        player = self._make_player()
+        track = make_track("stuck-video")
+        track.source = "youtube"
+        track.position = 0
+        player.current_attempt = player.resolve_current_attempt(track)
+        player.position = 42000
+        event = MagicMock(
+            player=player,
+            track=track,
+            threshold_ms=10000,
+        )
+
+        with self.assertLogs(
+            "api.music.service.event_handlers",
+            level="WARNING",
+        ) as captured:
+            await self.handlers._on_track_stuck(event)
+
+        self.assertEqual(len(captured.records), 1)
+        warning = captured.records[0].getMessage()
+        self.assertIn("Track stuck", warning)
+        self.assertIn("attempt=1", warning)
+        self.assertIn("source=youtube", warning)
+        self.assertIn("id=stuck-video", warning)
+        self.assertIn("position_ms=42000", warning)
+        self.assertIn("threshold_ms=10000", warning)
+
+    async def test_non_current_exception_does_not_borrow_player_position(self) -> None:
+        player = self._make_player()
+        track = make_track("pending-failure", length=180000)
+        track.position = 0
+        pending_attempt = player.resolve_current_attempt(track)
+        player.current_attempt = player.resolve_current_attempt(
+            make_track("current-playback")
+        )
+        player.position = 99000
+
+        with self.assertLogs(
+            "api.music.service.event_handlers",
+            level="WARNING",
+        ) as captured:
+            await self._handle_track_exception(player, track)
+
+        warning = captured.records[0].getMessage()
+        self.assertIn(f"attempt={pending_attempt.attempt_id}", warning)
+        self.assertIn("position_ms=None/180000", warning)
+        self.assertNotIn("position_ms=99000", warning)
+
+    async def test_non_current_stuck_does_not_borrow_player_position(self) -> None:
+        player = self._make_player()
+        track = make_track("pending-stuck", length=180000)
+        track.position = 0
+        pending_attempt = player.resolve_current_attempt(track)
+        player.current_attempt = player.resolve_current_attempt(
+            make_track("current-playback")
+        )
+        player.position = 99000
+        event = MagicMock(player=player, track=track, threshold_ms=10000)
+
+        with self.assertLogs(
+            "api.music.service.event_handlers",
+            level="WARNING",
+        ) as captured:
+            await self.handlers._on_track_stuck(event)
+
+        warning = captured.records[0].getMessage()
+        self.assertIn(f"attempt={pending_attempt.attempt_id}", warning)
+        self.assertIn("position_ms=None", warning)
+        self.assertNotIn("position_ms=99000", warning)
 
     async def test_interleaved_next_failure_same_identifier_dispatches_again(
         self,
@@ -534,7 +725,11 @@ class TestMusicEventHandlers(unittest.IsolatedAsyncioTestCase):
         player.handle_track_end.assert_awaited_once_with(
             track, mafic.EndReason.FINISHED
         )
-        self.connection.invalidate_player.assert_awaited_once_with(player)
+        self.connection.invalidate_player.assert_awaited_once_with(
+            player,
+            context="track_end_transition_finished",
+            error="ClientConnectionError",
+        )
         self.ui.controller.destroy_for_guild.assert_not_awaited()
 
     async def test_track_end_load_failed_uses_end_transition(self) -> None:

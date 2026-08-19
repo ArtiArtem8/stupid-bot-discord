@@ -40,7 +40,6 @@ class SessionPaginationAdapter(PaginationData):
             )
             for i, t in enumerate(self.session.tracks, 1)
         ]
-        # Result: <timestamp> • <index>. <title> <requester_id>
         return TextPaginator(
             lines,
             page_size=self.page_size,

@@ -43,7 +43,7 @@ class ReportDataDict(TypedDict):
 
 
 def _build_report_data(interaction: Interaction, reason: str) -> ReportDataDict:
-    """Constructs the report dictionary."""
+    """Construct the stored report data."""
     create_date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
 
     channel_name = "Unknown"
@@ -76,7 +76,7 @@ def _build_report_data(interaction: Interaction, reason: str) -> ReportDataDict:
 
 
 def _create_report_embed(report: ReportDataDict) -> discord.Embed:
-    """Formats the report for Discord."""
+    """Format a stored report for Discord."""
     embed = SafeEmbed(
         title="Отчёт",
         color=config.Color.INFO,
@@ -153,11 +153,13 @@ async def _notify_report(
     if isinstance(channel, discord.abc.Messageable):
         try:
             await channel.send(embed=_create_report_embed(report))
-        except discord.HTTPException:
-            logger.exception(
-                "Failed to notify report channel %s for report %s",
+        except discord.HTTPException as exc:
+            logger.warning(
+                "Failed to notify report channel %s for report %s (HTTP %s, code %s)",
                 report_channel_id,
                 report["report_id"],
+                exc.status,
+                exc.code,
             )
 
 
@@ -183,7 +185,7 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
             self.reason.default = error_info
 
     @override
-    async def on_submit(self, interaction: Interaction):
+    async def on_submit(self, interaction: Interaction) -> None:
         report, report_channel_id = await submit_report(interaction, self.reason.value)
         embed = SafeEmbed(
             title="Спасибо за отчёт!",
@@ -206,5 +208,5 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
 async def handle_report_button(
     interaction: discord.Interaction, error_info: str | None = None
 ) -> None:
-    """Callback handler for report button - shows modal."""
+    """Open the report-submission modal."""
     await interaction.response.send_modal(ReportModal(error_info))

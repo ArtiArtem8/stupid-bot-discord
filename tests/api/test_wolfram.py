@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from collections.abc import AsyncIterator
-from typing import Any, override
+from typing import Any, Self, override
 from unittest.mock import MagicMock, patch
 
 import aiohttp
@@ -57,7 +57,7 @@ class _Response:
         self._text = text
         self._error = error
 
-    async def __aenter__(self) -> _Response:
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *args: object) -> None:
@@ -467,7 +467,7 @@ class TestWolframHTTP(unittest.IsolatedAsyncioTestCase):
             ),
             (
                 "timeout",
-                asyncio.TimeoutError(),
+                TimeoutError(),
             ),
         )
 

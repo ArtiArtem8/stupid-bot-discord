@@ -16,7 +16,7 @@ class Arguments(argparse.Namespace):
 
 
 async def main() -> None:
-    """Main entry point."""
+    """Run the Discord bot until shutdown."""
     parser = argparse.ArgumentParser(description="Run the Discord bot.")
     parser.add_argument(
         "-w",
@@ -26,12 +26,12 @@ async def main() -> None:
     )
     args = parser.parse_args(namespace=Arguments())
 
-    for dir in [
+    for directory in [
         config.DATA_DIR,
         config.BACKUP_DIR,
         config.COGS_DIR,
     ]:
-        dir.mkdir(parents=True, exist_ok=True)
+        directory.mkdir(parents=True, exist_ok=True)
 
     setup_logging(config.ENCODING)
 
@@ -51,7 +51,7 @@ async def main() -> None:
         raise
     finally:
         uptime = await bot.save_state()
-        logger.info(f"Bot stopped. Final saved uptime: {uptime:.0f}s")
+        logger.info("Bot stopped. Final saved uptime: %.0fs", uptime)
 
 
 if __name__ == "__main__":

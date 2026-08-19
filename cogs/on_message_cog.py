@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 class OnMessageCog(commands.Cog):
     """Log, auto-respond to greetings and common phrases."""
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
     @commands.Cog.listener()
-    async def on_message(self, message: Message):
+    async def on_message(self, message: Message) -> None:
         self._log_message(message)
         if message.author.bot:
             return
@@ -39,8 +39,8 @@ class OnMessageCog(commands.Cog):
             return
         try:
             await self.quest_process_message(message)
-        except Exception as e:
-            logger.error("Failed to process message %s: %s", message.content, e)
+        except Exception:
+            logger.exception("Failed to process message %s", message.id)
 
     def _format_change(self, attr: str, before: object, after: object) -> str:
         """Smart diff formatting by type."""
@@ -49,22 +49,21 @@ class OnMessageCog(commands.Cog):
                 f"{attr} (type changed): "
                 f"{type(before).__name__} -> {type(after).__name__}"
             )
-        elif isinstance(before, str) and isinstance(after, str):
+        if isinstance(before, str) and isinstance(after, str):
             return (
                 f"{attr}: '{truncate_text(before, 100, mode='middle')}'"
                 f" -> '{truncate_text(after, 100, mode='middle')}'"
             )
-        elif isinstance(before, Sized) and isinstance(after, Sized):
+        if isinstance(before, Sized) and isinstance(after, Sized):
             return f"{attr}: {len(before)} -> {len(after)}"
-        elif isinstance(before, bool):
+        if isinstance(before, bool):
             return f"{attr}: {before} -> {after}"
-        else:
-            before_summ = "exists" if before else "None"
-            after_summ = "exists" if after else "None"
-            return f"{attr}: {before_summ} -> {after_summ}"
+        before_summ = "exists" if before else "None"
+        after_summ = "exists" if after else "None"
+        return f"{attr}: {before_summ} -> {after_summ}"
 
     @commands.Cog.listener()
-    async def on_message_edit(self, before: Message, after: Message):
+    async def on_message_edit(self, before: Message, after: Message) -> None:
         changes: list[str] = []
 
         attr_whitelist = [
@@ -99,16 +98,17 @@ class OnMessageCog(commands.Cog):
 
             self._log_message(after, is_edit=True)
 
-    async def quest_process_message(self, message: Message):
+    async def quest_process_message(self, message: Message) -> None:
         if len(message.content) < 5:
             return
         res = self.process_fuzzy_message(message, MORNING_QUEST, MORNING_ANSWERS)
         if res:
-            return await message.channel.send(res)
+            await message.channel.send(res)
+            return
 
         res = self.process_fuzzy_message(message, EVENING_QUEST, EVENING_ANSWERS)
         if res:
-            return await message.channel.send(res)
+            await message.channel.send(res)
 
     def process_fuzzy_message(
         self,
@@ -117,18 +117,17 @@ class OnMessageCog(commands.Cog):
         answers: Sequence[str],
         threshold: int = config.FUZZY_THRESHOLD_DEFAULT,
     ) -> str | None:
-        """Process a message to check if it matches one of the given "quests" and
-        return a random answer if it does.
+        """Return a random answer when a message fuzzy-matches a known phrase.
 
         Args:
-            message: The message to process.
-            quests: A sequence of strings to match against the message content.
-            answers: A sequence of strings to return if the message matches.
-            threshold: The minimum score required for a match.
+            message: Message whose content is compared.
+            quests: Candidate phrases.
+            answers: Non-empty answer choices.
+            threshold: Minimum fuzzy-match score.
 
         Returns:
-            A random answer if the message matches, None otherwise.
-
+            A repeatable answer when a candidate meets the threshold, otherwise
+            ``None``.
         """
         fuzzy_results = extract(
             message.content,
@@ -157,22 +156,20 @@ class OnMessageCog(commands.Cog):
         summary_factory: Callable[[T], object],
         debug_factory: Callable[[T], object],
     ) -> None:
-        """Helper to log a section with INFO summary and lazy DEBUG details.
+        """Log a cheap summary and defer detailed rendering until DEBUG is enabled.
 
         Args:
-            self: Self with logger.
-            label: The log label (e.g., "Attachments").
-            data: The object to check for truthiness before logging.
-            summary_factory: Lambda returning the lightweight INFO payload.
-            debug_factory: Lambda returning the expensive DEBUG payload.
-
+            label: Label used by both log records.
+            data: Value whose absence suppresses the section.
+            summary_factory: Build the INFO payload.
+            debug_factory: Build the DEBUG payload only when needed.
         """
         if not data:
             return
         if log_data := summary_factory(data):
-            logger.info(f"{label}: %s", log_data)
+            logger.info("%s: %s", label, log_data)
         if logger.isEnabledFor(logging.DEBUG) and (log_data := debug_factory(data)):
-            logger.debug(f"Full {label.lower()}: %s", log_data)
+            logger.debug("Full %s: %s", label.lower(), log_data)
 
     def _log_message(self, message: Message, *, is_edit: bool = False) -> None:
         """Log message with structured INFO summaries and lazy DEBUG details."""
@@ -254,11 +251,6 @@ class OnMessageCog(commands.Cog):
         )
 
 
-async def setup(bot: commands.Bot):
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+async def setup(bot: commands.Bot) -> None:
+    """Register the message-listener cog."""
     await bot.add_cog(OnMessageCog(bot))

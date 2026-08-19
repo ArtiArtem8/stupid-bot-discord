@@ -1,14 +1,4 @@
-"""Birthday management system with automatic congratulations.
-
-Provides:
-- Birthday registration and removal
-- Automatic daily checks and congratulations
-- Birthday role management
-- Birthday list viewing with sorting
-
-Configuration:
-    Requires BIRTHDAY_FILE, BIRTHDAY_CHECK_INTERVAL in config.py
-"""
+"""Birthday commands and daily congratulation orchestration."""
 
 import logging
 import secrets
@@ -45,14 +35,13 @@ async def safe_role_edit(
     """Safely add or remove a role.
 
     Args:
-        member: Member to modify
-        role: Role to add/remove
-        operation: Either "add" or "remove"
-        logger: Logger for warnings
+        member: Member to modify.
+        role: Role to add or remove.
+        operation: Requested role operation.
 
     Returns:
-        True if successful, False otherwise
-
+        ``True`` when Discord accepted the edit, otherwise ``False`` for an
+        expected permission or request failure.
     """
     try:
         match operation:
@@ -94,7 +83,7 @@ class ConfirmDeleteView(discord.ui.View):
         self.guild_id = guild_id
 
     @discord.ui.button(label="Да", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: Interaction, _: Button[Self]):
+    async def confirm(self, interaction: Interaction, _: Button[Self]) -> None:
         if interaction.user.id != self.user_id:
             await FeedbackUI.send(
                 interaction,
@@ -108,9 +97,9 @@ class ConfirmDeleteView(discord.ui.View):
             guild_exists, cleared = await birthday_manager.clear_user_birthday(
                 self.guild_id, self.user_id
             )
-        except Exception as exc:
-            logging.getLogger("BirthdayCog").error(
-                "Error saving birthday file after deletion: %s", exc
+        except Exception:
+            logger.exception(
+                "Failed to save birthday removal for user %s", self.user_id
             )
             await FeedbackUI.send(
                 interaction,
@@ -174,27 +163,30 @@ class BirthdayCog(BaseCog):
         Set BIRTHDAY_CHECK_INTERVAL in config for check frequency (seconds)
     """
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
         self.birthday_timer.start()
 
     @override
-    async def cog_unload(self):
+    async def cog_unload(self) -> None:
         self.birthday_timer.cancel()
 
     @tasks.loop(seconds=config.BIRTHDAY_CHECK_INTERVAL)
-    async def birthday_timer(self):
-        """Main timer loop for birthday checks."""
+    async def birthday_timer(self) -> None:
+        """Check registered birthdays and deliver due congratulations."""
         today = date.today()
         guild_ids = await birthday_manager.get_all_guild_ids()
         for guild_id in guild_ids:
-            await self._process_guild(guild_id, today)
+            try:
+                await self._process_guild(guild_id, today)
+            except Exception:
+                logger.exception("Failed to process birthdays for guild %s", guild_id)
 
     @birthday_timer.before_loop
-    async def before_birthday_timer(self):
+    async def before_birthday_timer(self) -> None:
         await self.bot.wait_until_ready()
 
-    async def _process_guild(self, guild_id: int, today: date):
+    async def _process_guild(self, guild_id: int, today: date) -> None:
         """Process birthday checks for a single server.
 
         Args:
@@ -289,65 +281,44 @@ class BirthdayCog(BaseCog):
 
             await birthday_manager.record_congratulation(guild.id, user.user_id, today)
 
-        except Exception as e:
-            logger.error(f"Error handling birthday for {user.user_id}: {e}")
+        except Exception:
+            logger.exception("Failed to handle birthday for user %s", user.user_id)
 
     @app_commands.command(
-        name="setbirthday",
+        name="set-birthday",
         description="Установить свой день рождения (формат: ДД-ММ-ГГГГ или ГГГГ-ММ-ДД)",
     )
     @app_commands.describe(
         date_input="Дата рождения (например: 15-05-2000 или 2000-05-15)"
     )
     @app_commands.guild_only()
-    async def set_birthday(self, interaction: Interaction, date_input: str):
-        """Set your birthday in the system.
-
-        Args:
-            interaction: Command interaction
-            date_input: Birthday date string
-
-        Examples:
-            /setbirthday 15-05-2000
-            /setbirthday 2000-05-15
-
-        """
+    async def set_birthday(self, interaction: Interaction, date_input: str) -> None:
         try:
             normalized_date = parse_birthday(date_input)
         except ValueError:
-            return await FeedbackUI.send(
+            await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description="Неверный формат даты. Используйте ДД-ММ-ГГГГ / ГГГГ-ММ-ДД",
                 ephemeral=True,
             )
+            return
         guild = await self._require_guild(interaction)
-        try:
-            await birthday_manager.set_user_birthday(
-                guild_id=guild.id,
-                server_name=guild.name,
-                channel_id=interaction.channel_id or 0,
-                user_id=interaction.user.id,
-                user_name=interaction.user.name,
-                birthday=normalized_date,
-            )
-            msg = f"Ваш день рождения записан: {normalized_date}"
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.SUCCESS,
-                description=msg,
-                ephemeral=True,
-            )
-        except Exception as e:
-            logger.error("Error saving birthday: %s", e)
-
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.ERROR,
-                title="Ошибка",
-                description="Произошла ошибка сохранения данных.",
-                ephemeral=True,
-            )
+        await birthday_manager.set_user_birthday(
+            guild_id=guild.id,
+            server_name=guild.name,
+            channel_id=interaction.channel_id or 0,
+            user_id=interaction.user.id,
+            user_name=interaction.user.name,
+            birthday=normalized_date,
+        )
+        msg = f"Ваш день рождения записан: {normalized_date}"
+        await FeedbackUI.send(
+            interaction,
+            feedback_type=FeedbackType.SUCCESS,
+            description=msg,
+            ephemeral=True,
+        )
 
     @app_commands.command(
         name="setup-birthdays",
@@ -363,42 +334,30 @@ class BirthdayCog(BaseCog):
         interaction: Interaction,
         channel: discord.TextChannel,
         role: discord.Role | None = None,
-    ):
-        """Configure birthday system for the server."""
+    ) -> None:
         guild = await self._require_guild(interaction)
 
-        try:
-            await birthday_manager.configure_guild(
-                guild_id=guild.id,
-                server_name=guild.name,
-                channel_id=channel.id,
-                birthday_role_id=role.id if role else None,
-            )
-            response: str = f"Настройки обновлены:\n- Канал: {channel.mention}"
-            if role:
-                response += f"\n- Роль: {role.mention}"
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.SUCCESS,
-                description=response,
-                ephemeral=True,
-            )
-        except Exception as e:
-            logger.error("Error saving configuration: %s", e)
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.ERROR,
-                title="Ошибка",
-                description="Произошла ошибка сохранения данных.",
-                ephemeral=True,
-            )
+        await birthday_manager.configure_guild(
+            guild_id=guild.id,
+            server_name=guild.name,
+            channel_id=channel.id,
+            birthday_role_id=role.id if role else None,
+        )
+        response: str = f"Настройки обновлены:\n- Канал: {channel.mention}"
+        if role:
+            response += f"\n- Роль: {role.mention}"
+        await FeedbackUI.send(
+            interaction,
+            feedback_type=FeedbackType.SUCCESS,
+            description=response,
+            ephemeral=True,
+        )
 
     @app_commands.command(
         name="remove-birthday", description="Удалить свой день рождения из системы"
     )
     @app_commands.guild_only()
-    async def remove_birthday(self, interaction: Interaction):
-        """Remove your birthday from the system."""
+    async def remove_birthday(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
         config = await birthday_manager.get_guild_config(guild.id)
 
@@ -432,14 +391,15 @@ class BirthdayCog(BaseCog):
         )
 
     @app_commands.command(
-        name="list_birthdays",
+        name="list-birthdays",
         description="Список дней рождений на сервере, отсортированные по ближайшим",
     )
     @app_commands.guild_only()
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(ephemeral="Скрыть сообщение после выполнения")
-    async def list_birthdays(self, interaction: Interaction, ephemeral: bool = True):
-        """Display all birthdays in the guild, sorted by closest to today."""
+    async def list_birthdays(
+        self, interaction: Interaction, ephemeral: bool = True
+    ) -> None:
         guild = await self._require_guild(interaction)
         config = await birthday_manager.get_guild_config(guild.id)
         if not config:
@@ -479,11 +439,6 @@ class BirthdayCog(BaseCog):
         await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
 
-async def setup(bot: commands.Bot):
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+async def setup(bot: commands.Bot) -> None:
+    """Register the birthday cog."""
     await bot.add_cog(BirthdayCog(bot))

@@ -93,5 +93,5 @@ class BlockManager:
         return user
 
 
-# Global Instance
+# Process-lifetime owner shared by commands and interaction checks.
 block_manager = BlockManager(BlockingRepository())

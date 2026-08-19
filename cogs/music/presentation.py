@@ -33,7 +33,7 @@ class _TrackGroup:
     count: int
 
 
-def format_duration(ms: int | float) -> str:
+def format_duration(ms: float) -> str:
     """Convert milliseconds to a timedelta string without microseconds."""
     try:
         total = timedelta(seconds=ms / 1_000.0)

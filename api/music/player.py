@@ -82,21 +82,13 @@ class MusicPlayer(mafic.Player[discord.Client]):
         self._voice_state_update_event.clear()
         self._voice_server_update_event.clear()
         await self.guild.change_voice_state(channel=channel)
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(
-                    self._voice_state_update_event.wait(),
-                    self._voice_server_update_event.wait(),
-                ),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Timed out moving to channel %s in guild %s",
-                channel.id,
-                self.guild.id,
-            )
-            raise
+        await asyncio.wait_for(
+            asyncio.gather(
+                self._voice_state_update_event.wait(),
+                self._voice_server_update_event.wait(),
+            ),
+            timeout=timeout,
+        )
 
     def clear_queue(self) -> None:
         self.queue.clear()

@@ -25,11 +25,7 @@ type QueuePlacement = Literal["end", "next"]
 type PlayPlacement = Literal["now", "end", "next"]
 
 
-class MusicError(Exception):
-    """Base exception for Music API errors."""
-
-
-class NodeNotConnectedError(MusicError):
+class NodeNotConnectedError(RuntimeError):
     """Raised when Lavalink node is not connected."""
 
 
@@ -257,7 +253,7 @@ class MusicSession:
             channel_id=channel_id,
             thumbnail_url=thumbnail_url,
             start_timestamp=start_timestamp,
-            end_timestamp=utcnow(),  # Timestamp when the track has ended
+            end_timestamp=utcnow(),
         )
         self.tracks.append(track)
         if requester_id is not None:

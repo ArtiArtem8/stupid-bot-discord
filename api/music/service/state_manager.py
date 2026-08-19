@@ -25,7 +25,6 @@ class StateManager:
         self.sessions: dict[int, MusicSession] = {}
         self._track_start_times_dt: dict[tuple[int, int], datetime.datetime] = {}
 
-        # Auto-leave tracking
         self.empty_channel_timers: dict[int, EmptyTimerInfo] = {}
 
     def get_session(self, guild_id: int) -> MusicSession | None:
@@ -35,7 +34,7 @@ class StateManager:
         return self.sessions.setdefault(guild_id, MusicSession(guild_id=guild_id))
 
     def end_session(self, guild_id: int) -> MusicSession | None:
-        """Removes and returns the session for a guild."""
+        """Remove and return the session for a guild."""
         session = self.sessions.pop(guild_id, None)
         self.clear_track_start_times(guild_id)
         return session
@@ -50,7 +49,6 @@ class StateManager:
 
     def record_track_start(self, guild_id: int, attempt: PlaybackAttempt) -> None:
         self.get_or_create_session(guild_id)
-        # Using utcnow() as in original
         self._track_start_times_dt[(guild_id, attempt.attempt_id)] = utcnow()
 
     def record_history(
@@ -122,6 +120,6 @@ class StateManager:
         expired_guild_ids = [guild_id for guild_id, _ in expired_timers]
 
         for guild_id, reason in expired_timers:
-            logger.info(f"Auto-leave timer expired for guild {guild_id} ({reason})")
+            logger.info("Auto-leave timer expired for guild %s (%s)", guild_id, reason)
 
         return expired_guild_ids

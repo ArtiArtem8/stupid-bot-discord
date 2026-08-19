@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -273,7 +272,7 @@ class WolframClient:
                 operation="query request",
                 failure_message="Wolfram request failed",
             )
-        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+        except (TimeoutError, aiohttp.ClientError) as error:
             logger.warning("Wolfram query request failed: %s", type(error).__name__)
             raise WolframAPIError("Wolfram request failed") from error
 
@@ -297,12 +296,12 @@ class WolframClient:
                 operation="plot download",
                 failure_message="Plot download failed",
             )
-        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+        except (TimeoutError, aiohttp.ClientError) as error:
             logger.warning("Wolfram plot download failed: %s", type(error).__name__)
             raise WolframAPIError("Plot download failed") from error
 
     def _parse_xml(self, xml_content: str) -> WolframResult:
-        """Parses raw XML into structured dataclasses."""
+        """Parse raw XML into structured dataclasses."""
         try:
             root = ET.fromstring(xml_content, forbid_dtd=True)
         except (ET.ParseError, DefusedXmlException):

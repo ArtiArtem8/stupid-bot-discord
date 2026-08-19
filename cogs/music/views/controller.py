@@ -34,14 +34,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MUSIC_PLAYER_EMOJIS = {
-    # Bar Components
     "bar_left_full": "<:whitelineleftrounded:1447917292766626005>",
     "bar_mid_full": "<:whiteline:1447917290782724126>",
     "bar_right_full": "<:whitelinerightrounded:1447917295304446103>",
     "bar_left_empty": "<:graylineleftrounded:1447917287263830157>",
     "bar_mid_empty": "<:grayline:1447917284726411445>",
     "bar_right_empty": "<:graylinerightrounded:1447917289067515956>",
-    # Controls
     "restart": "<:restart:1447913966939406366>",
     "back_10": "<:replay10:1447914002482200720>",
     "play": "<:play:1447913953345929311>",
@@ -51,7 +49,7 @@ MUSIC_PLAYER_EMOJIS = {
     "musical_note": "<:musicalnote:1447968776128565358>",
 }
 
-# Must match the 10 shown by the seek button icons
+# Keep the seek interval aligned with the value shown by the button icons.
 _SEEK_STEP_MS = 10_000
 
 
@@ -61,20 +59,13 @@ class TrackControllerManager(ControllerManagerProtocol):
         bot: commands.Bot,
         connection_manager: ConnectionManager,
     ) -> None:
-        """Initialize the TrackControllerManager.
-
-        Args:
-            bot: The bot instance.
-            connection_manager: Owner of player lifecycle invalidation.
-
-        """
         self.bot = bot
         self.connection = connection_manager
         self.controllers: dict[int, TrackControllerView] = {}
         self._active_messages: dict[int, tuple[int, int]] = {}
         self._locks = defaultdict(asyncio.Lock)
 
-    async def _safe_delete_message(self, channel_id: int, message_id: int):
+    async def _safe_delete_message(self, channel_id: int, message_id: int) -> None:
         """Safely delete a message, handling missing channels/messages."""
         try:
             channel = self.bot.get_channel(channel_id)
@@ -106,10 +97,10 @@ class TrackControllerManager(ControllerManagerProtocol):
         channel: discord.abc.Messageable,
         player: MusicPlayer,
         attempt: PlaybackAttempt,
-    ):
-        """Creates a new controller, replacing any existing one safely."""
+    ) -> None:
+        """Replace any existing guild controller with one for the current attempt."""
         async with self._locks[guild_id]:
-            logger.debug(f"Manager: Setup controller for guild {guild_id}")
+            logger.debug("Manager: Setup controller for guild %s", guild_id)
             if player.current_attempt is not attempt:
                 logger.debug("Manager: Aborting stale controller creation")
                 return
@@ -147,8 +138,8 @@ class TrackControllerManager(ControllerManagerProtocol):
                     "Manager: Controller active for attempt %s", attempt.attempt_id
                 )
 
-            except Exception as e:
-                logger.exception(f"Failed to send controller: {e}")
+            except Exception:
+                logger.exception("Failed to send controller")
                 view.stop()
 
     @override
@@ -161,6 +152,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         expected_attempt_id: int | None = None,
     ) -> None:
         """Destroys the controller for a guild.
+
         If requesting_view is provided, only destroys if current active view.
         """
         async with self._locks[guild_id]:
@@ -190,7 +182,7 @@ class TrackControllerManager(ControllerManagerProtocol):
     async def _cleanup_existing(
         self, guild_id: int, reason: ControllerDestroyReason
     ) -> None:
-        """Internal helper to clean up resources. Assumes lock is held."""
+        """Clean up controller resources while the guild lock is held."""
         logger.debug(
             "Manager: Destroying controller for guild %s (reason=%s)",
             guild_id,
@@ -209,8 +201,12 @@ class TrackControllerManager(ControllerManagerProtocol):
             chan_id, msg_id = message_info
             try:
                 await self._safe_delete_message(chan_id, msg_id)
-            except Exception as e:
-                logger.warning("Failed to delete message: %s", e)
+            except Exception:
+                logger.exception(
+                    "Failed to delete controller message %s in channel %s",
+                    msg_id,
+                    chan_id,
+                )
 
 
 type ButtonCallback = Callable[
@@ -220,7 +216,7 @@ type ButtonCallback = Callable[
 
 
 def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
-    """Decorator to handle exceptions in button callbacks.
+    """Handle exceptions raised by controller button callbacks.
 
     Catches mafic.PlayerNotConnected and mafic.PlayerException exceptions,
     stopping the view and calling the on_stop_callback if provided.
@@ -230,9 +226,9 @@ def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
     func_name = callable_name(func)
 
     async def wrapper(
-        self: "TrackControllerView",
+        self: TrackControllerView,
         interaction: Interaction,
-        button: ui.Button["TrackControllerView"],
+        button: ui.Button[TrackControllerView],
     ) -> None:
         try:
             await func(self, interaction, button)
@@ -273,7 +269,6 @@ class TrackControllerView(ui.View):
         self.update_interval = 20
         self._running = True
 
-        # State Cache
         self._is_paused_cache: bool = False
         self._pause_start_time: float | None = None
         self._frozen_position: int = 0
@@ -286,8 +281,8 @@ class TrackControllerView(ui.View):
         return self.attempt.attempt_id
 
     @override
-    def stop(self):
-        """Stops the updater loop and interaction."""
+    def stop(self) -> None:
+        """Stop the updater loop and interaction."""
         logger.debug("Stopping %s", self.__class__.__name__)
         self._running = False
         if self._task and self._task is not asyncio.current_task():
@@ -358,13 +353,13 @@ class TrackControllerView(ui.View):
         )
         return f"{start_cap}{middle}{end_cap}"
 
-    def start_updater(self):
+    def start_updater(self) -> None:
         self._task = asyncio.create_task(self._loop())
 
-    async def _loop(self):
+    async def _loop(self) -> None:
         """Background loop to update embed and check track state."""
         failure_count = 0
-        MAX_FAILURES = 3
+        max_failures = 3
 
         try:
             while self._running:
@@ -374,7 +369,7 @@ class TrackControllerView(ui.View):
 
                 if not current_attempt:
                     failure_count = await self._handle_missing_track(
-                        failure_count, MAX_FAILURES
+                        failure_count, max_failures
                     )
                     if failure_count is None:
                         return
@@ -391,8 +386,8 @@ class TrackControllerView(ui.View):
         except asyncio.CancelledError:
             logger.debug("View Loop Cancelled")
             raise
-        except Exception as e:
-            logger.exception("View Loop Error: %s", e)
+        except Exception:
+            logger.exception("View loop failed")
 
     async def _request_stop(self, reason: ControllerDestroyReason) -> None:
         self.stop()
@@ -466,7 +461,7 @@ class TrackControllerView(ui.View):
         await self._safe_update()
         return False
 
-    def update_buttons_state(self):
+    def update_buttons_state(self) -> None:
         for child in self.children:
             if isinstance(child, ui.Button) and child.custom_id == "btn_pause_resume":
                 child.emoji = (
@@ -476,8 +471,8 @@ class TrackControllerView(ui.View):
                 )
                 break
 
-    async def _safe_update(self, force: bool = False):
-        """Updates the message with rate limiting."""
+    async def _safe_update(self, force: bool = False) -> None:
+        """Update the message without exceeding the local rate limit."""
         if not self.message:
             logger.debug("View: Message not found. Stopping.")
             self.stop()
@@ -499,19 +494,13 @@ class TrackControllerView(ui.View):
 
     async def _check_owner(self, interaction: Interaction) -> bool:
         if interaction.user.id != self.user_id:
-            try:
-                await FeedbackUI.send(
-                    interaction,
-                    feedback_type=FeedbackType.WARNING,
-                    description="Это не ваш контроллер.",
-                    ephemeral=True,
-                    disable_report_btn=True,
-                )
-            except discord.HTTPException:
-                logger.debug(
-                    "Controller owner denial could not be sent.",
-                    exc_info=True,
-                )
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Это не ваш контроллер.",
+                ephemeral=True,
+                disable_report_btn=True,
+            )
             return False
         return True
 

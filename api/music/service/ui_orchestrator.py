@@ -61,7 +61,6 @@ class UIOrchestrator:
     async def spawn_controller(
         self, player: MusicPlayer, attempt: PlaybackAttempt
     ) -> None:
-        """Helper to safely spawn a UI controller."""
         track = attempt.entry.track
         resolved = self._resolve_channel(player, attempt)
         if not resolved:
@@ -69,7 +68,7 @@ class UIOrchestrator:
 
         channel, requester_info = resolved
 
-        # Only show controller for tracks > 45s and < 2**63 - 1 ms
+        # Streams and short tracks do not offer useful seek controls.
         if track.length <= 45_000 or track.stream:
             logger.debug(
                 "Track too short or a stream: %s, %s", track.title, track.length

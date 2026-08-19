@@ -25,7 +25,7 @@ from cogs.command.prefix_suggestions import (
 class PrefixBlockerCog(commands.Cog):
     """Redirect users from prefix commands to slash commands."""
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.logger = logging.getLogger("PrefixBlockerCog")
         self._app_cmd_cache: dict[
@@ -62,6 +62,7 @@ class PrefixBlockerCog(commands.Cog):
         self, guild_id: int | None
     ) -> dict[str, app_commands.AppCommand]:
         """Fetch current AppCommands.
+
         Cached to avoid extra HTTP traffic.
         """
         async with self._lock:
@@ -76,7 +77,6 @@ class PrefixBlockerCog(commands.Cog):
                 c.name: c for c in global_cmds
             }
 
-            # Also fetch guild commands if requested
             if guild_id is not None and self.bot.get_guild(guild_id) is not None:
                 guild = self.bot.get_guild(guild_id)
                 if guild is not None:
@@ -91,6 +91,7 @@ class PrefixBlockerCog(commands.Cog):
         self, *, key: str, root_name: str, message: Message
     ) -> str:
         """Prefer AppCommand mention formatting (clickable).
+
         For subcommands, Discord uses the root command ID: </root sub:ID>.
         """
         guild_id = message.guild.id if message.guild else None
@@ -100,7 +101,7 @@ class PrefixBlockerCog(commands.Cog):
             if root is None:
                 return f"`/{key}`"
             return root.mention
-        except Exception:
+        except discord.HTTPException:
             return f"`/{key}`"
 
     @commands.Cog.listener()
@@ -165,15 +166,14 @@ class PrefixBlockerCog(commands.Cog):
                 delete_after=delete_after,
                 silent=True,
             )
-        except Exception as e:
-            self.logger.error("Failed to send prefix warning: %s", e)
+        except discord.HTTPException as exc:
+            self.logger.warning(
+                "Discord rejected prefix warning (HTTP %s, code %s)",
+                exc.status,
+                exc.code,
+            )
 
 
-async def setup(bot: commands.Bot):
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+async def setup(bot: commands.Bot) -> None:
+    """Register the prefix-warning cog."""
     await bot.add_cog(PrefixBlockerCog(bot))

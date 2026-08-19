@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -106,7 +106,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.manager.get_ttl(10), 3)
 
     async def test_cleanup_expired_removes_only_valid_old_snapshot(self) -> None:
-        fixed = datetime(2025, 1, 10, tzinfo=timezone.utc)
+        fixed = datetime(2025, 1, 10, tzinfo=UTC)
         old = (fixed - timedelta(days=10)).isoformat()
         new = (fixed - timedelta(days=1)).isoformat()
         self._write_guild(
@@ -137,7 +137,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([snapshot.user_id for snapshot in snapshots], [2])
 
     async def test_malformed_snapshot_user_key_is_skipped_and_preserved(self) -> None:
-        fixed = datetime(2025, 1, 10, tzinfo=timezone.utc)
+        fixed = datetime(2025, 1, 10, tzinfo=UTC)
         self._write_guild(
             10,
             {
@@ -169,7 +169,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         self.assertIn("bad", members)
 
     async def test_malformed_snapshot_fields_are_skipped_and_preserved(self) -> None:
-        fixed = datetime(2025, 1, 10, tzinfo=timezone.utc)
+        fixed = datetime(2025, 1, 10, tzinfo=UTC)
         valid_left_at = fixed.isoformat()
         naive_left_at = datetime(2025, 1, 10).isoformat()
 
@@ -296,7 +296,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
             user_id=5,
             username="u",
             roles=[10, 20],
-            left_at=datetime.now(timezone.utc),
+            left_at=datetime.now(UTC),
         )
         get_snapshot = AsyncMock(return_value=snapshot)
         delete_snapshot = AsyncMock(return_value=True)
@@ -319,7 +319,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_restore_does_not_delete_newer_concurrent_snapshot(self) -> None:
-        old_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        old_time = datetime(2025, 1, 1, tzinfo=UTC)
         self._write_guild(
             10,
             {

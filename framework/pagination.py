@@ -1,4 +1,3 @@
-# framework/pagination.py
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, Self, override
 
@@ -115,7 +114,6 @@ class BasePaginator(ManagedView):
         self._setup_buttons(show_first_last, show_close)
 
     def _setup_buttons(self, show_first_last: bool, show_close: bool) -> None:
-        """Setup navigation buttons based on configuration."""
         if show_first_last:
             self.first_btn = CallbackButton[Self](
                 self.first_page, label="⏮", style=SECONDARY, row=0
@@ -160,16 +158,12 @@ class BasePaginator(ManagedView):
         """Create embed for current page."""
         return self.data.make_embed(self.page)
 
-    async def prepare(self):
-        """Prepare the paginator for use.
-
-        This method fetches the total number of pages and updates the  buttons.
-        """
+    async def prepare(self) -> None:
+        """Resolve page count and button state before the view is first sent."""
         total_pages = await self.get_total_pages()
         self._update_buttons(total_pages)
 
     def _update_buttons(self, total_pages: int) -> None:
-        """Update button states based on current page."""
         is_first_page = self.page == 0
         is_last_page = self.page >= total_pages - 1
         disable_nav = total_pages <= 1
@@ -183,7 +177,6 @@ class BasePaginator(ManagedView):
         self.next_btn.disabled = is_last_page or disable_nav
 
     async def _update_view(self, interaction: Interaction) -> None:
-        """Update the view with current page."""
         total_pages = await self.get_total_pages()
         if total_pages > 0:
             self.page = min(self.page, total_pages - 1)

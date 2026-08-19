@@ -1,8 +1,8 @@
 import asyncio
 import logging
-import os
 import time
 import typing
+from pathlib import Path
 
 from discord.ext import commands
 
@@ -12,27 +12,23 @@ logger = logging.getLogger("StupidBot")
 
 
 class CogLoader:
-    def __init__(self, bot: commands.Bot, watch: bool = False):
+    def __init__(self, bot: commands.Bot, watch: bool = False) -> None:
         self.bot = bot
         self.enable_watch = watch
         self._watcher_task = None
 
-    async def load_cogs(self):
+    async def load_cogs(self) -> None:
         for file_path in config.COGS_DIR.rglob("*_cog.py"):
             if file_path.name.startswith("_"):
                 continue
             rel_path = file_path.relative_to(config.BASE_DIR)
             module_name = ".".join(rel_path.parts).removesuffix(".py")
             logger.debug("Relative path: %s", rel_path)
-            try:
-                logger.debug("Loading: %s", module_name)
-                await self.bot.load_extension(module_name)
-                logger.info("Loaded: %s", module_name)
-            except Exception:
-                logger.exception("Failed to load %s", module_name)
-                raise
+            logger.debug("Loading: %s", module_name)
+            await self.bot.load_extension(module_name)
+            logger.info("Loaded: %s", module_name)
 
-    def start_watcher(self):
+    def start_watcher(self) -> None:
         if self.enable_watch:
             self._watcher_task = self.bot.loop.create_task(self._cog_watcher())
             logger.info("Cog watcher enabled (argument provided).")
@@ -47,7 +43,7 @@ class CogLoader:
                 try:
                     if (
                         module.__file__
-                        and os.stat(module.__file__).st_mtime > last_check
+                        and Path(module.__file__).stat().st_mtime > last_check
                     ):
                         extensions.add(name)
                 except OSError:
@@ -57,6 +53,6 @@ class CogLoader:
                     await self.bot.reload_extension(ext)
                     logger.info("Reloaded %s", ext)
                 except Exception:
-                    logger.exception(f"Failed to reload {ext}")
+                    logger.exception("Failed to reload %s", ext)
             last_check = time.time()
             await asyncio.sleep(1)

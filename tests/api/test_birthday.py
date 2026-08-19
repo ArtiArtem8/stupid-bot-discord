@@ -1,6 +1,4 @@
-"""Tests for birthday helpers and manager workflows.
-Covers parsing, member fetch fallbacks, and config CRUD outcomes.
-"""
+"""Tests for birthday helpers and manager workflows."""
 
 from __future__ import annotations
 
@@ -52,7 +50,7 @@ class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
         member = object()
 
         class FakeHTTPException(Exception):
-            def __init__(self, status: int):
+            def __init__(self, status: int) -> None:
                 super().__init__()
                 self.status = status
 

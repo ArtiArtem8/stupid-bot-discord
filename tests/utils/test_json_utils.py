@@ -1,6 +1,4 @@
-"""Tests for JSON file helpers.
-Covers load/save behaviors, backups, and clear/reset logic.
-"""
+"""Tests for JSON file helpers."""
 
 from __future__ import annotations
 
@@ -23,7 +21,6 @@ class TestGenerateBackupFilename(unittest.TestCase):
         fixed_dt = datetime(2025, 1, 2, 3, 4, 5)
         target = Path("repo.json")
 
-        # Force suffix to "AAAA"
         with patch("utils.json_utils.secrets.choice", side_effect=["A", "A", "A", "A"]):
             name = json_utils._generate_backup_filename(target, dt=fixed_dt)
         self.assertEqual(name, "repo_20250102_030405AAAA.json")
@@ -167,8 +164,24 @@ class TestCreateBackup(unittest.TestCase):
             )
 
         backups = list(self._backup_dir.glob("repo_*.json"))
-        # Assert the actual behavior: Max + 1
         self.assertLessEqual(len(backups), 4)
+
+    def test_create_backup_raises_after_final_copy_failure(self) -> None:
+        with (
+            patch("utils.json_utils.shutil.copy", side_effect=OSError("disk full")),
+            patch("utils.json_utils.time.sleep"),
+            self.assertRaises(OSError),
+        ):
+            json_utils._create_backup(
+                self._file,
+                max_backups=2,
+                backup_dir=self._backup_dir,
+            )
+
+        self.assertEqual(
+            self._file.read_text(encoding="utf-8"),
+            json.dumps({"v": 1}),
+        )
 
 
 class TestClearJson(unittest.TestCase):
@@ -199,7 +212,6 @@ class TestClearJson(unittest.TestCase):
                 backup_dir=self._backup_dir,
             )
 
-        # Ensure the original file was not overwritten after validation failure.
         self.assertEqual(json_utils.get_json(self._file), {"v": 1})
 
     def test_clear_json_overwrites_with_default_and_creates_backup(self) -> None:

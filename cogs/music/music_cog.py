@@ -33,7 +33,7 @@ from api.music.service import (
     UIOrchestrator,
 )
 from di.container import Container
-from framework import BaseCog, FeedbackUI, handle_errors, run_with_defer
+from framework import BaseCog, FeedbackUI, run_with_defer
 from repositories.volume_repository import VolumeRepository
 
 from .feedback import (
@@ -93,7 +93,6 @@ class MusicCog(BaseCog):
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
 
-        # Dependency Injection Setup
         self.container = Container()
         self.container.register(commands.Bot, factory=lambda _c: bot)
         self.container.register(ConnectionManager)
@@ -131,7 +130,6 @@ class MusicCog(BaseCog):
     async def on_music_session_end(
         self, _guild_id: int, session: MusicSession, channel_id: int
     ) -> None:
-        """Handle music session end event."""
         channel = self.bot.get_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
@@ -150,7 +148,6 @@ class MusicCog(BaseCog):
 
     @commands.Cog.listener()
     async def on_music_track_exception(self, payload: TrackExceptionPayload) -> None:
-        """Handle dispatched track exception payloads."""
         channel_id = payload.channel_id
         if not channel_id:
             return
@@ -175,7 +172,6 @@ class MusicCog(BaseCog):
 
     @app_commands.command(name="join", description="Подключиться к голосовому каналу")
     @app_commands.guild_only()
-    @handle_errors()
     async def join(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
 
@@ -201,7 +197,6 @@ class MusicCog(BaseCog):
     )
     @app_commands.describe(query="URL или название")
     @app_commands.guild_only()
-    @handle_errors()
     async def play(self, interaction: Interaction, query: str) -> None:
         await self._run_play_command(interaction, query, "end")
 
@@ -211,7 +206,6 @@ class MusicCog(BaseCog):
     )
     @app_commands.describe(query="URL или название")
     @app_commands.guild_only()
-    @handle_errors()
     async def play_next(self, interaction: Interaction, query: str) -> None:
         await self._run_play_command(interaction, query, "next")
 
@@ -418,7 +412,6 @@ class MusicCog(BaseCog):
         name="stop", description="Остановить воспроизведение и очистить очередь"
     )
     @app_commands.guild_only()
-    @handle_errors()
     async def stop(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
         res = await self.service.stop(
@@ -431,7 +424,6 @@ class MusicCog(BaseCog):
 
     @app_commands.command(name="skip", description="Пропустить текущий трек")
     @app_commands.guild_only()
-    @handle_errors()
     async def skip(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
         res = await self.service.skip(
@@ -442,7 +434,8 @@ class MusicCog(BaseCog):
             return
 
         if not res.is_success or not res.data:
-            return await send_error(interaction, res.message)
+            await send_error(interaction, res.message)
+            return
 
         skipped = res.data["before"]
         next_track = res.data["after"]
@@ -457,7 +450,6 @@ class MusicCog(BaseCog):
     @app_commands.command(name="queue", description="Очередь")
     @app_commands.describe(ephemeral="Скрыть сообщение")
     @app_commands.guild_only()
-    @handle_errors()
     async def queue(self, interaction: Interaction, ephemeral: bool = True) -> None:
         guild = await self._require_guild(interaction)
 
@@ -487,7 +479,6 @@ class MusicCog(BaseCog):
     @app_commands.command(name="volume", description="Установить громкость (0-200)")
     @app_commands.describe(value="Оставьте пустым, чтобы узнать громкость")
     @app_commands.guild_only()
-    @handle_errors()
     async def volume(
         self,
         interaction: Interaction,
@@ -496,7 +487,8 @@ class MusicCog(BaseCog):
         guild = await self._require_guild(interaction)
         if value is None:
             vol = await self.service.get_volume(guild.id)
-            return await send_info(interaction, f"Громкость: {vol}%")
+            await send_info(interaction, f"Громкость: {vol}%")
+            return
 
         res = await self.service.set_volume(guild.id, value)
         if res.is_success:
@@ -506,7 +498,6 @@ class MusicCog(BaseCog):
 
     @app_commands.command(name="leave", description="Выйти")
     @app_commands.guild_only()
-    @handle_errors()
     async def leave(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
         res = await run_with_defer(
@@ -529,7 +520,6 @@ class MusicCog(BaseCog):
 
     @app_commands.command(name="shuffle", description="Перемешать")
     @app_commands.guild_only()
-    @handle_errors()
     async def shuffle(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
         res = await self.service.shuffle(
@@ -544,7 +534,6 @@ class MusicCog(BaseCog):
         name="rotate", description="Переместить тек. трек в конец очереди"
     )
     @app_commands.guild_only()
-    @handle_errors()
     async def rotate(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
         res = await self.service.rotate(
@@ -567,7 +556,6 @@ class MusicCog(BaseCog):
         mode="off — выкл, queue — повтор очереди, track - повтор трека"
     )
     @app_commands.guild_only()
-    @handle_errors()
     async def repeat(
         self,
         interaction: Interaction,
@@ -583,14 +571,14 @@ class MusicCog(BaseCog):
 
         data = result.data
         if not result.is_success or not data:
-            return await self._send_no_player_or_unavailable(interaction, result)
+            await self._send_no_player_or_unavailable(interaction, result)
+            return
 
         embed = build_repeat_embed(data.get("mode"))
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)
 
     @app_commands.command(name="pause", description="Пауза")
     @app_commands.guild_only()
-    @handle_errors()
     async def pause(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
         res = await self.service.pause(guild.id)
@@ -601,7 +589,6 @@ class MusicCog(BaseCog):
 
     @app_commands.command(name="resume", description="Продолжить")
     @app_commands.guild_only()
-    @handle_errors()
     async def resume(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
         res = await self.service.resume(guild.id)
@@ -614,7 +601,6 @@ class MusicCog(BaseCog):
         name="reconnect", description="Переподключиться в случае ошибок"
     )
     @app_commands.guild_only()
-    @handle_errors()
     async def heal(self, interaction: Interaction) -> None:
         if interaction.guild_id is None:
             await send_warning(interaction, "сервер не найден", ephemeral=True)
@@ -648,11 +634,6 @@ class MusicCog(BaseCog):
         )
 
 
-async def setup(bot: commands.Bot):
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+async def setup(bot: commands.Bot) -> None:
+    """Register the music cog."""
     await bot.add_cog(MusicCog(bot))

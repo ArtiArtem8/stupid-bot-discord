@@ -41,7 +41,7 @@ class UptimeData:
 
 
 class UptimeManager:
-    def __init__(self, store: AsyncJsonFileStore | None = None):
+    def __init__(self, store: AsyncJsonFileStore | None = None) -> None:
         self.start_time: float = time.time()
         self.last_activity_str = "N/A"
         self._store = store or AsyncJsonFileStore(config.LAST_RUN_FILE, backup_amount=1)
@@ -72,7 +72,7 @@ class UptimeManager:
             )
 
     async def save_state(self) -> float:
-        """Saves the current uptime state to file."""
+        """Save the current uptime state and return its duration in seconds."""
         current_uptime = time.time() - self.start_time
         state = UptimeData(last_shutdown=time.time(), accumulated_uptime=current_uptime)
         if not self._persistence_available:

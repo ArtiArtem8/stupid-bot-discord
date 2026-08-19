@@ -1,6 +1,4 @@
-"""Tests for birthday utility helpers.
-Covers date parsing, leap-year handling, and birthday checks.
-"""
+"""Tests for birthday utility helpers."""
 
 import unittest
 from datetime import date
@@ -13,42 +11,34 @@ from utils.birthday_utils import (
 
 
 class TestCalculateDaysUntilBirthday(unittest.TestCase):
-    def test_birthday_today(self):
-        """Birthday is today - should return 0."""
+    def test_birthday_today(self) -> None:
         reference = date(2025, 12, 12)
         birthday_str = "12-12-1990"
 
         result = calculate_days_until_birthday(birthday_str, reference)
         self.assertEqual(result, 0)
 
-    def test_leap_year_birthday_today(self):
-        """Birthday is today (February 29th) in a leap year - should return 0."""
+    def test_leap_year_birthday_today(self) -> None:
         reference = date(2025, 2, 28)
         birthday_str = "29-02-1992"
 
         result = calculate_days_until_birthday(birthday_str, reference)
         self.assertEqual(result, 0)
 
-    def test_leap_year_birthday_on_actual_day(self):
-        """Test that leap year birthdays are handled correctly on non-leap years.
-        This test ensures that on February 28th, a leap year birthday on February 29th
-        is still recognized as being 0 days away.
-        """
+    def test_leap_year_birthday_on_actual_day(self) -> None:
         reference = date(2025, 2, 28)
         birthday_str = "29-02-1992"
 
         result = calculate_days_until_birthday(birthday_str, reference)
         self.assertEqual(result, 0)
 
-    def test_leap_year_birthday_wait_for_29th(self):
-        """In a leap year, Feb 29 birthday should NOT happen on Feb 28."""
+    def test_leap_year_birthday_wait_for_29th(self) -> None:
         reference = date(2024, 2, 28)
         birthday_str = "29-02-2000"
         result = calculate_days_until_birthday(birthday_str, reference)
         self.assertEqual(result, 1)
 
-    def test_birthday_in_future_this_year(self):
-        """Birthday hasn't happened yet this year."""
+    def test_birthday_in_future_this_year(self) -> None:
         reference = date(2025, 1, 15)
         birthday_str = "20-03-1995"
 
@@ -58,8 +48,7 @@ class TestCalculateDaysUntilBirthday(unittest.TestCase):
         self.assertEqual(result, expected)
         self.assertEqual(result, 64)
 
-    def test_birthday_already_passed_this_year(self):
-        """Birthday already happened - calculate for next year."""
+    def test_birthday_already_passed_this_year(self) -> None:
         reference = date(2025, 6, 15)
         birthday_str = "01-01-2000"
 
@@ -69,8 +58,7 @@ class TestCalculateDaysUntilBirthday(unittest.TestCase):
         self.assertEqual(result, expected)
         self.assertEqual(result, 200)
 
-    def test_leap_year_feb_29_birthday(self):
-        """Handle Feb 29 birthday in non-leap year."""
+    def test_leap_year_feb_29_birthday(self) -> None:
         reference = date(2025, 1, 1)
         birthday_str = "29-02-2000"
 
@@ -81,8 +69,7 @@ class TestCalculateDaysUntilBirthday(unittest.TestCase):
         result_leap = calculate_days_until_birthday(birthday_str, reference_leap)
         self.assertEqual(result_leap, 59)
 
-    def test_invalid_date_format(self):
-        """Invalid date formats should return None."""
+    def test_invalid_date_format(self) -> None:
         reference = date(2025, 12, 12)
 
         test_cases = [
@@ -100,16 +87,14 @@ class TestCalculateDaysUntilBirthday(unittest.TestCase):
                 result = calculate_days_until_birthday(birthday_str, reference)
                 self.assertIsNone(result, msg=birthday_str)
 
-    def test_none_input(self):
-        """None input should return None."""
+    def test_none_input(self) -> None:
         reference = date(2025, 12, 12)
 
         result = calculate_days_until_birthday("", reference)
 
         self.assertIsNone(result)
 
-    def test_new_year_edge_case(self):
-        """Test birthday on Dec 31 when reference is Jan 1."""
+    def test_new_year_edge_case(self) -> None:
         reference = date(2025, 1, 1)
         birthday_str = "31-12-1995"
 
@@ -119,8 +104,7 @@ class TestCalculateDaysUntilBirthday(unittest.TestCase):
         self.assertEqual(result, expected)
         self.assertEqual(result, 364)
 
-    def test_calculate_days_until_birthday_leap_logic(self):
-        """Test calculation of days until birthday with leap logic."""
+    def test_calculate_days_until_birthday_leap_logic(self) -> None:
         bday_str = "29-02-2000"
 
         ref_date = date(2025, 1, 1)
@@ -132,24 +116,21 @@ class TestCalculateDaysUntilBirthday(unittest.TestCase):
 
 
 class TestFormatBirthdayDate(unittest.TestCase):
-    def test_format_valid_date(self):
-        """Format a valid birthday date."""
+    def test_format_valid_date(self) -> None:
         birthday_str = "15-03-1990"
 
         result = format_birthday_date(birthday_str)
 
         self.assertEqual(result, "15 марта")
 
-    def test_format_single_digit_day(self):
-        """Format date with single-digit day (with leading zero)."""
+    def test_format_single_digit_day(self) -> None:
         birthday_str = "01-05-2000"
 
         result = format_birthday_date(birthday_str)
 
         self.assertEqual(result, "1 мая")
 
-    def test_format_all_months(self):
-        """Test formatting for all 12 months."""
+    def test_format_all_months(self) -> None:
         expected_months = {
             "01": "января",
             "02": "февраля",
@@ -171,8 +152,7 @@ class TestFormatBirthdayDate(unittest.TestCase):
                 result = format_birthday_date(birthday_str)
                 self.assertEqual(result, f"15 {month_name}")
 
-    def test_format_invalid_date(self):
-        """Invalid dates should return None."""
+    def test_format_invalid_date(self) -> None:
         test_cases = [
             "32-01-2000",
             "01-13-2000",
@@ -188,8 +168,7 @@ class TestFormatBirthdayDate(unittest.TestCase):
                 result = format_birthday_date(birthday_str)
                 self.assertIsNone(result)
 
-    def test_format_leap_year_date(self):
-        """Format Feb 29 from a leap year."""
+    def test_format_leap_year_date(self) -> None:
         birthday_str = "29-02-2000"
 
         result = format_birthday_date(birthday_str)
@@ -198,46 +177,37 @@ class TestFormatBirthdayDate(unittest.TestCase):
 
 
 class TestIsBirthdayToday(unittest.TestCase):
-    """Test cases for is_birthday_today logic."""
-
-    def test_normal_birthday_match(self):
-        """Standard birthday matches today."""
+    def test_normal_birthday_match(self) -> None:
         bday = "15-05-1990"
         today = date(2025, 5, 15)
         self.assertTrue(is_birthday_today(bday, today))
 
-    def test_normal_birthday_mismatch(self):
-        """Standard birthday does not match today."""
+    def test_normal_birthday_mismatch(self) -> None:
         bday = "15-05-1990"
         today = date(2025, 5, 16)
         self.assertFalse(is_birthday_today(bday, today))
 
-    def test_leap_birthday_in_leap_year_match(self):
-        """Born Feb 29, today is Feb 29 (Leap Year) -> Match."""
+    def test_leap_birthday_in_leap_year_match(self) -> None:
         bday = "29-02-2000"
         today = date(2024, 2, 29)  # 2024 is leap
         self.assertTrue(is_birthday_today(bday, today))
 
-    def test_leap_birthday_in_leap_year_mismatch(self):
-        """Born Feb 29, today is Feb 28 (Leap Year) -> No match."""
+    def test_leap_birthday_in_leap_year_mismatch(self) -> None:
         bday = "29-02-2000"
         today = date(2024, 2, 28)
         self.assertFalse(is_birthday_today(bday, today))
 
-    def test_leap_birthday_in_non_leap_year_match(self):
-        """Born Feb 29, today is Feb 28 (Non-Leap Year) -> Match."""
+    def test_leap_birthday_in_non_leap_year_match(self) -> None:
         bday = "29-02-2000"
         today = date(2025, 2, 28)  # 2025 is not leap
         self.assertTrue(is_birthday_today(bday, today))
 
-    def test_leap_birthday_in_non_leap_year_mismatch(self):
-        """Born Feb 29, today is Mar 1 (Non-Leap Year) -> No match."""
+    def test_leap_birthday_in_non_leap_year_mismatch(self) -> None:
         bday = "29-02-2000"
         today = date(2025, 3, 1)
         self.assertFalse(is_birthday_today(bday, today))
 
-    def test_invalid_date_returns_false(self):
-        """Invalid date strings return False safely."""
+    def test_invalid_date_returns_false(self) -> None:
         self.assertFalse(is_birthday_today("invalid", date(2025, 1, 1)))
         self.assertFalse(is_birthday_today("", date(2025, 1, 1)))
         self.assertFalse(is_birthday_today("32-01-2000", date(2025, 1, 1)))

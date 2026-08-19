@@ -143,7 +143,6 @@ class WolframCog(BaseCog):
         interaction: Interaction,
         problem: app_commands.Range[str, 1, config.WOLFRAM_MAX_QUERY_LEN],
     ) -> None:
-        """Slash command handler for solving."""
         await interaction.response.defer(ephemeral=True)
         await self._handle_query(interaction, problem, mode="solve")
 
@@ -155,7 +154,6 @@ class WolframCog(BaseCog):
         interaction: Interaction,
         function: app_commands.Range[str, 1, config.WOLFRAM_MAX_QUERY_LEN],
     ) -> None:
-        """Slash command handler for plotting."""
         await interaction.response.defer(ephemeral=True)
         await self._handle_query(interaction, function, mode="plot")
 
@@ -163,7 +161,6 @@ class WolframCog(BaseCog):
     async def _context_solve(
         self, interaction: Interaction, message: discord.Message
     ) -> None:
-        """Context menu handler."""
         await interaction.response.defer(ephemeral=True)
         await self._handle_query(interaction, message.content, mode="solve")
 
@@ -280,7 +277,7 @@ class WolframCog(BaseCog):
     async def _send_text_results(
         self, interaction: Interaction, result: WolframResult, query: str
     ) -> None:
-        """Construct and send the Embed."""
+        """Publish displayable text pods and acknowledge the interaction."""
         embed = _build_text_results_embed(result, query)
         if not embed.fields:
             await FeedbackUI.send(
@@ -347,9 +344,6 @@ class WolframCog(BaseCog):
             )
         except (WolframAPIError, ImageProcessingError):
             await self._send_plot_error(interaction)
-        except Exception:
-            logger.exception("Unexpected Wolfram image pipeline failure")
-            await self._send_plot_error(interaction)
 
     async def _upload_plot(
         self,
@@ -395,7 +389,7 @@ class WolframCog(BaseCog):
                 file.close()
 
     async def _send_plot_error(self, interaction: Interaction) -> None:
-        """Preserve the command's existing image failure feedback."""
+        """Send the stable user-facing response for image pipeline failures."""
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.ERROR,
@@ -405,10 +399,5 @@ class WolframCog(BaseCog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+    """Register the Wolfram cog."""
     await bot.add_cog(WolframCog(bot))

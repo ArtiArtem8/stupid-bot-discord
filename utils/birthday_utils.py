@@ -12,14 +12,19 @@ def is_leap(year: int) -> bool:
 
 
 def _get_safe_birthday(year: int, original: date) -> date:
-    """Returns the birthday for a specific year, handling Feb 29 edge cases."""
+    """Return one birthday occurrence, mapping Feb. 29 to Feb. 28 when needed."""
     if original.month == 2 and original.day == 29 and not is_leap(year):
         return date(year, 2, 28)
     return date(year, original.month, original.day)
 
 
 def is_birthday_today(birthday_str: str, today: date) -> bool:
-    """Check if the given birthday string matches today's date."""
+    """Return whether a stored birthday is celebrated on ``today``.
+
+    Stored values use :data:`config.DATE_FORMAT`. Feb. 29 birthdays are
+    celebrated on Feb. 28 in non-leap years. Empty or malformed values return
+    ``False`` rather than raising.
+    """
     if not birthday_str:
         return False
 
@@ -39,16 +44,16 @@ def calculate_days_until_birthday(
 ) -> int | None:
     """Calculate days until the next birthday from a reference date.
 
-    Handles leap years: If born on Feb 29, the birthday is treated as
-    Feb 28 in non-leap years.
+    Feb. 29 birthdays are treated as Feb. 28 in non-leap years. The birth year
+    does not affect the calculation.
 
     Args:
-        birthday_str: Birthday string in DD-MM-YYYY format
-        reference_date: Reference date to calculate from
+        birthday_str: Stored birthday in :data:`config.DATE_FORMAT`.
+        reference_date: Calendar date from which to count.
 
     Returns:
-        Number of days until the birthday, or None if invalid
-
+        Days until the next celebration, including zero for ``reference_date``,
+        or ``None`` for an empty or malformed birthday.
     """
     if not birthday_str:
         return None
@@ -67,14 +72,14 @@ def calculate_days_until_birthday(
 
 
 def format_birthday_date(birthday_str: str) -> str | None:
-    """Format a birthday date string to a more readable format.
+    """Format a stored birthday as a Russian day-and-month phrase.
 
     Args:
-        birthday_str: Birthday string in DD-MM-YYYY format
+        birthday_str: Stored birthday in :data:`config.DATE_FORMAT`.
 
     Returns:
-        Formatted birthday string (e.g., "15 марта") or None if invalid
-
+        A phrase such as ``"15 марта"``, or ``None`` for an empty, malformed,
+        or unsupported value.
     """
     if not birthday_str:
         return None

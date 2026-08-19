@@ -9,7 +9,11 @@ type JsonUpdater = Callable[[JsonObject], Awaitable[None] | None]
 
 
 class JsonObjectStore(Protocol):
-    """Current JSON object-store operations used by repositories."""
+    """JSON object operations required by repositories.
+
+    Implementations own serialization for each mutable resource. Repository
+    owners must retain one implementation instance for the resource lifetime.
+    """
 
     async def read(self) -> JsonObject: ...
 

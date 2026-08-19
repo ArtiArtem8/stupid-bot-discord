@@ -7,9 +7,7 @@ from utils.birthday_utils import (
 from utils.embeds import (
     CharacterLimitExceededError,
     EmbedLimits,
-    FieldLimitExceededError,
     SafeEmbed,
-    SafeEmbedError,
 )
 from utils.image_utils import (
     ImageOutputTooLargeError,
@@ -33,11 +31,9 @@ __all__ = [
     "AsyncJsonFileStore",
     "CharacterLimitExceededError",
     "EmbedLimits",
-    "FieldLimitExceededError",
     "ImageOutputTooLargeError",
     "ImageProcessingError",
     "SafeEmbed",
-    "SafeEmbedError",
     "TextPaginator",
     "calculate_days_until_birthday",
     "clear_json",

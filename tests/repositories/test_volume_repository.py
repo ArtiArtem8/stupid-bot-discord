@@ -1,6 +1,4 @@
-"""Tests for volume repository storage behavior.
-Covers default fallback, CRUD paths, and preservation of other entries.
-"""
+"""Tests for volume repository storage behavior."""
 
 from __future__ import annotations
 

@@ -19,7 +19,7 @@ from discord.utils import format_dt
 
 import config
 from api import block_manager
-from framework import BaseCog, FeedbackType, FeedbackUI, handle_errors, is_owner_app
+from framework import BaseCog, FeedbackType, FeedbackUI, is_owner_app
 from resources import ACTION_TITLES
 from utils import SafeEmbed, truncate_sequence, truncate_text
 
@@ -94,7 +94,7 @@ class AdminCog(BaseCog):
     Requires administrator permissions for all commands.
     """
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
 
     @override
@@ -108,13 +108,6 @@ class AdminCog(BaseCog):
     async def error(self, _: discord.Interaction) -> NoReturn:
         raise RuntimeError("Test error")
 
-    @app_commands.command(name="error-test-handled", description="Тестирование ошибок")
-    @is_owner_app()
-    @app_commands.default_permissions(administrator=True)
-    @handle_errors()
-    async def error_handled(self, _: discord.Interaction) -> NoReturn:
-        raise RuntimeError("Test handled error")
-
     @app_commands.command(
         name="block", description="Заблокировать пользователя от использования бота."
     )
@@ -126,8 +119,7 @@ class AdminCog(BaseCog):
     @app_commands.guild_only()
     async def block(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
-    ):
-        """Block a user from using the bot."""
+    ) -> None:
         guild = await self._require_guild(interaction)
         if await block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
@@ -154,8 +146,7 @@ class AdminCog(BaseCog):
     @app_commands.guild_only()
     async def unblock(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
-    ):
-        """Unblock a user from using the bot."""
+    ) -> None:
         guild = await self._require_guild(interaction)
         if not await block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
@@ -171,7 +162,7 @@ class AdminCog(BaseCog):
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
 
     @app_commands.command(
-        name="blockinfo",
+        name="block-info",
         description="Показать подробную информацию о блокировках пользователя.",
     )
     @app_commands.describe(
@@ -185,15 +176,16 @@ class AdminCog(BaseCog):
         interaction: discord.Interaction,
         user: discord.Member,
         ephemeral: bool = True,
-    ):
-        """Display detailed block history for a user."""
+    ) -> None:
         guild = await self._require_guild(interaction)
         user_entry = await block_manager.get_user(guild.id, user.id)
 
         if not user_entry or not user_entry.block_history:
             logger.info(
-                f"No block history found for user {user.id} "
-                + f"in guild {guild.name} ({guild.id})"
+                "No block history found for user %s in guild %s (%s)",
+                user.id,
+                guild.name,
+                guild.id,
             )
             await FeedbackUI.send(
                 interaction,
@@ -204,8 +196,10 @@ class AdminCog(BaseCog):
             return
 
         logger.info(
-            f"Displaying block history for user {user.id} "
-            + f"in guild {guild.name} ({guild.id})"
+            "Displaying block history for user %s in guild %s (%s)",
+            user.id,
+            guild.name,
+            guild.id,
         )
         embed = SafeEmbed(
             title="Полная история блокировок",
@@ -232,7 +226,6 @@ class AdminCog(BaseCog):
             inline=False,
         )
 
-        # Recent events (merge and sort block/unblock history)
         all_events = sorted(
             [(e.timestamp, "BLOCK", e) for e in user_entry.block_history]
             + [(e.timestamp, "UNBLOCK", e) for e in user_entry.unblock_history],
@@ -265,7 +258,6 @@ class AdminCog(BaseCog):
                 inline=False,
             )
 
-        # Name history
         if user_entry.name_history[:21]:
             name_changes: list[str] = []
             for name_entry in sorted(
@@ -288,7 +280,6 @@ class AdminCog(BaseCog):
                 value=names_value,
             )
 
-        # Statistics
         first_block_ts = format_dt(user_entry.block_history[0].timestamp, "D")
         stats = [
             f"• Всего блокировок: {len(user_entry.block_history)}",
@@ -306,13 +297,12 @@ class AdminCog(BaseCog):
             inline=False,
         )
 
-        # Footer with danger level
         danger_level = format_danger_level(len(user_entry.block_history))
         embed.set_footer(text=f"Уровень проблемности: {danger_level}")
 
         await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
-        logger.info(f"Displayed blockinfo for user {user.id} in guild {guild.id}")
+        logger.info("Displayed blockinfo for user %s in guild %s", user.id, guild.id)
 
     @app_commands.command(
         name="list-blocked", description="Показать всех заблокированных пользователей"
@@ -328,14 +318,13 @@ class AdminCog(BaseCog):
         interaction: discord.Interaction,
         show_details: bool = False,
         ephemeral: bool = True,
-    ):
-        """Display all currently blocked users with basic information."""
+    ) -> None:
         guild = await self._require_guild(interaction)
         all_users = await block_manager.get_guild_users(guild.id)
         blocked_users = [u for u in all_users if u.is_blocked]
 
         if not blocked_users:
-            logger.info(f"No blocked users found in guild {guild.id}")
+            logger.info("No blocked users found in guild %s", guild.id)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
@@ -343,7 +332,7 @@ class AdminCog(BaseCog):
                 ephemeral=ephemeral,
             )
             return
-        logger.info(f"Found {len(blocked_users)} blocked users in guild {guild.id} ")
+        logger.info("Found %s blocked users in guild %s", len(blocked_users), guild.id)
         embed = SafeEmbed(
             title=f"Заблокированные пользователи ({len(blocked_users)})",
             color=config.Color.INFO,
@@ -398,34 +387,48 @@ class AdminCog(BaseCog):
     @is_owner_app()
     @app_commands.describe(message_id="ID сообщения для удаления")
     @app_commands.default_permissions(administrator=True)
-    async def delete_message(self, interaction: discord.Interaction, message_id: str):
-        """Silently deletes a message by ID."""
+    async def delete_message(
+        self, interaction: discord.Interaction, message_id: str
+    ) -> None:
+        channel = interaction.channel
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Невозможно удалить сообщение в этом канале.",
+                ephemeral=True,
+            )
+            return
+
         try:
-            channel = interaction.channel
-            if channel is None or not isinstance(channel, discord.abc.Messageable):
-                await interaction.response.send_message(
-                    "Невозможно удалить сообщение в этом канале.", ephemeral=True
-                )
-                return
             msg = await channel.fetch_message(int(message_id))
-
             await msg.delete()
-            await interaction.response.send_message(
-                "Удалено.", ephemeral=True, delete_after=1.0
-            )
         except (discord.NotFound, ValueError):
-            await interaction.response.send_message(
-                "Сообщение не найдено.", ephemeral=True
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Сообщение не найдено.",
+                ephemeral=True,
             )
-        except Exception:
-            await interaction.response.send_message("Нет прав.", ephemeral=True)
+            return
+        except discord.Forbidden:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Нет прав.",
+                ephemeral=True,
+            )
+            return
+
+        await FeedbackUI.send(
+            interaction,
+            feedback_type=FeedbackType.SUCCESS,
+            description="Удалено.",
+            ephemeral=True,
+            delete_after=1.0,
+        )
 
 
-async def setup(bot: commands.Bot):
-    """Setup.
-
-    Args:
-        bot: BOT ITSELF
-
-    """
+async def setup(bot: commands.Bot) -> None:
+    """Register the administration cog."""
     await bot.add_cog(AdminCog(bot))

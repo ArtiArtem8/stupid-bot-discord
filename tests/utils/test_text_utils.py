@@ -1,6 +1,4 @@
-"""Tests for text utility helpers.
-Covers formatting, truncation, pagination, and deterministic answers.
-"""
+"""Tests for text utility helpers."""
 
 from __future__ import annotations
 
@@ -162,7 +160,6 @@ class TestTextUtils(unittest.TestCase):
         self.assertEqual(out, "aa...")
 
     def test_truncate_sequence_first_item_too_long(self) -> None:
-        # If the first item itself is massive, we must cut INSIDE it.
         out = truncate_sequence(["AAAAA", "B"], max_length=4, placeholder=".")
         self.assertEqual(out, "AAA.")
 

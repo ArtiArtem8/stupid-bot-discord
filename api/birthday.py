@@ -12,8 +12,6 @@ from api.birthday_models import (
     BirthdayGuildConfig,
     BirthdayListEntry,
 )
-
-# Import Repository
 from repositories.birthday_repository import BirthdayRepository
 from utils import TextPaginator, truncate_text
 
@@ -23,17 +21,15 @@ logger = logging.getLogger(__name__)
 def parse_birthday(date_str: str) -> str:
     """Parse a birthday date string into a standardized format.
 
-
     Args:
-        date_str: A string representing a date in either DD-MM-YYYY or YYYY-MM-DD format
+        date_str: Date in DD-MM-YYYY or YYYY-MM-DD format.
 
     Returns:
-        A string representing the parsed date in DD-MM-YYYY format
+        The date in DD-MM-YYYY format.
 
     Raises:
         ValueError: If the date string is invalid or does not match either of the
-            supported formats
-
+            supported formats.
     """
     for fmt in (config.DATE_FORMAT, "%Y-%m-%d"):
         try:
@@ -65,20 +61,20 @@ async def safe_fetch_member(
             return await guild.fetch_member(user_id)
         except (discord.NotFound, discord.Forbidden):
             return None
-        except discord.HTTPException as e:
-            if e.status >= 500 and attempt == 1:
-                logger.debug("Server error fetching member %s: %s", user_id, e)
+        except discord.HTTPException as exc:
+            if exc.status >= 500 and attempt == 1:
+                logger.debug("Server error fetching member %s: %s", user_id, exc)
                 await asyncio.sleep(2)
                 continue
-            logger.exception("Error fetching member %s: %s", user_id, e)
-            if e.status in (400, 403, 404):
+            if exc.status in (400, 403, 404):
                 return None
             raise
+    return None
 
 
 def create_birthday_list_embed(
     guild_name: str,
-    entries: Collection["BirthdayListEntry"],
+    entries: Collection[BirthdayListEntry],
     max_field_length: int = 1024,
 ) -> discord.Embed:
     """Create a Discord embed representing a list of birthdays.
@@ -123,11 +119,11 @@ def create_birthday_list_embed(
         separator="\n",
     )
 
-    MAX_FIELDS = 25
-    MAX_TOTAL = 6000
+    max_fields = 25
+    max_total = 6000
 
     for page_num, page_text in enumerate(paginator.pages, 1):
-        if len(embed.fields) >= MAX_FIELDS:
+        if len(embed.fields) >= max_fields:
             break
 
         field_name = (
@@ -138,7 +134,7 @@ def create_birthday_list_embed(
         field_name = truncate_text(field_name, width=256)
 
         projected_total = len(embed) + len(field_name) + len(page_text)
-        if projected_total > MAX_TOTAL:
+        if projected_total > max_total:
             break
 
         embed.add_field(name=field_name, value=page_text, inline=False)

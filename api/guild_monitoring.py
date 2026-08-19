@@ -120,7 +120,7 @@ def _write_guild_data(data: JsonObject, guild_data: GuildData) -> None:
 class ServerMonitoringManager:
     """Manage per-guild role snapshots through serialized async stores."""
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path) -> None:
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._stores: dict[int, AsyncJsonFileStore] = {}

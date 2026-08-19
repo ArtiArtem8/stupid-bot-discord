@@ -10,7 +10,10 @@ import mafic
 from discord.ext import commands
 from mafic.typings import LavalinkException
 
-from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
+from api.music.errors import (
+    EXPECTED_LAVALINK_IO_ERRORS,
+    compact_external_log_text,
+)
 from api.music.models import (
     ControllerDestroyReason,
     PlaybackAttempt,
@@ -26,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 VOICE_TRANSITION_WINDOW_SECONDS = 5.0
 VOICE_TRANSITION_VALIDATION_DELAY_SECONDS = 2.0
+TRACK_TITLE_TEXT_LIMIT = 160
 
 
 class MusicEventHandlers:
@@ -94,15 +98,24 @@ class MusicEventHandlers:
         logger.info("Lavalink node '%s' is ready", node.label)
 
     async def on_node_unavailable(self, node: mafic.Node[commands.Bot]) -> None:
-        if node.label not in self._unavailable_node_labels:
-            logger.warning("Lavalink node '%s' became unavailable", node.label)
-            self._unavailable_node_labels.add(node.label)
-
         players: list[MusicPlayer] = []
         for player in node.players:
             if isinstance(player, MusicPlayer):
                 players.append(player)
         affected_guild_ids: set[int] = {player.guild.id for player in players}
+        if node.label not in self._unavailable_node_labels:
+            message_format = (
+                "Lavalink node unavailable node=%s node_available=%s "
+                + "affected_guilds=%s"
+            )
+            logger.warning(
+                message_format,
+                node.label,
+                node.available,
+                sorted(affected_guild_ids),
+            )
+            self._unavailable_node_labels.add(node.label)
+
         try:
             if players:
                 await self.connection.invalidate_node_and_players(players[0])
@@ -147,18 +160,43 @@ class MusicEventHandlers:
 
         player = event.player
         track = event.track
-        reason, severity = self._extract_exception_details(event.exception)
-
-        logger.warning(
-            "Track exception in guild %s: %s (%s)",
-            player.guild.id,
-            track.title,
-            reason,
-        )
-
         attempt = await player.claim_track_exception(track)
         if attempt is None:
+            message_format = (
+                "Ignoring duplicate or stale TrackExceptionEvent guild=%s "
+                + "source=%s id=%s"
+            )
+            logger.debug(
+                message_format,
+                player.guild.id,
+                track.source,
+                track.identifier,
+            )
             return
+
+        reason, severity = self._extract_exception_details(event.exception)
+        message = compact_external_log_text(event.exception.get("message"))
+        cause = compact_external_log_text(event.exception.get("cause"))
+        title = compact_external_log_text(track.title, limit=TRACK_TITLE_TEXT_LIMIT)
+        position = player.position if player.current_attempt is attempt else None
+        message_format = (
+            "Track playback/source failure guild=%s attempt=%s "
+            + "source=%s id=%s title=%r position_ms=%s/%s severity=%s "
+            + "message=%r cause=%r"
+        )
+        logger.warning(
+            message_format,
+            player.guild.id,
+            attempt.attempt_id,
+            track.source,
+            track.identifier,
+            title,
+            position,
+            track.length,
+            severity,
+            message,
+            cause,
+        )
 
         self._load_failures.setdefault(player.guild.id, set()).add(attempt.attempt_id)
         self._dispatch_track_exception(player, attempt, reason, severity)
@@ -182,10 +220,24 @@ class MusicEventHandlers:
         attempt = await player.resolve_exception_attempt(event.track)
         if attempt is None:
             return
-        logger.warning(
-            "Track stuck in guild %s: %s",
-            guild_id,
+        title = compact_external_log_text(
             event.track.title,
+            limit=TRACK_TITLE_TEXT_LIMIT,
+        )
+        position = player.position if player.current_attempt is attempt else None
+        message_format = (
+            "Track stuck guild=%s attempt=%s source=%s id=%s title=%r "
+            + "position_ms=%s threshold_ms=%s"
+        )
+        logger.warning(
+            message_format,
+            guild_id,
+            attempt.attempt_id,
+            event.track.source,
+            event.track.identifier,
+            title,
+            position,
+            event.threshold_ms,
         )
         await self.ui.controller.destroy_for_guild(
             guild_id,
@@ -204,13 +256,11 @@ class MusicEventHandlers:
         try:
             outcome = await player.handle_track_end(track, reason)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            logger.warning(
-                "Track end transition failed in guild %s (reason=%s, error=%s)",
-                player.guild.id,
-                reason,
-                type(exc).__name__,
+            await self.connection.invalidate_player(
+                player,
+                context=f"track_end_transition_{reason.value}",
+                error=type(exc).__name__,
             )
-            await self.connection.invalidate_player(player)
             return
 
         if outcome.is_stale or outcome.ended_attempt is None:
@@ -222,6 +272,22 @@ class MusicEventHandlers:
 
         failures = self._load_failures.setdefault(player.guild.id, set())
         if reason is mafic.EndReason.LOAD_FAILED and ended.attempt_id not in failures:
+            title = compact_external_log_text(
+                track.title,
+                limit=TRACK_TITLE_TEXT_LIMIT,
+            )
+            message_format = (
+                "Track playback/source failure guild=%s attempt=%s "
+                + "source=%s id=%s title=%r reason=load_failed"
+            )
+            logger.warning(
+                message_format,
+                player.guild.id,
+                ended.attempt_id,
+                track.source,
+                track.identifier,
+                title,
+            )
             self._dispatch_track_exception(
                 player,
                 ended,
@@ -274,11 +340,17 @@ class MusicEventHandlers:
             return
 
         guild_id = event.player.guild.id
+        reason = compact_external_log_text(event.reason)
+        message_format = (
+            "Discord voice websocket failure guild=%s code=%s "
+            + "by_discord=%s reason=%r"
+        )
         logger.warning(
-            "Voice websocket closed for guild %s. Code: %s, Reason: %s",
-            event.player.guild.id,
+            message_format,
+            guild_id,
             event.code,
-            event.reason,
+            event.by_discord,
+            reason,
         )
 
         if event.code == 4006:
@@ -383,6 +455,11 @@ class MusicEventHandlers:
                 guild_id,
             )
             raise
+        except Exception:
+            logger.exception(
+                "Voice transition validation failed for guild %s",
+                guild_id,
+            )
         finally:
             self._recent_voice_transitions.pop(guild_id, None)
             current_task = asyncio.current_task()
@@ -446,13 +523,7 @@ class MusicEventHandlers:
         after: discord.VoiceState,
         bot_channel: discord.abc.Connectable,
     ) -> bool:
-        is_relevant = before.channel == bot_channel or after.channel == bot_channel
-
-        if before.channel == bot_channel == after.channel:
-            if before.deaf != after.deaf or before.self_deaf != after.self_deaf:
-                is_relevant = True
-
-        return is_relevant
+        return bot_channel in (before.channel, after.channel)
 
     async def _on_voice_state_update(
         self,
@@ -497,14 +568,13 @@ class MusicEventHandlers:
                     empty_reason,
                 )
                 self.state.start_timer(guild_id, empty_reason)
-        else:
-            if self.state.is_timer_active(guild_id):
-                logger.info(
-                    "Channel %s in guild %s is no longer empty. Cancelling timer.",
-                    channel.name,
-                    guild_id,
-                )
-                self.state.cancel_timer(guild_id)
+        elif self.state.is_timer_active(guild_id):
+            logger.info(
+                "Channel %s in guild %s is no longer empty. Cancelling timer.",
+                channel.name,
+                guild_id,
+            )
+            self.state.cancel_timer(guild_id)
 
     def _empty_channel_reason(
         self, channel: discord.VoiceChannel | discord.StageChannel

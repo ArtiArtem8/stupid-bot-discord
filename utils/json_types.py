@@ -36,7 +36,12 @@ def is_json_object(value: object) -> TypeGuard[JsonObject]:
 
 
 def freeze_json(value: JsonEncodable) -> JsonValue:
-    """Convert a JSON-encodable value into frozen JSON primitives/containers."""
+    """Copy a JSON-encodable value into mutable built-in JSON containers.
+
+    Mappings become ``dict`` instances and non-string keys are rejected. Other
+    sequences become lists; bytes and bytearrays are rejected rather than being
+    treated as integer sequences.
+    """
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
 
@@ -56,7 +61,7 @@ def freeze_json(value: JsonEncodable) -> JsonValue:
 
 
 def freeze_json_object(value: JsonEncodableObject) -> JsonObject:
-    """Convert a JSON-encodable mapping into a JSON object."""
+    """Copy a JSON-encodable mapping into an independent JSON object."""
     out_val = freeze_json(value)
     if not isinstance(out_val, dict):
         raise TypeError("Top-level JSON must be an object (mapping)")

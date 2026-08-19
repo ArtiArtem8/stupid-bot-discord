@@ -44,15 +44,75 @@ exclude = [
 
 [tool.ruff.lint]
 select = [
-    "F",   # Pyflakes
-    "E",   # Pycodestyle errors
-    "W",   # Pycodestyle warnings
-    "I",   # Isort
-    "C",   # flake8-comprehensions
-    "B",   # flake8-bugbear
-    "D",   # pydocstyle
-    "S",   # flake8-bandit
-    "RUF", # Ruff-specific rules
+    "A",      # flake8-builtins
+    "ANN201", # Public function return annotations
+    "ANN202", # Private function return annotations
+    "ANN204", # Special method return annotations
+    "ANN205", # Static method return annotations
+    "ANN206", # Class method return annotations
+    "ASYNC100",
+    "ASYNC105",
+    "ASYNC210",
+    "ASYNC212",
+    "ASYNC220",
+    "ASYNC221",
+    "ASYNC222",
+    "ASYNC230",
+    "ASYNC250",
+    "ASYNC251",
+    "B",      # flake8-bugbear
+    "C",      # flake8-comprehensions and McCabe complexity
+    "D",      # pydocstyle
+    "D401",   # Imperative function and method summaries
+    "DTZ",    # flake8-datetimez
+    "E",      # Pycodestyle errors
+    "ERA",    # eradicate commented-out code
+    "F",      # Pyflakes
+    "FURB110",
+    "G",      # flake8-logging-format
+    "I",      # isort
+    "LOG",    # flake8-logging
+    "N",      # pep8-naming
+    "PIE",    # flake8-pie
+    "PLE",    # Pylint errors
+    "PLR1714",
+    "PLR5501",
+    "PLW",    # Pylint warnings
+    "PTH",    # flake8-use-pathlib
+    "PYI034",
+    "PYI036",
+    "PYI041",
+    "RET502",
+    "RET503",
+    "RET505",
+    "RET506",
+    "RET507",
+    "RET508",
+    "RUF",    # Ruff-specific rules
+    "S",      # flake8-bandit
+    "SIM101",
+    "SIM107",
+    "SIM114",
+    "SIM115",
+    "SIM118",
+    "SIM201",
+    "SIM202",
+    "SIM208",
+    "SIM210",
+    "SIM211",
+    "SIM220",
+    "SIM221",
+    "SIM222",
+    "SIM223",
+    "SIM300",
+    "T10",    # flake8-debugger
+    "T20",    # flake8-print
+    "TRY201",
+    "TRY203",
+    "TRY400",
+    "TRY401",
+    "UP",     # pyupgrade
+    "W",      # Pycodestyle warnings
 ]
 ignore = [
     "D100",
@@ -60,13 +120,23 @@ ignore = [
     "D102",
     "D104",
     "D107",
-    "D203",
-    "D205",
-    "D213",
-    "D401",
     "RUF001",
-    "S101",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"api/birthday.py" = ["DTZ007"]
+"api/birthday_models.py" = ["DTZ007"]
+"api/reporting.py" = ["DTZ005"]
+"api/wolfram.py" = ["N817"]
+"cogs/birthday_cog.py" = ["DTZ011"]
+"tests/**/*.py" = ["D103", "DTZ001"]
+"tests/api/test_birthday.py" = ["N818"]
+"tests/di/test_container.py" = ["N803"]
+"utils/birthday_utils.py" = ["DTZ007"]
+"utils/json_utils.py" = ["DTZ005"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.mccabe]
 max-complexity = 8
@@ -76,6 +146,10 @@ known-first-party = ["cogs", "utils"]
 
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -10,7 +10,7 @@ import config
 from api.reporting import handle_report_button
 from framework import FeedbackUI
 from framework.cog_loader import CogLoader
-from framework.error_handler import CustomErrorCommandTree
+from framework.error_handler import handle_app_command_error
 from framework.uptime_manager import UptimeManager
 from utils import format_duration_ru
 
@@ -22,18 +22,14 @@ class DevServer:
 
 
 class StupidBot(commands.Bot):
+    """Discord runtime owner for cogs, background tasks, and uptime state."""
+
     def __init__(
         self,
         watch_cogs: bool = False,
         uptime_manager: UptimeManager | None = None,
         cog_loader: CogLoader | None = None,
-    ):
-        """Initialize the StupidBot instance.
-
-        Sets up the command prefix, intents, and initializes various
-        attributes related to the bot's uptime and activity monitoring.
-        Calls the method to load previous uptime data.
-        """
+    ) -> None:
         intents = Intents.default()
         intents.presences = True
         intents.message_content = True
@@ -41,9 +37,9 @@ class StupidBot(commands.Bot):
         super().__init__(
             command_prefix=config.BOT_PREFIX,
             intents=intents,
-            tree_cls=CustomErrorCommandTree,
             help_command=None,
         )
+        self.tree.error(handle_app_command_error)
         self.owner_id = (
             int(config.DISCORD_BOT_OWNER_ID) if config.DISCORD_BOT_OWNER_ID else None
         )
@@ -56,7 +52,7 @@ class StupidBot(commands.Bot):
         await self.uptime_manager.restore_uptime()
 
     async def save_state(self) -> float:
-        """Saves the current uptime state to file."""
+        """Persist accumulated uptime and return the saved duration in seconds."""
         return await self.uptime_manager.save_state()
 
     @override
@@ -71,10 +67,6 @@ class StupidBot(commands.Bot):
         self.cog_loader.start_watcher()
 
     async def on_ready(self) -> None:
-        """Event handler for when the bot is ready.
-
-        Logs the bot's username and ID, and starts the timer and autosave tasks.
-        """
         logger.info("Bot is ready -------------------------")
         logger.info(
             "Logged in as %s (ID: %s) (API Version: %s)",
@@ -85,15 +77,12 @@ class StupidBot(commands.Bot):
         logger.debug(
             "bot's owner: %s (%s)",
             self.owner_id,
-            self.owner_ids if self.owner_ids else "Not a group",
+            self.owner_ids or "Not a group",
         )
 
     @tasks.loop(seconds=11)
     async def update_activity_task(self) -> None:
-        """Task to periodically update the bot's activity with its uptime.
-
-        The uptime is formatted using :func:`format_duration_ru` and the
-        """
+        """Refresh presence only when the formatted uptime changes."""
         uptime = time.time() - self.uptime_manager.start_time
         formatted_time = format_duration_ru(int(uptime), depth=2)
         activity_str = f"жизнь уже {formatted_time}."
@@ -107,11 +96,11 @@ class StupidBot(commands.Bot):
         )
 
     @tasks.loop(seconds=config.AUTOSAVE_UPTIME_INTERVAL)
-    async def autosave_task(self):
+    async def autosave_task(self) -> None:
         uptime = await self.save_state()
         logger.debug("Autosaved uptime: %.0f seconds", uptime)
 
     @update_activity_task.before_loop
     @autosave_task.before_loop
-    async def before_tasks(self):
+    async def before_tasks(self) -> None:
         await self.wait_until_ready()

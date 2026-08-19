@@ -449,9 +449,6 @@ class SessionHealer(HealerProtocol):
                 type(exc).__name__,
             )
             return track
-        except Exception:
-            logger.debug("Unexpected restore track refresh failure", exc_info=True)
-            return track
 
         if isinstance(result, mafic.Playlist):
             if result.tracks:
@@ -465,7 +462,7 @@ class SessionHealer(HealerProtocol):
 
     @override
     async def capture_and_heal(self, guild_id: int) -> bool:
-        """Main entry point to attempt a session recovery."""
+        """Attempt to recover one guild's interrupted session."""
         async with self._locks[guild_id]:
             logger.info("Attempting to heal session for guild %s", guild_id)
 
@@ -478,7 +475,7 @@ class SessionHealer(HealerProtocol):
                 snapshot = await self._create_snapshot(player)
                 self.snapshots[guild_id] = snapshot
 
-                await self._hard_disconnect(guild_id, player)
+                await self._hard_disconnect(player)
 
                 await asyncio.sleep(2.0)
 
@@ -520,7 +517,7 @@ class SessionHealer(HealerProtocol):
             player.clear_queue()
 
     async def _create_snapshot(self, player: MusicPlayer) -> PlayerStateSnapshot:
-        """Extracts deep state from the player."""
+        """Extract the player state required to restore its session."""
         voice_channel_id = _get_voice_channel_id(player.channel)
         if not voice_channel_id and (vc_client := player.guild.voice_client):
             voice_channel_id = _get_voice_channel_id(vc_client.channel)
@@ -553,12 +550,9 @@ class SessionHealer(HealerProtocol):
             session=session,
         )
 
-    async def _hard_disconnect(self, guild_id: int, player: MusicPlayer) -> None:
-        """Forcefully disconnect via ConnectionManager stale voice state is cleaned."""
-        try:
-            await self.connection.disconnect(player.guild, force=True)
-        except Exception:
-            logger.exception("Failed to hard disconnect for guild %s", guild_id)
+    async def _hard_disconnect(self, player: MusicPlayer) -> None:
+        """Disconnect through ConnectionManager and clean up stale voice state."""
+        await self.connection.disconnect(player.guild, force=True)
 
     async def _restore_session(self, snapshot: PlayerStateSnapshot) -> bool:
         """Rebuild the player from the snapshot using ConnectionManager safeguards."""

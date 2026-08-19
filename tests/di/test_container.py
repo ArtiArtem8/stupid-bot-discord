@@ -1,6 +1,4 @@
-"""Tests for dependency injection container behavior.
-Covers registration, resolution, lifecycles, and concurrency safety.
-"""
+"""Tests for dependency injection container behavior."""
 
 from __future__ import annotations
 
@@ -11,11 +9,9 @@ from collections.abc import Callable
 from typing import Protocol, cast, override
 
 from di.container import (
-    CircularDependencyError,
     Container,
     DependencyNotFoundError,
     Lifecycle,
-    RegistrationError,
 )
 
 
@@ -152,7 +148,7 @@ class TestContainerRegistration(ContainerTestCase):
     ) -> None:
         invalid_register = cast(InvalidRegisterCall, self.container.register)
 
-        with self.assertRaises(RegistrationError) as ctx:
+        with self.assertRaises(ValueError) as ctx:
             invalid_register(
                 IRepository,
                 MemoryRepository,
@@ -164,7 +160,7 @@ class TestContainerRegistration(ContainerTestCase):
     def test_registration_with_non_class_implementation_raises_error(self) -> None:
         invalid_implementation = cast(type[object], "not_a_class")
 
-        with self.assertRaises(RegistrationError) as ctx:
+        with self.assertRaises(ValueError) as ctx:
             self.container.register(IRepository, invalid_implementation)
 
         self.assertIn("must be a class", str(ctx.exception))
@@ -282,7 +278,7 @@ class TestCircularDependencies(ContainerTestCase):
         self.container.register(ServiceA)
         self.container.register(ServiceB)
 
-        with self.assertRaises(CircularDependencyError) as ctx:
+        with self.assertRaises(RuntimeError) as ctx:
             _ = self.container.resolve(ServiceA)
 
         error_msg = str(ctx.exception)

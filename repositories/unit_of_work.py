@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from types import TracebackType
 from typing import Self
 
 
@@ -13,7 +14,7 @@ class UnitOfWork(ABC):
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: object | None,
+        exc_tb: TracebackType | None,
     ) -> None:
         """Exit the runtime context for the unit of work.
 
@@ -31,9 +32,7 @@ class UnitOfWork(ABC):
     @abstractmethod
     async def commit(self) -> None:
         """Commit the current transaction."""
-        pass
 
     @abstractmethod
     async def rollback(self) -> None:
         """Rollback the current transaction."""
-        pass
