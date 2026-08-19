@@ -5,11 +5,29 @@ import unittest
 import aiohttp
 import mafic
 
-from api.music.errors import MusicErrorCode, classify_music_exception
+from api.music.errors import (
+    MusicErrorCode,
+    classify_music_exception,
+    compact_external_log_text,
+)
 from api.music.models import MUSIC_SERVICE_UNAVAILABLE_MESSAGE, NodeNotConnectedError
 
 
 class TestMusicErrors(unittest.TestCase):
+    def test_compact_external_log_text_normalizes_and_bounds_text(self) -> None:
+        self.assertIsNone(compact_external_log_text(None, limit=12))
+        self.assertEqual(
+            compact_external_log_text("  first\n\tsecond  ", limit=20),
+            "first second",
+        )
+
+        truncated = compact_external_log_text("first second third", limit=12)
+
+        if truncated is None:
+            self.fail("Non-None input unexpectedly produced None")
+        self.assertEqual(truncated, "first secon…")
+        self.assertEqual(len(truncated), 12)
+
     def test_node_failure_is_music_node_unavailable(self) -> None:
         result = classify_music_exception(NodeNotConnectedError("secret details"))
 

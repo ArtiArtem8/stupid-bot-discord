@@ -1,4 +1,4 @@
-"""User-facing error policy for music operations."""
+"""Error policy and bounded external diagnostics for music operations."""
 
 from __future__ import annotations
 
@@ -8,8 +8,11 @@ from enum import StrEnum
 import aiohttp
 import mafic
 
+from utils.text_utils import truncate_text
+
 from .models import MUSIC_SERVICE_UNAVAILABLE_MESSAGE, NodeNotConnectedError
 
+EXTERNAL_LOG_TEXT_LIMIT = 320
 NODE_TRANSPORT_ERRORS = (aiohttp.ClientError,)
 
 PLAYER_LIFECYCLE_ERRORS = (
@@ -23,6 +26,24 @@ EXPECTED_LAVALINK_IO_ERRORS = (
     *PLAYER_LIFECYCLE_ERRORS,
     mafic.PlayerException,
 )
+
+
+def compact_external_log_text(
+    value: object | None,
+    *,
+    limit: int = EXTERNAL_LOG_TEXT_LIMIT,
+) -> str | None:
+    """Normalize external failure text for one-line operational logs.
+
+    Whitespace is collapsed before truncation so the useful beginning of a
+    multiline vendor diagnostic remains searchable without expanding the log
+    record into a stack trace.
+    """
+    if value is None:
+        return None
+
+    text = " ".join(str(value).split())
+    return truncate_text(text, width=limit, placeholder="…")
 
 
 def is_player_lifecycle_error(exc: Exception) -> bool:

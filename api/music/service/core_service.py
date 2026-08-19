@@ -11,6 +11,7 @@ from discord.ext import commands
 from api.music.errors import (
     EXPECTED_LAVALINK_IO_ERRORS,
     classify_music_exception,
+    compact_external_log_text,
 )
 from api.music.models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
@@ -102,7 +103,10 @@ class CoreMusicService:
         result, old_channel = await self.connection.join(guild, channel)
 
         if result.status == MusicResultStatus.SUCCESS:
-            player = self.connection.get_player(guild.id)
+            player = self.connection.get_player(
+                guild.id,
+                failure_context="successful_join_missing_player",
+            )
             if player:
                 vol = await self.volume_repo.get_volume(guild.id)
                 try:
@@ -207,6 +211,12 @@ class CoreMusicService:
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         result = await player.fetch_tracks(query)
         if not result:
+            query_text = compact_external_log_text(query)
+            logger.debug(
+                "Track load returned no results guild=%s query=%r",
+                player.guild.id,
+                query_text,
+            )
             return MusicResult(MusicResultStatus.FAILURE, "Nothing found")
         if isinstance(result, mafic.Playlist):
             return await self._enqueue_playlist(
@@ -335,11 +345,31 @@ class CoreMusicService:
     async def _handle_play_expected_failure(
         self, player: MusicPlayer, query: str, exc: Exception
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
-        if not isinstance(exc, mafic.TrackLoadException) and isinstance(
-            exc, EXPECTED_LAVALINK_IO_ERRORS
-        ):
+        query_text = compact_external_log_text(query)
+        if isinstance(exc, mafic.TrackLoadException):
+            message = compact_external_log_text(exc.message)
+            cause = compact_external_log_text(exc.cause)
+            message_format = (
+                "Track load failure guild=%s query=%r severity=%s "
+                + "message=%r cause=%r"
+            )
+            logger.warning(
+                message_format,
+                player.guild.id,
+                query_text,
+                exc.severity,
+                message,
+                cause,
+            )
+        elif isinstance(exc, EXPECTED_LAVALINK_IO_ERRORS):
             await self._handle_player_io_failure(player, exc)
-        logger.warning("Expected play failure for query '%s': %s", query, exc)
+        else:
+            logger.warning(
+                "Node unavailable during track load guild=%s query=%r error=%s",
+                player.guild.id,
+                query_text,
+                type(exc).__name__,
+            )
         safe_error = classify_music_exception(exc)
         status = (
             MusicResultStatus.FAILURE
@@ -534,6 +564,11 @@ class CoreMusicService:
         self, guild_id: int | None = None, *, context: str | None = None
     ) -> MusicResult[T]:
         if self.connection.is_known_unavailable():
+            logger.info(
+                "Node unavailable for music operation guild=%s context=%s",
+                guild_id,
+                context,
+            )
             return MusicResult[T](
                 MusicResultStatus.FAILURE,
                 MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
@@ -543,8 +578,11 @@ class CoreMusicService:
     async def _handle_player_io_failure[T](
         self, player: MusicPlayer, exc: Exception
     ) -> MusicResult[T]:
-        logger.warning("Lavalink player IO failure: %s", type(exc).__name__)
-        await self.connection.invalidate_player(player)
+        await self.connection.invalidate_player(
+            player,
+            context="player_operation_io_failure",
+            error=type(exc).__name__,
+        )
         safe_error = classify_music_exception(exc)
         return MusicResult(
             MusicResultStatus.FAILURE,

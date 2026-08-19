@@ -72,7 +72,10 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.connection.get_player.return_value = player
         self.volume_repo.get_volume = AsyncMock(return_value=80)
 
-        async def invalidate_player(failed_player: object) -> None:
+        async def invalidate_player(
+            failed_player: object,
+            **_kwargs: object,
+        ) -> None:
             self.assertIs(failed_player, player)
             self.assertIs(guild.voice_client, player)
             player.cleanup.assert_not_called()
@@ -85,7 +88,11 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             result,
             (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
         )
-        self.connection.invalidate_player.assert_awaited_once_with(player)
+        self.connection.invalidate_player.assert_awaited_once_with(
+            player,
+            context="player_operation_io_failure",
+            error=type(error).__name__,
+        )
         player.set_volume.assert_awaited_once_with(80)
         player.cleanup.assert_not_called()
         self.connection.invalidate_node_and_players.assert_not_awaited()
@@ -136,7 +143,11 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
                     object
                 ] = await self.service._handle_player_io_failure(player, error)
 
-                self.connection.invalidate_player.assert_awaited_once_with(player)
+                self.connection.invalidate_player.assert_awaited_once_with(
+                    player,
+                    context="player_operation_io_failure",
+                    error=type(error).__name__,
+                )
                 self.connection.invalidate_node_and_players.assert_not_awaited()
                 self.assertIs(result.status, MusicResultStatus.FAILURE)
                 self.assertEqual(result.message, expected_message)
@@ -152,7 +163,10 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         player_b.disconnect = AsyncMock()
         node.players = [player_a, player_b]
 
-        async def invalidate_failed_player(player: object) -> None:
+        async def invalidate_failed_player(
+            player: object,
+            **_kwargs: object,
+        ) -> None:
             self.assertIs(player, player_a)
             player_a.is_stale = True
 
@@ -163,7 +177,11 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             aiohttp.ClientConnectionError("guild A request failed"),
         )
 
-        self.connection.invalidate_player.assert_awaited_once_with(player_a)
+        self.connection.invalidate_player.assert_awaited_once_with(
+            player_a,
+            context="player_operation_io_failure",
+            error="ClientConnectionError",
+        )
         self.connection.invalidate_node_and_players.assert_not_awaited()
         self.connection.mark_node_unavailable.assert_not_awaited()
         self.assertTrue(node.available)
@@ -206,6 +224,10 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(result.status, MusicResultStatus.ERROR)
         self.assertIn("Плеер потерял соединение", result.message)
+        self.connection.get_player.assert_any_call(
+            guild.id,
+            failure_context="successful_join_missing_player",
+        )
 
     async def test_play_propagates_unexpected_loader_failure(self) -> None:
         guild = MagicMock(id=123)
@@ -229,15 +251,24 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
     async def test_play_returns_failure_for_empty_fetch(self) -> None:
         guild = MagicMock(id=123)
         player = MagicMock()
+        player.guild = guild
         player.fetch_tracks = AsyncMock(return_value=[])
         join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
 
-        with patch.object(self.service, "join", join):
+        with (
+            patch.object(self.service, "join", join),
+            self.assertLogs(
+                "api.music.service.core_service",
+                level="DEBUG",
+            ) as captured,
+        ):
             result = await self.service.play(guild, MagicMock(), "query", 1, 2)
 
         self.assertIs(result.status, MusicResultStatus.FAILURE)
         self.assertEqual(result.message, "Nothing found")
+        self.assertIn("guild=123", captured.records[0].getMessage())
+        self.assertIn("query='query'", captured.records[0].getMessage())
 
     async def test_play_track_load_failure_keeps_current_player_and_controller(
         self,
@@ -245,17 +276,24 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         guild = MagicMock(id=123)
         current_track = make_track("current")
         error = mafic.TrackLoadException(
-            message="load failed",
-            severity="COMMON",
-            cause="backend detail",
+            message="load failed\nwith plugin detail",
+            severity="fault",
+            cause="java.lang.RuntimeException: backend detail",
         )
         player = MagicMock(current=current_track, is_stale=False)
+        player.guild = guild
         player.fetch_tracks = AsyncMock(side_effect=error)
         join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         self.connection.get_player.return_value = player
         self.ui.controller.destroy_for_guild = AsyncMock()
 
-        with patch.object(self.service, "join", join):
+        with (
+            patch.object(self.service, "join", join),
+            self.assertLogs(
+                "api.music.service.core_service",
+                level="WARNING",
+            ) as captured,
+        ):
             result = await self.service.play(
                 guild,
                 MagicMock(),
@@ -270,6 +308,15 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertIs(player.current, current_track)
         self.ui.controller.destroy_for_guild.assert_not_awaited()
         self.assertIs(result.status, MusicResultStatus.FAILURE)
+        self.assertEqual(len(captured.records), 1)
+        warning = captured.records[0].getMessage()
+        self.assertNotIn("\n", warning)
+        self.assertIn("Track load failure guild=123", warning)
+        self.assertIn("query='query'", warning)
+        self.assertIn("severity=fault", warning)
+        self.assertIn("message='load failed with plugin detail'", warning)
+        self.assertIn("cause='java.lang.RuntimeException: backend detail'", warning)
+        self.assertIsNone(captured.records[0].exc_info)
         self.assertEqual(
             result.message,
             "Не удалось загрузить трек. Источник временно недоступен или не ответил.",

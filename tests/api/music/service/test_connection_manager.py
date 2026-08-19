@@ -110,13 +110,29 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool.nodes = []
         mock_pool_class.return_value = mock_pool
         manager = ConnectionManager(self.bot)
-        player = _FakeMusicPlayer(guild_mock, MagicMock(available=True))
+        player = _FakeMusicPlayer(
+            guild_mock,
+            MagicMock(label="orphaned", available=True),
+        )
         guild_mock.voice_client = player
         self.bot.get_guild.return_value = guild_mock
 
-        result = manager.get_player(123)
+        with self.assertLogs(
+            "api.music.service.connection_manager",
+            level="WARNING",
+        ) as captured:
+            result = manager.get_player(
+                123,
+                failure_context="successful_join_missing_player",
+            )
 
         self.assertIsNone(result)
+        warning = captured.records[0].getMessage()
+        self.assertIn("Player unusable guild=123", warning)
+        self.assertIn("player_connected=True", warning)
+        self.assertIn("node_label=orphaned", warning)
+        self.assertIn("node_in_pool=False", warning)
+        self.assertIn("node_available=True", warning)
 
     @patch("api.music.service.connection_manager.mafic.NodePool")
     async def test_get_player_hides_player_with_unavailable_node(
@@ -126,7 +142,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
         node = MagicMock(label="down", available=False)
         mock_pool = MagicMock()
-        mock_pool.nodes = []
+        mock_pool.nodes = [node]
         mock_pool.label_to_node = {"down": node}
         mock_pool_class.return_value = mock_pool
         manager = ConnectionManager(self.bot)
@@ -134,9 +150,20 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         guild_mock.voice_client = player
         self.bot.get_guild.return_value = guild_mock
 
-        result = manager.get_player(123)
+        with self.assertLogs(
+            "api.music.service.connection_manager",
+            level="WARNING",
+        ) as captured:
+            result = manager.get_player(
+                123,
+                failure_context="successful_join_missing_player",
+            )
 
         self.assertIsNone(result)
+        warning = captured.records[0].getMessage()
+        self.assertIn("node_label=down", warning)
+        self.assertIn("node_in_pool=True", warning)
+        self.assertIn("node_available=False", warning)
 
     def test_registered_non_stale_player_is_current(self) -> None:
         guild = MagicMock(id=123)
@@ -176,7 +203,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self, mock_pool_class: Any
     ) -> None:
         guild = MagicMock(id=123)
-        node = MagicMock(available=True)
+        node = MagicMock(label="MAIN", available=True)
         current_player = _FakeMusicPlayer(guild, node)
         other_player = _FakeMusicPlayer(guild, node)
         guild.voice_client = current_player
@@ -277,17 +304,27 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self, mock_pool_class: Any
     ) -> None:
         guild = MagicMock(id=123, voice_client=None)
-        node = MagicMock(available=True)
+        node = MagicMock(label="MAIN", available=True)
         player = _FakeMusicPlayer(guild, node, connected=False)
-        guild.voice_client = player
         self.bot.get_guild.return_value = guild
         mock_pool_class.return_value.nodes = [node]
         manager = ConnectionManager(self.bot)
         channel = MagicMock(spec=discord.VoiceChannel)
-        channel.connect = AsyncMock(return_value=player)
+
+        async def connect(**_kwargs: object) -> _FakeMusicPlayer:
+            guild.voice_client = player
+            return player
+
+        channel.connect = AsyncMock(side_effect=connect)
         invalidate_player = AsyncMock()
 
-        with patch.object(manager, "invalidate_player", invalidate_player):
+        with (
+            patch.object(manager, "invalidate_player", invalidate_player),
+            self.assertLogs(
+                "api.music.service.connection_manager",
+                level="WARNING",
+            ) as captured,
+        ):
             result = await manager.join(guild, channel)
 
         self.assertEqual(
@@ -295,6 +332,14 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
         )
         invalidate_player.assert_awaited_once_with(player)
+        warning = captured.records[0].getMessage()
+        self.assertIn("context=fresh_connect_validation", warning)
+        self.assertIn("player_stale=False", warning)
+        self.assertIn("is_current_voice_client=True", warning)
+        self.assertIn("player_connected=False", warning)
+        self.assertIn("node_label=MAIN", warning)
+        self.assertIn("node_in_pool=True", warning)
+        self.assertIn("node_available=True", warning)
 
     async def test_connect_timeout_does_not_invalidate_node(self) -> None:
         guild = MagicMock(id=123, voice_client=None)
@@ -591,7 +636,11 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             result,
             (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
         )
-        invalidate_player.assert_awaited_once_with(player)
+        invalidate_player.assert_awaited_once_with(
+            player,
+            context="voice_move_io_failure",
+            error="ClientConnectionError",
+        )
         invalidate_node_and_players.assert_not_awaited()
 
     async def test_move_timeout_uses_only_player_scope(self) -> None:
@@ -621,7 +670,11 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             result,
             (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
         )
-        invalidate_player.assert_awaited_once_with(player)
+        invalidate_player.assert_awaited_once_with(
+            player,
+            context="voice_move_io_failure",
+            error="TimeoutError",
+        )
         invalidate_node_and_players.assert_not_awaited()
 
     async def test_join_transport_failure_uses_only_player_scope(self) -> None:
@@ -643,7 +696,11 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
                 guild, aiohttp.ClientConnectionError("down")
             )
 
-        invalidate_player.assert_awaited_once_with(player)
+        invalidate_player.assert_awaited_once_with(
+            player,
+            context="voice_join_io_failure",
+            error="ClientConnectionError",
+        )
         invalidate_node_and_players.assert_not_awaited()
 
     async def test_move_race_invalidates_only_player(self) -> None:
@@ -659,6 +716,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             patch.object(self.manager, "is_player_usable", return_value=False),
             patch.object(self.manager, "invalidate_player", invalidate_player),
             patch.object(self.manager, "mark_node_unavailable", mark_node_unavailable),
+            self.assertLogs(
+                "api.music.service.connection_manager",
+                level="WARNING",
+            ) as captured,
         ):
             result = await self.manager._reuse_or_move_player(
                 _as_music_player(player), new_channel
@@ -669,6 +730,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
         )
         invalidate_player.assert_awaited_once_with(player)
+        warning = captured.records[0].getMessage()
+        self.assertIn("context=pre_move_validation", warning)
+        self.assertIn("is_current_voice_client=False", warning)
         mark_node_unavailable.assert_not_awaited()
 
     async def test_move_that_loses_readiness_returns_unavailable(self) -> None:
@@ -726,7 +790,11 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         ):
             await self.manager.disconnect(guild, force=True)
 
-        invalidate_player.assert_awaited_once_with(player)
+        invalidate_player.assert_awaited_once_with(
+            player,
+            context="voice_disconnect_io_failure",
+            error="TimeoutError",
+        )
         invalidate_node_and_players.assert_not_awaited()
 
     async def test_disconnect_returns_true_without_voice_client(self) -> None:
@@ -775,7 +843,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         guild.voice_client = player
         disconnect = AsyncMock(side_effect=mafic.HTTPNotFound("missing"))
 
-        async def invalidate_player(_: MusicPlayer) -> None:
+        async def invalidate_player(
+            _: MusicPlayer,
+            **_kwargs: object,
+        ) -> None:
             guild.voice_client = None
 
         with (
@@ -791,7 +862,11 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(result, True)
         disconnect.assert_awaited_once_with(force=True)
-        invalidate.assert_awaited_once_with(player)
+        invalidate.assert_awaited_once_with(
+            player,
+            context="voice_disconnect_io_failure",
+            error="HTTPNotFound",
+        )
 
     async def test_disconnect_returns_true_after_unexpected_failure_cleanup(
         self,
@@ -889,10 +964,32 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         manager = ConnectionManager(self.bot)
         player = _FakeMusicPlayer(guild, node)
         player.mark_stale()
+        guild.voice_client = player
+        self.bot.get_guild.return_value = guild
 
-        result = manager.is_player_usable(player)
+        with self.assertNoLogs(
+            "api.music.service.connection_manager",
+            level="WARNING",
+        ):
+            result = manager.is_player_usable(player)
 
         self.assertFalse(result)
+
+        with self.assertLogs(
+            "api.music.service.connection_manager",
+            level="WARNING",
+        ) as captured:
+            current = manager.get_player(
+                guild.id,
+                failure_context="successful_join_missing_player",
+            )
+
+        self.assertIsNone(current)
+        warning = captured.records[0].getMessage()
+        self.assertIn("player_stale=True", warning)
+        self.assertIn("is_current_voice_client=True", warning)
+        self.assertIn("player_connected=True", warning)
+        self.assertIn("node_in_pool=True", warning)
 
     async def test_detach_marks_player_stale_when_remote_disconnect_fails(
         self,
@@ -1028,6 +1125,27 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(first)
         self.assertFalse(second)
         mock_pool_instance.add_node.assert_awaited_once()
+
+    async def test_retry_cooldown_logs_last_error_and_remaining_delay(self) -> None:
+        self.manager._last_connect_error = "ClientConnectorError"
+        self.manager._next_connect_retry_at = 105.5
+
+        with (
+            patch(
+                "api.music.service.connection_manager.time.monotonic",
+                return_value=100.0,
+            ),
+            self.assertLogs(
+                "api.music.service.connection_manager",
+                level="DEBUG",
+            ) as captured,
+        ):
+            result = await self.manager.ensure_available()
+
+        self.assertFalse(result)
+        message = captured.records[0].getMessage()
+        self.assertIn("last_connect_error=ClientConnectorError", message)
+        self.assertIn("retry_in_seconds=5.5", message)
 
     @patch("api.music.service.connection_manager.mafic.NodePool")
     async def test_ensure_available_retries_after_cooldown(

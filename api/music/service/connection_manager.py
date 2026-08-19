@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from dataclasses import dataclass
 from typing import TypeGuard, cast
 
 import discord
@@ -22,6 +23,38 @@ from api.music.models import (
 from api.music.player import MusicPlayer, music_player_factory
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _PlayerStatus:
+    is_music_player: bool
+    player_stale: bool | None
+    guild_present: bool
+    is_current_voice_client: bool
+    player_connected: bool | None
+    node_assigned: bool
+    node_label: str | None
+    node_in_pool: bool
+    node_available: bool | None
+
+    @property
+    def is_current(self) -> bool:
+        return (
+            self.is_music_player
+            and self.player_stale is False
+            and self.guild_present
+            and self.is_current_voice_client
+        )
+
+    @property
+    def is_usable(self) -> bool:
+        return (
+            self.is_current
+            and self.player_connected is True
+            and self.node_assigned
+            and self.node_in_pool
+            and self.node_available is True
+        )
 
 
 class ConnectionManager:
@@ -99,23 +132,85 @@ class ConnectionManager:
 
     def is_current_player(self, player: object) -> TypeGuard[MusicPlayer]:
         """Return whether this is the current non-stale guild voice client."""
-        if not isinstance(player, MusicPlayer) or player.is_stale:
-            return False
-
-        guild = self.bot.get_guild(player.guild.id)
-        return guild is not None and guild.voice_client is player
+        return self._player_status(player).is_current
 
     def is_player_usable(self, player: object) -> bool:
         """Return whether a current, connected player uses an available node."""
-        if not self.is_current_player(player) or not player.connected:
-            return False
+        return self._player_status(player).is_usable
 
+    def _player_status(
+        self,
+        player: object,
+        *,
+        guild_id: int | None = None,
+    ) -> _PlayerStatus:
+        if not isinstance(player, MusicPlayer):
+            guild = self.bot.get_guild(guild_id) if guild_id is not None else None
+            return _PlayerStatus(
+                is_music_player=False,
+                player_stale=None,
+                guild_present=guild is not None,
+                is_current_voice_client=(
+                    player is not None
+                    and guild is not None
+                    and guild.voice_client is player
+                ),
+                player_connected=None,
+                node_assigned=False,
+                node_label=None,
+                node_in_pool=False,
+                node_available=None,
+            )
+
+        guild_id = player.guild.id
+        guild = self.bot.get_guild(guild_id)
         node = self.get_player_node(player)
-        if node is None:
-            return False
-        if node not in self.pool.nodes:
-            return False
-        return node.available
+        return _PlayerStatus(
+            is_music_player=True,
+            player_stale=player.is_stale,
+            guild_present=guild is not None,
+            is_current_voice_client=(
+                guild is not None and guild.voice_client is player
+            ),
+            player_connected=player.connected,
+            node_assigned=node is not None,
+            node_label=node.label if node is not None else None,
+            node_in_pool=node is not None and node in self.pool.nodes,
+            node_available=node.available if node is not None else None,
+        )
+
+    def _log_player_state(
+        self,
+        player: object,
+        *,
+        guild_id: int,
+        summary: str,
+        context: str,
+        error: str | None = None,
+        status: _PlayerStatus | None = None,
+    ) -> None:
+        status = status or self._player_status(player, guild_id=guild_id)
+        message_format = (
+            "%s guild=%s context=%s error=%s player_type=%s player_stale=%s "
+            + "guild_present=%s is_current_voice_client=%s player_connected=%s "
+            + "node_assigned=%s node_label=%s node_in_pool=%s node_available=%s"
+        )
+        logger.warning(
+            message_format,
+            summary,
+            guild_id,
+            context,
+            error,
+            type(player).__name__ if player is not None else None,
+            status.player_stale,
+            status.guild_present,
+            status.is_current_voice_client,
+            status.player_connected,
+            status.node_assigned,
+            status.node_label,
+            status.node_in_pool,
+            status.node_available,
+        )
 
     def get_player_node(self, player: MusicPlayer) -> mafic.Node[commands.Bot] | None:
         return cast("mafic.Node[commands.Bot] | None", getattr(player, "_node", None))
@@ -136,8 +231,22 @@ class ConnectionManager:
 
             await self._cleanup_unavailable_nodes()
 
-    async def invalidate_player(self, player: MusicPlayer) -> None:
+    async def invalidate_player(
+        self,
+        player: MusicPlayer,
+        *,
+        context: str | None = None,
+        error: str | None = None,
+    ) -> None:
         """Mark a failed player stale and detach its local voice client."""
+        if context is not None:
+            self._log_player_state(
+                player,
+                guild_id=player.guild.id,
+                summary="Player invalidation",
+                context=context,
+                error=error,
+            )
         player.mark_stale()
         await self.detach_stale_voice_client(player.guild, player)
 
@@ -176,7 +285,17 @@ class ConnectionManager:
         if self.has_ready_node():
             return True
 
-        if time.monotonic() < self._next_connect_retry_at:
+        now = time.monotonic()
+        if now < self._next_connect_retry_at:
+            message_format = (
+                "Lavalink connection retry cooldown active "
+                + "last_connect_error=%s retry_in_seconds=%.1f"
+            )
+            logger.debug(
+                message_format,
+                self._last_connect_error,
+                self._next_connect_retry_at - now,
+            )
             return False
 
         try:
@@ -240,7 +359,12 @@ class ConnectionManager:
             except Exception:
                 logger.debug("Failed to cleanup unavailable Mafic node", exc_info=True)
 
-    def get_player(self, guild_id: int) -> MusicPlayer | None:
+    def get_player(
+        self,
+        guild_id: int,
+        *,
+        failure_context: str | None = None,
+    ) -> MusicPlayer | None:
         """Retrieve the music player for a guild.
 
         Returns None if the guild is not connected or does not have a music player.
@@ -250,10 +374,20 @@ class ConnectionManager:
 
         """
         guild = self.bot.get_guild(guild_id)
-        if guild and isinstance(guild.voice_client, MusicPlayer):
-            if not self.is_player_usable(guild.voice_client):
-                return None
-            return guild.voice_client
+        voice_client = guild.voice_client if guild is not None else None
+        if isinstance(voice_client, MusicPlayer) and self.is_player_usable(
+            voice_client
+        ):
+            return voice_client
+        if failure_context is not None:
+            status = self._player_status(voice_client, guild_id=guild_id)
+            self._log_player_state(
+                voice_client,
+                guild_id=guild_id,
+                summary="Player unusable",
+                context=failure_context,
+                status=status,
+            )
         return None
 
     async def _detach_voice_client_after_failed_connect(
@@ -280,6 +414,14 @@ class ConnectionManager:
     ) -> VoiceJoinResult:
         player = await channel.connect(cls=music_player_factory, timeout=8.0)
         if not self.is_player_usable(player):
+            status = self._player_status(player)
+            self._log_player_state(
+                player,
+                guild_id=player.guild.id,
+                summary="Player unusable",
+                context="fresh_connect_validation",
+                status=status,
+            )
             await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         return VoiceCheckResult.SUCCESS, None
@@ -298,6 +440,11 @@ class ConnectionManager:
                 return existing_result
 
             if not await self.ensure_available():
+                logger.info(
+                    "Node unavailable for music join guild=%s last_connect_error=%s",
+                    guild.id,
+                    self._last_connect_error,
+                )
                 return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
             return await self._connect_new_player(channel)
 
@@ -341,9 +488,17 @@ class ConnectionManager:
     async def _detach_unusable_player(
         self, guild: discord.Guild, player: MusicPlayer
     ) -> None:
+        status = self._player_status(player)
+        self._log_player_state(
+            player,
+            guild_id=guild.id,
+            summary="Player unusable",
+            context="existing_voice_client_validation",
+            status=status,
+        )
         node = self.get_player_node(player)
         if (
-            self.is_current_player(player)
+            status.is_current
             and node is not None
             and self._pool_contains_node(node)
             and not node.available
@@ -377,20 +532,34 @@ class ConnectionManager:
     ) -> VoiceJoinResult:
         old_channel = cast(discord.abc.GuildChannel, cast(object, player.channel))
         if not self.is_player_usable(player):
+            status = self._player_status(player)
+            self._log_player_state(
+                player,
+                guild_id=player.guild.id,
+                summary="Player unusable",
+                context="pre_move_validation",
+                status=status,
+            )
             await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         try:
             await player.move_to(channel, timeout=5.0)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            logger.warning(
-                "Lavalink voice move failed for guild %s to channel %s with %s",
-                player.guild.id,
-                channel.id,
-                type(exc).__name__,
+            await self.invalidate_player(
+                player,
+                context="voice_move_io_failure",
+                error=type(exc).__name__,
             )
-            await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         if not self.is_player_usable(player):
+            status = self._player_status(player)
+            self._log_player_state(
+                player,
+                guild_id=player.guild.id,
+                summary="Player unusable",
+                context="post_move_validation",
+                status=status,
+            )
             await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         return VoiceCheckResult.MOVED_CHANNELS, old_channel
@@ -398,12 +567,20 @@ class ConnectionManager:
     async def _handle_join_io_failure(
         self, guild: discord.Guild, exc: Exception
     ) -> None:
-        logger.warning(
-            "Lavalink IO failure while joining voice: %s", type(exc).__name__
-        )
         if isinstance(guild.voice_client, MusicPlayer):
-            await self.invalidate_player(guild.voice_client)
+            await self.invalidate_player(
+                guild.voice_client,
+                context="voice_join_io_failure",
+                error=type(exc).__name__,
+            )
             return
+        self._log_player_state(
+            guild.voice_client,
+            guild_id=guild.id,
+            summary="Player invalidation",
+            context="voice_join_io_failure",
+            error=type(exc).__name__,
+        )
         await self._detach_voice_client_after_failed_connect(guild)
 
     def _bot_voice_channel(
@@ -482,8 +659,11 @@ class ConnectionManager:
             await voice_client.disconnect(force=force)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             if isinstance(voice_client, MusicPlayer):
-                logger.warning("Lavalink voice client failure: %s", type(exc).__name__)
-                await self.invalidate_player(voice_client)
+                await self.invalidate_player(
+                    voice_client,
+                    context="voice_disconnect_io_failure",
+                    error=type(exc).__name__,
+                )
             else:
                 logger.warning(
                     "Voice disconnect failed with expected IO error: %s",
