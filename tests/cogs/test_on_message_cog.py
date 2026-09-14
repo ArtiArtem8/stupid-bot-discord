@@ -83,4 +83,4 @@ class TestMessageLogging(unittest.TestCase):
         self.assertEqual(answer, "И тебе")
         log_args = log_info.call_args.args
         rendered = cast(str, log_args[0]) % log_args[1:]
-        self.assertIn("content='доброе утро'", rendered)
+        self.assertIn("'content': 'доброе утро'", rendered)

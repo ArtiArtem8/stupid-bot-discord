@@ -1,6 +1,6 @@
 [project]
 name = "stupid-bot-discord"
-version = "2.4.1"
+version = "2.5.0"
 description = "A feature-rich Discord bot built with discord.py"
 authors = [
     { name = "ArtiArtem", email = "ArtiArtem8@users.noreply.github.com" },
@@ -18,11 +18,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.39.9",
+    "basedpyright>=1.40.1",
     "pre-commit>=4.6.1",
     "pytest>=9.1.1",
-    "ruff>=0.16.2",
-    "ty>=0.0.69",
+    "ruff>=0.16.7",
+    "ty>=0.0.80",
 ]
 
 [tool.uv]
@@ -47,12 +47,12 @@ exclude = [
 
 [tool.ruff.lint]
 select = [
-    "A",      # flake8-builtins
-    "ANN201", # Public function return annotations
-    "ANN202", # Private function return annotations
-    "ANN204", # Special method return annotations
-    "ANN205", # Static method return annotations
-    "ANN206", # Class method return annotations
+    "A",        # flake8-builtins
+    "ANN201",   # Public function return annotations
+    "ANN202",   # Private function return annotations
+    "ANN204",   # Special method return annotations
+    "ANN205",   # Static method return annotations
+    "ANN206",   # Class method return annotations
     "ASYNC100",
     "ASYNC105",
     "ASYNC210",
@@ -63,25 +63,25 @@ select = [
     "ASYNC230",
     "ASYNC250",
     "ASYNC251",
-    "B",      # flake8-bugbear
-    "C",      # flake8-comprehensions and McCabe complexity
-    "D",      # pydocstyle
-    "D401",   # Imperative function and method summaries
-    "DTZ",    # flake8-datetimez
-    "E",      # Pycodestyle errors
-    "ERA",    # eradicate commented-out code
-    "F",      # Pyflakes
+    "B",        # flake8-bugbear
+    "C",        # flake8-comprehensions and McCabe complexity
+    "D",        # pydocstyle
+    "D401",     # Imperative function and method summaries
+    "DTZ",      # flake8-datetimez
+    "E",        # Pycodestyle errors
+    "ERA",      # eradicate commented-out code
+    "F",        # Pyflakes
     "FURB110",
-    "G",      # flake8-logging-format
-    "I",      # isort
-    "LOG",    # flake8-logging
-    "N",      # pep8-naming
-    "PIE",    # flake8-pie
-    "PLE",    # Pylint errors
+    "G",        # flake8-logging-format
+    "I",        # isort
+    "LOG",      # flake8-logging
+    "N",        # pep8-naming
+    "PIE",      # flake8-pie
+    "PLE",      # Pylint errors
     "PLR1714",
     "PLR5501",
-    "PLW",    # Pylint warnings
-    "PTH",    # flake8-use-pathlib
+    "PLW",      # Pylint warnings
+    "PTH",      # flake8-use-pathlib
     "PYI034",
     "PYI036",
     "PYI041",
@@ -91,8 +91,8 @@ select = [
     "RET506",
     "RET507",
     "RET508",
-    "RUF",    # Ruff-specific rules
-    "S",      # flake8-bandit
+    "RUF",      # Ruff-specific rules
+    "S",        # flake8-bandit
     "SIM101",
     "SIM107",
     "SIM114",
@@ -108,23 +108,16 @@ select = [
     "SIM222",
     "SIM223",
     "SIM300",
-    "T10",    # flake8-debugger
-    "T20",    # flake8-print
+    "T10",      # flake8-debugger
+    "T20",      # flake8-print
     "TRY201",
     "TRY203",
     "TRY400",
     "TRY401",
-    "UP",     # pyupgrade
-    "W",      # Pycodestyle warnings
+    "UP",       # pyupgrade
+    "W",        # Pycodestyle warnings
 ]
-ignore = [
-    "D100",
-    "D101",
-    "D102",
-    "D104",
-    "D107",
-    "RUF001",
-]
+ignore = ["D100", "D101", "D102", "D104", "D107", "RUF001"]
 
 [tool.ruff.lint.per-file-ignores]
 "api/birthday.py" = ["DTZ007"]

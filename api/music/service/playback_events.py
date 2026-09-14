@@ -264,7 +264,7 @@ class PlaybackEventHandlers:
         message = exception.get("message") or exception.get("cause")
         reason = str(message) if message else "Неизвестная ошибка"
         severity = exception.get("severity")
-        return reason, str(severity) if severity else None
+        return reason, severity
 
     def _dispatch_track_exception(
         self,
