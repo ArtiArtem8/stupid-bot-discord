@@ -85,27 +85,17 @@ class SessionHealer(HealerProtocol):
 
     def _is_youtube_track(self, track: mafic.Track) -> bool:
         """Return whether a track comes from YouTube."""
-        source = getattr(track, "source", None) or getattr(track, "source_name", None)
-        if isinstance(source, str) and source.lower() == "youtube":
+        if track.source.lower() == "youtube":
             return True
 
-        uri = getattr(track, "uri", None)
-        if isinstance(uri, str):
-            return "youtube.com" in uri or "youtu.be" in uri
+        if track.uri is not None:
+            return "youtube.com" in track.uri or "youtu.be" in track.uri
 
         return False
 
     def _is_track_seekable(self, track: mafic.Track) -> bool:
         """Return whether a track can be sought."""
-        seekable = getattr(track, "seekable", None)
-        if isinstance(seekable, bool):
-            return seekable
-
-        is_seekable = getattr(track, "is_seekable", None)
-        if isinstance(is_seekable, bool):
-            return is_seekable
-
-        return False
+        return track.seekable
 
     def _should_restore_with_warm_seek(self, track: mafic.Track, position: int) -> bool:
         """Return whether restore should start from 0 and seek after startup."""

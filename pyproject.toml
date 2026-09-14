@@ -158,6 +158,7 @@ testpaths = ["tests"]
 filterwarnings = ["ignore:.*audioop.*:DeprecationWarning:discord.player"]
 pythonpath = ["."]
 markers = [
+    "lavalink_live: performs real Lavalink v4 contract checks",
     "wolfram_live: performs a real Wolfram API request",
 ]
 

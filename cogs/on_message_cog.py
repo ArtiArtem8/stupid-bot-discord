@@ -71,19 +71,16 @@ class OnMessageCog(commands.Cog):
 
         if changes:
             logger.debug(
-                "".join(
-                    (
-                        "Message edited message_id=%s guild_id=%s channel_id=%s ",
-                        "author_id=%s fields=%s before_flags=%s after_flags=%s",
-                    )
-                ),
-                after.id,
-                after.guild.id if after.guild else None,
-                after.channel.id,
-                after.author.id,
-                changes,
-                before_flags,
-                after_flags,
+                "Message edited: %s",
+                {
+                    "message_id": after.id,
+                    "guild_id": after.guild.id if after.guild else None,
+                    "channel_id": after.channel.id,
+                    "author_id": after.author.id,
+                    "fields": changes,
+                    "before_flags": before_flags,
+                    "after_flags": after_flags,
+                },
             )
 
             self._log_message(after, is_edit=True)
@@ -129,45 +126,48 @@ class OnMessageCog(commands.Cog):
 
         if best_score >= threshold:
             logger.info(
-                "".join(
-                    (
-                        "Fuzzy response matched message_id=%s guild_id=%s ",
-                        "channel_id=%s content_length=%s score=%s",
-                    )
-                ),
-                message.id,
-                message.guild.id if message.guild else None,
-                message.channel.id,
-                len(message.content),
-                best_score,
+                "Fuzzy response matched: %s",
+                {
+                    "message_id": message.id,
+                    "guild_id": message.guild.id if message.guild else None,
+                    "channel_id": message.channel.id,
+                    "content": message.content,
+                    "score": best_score,
+                },
             )
 
             return secrets.choice(answers or [None])
         return None
 
     def _log_message(self, message: Message, *, is_edit: bool = False) -> None:
-        """Log bounded message metadata without retaining user content."""
-        logger.info(
-            "".join(
-                (
-                    "Message %s message_id=%s guild_id=%s channel_id=%s author_id=%s ",
-                    "content_length=%s attachment_count=%s embed_count=%s ",
-                    "sticker_count=%s component_count=%s has_reference=%s has_poll=%s",
-                )
+        """Log the complete Discord message payload used for later analysis."""
+        payload = {
+            "status": "edited" if is_edit else "new",
+            "message_id": message.id,
+            "guild_id": message.guild.id if message.guild else None,
+            "channel_id": message.channel.id,
+            "author_id": message.author.id,
+            "author": str(message.author),
+            "content": message.content,
+            "attachments": [attachment.to_dict() for attachment in message.attachments],
+            "embeds": [embed.to_dict() for embed in message.embeds],
+            "stickers": [
+                {
+                    "id": sticker.id,
+                    "name": sticker.name,
+                    "format": sticker.format.name,
+                    "url": sticker.url,
+                }
+                for sticker in message.stickers
+            ],
+            "components": [component.to_dict() for component in message.components],
+            "reference": (
+                message.reference.to_dict() if message.reference is not None else None
             ),
-            "edited" if is_edit else "received",
-            message.id,
-            message.guild.id if message.guild else None,
-            message.channel.id,
-            message.author.id,
-            len(message.content),
-            len(message.attachments),
-            len(message.embeds),
-            len(message.stickers),
-            len(message.components),
-            message.reference is not None,
-            message.poll is not None,
-        )
+            "poll": repr(message.poll) if message.poll is not None else None,
+            "flags": message.flags.value,
+        }
+        logger.info("Discord message: %s", payload)
 
 
 async def setup(bot: commands.Bot) -> None:

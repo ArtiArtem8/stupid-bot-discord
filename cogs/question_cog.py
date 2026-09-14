@@ -37,9 +37,10 @@ class QuestionCog(BaseCog):
     )
     async def q(self, interaction: Interaction, *, text: str) -> None:
         logger.info(
-            "/ask invoked user_id=%s question_length=%s",
+            "/ask invoked user=%s user_id=%s question=%r",
+            interaction.user,
             interaction.user.id,
-            len(text),
+            text,
         )
         generated = False
 
@@ -58,12 +59,18 @@ class QuestionCog(BaseCog):
                 generated = True
 
         if prev_message is not None:
-            logger.info("/ask resolved user_id=%s result=cached", interaction.user.id)
+            logger.info(
+                "/ask resolved user_id=%s result=cached question=%r answer=%r",
+                interaction.user.id,
+                text,
+                reply,
+            )
         elif generated:
             logger.info(
-                "/ask resolved user_id=%s result=generated queue_size=%s",
+                "/ask invoked user=%s user_id=%s question=%r",
+                interaction.user,
                 interaction.user.id,
-                len(self.answers),
+                text,
             )
 
         await interaction.response.send_message(reply)

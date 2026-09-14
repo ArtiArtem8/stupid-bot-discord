@@ -24,7 +24,7 @@ def setup_logging(encoding: str = "utf-8") -> None:
                 "encoding": encoding,
                 "formatter": "detailed",
                 "level": "INFO",
-                "maxBytes": 5 * 1024 * 1024,
+                "maxBytes": 25 * 1024 * 1024,
                 "backupCount": 5,
             },
             "debug_file_handler": {
@@ -33,7 +33,7 @@ def setup_logging(encoding: str = "utf-8") -> None:
                 "encoding": encoding,
                 "formatter": "debug_detailed",
                 "level": "DEBUG",
-                "maxBytes": 10 * 1024 * 1024,
+                "maxBytes": 100 * 1024 * 1024,
                 "backupCount": 3,
             },
             "console": {

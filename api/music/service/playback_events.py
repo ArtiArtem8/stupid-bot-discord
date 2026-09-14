@@ -144,22 +144,19 @@ class PlaybackEventHandlers:
         )
         position = player.position if player.current_attempt is attempt else None
         logger.warning(
-            "".join(
-                (
-                    "Track playback/source failure guild=%s attempt=%s source=%s ",
-                    "id=%s title=%r position_ms=%s/%s severity=%s message=%r cause=%r",
-                )
-            ),
-            player.guild.id,
-            attempt.attempt_id,
-            attempt.entry.track.source,
-            attempt.entry.track.identifier,
-            title,
-            position,
-            attempt.entry.track.length,
-            severity,
-            message,
-            cause,
+            "Track playback/source failure: %s",
+            {
+                "guild": player.guild.id,
+                "attempt": attempt.attempt_id,
+                "source": attempt.entry.track.source,
+                "id": attempt.entry.track.identifier,
+                "title": title,
+                "position_ms": position,
+                "length_ms": attempt.entry.track.length,
+                "severity": severity,
+                "message": message,
+                "cause": cause,
+            },
         )
 
         self._load_failures.setdefault(player.guild.id, set()).add(attempt.attempt_id)
@@ -187,19 +184,16 @@ class PlaybackEventHandlers:
         )
         position = player.position if player.current_attempt is attempt else None
         logger.warning(
-            "".join(
-                (
-                    "Track stuck guild=%s attempt=%s source=%s id=%s title=%r ",
-                    "position_ms=%s threshold_ms=%s",
-                )
-            ),
-            player.guild.id,
-            attempt.attempt_id,
-            attempt.entry.track.source,
-            attempt.entry.track.identifier,
-            title,
-            position,
-            event.threshold_ms,
+            "Track stuck: %s",
+            {
+                "guild": player.guild.id,
+                "attempt": attempt.attempt_id,
+                "source": attempt.entry.track.source,
+                "id": attempt.entry.track.identifier,
+                "title": title,
+                "position_ms": position,
+                "threshold_ms": event.threshold_ms,
+            },
         )
         await self.ui.controller.destroy_for_guild(
             player.guild.id,
@@ -238,17 +232,15 @@ class PlaybackEventHandlers:
             track = ended.entry.track
             title = compact_external_log_text(track.title, limit=TRACK_TITLE_TEXT_LIMIT)
             logger.warning(
-                "".join(
-                    (
-                        "Track playback/source failure guild=%s attempt=%s source=%s ",
-                        "id=%s title=%r reason=load_failed",
-                    )
-                ),
-                player.guild.id,
-                ended.attempt_id,
-                track.source,
-                track.identifier,
-                title,
+                "Track playback/source failure: %s",
+                {
+                    "guild": player.guild.id,
+                    "attempt": ended.attempt_id,
+                    "source": track.source,
+                    "id": track.identifier,
+                    "title": title,
+                    "reason": "load_failed",
+                },
             )
             self._dispatch_track_exception(
                 player,
