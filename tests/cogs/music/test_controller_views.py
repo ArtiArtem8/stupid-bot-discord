@@ -10,7 +10,7 @@ from discord import Client, Interaction, ui
 
 from api.music.models import ControllerDestroyReason, PlaybackAttempt
 from cogs.music.views import TrackControllerManager, TrackControllerView
-from framework import FeedbackType, FeedbackUI
+from framework.feedback_ui import FeedbackType, FeedbackUI
 from tests.api.music.helpers import make_entry
 
 

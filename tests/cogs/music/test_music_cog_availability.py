@@ -15,9 +15,9 @@ from api.music.models import (
     MusicResultStatus,
     VoiceCheckResult,
 )
-from api.music.service import CoreMusicService
+from api.music.service.core_service import CoreMusicService
 from cogs.music.music_cog import MusicCog, _format_voice_result_message
-from framework import FeedbackType, FeedbackUI
+from framework.feedback_ui import FeedbackType, FeedbackUI
 
 
 class _ResponseStub:
@@ -58,8 +58,10 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         service_mock.initialize = self.service_initialize
         self.cog.service = cast(CoreMusicService, service_mock)
         self.auto_leave_start = MagicMock()
+        self.auto_leave_is_running = MagicMock(return_value=False)
         auto_leave_monitor_mock = MagicMock()
         auto_leave_monitor_mock.start = self.auto_leave_start
+        auto_leave_monitor_mock.is_running = self.auto_leave_is_running
         self.cog.auto_leave_monitor = auto_leave_monitor_mock
 
     async def test_on_ready_does_not_raise_when_service_init_is_soft(self) -> None:
@@ -73,6 +75,15 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         await self.cog.cog_load()
 
         self.service_initialize.assert_awaited_once()
+        self.auto_leave_start.assert_called_once()
+
+    async def test_repeated_cog_load_does_not_start_second_monitor(self) -> None:
+        self.bot_mock.is_ready.return_value = False
+        self.auto_leave_is_running.side_effect = (False, True)
+
+        await self.cog.cog_load()
+        await self.cog.cog_load()
+
         self.auto_leave_start.assert_called_once()
 
     def test_unavailable_voice_message_has_no_raw_backend_details(self) -> None:

@@ -13,7 +13,7 @@ from api.birthday_models import (
     BirthdayListEntry,
 )
 from repositories.birthday_repository import BirthdayRepository
-from utils import TextPaginator, truncate_text
+from utils.text_utils import TextPaginator, truncate_text
 
 logger = logging.getLogger(__name__)
 

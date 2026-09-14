@@ -9,7 +9,7 @@ import config
 from api.birthday_models import BirthdayGuildConfig, BirthdayGuildDict
 from repositories.base_repository import BaseRepository
 from repositories.json_object_store import JsonObjectStore
-from utils import AsyncJsonFileStore
+from utils.json_store import AsyncJsonFileStore
 from utils.json_types import JsonObject, JsonValue
 
 logger = logging.getLogger(__name__)

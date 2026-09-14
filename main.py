@@ -5,7 +5,7 @@ import tracemalloc
 
 import config
 from framework.bot import StupidBot
-from utils import setup_logging
+from utils.logging_setup import setup_logging
 
 tracemalloc.start()
 logger = logging.getLogger("StupidBot")

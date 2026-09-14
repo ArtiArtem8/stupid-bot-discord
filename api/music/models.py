@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum, auto
 from typing import Literal, NotRequired, TypedDict, TypeVar
+from uuid import uuid4
 
 import discord
 import mafic
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 MUSIC_SERVICE_UNAVAILABLE_MESSAGE = (
     "Музыкальный сервис сейчас недоступен. Попробуйте позже."
 )
+PLAYBACK_USER_DATA_KEY = "stupid_attempt_token"
 
 type Track = mafic.Track
 type Playlist = mafic.Playlist
@@ -174,6 +176,7 @@ class PlaybackAttempt:
 
     attempt_id: int
     entry: QueueEntry
+    event_token: str = field(default_factory=lambda: uuid4().hex)
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,16 +305,13 @@ class PlayerStateSnapshot:
 
     guild_id: int
     voice_channel_id: int
-    text_channel_id: int | None
 
     current_entry: QueueEntry | None
     position: int
     is_paused: bool
     volume: int
 
-    queue: list[QueueEntry]
+    queue: tuple[QueueEntry, ...]
     repeat_mode: RepeatMode
-
-    filters: mafic.Filter | None
 
     session: MusicSession | None

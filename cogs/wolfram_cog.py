@@ -31,13 +31,10 @@ from api.wolfram import (
     WolframRateLimitError,
     WolframResult,
 )
-from framework import BaseCog, FeedbackType, FeedbackUI
-from utils import (
-    CharacterLimitExceededError,
-    ImageProcessingError,
-    SafeEmbed,
-    process_wolfram_plot,
-)
+from framework.base_cog import BaseCog
+from framework.feedback_ui import FeedbackType, FeedbackUI
+from utils.embeds import CharacterLimitExceededError, SafeEmbed
+from utils.image_utils import ImageProcessingError, process_wolfram_plot
 
 logger = logging.getLogger(__name__)
 _WOLFRAM_RESULT_URL = "https://www.wolframalpha.com/input?i="

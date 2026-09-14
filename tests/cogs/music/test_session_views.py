@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from discord import ui
 
-from api.music import MusicSession
+from api.music.models import MusicSession
 from cogs.music.views import SessionSummaryView
-from framework import BasePaginator
+from framework.pagination import BasePaginator
 
 
 class TestSessionSummaryView(unittest.IsolatedAsyncioTestCase):

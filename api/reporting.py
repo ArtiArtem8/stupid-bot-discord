@@ -10,7 +10,8 @@ from discord import DMChannel, Interaction
 from discord.ui import Modal, TextInput
 
 import config
-from utils import AsyncJsonFileStore, SafeEmbed
+from utils.embeds import SafeEmbed
+from utils.json_store import AsyncJsonFileStore
 from utils.json_types import JsonObject, JsonValue
 
 logger = logging.getLogger(__name__)

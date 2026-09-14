@@ -4,7 +4,7 @@ import logging
 
 from discord import Interaction
 
-from framework import FeedbackType, FeedbackUI
+from framework.feedback_ui import FeedbackType, FeedbackUI
 
 logger = logging.getLogger(__name__)
 

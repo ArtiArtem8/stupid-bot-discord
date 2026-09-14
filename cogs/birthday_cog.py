@@ -12,17 +12,17 @@ from discord.ext import commands, tasks
 from discord.ui import Button
 
 import config
-from api import (
-    BirthdayGuildConfig,
-    BirthdayUser,
+from api.birthday import (
     birthday_manager,
     create_birthday_list_embed,
     parse_birthday,
     safe_fetch_member,
 )
-from framework import BaseCog, FeedbackType, FeedbackUI
+from api.birthday_models import BirthdayGuildConfig, BirthdayUser
+from framework.base_cog import BaseCog
+from framework.feedback_ui import FeedbackType, FeedbackUI
 from resources import BIRTHDAY_WISHES
-from utils import SafeEmbed
+from utils.embeds import SafeEmbed
 
 logger = logging.getLogger(__name__)
 
@@ -165,11 +165,17 @@ class BirthdayCog(BaseCog):
 
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
-        self.birthday_timer.start()
+
+    @override
+    async def cog_load(self) -> None:
+        """Start birthday checks after the cog is registered."""
+        if not self.birthday_timer.is_running():
+            self.birthday_timer.start()
 
     @override
     async def cog_unload(self) -> None:
-        self.birthday_timer.cancel()
+        if self.birthday_timer.is_running():
+            self.birthday_timer.cancel()
 
     @tasks.loop(seconds=config.BIRTHDAY_CHECK_INTERVAL)
     async def birthday_timer(self) -> None:

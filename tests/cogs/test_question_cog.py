@@ -10,7 +10,8 @@ from typing import Any, cast, override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from cogs.question_cog import QuestionCog
-from utils import AsyncJsonFileStore, str_local
+from utils.json_store import AsyncJsonFileStore
+from utils.text_utils import str_local
 
 
 class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):

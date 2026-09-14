@@ -25,8 +25,11 @@ dev = [
     "ty>=0.0.69",
 ]
 
-[tool.setuptools]
-packages = ["api", "cogs", "di", "events", "framework", "repositories", "utils"]
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+mafic = { git = "https://github.com/ArtiArtem8/mafic.git", rev = "62b7113a64e73448b562b501d6cb409cb0181ad7" }
 
 [tool.ruff]
 line-length = 88
@@ -131,7 +134,6 @@ ignore = [
 "cogs/birthday_cog.py" = ["DTZ011"]
 "tests/**/*.py" = ["D103", "DTZ001"]
 "tests/api/test_birthday.py" = ["N818"]
-"tests/di/test_container.py" = ["N803"]
 "utils/birthday_utils.py" = ["DTZ007"]
 "utils/json_utils.py" = ["DTZ005"]
 

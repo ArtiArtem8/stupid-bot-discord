@@ -19,18 +19,22 @@ def setup_logging(encoding: str = "utf-8") -> None:
         },
         "handlers": {
             "file_handler": {
-                "class": "logging.FileHandler",
+                "class": "logging.handlers.RotatingFileHandler",
                 "filename": "discord-bot.log",
                 "encoding": encoding,
                 "formatter": "detailed",
                 "level": "INFO",
+                "maxBytes": 5 * 1024 * 1024,
+                "backupCount": 5,
             },
             "debug_file_handler": {
-                "class": "logging.FileHandler",
+                "class": "logging.handlers.RotatingFileHandler",
                 "filename": "discord-bot-debug.log",
                 "encoding": encoding,
                 "formatter": "debug_detailed",
                 "level": "DEBUG",
+                "maxBytes": 10 * 1024 * 1024,
+                "backupCount": 3,
             },
             "console": {
                 "class": "logging.StreamHandler",

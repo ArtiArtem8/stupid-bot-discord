@@ -23,17 +23,16 @@ from api.music.protocols import HealerProtocol
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
-from api.music.session_events import dispatch_music_session_end
 from repositories.volume_repository import VolumeRepository
 
 from .models import (
-    ControllerDestroyReason,
+    PLAYBACK_USER_DATA_KEY,
     MusicResultStatus,
     PlaybackAttempt,
     PlayerStateSnapshot,
     QueueEntry,
 )
-from .player import MusicPlayer, tracks_match
+from .player import MusicPlayer
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +69,6 @@ class SessionHealer(HealerProtocol):
         self.volume_repo = volume_repository
         self.ui = ui_orchestrator
 
-        self.snapshots: dict[int, PlayerStateSnapshot] = {}
         self._locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     def _get_recoverable_player(self, guild_id: int) -> MusicPlayer | None:
@@ -149,7 +147,8 @@ class SessionHealer(HealerProtocol):
             player.current_attempt is expected_attempt
             and self.connection.is_player_usable(player)
             and current is not None
-            and tracks_match(expected_attempt.entry.track, current)
+            and current.user_data.get(PLAYBACK_USER_DATA_KEY)
+            == expected_attempt.event_token
         )
 
     async def _fail_expected_restore_attempt(
@@ -174,7 +173,10 @@ class SessionHealer(HealerProtocol):
             guild_id,
             context,
         )
-        await self.connection.detach_stale_voice_client(player.guild, player)
+        await self.connection.invalidate_player(
+            player,
+            context=f"restore_{context}",
+        )
         return False
 
     async def _restore_expected_attempt_state(
@@ -319,7 +321,6 @@ class SessionHealer(HealerProtocol):
     async def _play_and_confirm_restore(
         self,
         *,
-        guild: discord.Guild,
         player: MusicPlayer,
         entry: QueueEntry,
         start_time: int,
@@ -339,7 +340,11 @@ class SessionHealer(HealerProtocol):
                 "Restore playback failed immediately with %s",
                 type(exc).__name__,
             )
-            await self.connection.detach_stale_voice_client(guild, player)
+            await self.connection.invalidate_player(
+                player,
+                context="restore_direct_playback",
+                error=type(exc).__name__,
+            )
             return None
 
         active = await self._confirm_restored_track_active(
@@ -382,7 +387,11 @@ class SessionHealer(HealerProtocol):
                 "Warm restore playback failed immediately with %s",
                 type(exc).__name__,
             )
-            await self.connection.detach_stale_voice_client(guild, player)
+            await self.connection.invalidate_player(
+                player,
+                context="restore_warm_playback",
+                error=type(exc).__name__,
+            )
             return None
 
         active = await self._confirm_restored_track_active(
@@ -403,29 +412,6 @@ class SessionHealer(HealerProtocol):
             pause=pause,
             expected_attempt=attempt,
         )
-
-    def _restore_start_time(self, track: mafic.Track, position: int) -> int:
-        """Choose safe start time for restored playback.
-
-        YouTube playback through youtube-source/MWEB can fail with 403 when restored
-        from a non-zero position. Prefer a reliable restart over a broken resume.
-        """
-        safe_position = max(0, position)
-
-        if safe_position <= 0:
-            return 0
-
-        if self._is_youtube_track(track):
-            logger.warning(
-                (
-                    "Restoring YouTube track from start instead of position %sms "
-                    "to avoid youtube-source 403 on reconnect."
-                ),
-                safe_position,
-            )
-            return 0
-
-        return safe_position
 
     async def _resolve_fresh_track_for_restore(
         self,
@@ -473,8 +459,6 @@ class SessionHealer(HealerProtocol):
 
             try:
                 snapshot = await self._create_snapshot(player)
-                self.snapshots[guild_id] = snapshot
-
                 await self._hard_disconnect(player)
 
                 await asyncio.sleep(2.0)
@@ -491,30 +475,7 @@ class SessionHealer(HealerProtocol):
                 return True
             except Exception:
                 logger.exception("Failed to heal session for %s", guild_id)
-                self.snapshots.pop(guild_id, None)
                 return False
-
-    @override
-    async def cleanup_after_disconnect(
-        self, guild_id: int, is_healing: bool = False
-    ) -> None:
-        """Cleanup after disconnect. During healing, preserve recoverable state."""
-        await self.ui.controller.destroy_for_guild(
-            guild_id, ControllerDestroyReason.VOICE_DISCONNECT
-        )
-
-        if is_healing:
-            self.state.cancel_timer(guild_id)
-            return
-
-        session = self.state.end_session(guild_id)
-        dispatch_music_session_end(self.bot, guild_id, session)
-
-        self.state.cancel_timer(guild_id)
-
-        player = self.connection.get_player(guild_id)
-        if player:
-            player.clear_queue()
 
     async def _create_snapshot(self, player: MusicPlayer) -> PlayerStateSnapshot:
         """Extract the player state required to restore its session."""
@@ -526,27 +487,18 @@ class SessionHealer(HealerProtocol):
             raise ValueError("Cannot snapshot: Player has no active voice channel")
 
         session = self.state.get_session(player.guild.id)
-        text_channel_id = None
-        if session:
-            text_channel_id = (
-                max(session.channel_usage, key=lambda k: session.channel_usage[k])
-                if session.channel_usage
-                else None
-            )
 
         volume = await self.volume_repo.get_volume(guild_id=player.guild.id)
 
         return PlayerStateSnapshot(
             guild_id=player.guild.id,
             voice_channel_id=voice_channel_id,
-            text_channel_id=text_channel_id,
             current_entry=player.current_entry,
             position=player.position or 0,
             is_paused=player.paused,
             volume=volume,
-            queue=list(player.queue_snapshot()),
+            queue=player.queue_snapshot(),
             repeat_mode=player.repeat.mode,
-            filters=None,
             session=session,
         )
 
@@ -568,7 +520,7 @@ class SessionHealer(HealerProtocol):
             return False
 
         self.state.clear_track_start_times(snapshot.guild_id)
-        if not await self._restore_player_runtime_state(player, snapshot, target.guild):
+        if not await self._restore_player_runtime_state(player, snapshot):
             return False
 
         return await self._restore_current_track(player, snapshot, target.guild)
@@ -632,10 +584,9 @@ class SessionHealer(HealerProtocol):
         self,
         player: MusicPlayer,
         snapshot: PlayerStateSnapshot,
-        guild: discord.Guild,
     ) -> bool:
         self._restore_player_entries(player, snapshot)
-        if not await self._restore_player_volume(player, snapshot, guild):
+        if not await self._restore_player_volume(player, snapshot):
             return False
 
         logger.debug("New player: %s", player)
@@ -650,7 +601,6 @@ class SessionHealer(HealerProtocol):
         self,
         player: MusicPlayer,
         snapshot: PlayerStateSnapshot,
-        guild: discord.Guild,
     ) -> bool:
         try:
             await player.set_volume(snapshot.volume)
@@ -660,7 +610,11 @@ class SessionHealer(HealerProtocol):
                 snapshot.guild_id,
                 type(exc).__name__,
             )
-            await self.connection.detach_stale_voice_client(guild, player)
+            await self.connection.invalidate_player(
+                player,
+                context="restore_volume",
+                error=type(exc).__name__,
+            )
             return False
         return True
 
@@ -689,7 +643,6 @@ class SessionHealer(HealerProtocol):
                 )
             else:
                 restored = await self._play_and_confirm_restore(
-                    guild=guild,
                     player=player,
                     entry=restored_entry,
                     start_time=restore_position,
@@ -716,5 +669,4 @@ class SessionHealer(HealerProtocol):
             session = snapshot.session
             self.state.sessions.setdefault(snapshot.guild_id, session)
 
-        self.snapshots.pop(snapshot.guild_id, None)
         return True

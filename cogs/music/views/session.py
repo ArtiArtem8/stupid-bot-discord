@@ -9,9 +9,9 @@ from discord import Interaction, ui
 from discord.utils import format_dt
 
 import config
-from api.music import MusicSession
-from framework import BasePaginator, PaginationData
-from utils import TextPaginator, truncate_text
+from api.music.models import MusicSession
+from framework.pagination import BasePaginator, PaginationData
+from utils.text_utils import TextPaginator, truncate_text
 
 from ..feedback import send_warning
 from ..presentation import format_track_link

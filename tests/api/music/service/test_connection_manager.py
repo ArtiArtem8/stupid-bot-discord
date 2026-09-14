@@ -27,7 +27,7 @@ class _FakeMusicPlayer:
         connected: bool = True,
     ) -> None:
         self.guild = guild
-        self._node = node
+        self.assigned_node = node
         self._is_stale = False
         self.connected = connected
 
@@ -37,6 +37,9 @@ class _FakeMusicPlayer:
 
     def mark_stale(self) -> None:
         self._is_stale = True
+
+    async def transfer_to(self, node: object) -> None:
+        self.assigned_node = node
 
 
 def _as_music_player(player: _FakeMusicPlayer) -> MusicPlayer:
@@ -1357,3 +1360,61 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         await manager.mark_node_unavailable(node)
 
         node.close.assert_awaited_once()
+
+    async def test_node_unavailable_transfers_player_through_public_api(self) -> None:
+        old_node = MagicMock(label="old", available=False)
+        target = MagicMock(label="target", available=True)
+        guild = MagicMock(id=123)
+        player = _FakeMusicPlayer(guild, old_node)
+        guild.voice_client = player
+        self.bot.get_guild.return_value = guild
+        mock_pool = MagicMock()
+        mock_pool.nodes = [old_node, target]
+        self.manager.pool = cast(Any, mock_pool)
+        old_node.players = [player]
+
+        async def transfer(actual_target: object) -> None:
+            self.assertIs(actual_target, target)
+            player.assigned_node = target
+
+        player.transfer_to = AsyncMock(side_effect=transfer)
+        self.manager.mark_node_unavailable = AsyncMock()
+        self.manager._cleanup_voice_client_locally = AsyncMock()
+
+        invalidated = await self.manager.handle_node_unavailable(old_node)
+
+        self.assertEqual(invalidated, set())
+        player.transfer_to.assert_awaited_once_with(target)
+        self.manager.mark_node_unavailable.assert_awaited_once_with(old_node)
+        self.manager._cleanup_voice_client_locally.assert_not_awaited()
+
+    async def test_failed_node_transfer_invalidates_only_affected_player(self) -> None:
+        old_node = MagicMock(label="old", available=False)
+        target = MagicMock(label="target", available=True)
+        affected_guild = MagicMock(id=123)
+        unaffected_guild = MagicMock(id=456)
+        affected = _FakeMusicPlayer(affected_guild, old_node)
+        unaffected = _FakeMusicPlayer(unaffected_guild, target)
+        affected_guild.voice_client = affected
+        unaffected_guild.voice_client = unaffected
+        guilds = {
+            123: affected_guild,
+            456: unaffected_guild,
+        }
+        self.bot.get_guild.side_effect = guilds.get
+        mock_pool = MagicMock()
+        mock_pool.nodes = [old_node, target]
+        self.manager.pool = cast(Any, mock_pool)
+        old_node.players = [affected]
+        affected.transfer_to = AsyncMock(side_effect=TimeoutError)
+        self.manager.mark_node_unavailable = AsyncMock()
+        self.manager._cleanup_voice_client_locally = AsyncMock()
+
+        invalidated = await self.manager.handle_node_unavailable(old_node)
+
+        self.assertEqual(invalidated, {123})
+        self.assertTrue(affected.is_stale)
+        self.assertFalse(unaffected.is_stale)
+        self.manager._cleanup_voice_client_locally.assert_awaited_once_with(
+            affected_guild, affected
+        )

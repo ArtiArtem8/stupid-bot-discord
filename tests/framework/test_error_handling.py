@@ -10,9 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 from discord import app_commands
 
-from framework import BlockedUserError, FeedbackType, FeedbackUI
 from framework.bot import StupidBot
 from framework.error_handler import handle_app_command_error
+from framework.exceptions import BlockedUserError
+from framework.feedback_ui import FeedbackType, FeedbackUI
 
 
 def _feedback_kwargs(send: AsyncMock) -> Mapping[str, object]:

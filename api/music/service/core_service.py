@@ -37,9 +37,10 @@ from api.music.models import (
 )
 from api.music.player import MusicPlayer
 from api.music.service.connection_manager import ConnectionManager
-from api.music.service.event_handlers import MusicEventHandlers
+from api.music.service.playback_events import PlaybackEventHandlers
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
+from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 from api.music.session_events import dispatch_music_session_end
 from repositories.volume_repository import VolumeRepository
 
@@ -66,14 +67,16 @@ class CoreMusicService:
         connection_manager: ConnectionManager,
         state_manager: StateManager,
         volume_repository: VolumeRepository,
-        event_handlers: MusicEventHandlers,
+        playback_events: PlaybackEventHandlers,
+        voice_lifecycle: VoiceLifecycleHandlers,
         ui_orchestrator: UIOrchestrator,
     ) -> None:
         self.bot = bot
         self.connection = connection_manager
         self.state = state_manager
         self.volume_repo = volume_repository
-        self.events = event_handlers
+        self.playback_events = playback_events
+        self.voice_lifecycle = voice_lifecycle
         self.ui = ui_orchestrator
         self._initialized = False
 
@@ -83,7 +86,8 @@ class CoreMusicService:
             logger.debug("CoreMusicService already initialized.")
             return
 
-        self.events.setup()
+        self.playback_events.setup()
+        self.voice_lifecycle.setup()
         self._initialized = True
         self.connection.start_lazy_connect()
         logger.info("CoreMusicService initialized.")
@@ -94,7 +98,7 @@ class CoreMusicService:
 
     async def heal(self, guild_id: int) -> bool:
         """Attempt to heal the session for the given guild."""
-        return await self.events.heal(guild_id)
+        return await self.voice_lifecycle.heal(guild_id)
 
     async def join(
         self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
@@ -593,7 +597,7 @@ class CoreMusicService:
 
     async def check_auto_leave(self) -> None:
         """Check for guilds that have been empty for too long."""
-        expired_guild_ids = await self.state.check_auto_leave()
+        expired_guild_ids = self.state.check_auto_leave()
         for guild_id in expired_guild_ids:
             try:
                 guild = self.bot.get_guild(guild_id)
@@ -614,7 +618,8 @@ class CoreMusicService:
         for guild in self.bot.guilds:
             if guild.voice_client:
                 await self.connection.disconnect(guild, force=True)
-        self.events.cleanup()
+        self.playback_events.cleanup()
+        self.voice_lifecycle.cleanup()
         await self.connection.cleanup()
         self._initialized = False
         logger.info("CoreMusicService cleaned up.")

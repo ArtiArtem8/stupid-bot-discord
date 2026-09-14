@@ -6,9 +6,10 @@ import discord
 from discord import Interaction, app_commands
 from discord.ext import commands
 
-from api import ReportModal
-from api.reporting import set_report_channel
-from framework import BaseCog, FeedbackType, FeedbackUI, is_owner_app
+from api.reporting import ReportModal, set_report_channel
+from framework.base_cog import BaseCog
+from framework.checks import is_owner_app
+from framework.feedback_ui import FeedbackType, FeedbackUI
 
 logger = logging.getLogger(__name__)
 

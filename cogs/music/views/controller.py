@@ -15,21 +15,22 @@ from discord.abc import PrivateChannel
 from discord.ext import commands
 
 import config
-from api.music import (
+from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
+from api.music.models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     ControllerDestroyReason,
     PlaybackAttempt,
 )
-from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
 from api.music.protocols import ControllerManagerProtocol
 from api.music.service.connection_manager import ConnectionManager
-from framework import FeedbackType, FeedbackUI, ack_component
+from framework.feedback_ui import FeedbackType, FeedbackUI
+from framework.interaction_flow import ack_component
 from utils.callables import callable_name
 
 from ..feedback import send_warning
 
 if TYPE_CHECKING:
-    from api.music import MusicPlayer
+    from api.music.player import MusicPlayer
 
 logger = logging.getLogger(__name__)
 

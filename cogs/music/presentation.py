@@ -11,13 +11,16 @@ from itertools import groupby
 import discord
 
 import config
-from api.music import MusicSession, RepeatMode, Track, TrackInfo
 from api.music.models import (
+    MusicSession,
     PlaylistResponseData,
+    RepeatMode,
+    Track,
     TrackExceptionPayload,
+    TrackInfo,
     TrackResponseData,
 )
-from utils import truncate_sequence, truncate_text
+from utils.text_utils import truncate_sequence, truncate_text
 
 MAX_TIMEDELTA_DAYS = 999_999_999
 _MARKDOWN_LINK_BRACKET_RE = re.compile(r"([\[\]])")

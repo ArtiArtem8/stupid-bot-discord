@@ -12,7 +12,7 @@ from unittest.mock import Mock
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
 from repositories.birthday_repository import BirthdayRepository
 from tests.repositories.fakes import InMemoryJsonStore
-from utils import calculate_days_until_birthday
+from utils.birthday_utils import calculate_days_until_birthday
 from utils.json_types import JsonObject
 
 

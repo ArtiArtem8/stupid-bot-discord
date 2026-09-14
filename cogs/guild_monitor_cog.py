@@ -20,12 +20,18 @@ class ServerMonitorCog(BaseCog):
 
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
-        self.cleanup_task.start()
+
+    @override
+    async def cog_load(self) -> None:
+        """Start snapshot cleanup after the cog is registered."""
+        if not self.cleanup_task.is_running():
+            self.cleanup_task.start()
 
     @override
     async def cog_unload(self) -> None:
         """Stop background tasks on unload."""
-        self.cleanup_task.cancel()
+        if self.cleanup_task.is_running():
+            self.cleanup_task.cancel()
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
