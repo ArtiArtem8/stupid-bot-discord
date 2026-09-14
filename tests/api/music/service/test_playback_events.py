@@ -289,6 +289,50 @@ class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_failure_deduplication_does_not_collide_across_recreated_players(
+        self,
+    ) -> None:
+        old_player = self._player()
+        old_attempt = _attempt(1, "old", "old-token")
+        old_player.claim_track_exception.return_value = old_attempt
+
+        await self.handlers._on_track_exception(
+            MagicMock(
+                player=old_player,
+                track=_event_track("old", "old-token"),
+                exception={"message": "old failure", "severity": "common"},
+            )
+        )
+
+        new_player = self._player()
+        new_attempt = _attempt(1, "new", "new-token")
+        new_player.handle_track_end.return_value = TrackEndOutcome(
+            new_attempt,
+            None,
+            False,
+        )
+
+        await self.handlers._on_track_end(
+            MagicMock(
+                player=new_player,
+                track=_event_track("new", "new-token"),
+                reason=mafic.EndReason.LOAD_FAILED,
+            )
+        )
+
+        self.assertEqual(self.bot.dispatch.call_count, 2)
+        self.assertEqual(
+            [call.args[0] for call in self.bot.dispatch.call_args_list],
+            ["music_track_exception", "music_track_exception"],
+        )
+        self.assertEqual(
+            [
+                call.args[1].track.identifier
+                for call in self.bot.dispatch.call_args_list
+            ],
+            ["old", "new"],
+        )
+
     async def test_load_failed_end_dispatches_fallback_notification(self) -> None:
         player = self._player()
         attempt = _attempt(1, "failed", "attempt-a")
@@ -373,7 +417,7 @@ class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
         self.handlers.setup()
 
         await self.handlers._on_track_exception(event)
-        self.assertIn(123, self.handlers._load_failures)
+        self.assertEqual(self.handlers._load_failures, {123: {"attempt-a"}})
 
         self.handlers.cleanup()
 

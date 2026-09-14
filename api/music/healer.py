@@ -84,14 +84,8 @@ class SessionHealer(HealerProtocol):
         return None
 
     def _is_youtube_track(self, track: mafic.Track) -> bool:
-        """Return whether a track comes from YouTube."""
-        if track.source.lower() == "youtube":
-            return True
-
-        if track.uri is not None:
-            return "youtube.com" in track.uri or "youtu.be" in track.uri
-
-        return False
+        """Return whether a track comes from the YouTube source."""
+        return track.source.casefold() == "youtube"
 
     def _is_track_seekable(self, track: mafic.Track) -> bool:
         """Return whether a track can be sought."""

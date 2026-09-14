@@ -81,6 +81,22 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         healer = SessionHealer(MagicMock(), connection, StateManager(), MagicMock(), ui)
         return healer, connection, ui
 
+    def test_youtube_source_identification_uses_track_source_only(self) -> None:
+        healer, _, _ = self._make_warm_restore_healer()
+        cases = (
+            ("youtube", "https://example.com/track", True),
+            ("YouTube", "https://example.com/track", True),
+            ("http", "https://youtube.com/watch?v=track", False),
+            ("http", "https://youtu.be/track", False),
+        )
+
+        for source, uri, expected in cases:
+            with self.subTest(source=source, uri=uri):
+                track = make_entry("source-check").track
+                track.source = source
+                track.uri = uri
+                self.assertIs(healer._is_youtube_track(track), expected)
+
     async def test_refresh_track_propagates_unexpected_failure(self) -> None:
         healer, _, _ = self._make_warm_restore_healer()
         entry = make_entry("restore")

@@ -41,7 +41,7 @@ class PlaybackEventHandlers:
         self.state = state_manager
         self.ui = ui_orchestrator
         self._is_healing = is_healing
-        self._load_failures: dict[int, set[int]] = {}
+        self._load_failures: dict[int, set[str]] = {}
         self._setup_done = False
 
     def setup(self) -> None:
@@ -159,7 +159,7 @@ class PlaybackEventHandlers:
             },
         )
 
-        self._load_failures.setdefault(player.guild.id, set()).add(attempt.attempt_id)
+        self._load_failures.setdefault(player.guild.id, set()).add(attempt.event_token)
         self._dispatch_track_exception(player, attempt, reason, severity)
         await self.ui.controller.destroy_for_guild(
             player.guild.id,
@@ -228,7 +228,7 @@ class PlaybackEventHandlers:
         self.state.record_history(player.guild.id, ended, reason)
 
         failures = self._load_failures.setdefault(player.guild.id, set())
-        if reason is mafic.EndReason.LOAD_FAILED and ended.attempt_id not in failures:
+        if reason is mafic.EndReason.LOAD_FAILED and ended.event_token not in failures:
             track = ended.entry.track
             title = compact_external_log_text(track.title, limit=TRACK_TITLE_TEXT_LIMIT)
             logger.warning(
@@ -248,7 +248,7 @@ class PlaybackEventHandlers:
                 reason="Lavalink: загрузка не удалась",
                 severity=None,
             )
-        failures.discard(ended.attempt_id)
+        failures.discard(ended.event_token)
         if not failures:
             self._load_failures.pop(player.guild.id, None)
 
