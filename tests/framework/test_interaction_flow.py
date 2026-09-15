@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
-from framework import ack_component, run_with_defer
+from framework.interaction_flow import ack_component, run_with_defer
 
 ASYNC_TEST_TIMEOUT = 2.0
 

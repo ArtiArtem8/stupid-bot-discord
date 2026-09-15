@@ -78,14 +78,16 @@ class TestQueueManager(unittest.TestCase):
         self.assertEqual(removed, (first, last))
         self.assertEqual(list(queue), [middle])
 
-    def test_remove_entries_rejects_lookalike_objects(self) -> None:
+    def test_remove_entries_accepts_reconstructed_entry_with_same_identity(
+        self,
+    ) -> None:
         queued = make_entry("same", entry_id=1)
         lookalike = make_entry("same", entry_id=1)
         queue = QueueManager()
         queue.append(queued)
 
-        self.assertEqual(queue.remove_entries((lookalike,)), ())
-        self.assertEqual(list(queue), [queued])
+        self.assertEqual(queue.remove_entries((lookalike,)), (queued,))
+        self.assertEqual(list(queue), [])
 
     def test_remove_entries_with_empty_expected_preserves_queue(self) -> None:
         entries = [make_entry("one"), make_entry("two", entry_id=2)]

@@ -2,8 +2,7 @@
 
 import unittest
 
-from api.music import MusicSession
-from api.music.models import PlaylistResponseData, PlayPlacement
+from api.music.models import MusicSession, PlaylistResponseData, PlayPlacement
 from cogs.music.presentation import (
     build_playlist_added_embed,
     build_session_summary_embed,

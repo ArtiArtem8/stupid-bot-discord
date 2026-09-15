@@ -12,7 +12,7 @@ import discord
 from discord.utils import utcnow
 
 import config
-from utils import AsyncJsonFileStore
+from utils.json_store import AsyncJsonFileStore
 from utils.json_types import JsonObject, JsonValue, is_json_object
 
 logger = logging.getLogger(__name__)

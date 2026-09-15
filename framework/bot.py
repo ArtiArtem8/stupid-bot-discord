@@ -8,11 +8,11 @@ from discord.ext import commands, tasks
 
 import config
 from api.reporting import handle_report_button
-from framework import FeedbackUI
 from framework.cog_loader import CogLoader
 from framework.error_handler import handle_app_command_error
+from framework.feedback_ui import FeedbackUI
 from framework.uptime_manager import UptimeManager
-from utils import format_duration_ru
+from utils.russian_time_utils import format_duration_ru
 
 logger = logging.getLogger("StupidBot")
 

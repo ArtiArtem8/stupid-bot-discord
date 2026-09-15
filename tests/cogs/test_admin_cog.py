@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 
 from cogs.admin_cog import AdminCog
-from framework import FeedbackUI
+from framework.feedback_ui import FeedbackUI
 
 
 class TestDeleteMessage(unittest.IsolatedAsyncioTestCase):

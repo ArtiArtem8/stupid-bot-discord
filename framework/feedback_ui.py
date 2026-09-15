@@ -17,7 +17,7 @@ from discord.ui import Button, View
 from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAny]
 
 import config
-from utils import SafeEmbed
+from utils.embeds import SafeEmbed
 
 logger = logging.getLogger(__name__)
 

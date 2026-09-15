@@ -10,18 +10,17 @@ import discord
 from discord import Interaction
 
 import config
-from api.music import MusicResult, QueueEntry, QueueSnapshot, RepeatMode
-from framework import (
+from api.music.models import MusicResult, QueueEntry, QueueSnapshot, RepeatMode
+from framework.feedback_ui import FeedbackType, FeedbackUI
+from framework.interaction_flow import ack_component
+from framework.pagination import (
     DANGER,
     PRIMARY,
     BasePaginator,
     CallbackButton,
-    FeedbackType,
-    FeedbackUI,
     PaginationData,
-    ack_component,
 )
-from utils import TextPaginator
+from utils.text_utils import TextPaginator
 
 from ..feedback import send_warning
 from ..presentation import format_track_link

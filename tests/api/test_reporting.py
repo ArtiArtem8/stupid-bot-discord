@@ -18,7 +18,7 @@ from api.reporting import (
     set_report_channel,
     submit_report,
 )
-from utils import AsyncJsonFileStore
+from utils.json_store import AsyncJsonFileStore
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):

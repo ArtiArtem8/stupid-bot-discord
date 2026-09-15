@@ -12,6 +12,7 @@ import discord
 import mafic
 
 from .models import (
+    PLAYBACK_USER_DATA_KEY,
     EnqueueOutcome,
     PlaybackAttempt,
     QueueEntry,
@@ -27,11 +28,6 @@ if TYPE_CHECKING:
     from discord.abc import Connectable
 
 logger = logging.getLogger(__name__)
-
-
-def tracks_match(left: Track, right: Track) -> bool:
-    """Compare the source identity Mafic exposes for playback events."""
-    return left.source == right.source and left.identifier == right.identifier
 
 
 class MusicPlayer(mafic.Player[discord.Client]):
@@ -67,29 +63,6 @@ class MusicPlayer(mafic.Player[discord.Client]):
         """Mark this player as no longer safe for reuse."""
         self._is_stale = True
 
-    async def move_to(
-        self, channel: discord.abc.Snowflake | None, *, timeout: float = 30.0
-    ) -> None:
-        """Move to a different voice channel."""
-        if channel is None:
-            await self.disconnect()
-            return
-        if not isinstance(self.channel, (discord.VoiceChannel, discord.StageChannel)):
-            msg = "Voice channel must be a VoiceChannel or StageChannel."
-            raise TypeError(msg)
-        if self.channel and channel.id == self.channel.id:
-            return
-        self._voice_state_update_event.clear()
-        self._voice_server_update_event.clear()
-        await self.guild.change_voice_state(channel=channel)
-        await asyncio.wait_for(
-            asyncio.gather(
-                self._voice_state_update_event.wait(),
-                self._voice_server_update_event.wait(),
-            ),
-            timeout=timeout,
-        )
-
     def clear_queue(self) -> None:
         self.queue.clear()
         logger.debug("Cleared queue for guild %s", self.guild.id)
@@ -100,37 +73,44 @@ class MusicPlayer(mafic.Player[discord.Client]):
     def queue_snapshot(self) -> tuple[QueueEntry, ...]:
         return self.queue.snapshot()
 
-    def resolve_current_attempt(self, track: Track) -> PlaybackAttempt | None:
-        """Resolve TrackStart against the best identity Mafic makes available."""
+    def resolve_current_attempt(self, event_token: str) -> PlaybackAttempt | None:
+        """Resolve the current attempt from its transport token."""
         attempt = self._current_attempt
-        if attempt is not None and tracks_match(attempt.entry.track, track):
-            return attempt
-        return None
+        return (
+            attempt
+            if attempt is not None and attempt.event_token == event_token
+            else None
+        )
 
-    async def resolve_exception_attempt(self, track: Track) -> PlaybackAttempt | None:
-        """Resolve exception/stuck events current-first, then pending FIFO."""
+    async def resolve_track_start(self, event_token: str) -> PlaybackAttempt | None:
+        """Classify a track-start event while holding the transition lock."""
         async with self._transition_lock:
-            return self._resolve_exception_attempt_unlocked(track)
+            return self.resolve_current_attempt(event_token)
 
-    async def claim_track_exception(self, track: Track) -> PlaybackAttempt | None:
+    async def resolve_exception_attempt(
+        self, event_token: str
+    ) -> PlaybackAttempt | None:
+        """Resolve exception/stuck events from their transport token."""
+        async with self._transition_lock:
+            return self._resolve_exception_attempt_unlocked(event_token)
+
+    async def claim_track_exception(self, event_token: str) -> PlaybackAttempt | None:
         """Resolve and deduplicate an exception for a live attempt."""
         async with self._transition_lock:
-            attempt = self._resolve_exception_attempt_unlocked(track)
+            attempt = self._resolve_exception_attempt_unlocked(event_token)
             if attempt is None or attempt.attempt_id in self._exception_attempt_ids:
                 return None
             self._exception_attempt_ids.add(attempt.attempt_id)
             return attempt
 
     def _resolve_exception_attempt_unlocked(
-        self, track: Track
+        self, event_token: str
     ) -> PlaybackAttempt | None:
-        # Without a playback event token, equal source playbacks cannot be
-        # distinguished absolutely. Exceptions prefer the current attempt.
-        current = self.resolve_current_attempt(track)
+        current = self.resolve_current_attempt(event_token)
         if current is not None:
             return current
         for attempt in self._pending_end_attempts:
-            if tracks_match(attempt.entry.track, track):
+            if attempt.event_token == event_token:
                 return attempt
         return None
 
@@ -158,6 +138,7 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 start_time=start_time,
                 volume=volume,
                 pause=pause,
+                user_data={PLAYBACK_USER_DATA_KEY: attempt.event_token},
             )
         except (Exception, asyncio.CancelledError):
             self._current_attempt = previous
@@ -302,7 +283,9 @@ class MusicPlayer(mafic.Player[discord.Client]):
             raise
 
     async def handle_track_end(
-        self, track: Track, reason: mafic.EndReason
+        self,
+        event_token: str,
+        reason: mafic.EndReason,
     ) -> TrackEndOutcome:
         """Classify one Mafic end event and perform any required transition."""
         async with self._transition_lock:
@@ -310,12 +293,12 @@ class MusicPlayer(mafic.Player[discord.Client]):
             old_pending = self._pending_end_attempts.copy()
             old_current = self._current_attempt
 
-            pending = self._pop_pending_match_unlocked(track)
+            pending = self._pop_pending_match_unlocked(event_token)
             if pending is not None:
                 self._exception_attempt_ids.discard(pending.attempt_id)
                 return TrackEndOutcome(pending, None, False)
 
-            current = self.resolve_current_attempt(track)
+            current = self.resolve_current_attempt(event_token)
             if current is None:
                 return TrackEndOutcome(None, None, True)
 
@@ -332,11 +315,9 @@ class MusicPlayer(mafic.Player[discord.Client]):
             self._exception_attempt_ids.discard(current.attempt_id)
             return TrackEndOutcome(current, started, False)
 
-    def _pop_pending_match_unlocked(self, track: Track) -> PlaybackAttempt | None:
-        # TrackEnd is pending-first and FIFO. Without a Lavalink event token,
-        # equal source playbacks cannot be distinguished absolutely.
+    def _pop_pending_match_unlocked(self, event_token: str) -> PlaybackAttempt | None:
         for index, attempt in enumerate(self._pending_end_attempts):
-            if tracks_match(attempt.entry.track, track):
+            if attempt.event_token == event_token:
                 del self._pending_end_attempts[index]
                 return attempt
         return None

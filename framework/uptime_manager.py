@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Self
 
 import config
-from utils import AsyncJsonFileStore
+from utils.json_store import AsyncJsonFileStore
 from utils.json_types import JsonObject
 
 logger = logging.getLogger(__name__)

@@ -12,10 +12,11 @@ from discord import Interaction, app_commands
 from discord.ext import commands
 
 import config
-from framework import BaseCog
+from framework.base_cog import BaseCog
 from resources import CAPABILITIES
-from utils import AsyncJsonFileStore, random_answer, str_local
+from utils.json_store import AsyncJsonFileStore
 from utils.json_types import JsonObject
+from utils.text_utils import random_answer, str_local
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class QuestionCog(BaseCog):
         )
         self._answer_lock = asyncio.Lock()
         self._history_store = AsyncJsonFileStore(config.ANSWER_FILE, backup_amount=2)
-        logger.info("Initial /ask answers: %s", self.answers)
+        logger.info("Initialized /ask answer queue size=%s", len(self.answers))
 
     @app_commands.command(
         name="ask",
@@ -36,12 +37,12 @@ class QuestionCog(BaseCog):
     )
     async def q(self, interaction: Interaction, *, text: str) -> None:
         logger.info(
-            "User %s(%s) asked: %s",
+            "/ask invoked user=%s user_id=%s question=%r",
             interaction.user,
             interaction.user.id,
             text,
         )
-        queue_preview: tuple[list[str], list[str]] | None = None
+        generated = False
 
         async with self._answer_lock:
             prev_message = await self._add_to_history(
@@ -55,16 +56,21 @@ class QuestionCog(BaseCog):
             else:
                 self.answers.append(random_answer(text, answers=CAPABILITIES))
                 reply = self.answers.pop(0)
-                queue_preview = (self.answers[:2], self.answers[-2:])
+                generated = True
 
         if prev_message is not None:
-            logger.info("User already asked: %s -> %s", text, prev_message)
-        elif queue_preview is not None:
             logger.info(
-                "%s -> %s...%s",
+                "/ask resolved user_id=%s result=cached question=%r answer=%r",
+                interaction.user.id,
+                text,
                 reply,
-                queue_preview[0],
-                queue_preview[1],
+            )
+        elif generated:
+            logger.info(
+                "/ask invoked user=%s user_id=%s question=%r",
+                interaction.user,
+                interaction.user.id,
+                text,
             )
 
         await interaction.response.send_message(reply)

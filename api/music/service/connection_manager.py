@@ -213,7 +213,8 @@ class ConnectionManager:
         )
 
     def get_player_node(self, player: MusicPlayer) -> mafic.Node[commands.Bot] | None:
-        return cast("mafic.Node[commands.Bot] | None", getattr(player, "_node", None))
+        """Return the player's assigned node without selecting a fallback."""
+        return cast("mafic.Node[commands.Bot] | None", player.assigned_node)
 
     async def mark_node_unavailable(
         self, node: mafic.Node[commands.Bot] | None = None
@@ -279,6 +280,47 @@ class ConnectionManager:
                     candidate.guild,
                     candidate,
                 )
+
+    async def handle_node_unavailable(self, node: mafic.Node[commands.Bot]) -> set[int]:
+        """Transfer players to a ready node or invalidate only failed guilds."""
+        players = [
+            player for player in tuple(node.players) if isinstance(player, MusicPlayer)
+        ]
+        target = next(
+            (
+                candidate
+                for candidate in self.pool.nodes
+                if candidate is not node and candidate.available
+            ),
+            None,
+        )
+        invalidated: list[MusicPlayer] = []
+
+        for player in players:
+            if target is not None:
+                try:
+                    await player.transfer_to(target)
+                except (*EXPECTED_LAVALINK_IO_ERRORS, RuntimeError) as exc:
+                    self._log_player_state(
+                        player,
+                        guild_id=player.guild.id,
+                        summary="Player transfer failed",
+                        context="node_unavailable_transfer",
+                        error=type(exc).__name__,
+                    )
+                else:
+                    if self.is_player_usable(player):
+                        continue
+            player.mark_stale()
+            invalidated.append(player)
+
+        try:
+            await self.mark_node_unavailable(node)
+        finally:
+            for player in invalidated:
+                await self._cleanup_voice_client_locally(player.guild, player)
+
+        return {player.guild.id for player in invalidated}
 
     async def ensure_available(self) -> bool:
         """Lazily connect to Lavalink, respecting the retry cooldown."""

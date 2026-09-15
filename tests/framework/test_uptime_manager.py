@@ -9,7 +9,7 @@ from typing import override
 from unittest.mock import patch
 
 from framework.uptime_manager import UptimeData, UptimeManager
-from utils import AsyncJsonFileStore
+from utils.json_store import AsyncJsonFileStore
 
 
 class TestUptimeData(unittest.TestCase):

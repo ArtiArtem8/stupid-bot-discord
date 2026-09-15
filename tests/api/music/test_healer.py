@@ -10,6 +10,7 @@ from discord import VoiceChannel
 
 from api.music.healer import SessionHealer
 from api.music.models import (
+    PLAYBACK_USER_DATA_KEY,
     PlaybackAttempt,
     PlayerStateSnapshot,
     RepeatMode,
@@ -21,18 +22,29 @@ from api.music.service.state_manager import StateManager
 from tests.api.music.helpers import make_entry
 
 
+def _tagged_track(attempt: PlaybackAttempt) -> mafic.Track:
+    track = attempt.entry.track
+    track.user_data[PLAYBACK_USER_DATA_KEY] = attempt.event_token
+    return track
+
+
+def _route_player_invalidation(connection: MagicMock) -> None:
+    async def invalidate(player: MusicPlayer, **_kwargs: object) -> None:
+        await connection.detach_stale_voice_client(player.guild, player)
+
+    connection.invalidate_player = AsyncMock(side_effect=invalidate)
+
+
 def _snapshot() -> PlayerStateSnapshot:
     return PlayerStateSnapshot(
         guild_id=1,
         voice_channel_id=2,
-        text_channel_id=3,
         current_entry=None,
         position=100,
         is_paused=False,
         volume=50,
-        queue=[],
+        queue=(),
         repeat_mode=RepeatMode.OFF,
-        filters=None,
         session=None,
     )
 
@@ -41,14 +53,13 @@ def _runtime_player(current: PlaybackAttempt) -> MusicPlayer:
     player = object.__new__(MusicPlayer)
     player.queue = QueueManager()
     player.repeat = RepeatManager()
-    player._next_entry_id = current.entry.entry_id + 1
     player._next_attempt_id = current.attempt_id + 1
     player._current_attempt = current
     player._pending_end_attempts = deque()
     player._exception_attempt_ids = set()
     player._transition_lock = asyncio.Lock()
     player._is_stale = False
-    player._current = current.entry.track
+    player._current = _tagged_track(current)
     player.guild = MagicMock(id=1)
     return player
 
@@ -56,13 +67,35 @@ def _runtime_player(current: PlaybackAttempt) -> MusicPlayer:
 class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
     def _make_warm_restore_healer(self) -> tuple[SessionHealer, MagicMock, MagicMock]:
         connection = MagicMock()
+        _route_player_invalidation(connection)
         connection.is_player_usable.return_value = True
         connection.detach_stale_voice_client = AsyncMock()
+
+        async def invalidate(player: MusicPlayer, **_kwargs: object) -> None:
+            await connection.detach_stale_voice_client(player.guild, player)
+
+        connection.invalidate_player = AsyncMock(side_effect=invalidate)
         ui = MagicMock()
         ui.controller.destroy_for_guild = AsyncMock()
         ui.spawn_controller = AsyncMock()
         healer = SessionHealer(MagicMock(), connection, StateManager(), MagicMock(), ui)
         return healer, connection, ui
+
+    def test_youtube_source_identification_uses_track_source_only(self) -> None:
+        healer, _, _ = self._make_warm_restore_healer()
+        cases = (
+            ("youtube", "https://example.com/track", True),
+            ("YouTube", "https://example.com/track", True),
+            ("http", "https://youtube.com/watch?v=track", False),
+            ("http", "https://youtu.be/track", False),
+        )
+
+        for source, uri, expected in cases:
+            with self.subTest(source=source, uri=uri):
+                track = make_entry("source-check").track
+                track.source = source
+                track.uri = uri
+                self.assertIs(healer._is_youtube_track(track), expected)
 
     async def test_refresh_track_propagates_unexpected_failure(self) -> None:
         healer, _, _ = self._make_warm_restore_healer()
@@ -89,15 +122,17 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
 
     async def test_exact_restore_attempt_confirmation_succeeds(self) -> None:
         connection = MagicMock()
+        _route_player_invalidation(connection)
         connection.is_player_usable.return_value = True
         connection.detach_stale_voice_client = AsyncMock()
+        connection.invalidate_player = AsyncMock()
         ui = MagicMock()
         ui.controller.destroy_for_guild = AsyncMock()
         healer = SessionHealer(MagicMock(), connection, StateManager(), MagicMock(), ui)
         attempt = PlaybackAttempt(1, make_entry("expected"))
         player = MagicMock(
             current_attempt=attempt,
-            current=attempt.entry.track,
+            current=_tagged_track(attempt),
         )
         player.invalidate_if_current_attempt = AsyncMock()
 
@@ -180,6 +215,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
 
     async def test_superseded_restore_confirmation_preserves_new_attempt(self) -> None:
         connection = MagicMock()
+        _route_player_invalidation(connection)
         connection.is_player_usable.return_value = True
         connection.detach_stale_voice_client = AsyncMock()
         ui = MagicMock()
@@ -189,7 +225,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         replacement = PlaybackAttempt(2, make_entry("same", entry_id=2))
         player = MagicMock(
             current_attempt=replacement,
-            current=replacement.entry.track,
+            current=_tagged_track(replacement),
         )
         player.invalidate_if_current_attempt = AsyncMock(return_value=False)
 
@@ -208,6 +244,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         connection = MagicMock()
+        _route_player_invalidation(connection)
         connection.is_player_usable.return_value = False
         replacement_player = MagicMock()
         guild = MagicMock(voice_client=replacement_player)
@@ -215,7 +252,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         old_player = MagicMock(
             guild=guild,
             current_attempt=expected,
-            current=expected.entry.track,
+            current=_tagged_track(expected),
         )
         old_player.invalidate_if_current_attempt = AsyncMock(return_value=True)
 
@@ -253,7 +290,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             _entry: object, **_kwargs: object
         ) -> PlaybackAttempt:
             player.current_attempt = attempt
-            player.current = entry.track
+            player.current = _tagged_track(attempt)
             return attempt
 
         player.restore_playback = AsyncMock(side_effect=restore_playback)
@@ -285,7 +322,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player = MagicMock(
             guild=guild,
             current_attempt=attempt,
-            current=attempt.entry.track,
+            current=_tagged_track(attempt),
         )
         player.seek_attempt = AsyncMock(side_effect=TimeoutError)
         player.restore_attempt_state = AsyncMock(return_value=True)
@@ -315,7 +352,6 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player = object.__new__(MusicPlayer)
         player.queue = QueueManager()
         player.repeat = RepeatManager()
-        player._next_entry_id = 2
         player._next_attempt_id = 1
         player._current_attempt = None
         player._pending_end_attempts = deque()
@@ -325,7 +361,16 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player._current = None
         player.guild = guild
 
-        async def play(track: mafic.Track, **_kwargs: object) -> None:
+        async def play(
+            track: mafic.Track,
+            *,
+            user_data: dict[str, object] | None = None,
+            **_kwargs: object,
+        ) -> None:
+            if user_data is not None:
+                token = user_data.get(PLAYBACK_USER_DATA_KEY)
+                if isinstance(token, str):
+                    track.user_data[PLAYBACK_USER_DATA_KEY] = token
             player._current = track
 
         async def seek(_position: int) -> None:
@@ -361,7 +406,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player = MagicMock(
             guild=guild,
             current_attempt=attempt,
-            current=attempt.entry.track,
+            current=_tagged_track(attempt),
         )
         player.seek_attempt = AsyncMock(return_value=True)
         player.restore_attempt_state = AsyncMock(side_effect=TimeoutError)
@@ -407,7 +452,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             _entry: object, **_kwargs: object
         ) -> PlaybackAttempt:
             player.current_attempt = expected
-            player.current = expected.entry.track
+            player.current = _tagged_track(expected)
             return expected
 
         sleep_count = 0
@@ -417,7 +462,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             sleep_count += 1
             if sleep_count == 2:
                 player.current_attempt = replacement
-                player.current = replacement.entry.track
+                player.current = _tagged_track(replacement)
 
         player.restore_playback = AsyncMock(side_effect=restore_playback)
 
@@ -448,19 +493,17 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player = MagicMock(
             guild=guild,
             current_attempt=fallback,
-            current=entry.track,
+            current=_tagged_track(fallback),
         )
         snapshot = PlayerStateSnapshot(
             guild_id=1,
             voice_channel_id=2,
-            text_channel_id=3,
             current_entry=entry,
             position=4_000,
             is_paused=False,
             volume=65,
-            queue=[],
+            queue=(),
             repeat_mode=RepeatMode.OFF,
-            filters=None,
             session=None,
         )
         healer._resolve_fresh_track_for_restore = AsyncMock(return_value=entry.track)
@@ -486,20 +529,18 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player = MagicMock(
             guild=guild,
             current_attempt=replacement,
-            current=replacement.entry.track,
+            current=_tagged_track(replacement),
         )
         player.invalidate_if_current_attempt = AsyncMock(return_value=False)
         snapshot = PlayerStateSnapshot(
             guild_id=1,
             voice_channel_id=2,
-            text_channel_id=3,
             current_entry=entry,
             position=0,
             is_paused=False,
             volume=65,
-            queue=[],
+            queue=(),
             repeat_mode=RepeatMode.OFF,
-            filters=None,
             session=None,
         )
         healer._resolve_fresh_track_for_restore = AsyncMock(return_value=entry.track)
@@ -569,6 +610,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         bot = MagicMock()
         bot.get_guild.return_value = None
         connection = MagicMock()
+        _route_player_invalidation(connection)
         healer = SessionHealer(
             bot, connection, StateManager(), MagicMock(), MagicMock()
         )
@@ -584,6 +626,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         guild.get_channel.return_value = MagicMock(spec=VoiceChannel)
         bot.get_guild.return_value = guild
         connection = MagicMock()
+        _route_player_invalidation(connection)
         connection.join = AsyncMock(
             return_value=(VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None)
         )
@@ -602,6 +645,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         guild.get_channel.return_value = MagicMock(spec=VoiceChannel)
         bot.get_guild.return_value = guild
         connection = MagicMock()
+        _route_player_invalidation(connection)
         connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
         connection.get_player.return_value = None
         healer = SessionHealer(
@@ -615,6 +659,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
     async def test_restore_session_recreates_controller_for_current_track(self) -> None:
         bot = MagicMock()
         connection = MagicMock()
+        _route_player_invalidation(connection)
         state = StateManager()
         ui = MagicMock()
         ui.spawn_controller = AsyncMock()
@@ -640,7 +685,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             _entry: object, **_kwargs: object
         ) -> PlaybackAttempt:
             player.current_attempt = restored_attempt
-            player.current = entry.track
+            player.current = _tagged_track(restored_attempt)
             return restored_attempt
 
         player.restore_playback = AsyncMock(side_effect=restore_playback)
@@ -652,31 +697,30 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         snapshot = PlayerStateSnapshot(
             guild_id=1,
             voice_channel_id=2,
-            text_channel_id=3,
             current_entry=entry,
             position=100,
             is_paused=False,
             volume=50,
-            queue=[],
+            queue=(),
             repeat_mode=RepeatMode.OFF,
-            filters=None,
             session=None,
         )
 
         restored = await healer._restore_session(snapshot)
         self.assertTrue(restored)
 
-        player.restore_entries.assert_called_once_with(entry, [])
+        player.restore_entries.assert_called_once_with(entry, ())
         player.restore_playback.assert_awaited_once_with(
             entry, start_time=100, volume=50, pause=False
         )
         ui.spawn_controller.assert_awaited_once_with(player, restored_attempt)
 
-    async def test_paused_restore_starts_paused_and_preserves_next_entry_id(
+    async def test_paused_restore_preserves_queue_entry_identity(
         self,
     ) -> None:
         bot = MagicMock()
         connection = MagicMock()
+        _route_player_invalidation(connection)
         ui = MagicMock()
         ui.spawn_controller = AsyncMock()
         healer = SessionHealer(bot, connection, StateManager(), MagicMock(), ui)
@@ -698,7 +742,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             _entry: object, **_kwargs: object
         ) -> PlaybackAttempt:
             player.current_attempt = attempt
-            player.current = current.track
+            player.current = _tagged_track(attempt)
             return attempt
 
         player.restore_playback = AsyncMock(side_effect=restore_playback)
@@ -709,20 +753,18 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         snapshot = PlayerStateSnapshot(
             guild_id=1,
             voice_channel_id=2,
-            text_channel_id=3,
             current_entry=current,
             position=0,
             is_paused=True,
             volume=50,
-            queue=[queued],
+            queue=(queued,),
             repeat_mode=RepeatMode.OFF,
-            filters=None,
             session=None,
         )
 
         self.assertTrue(await healer._restore_session(snapshot))
 
-        player.restore_entries.assert_called_once_with(current, [queued])
+        player.restore_entries.assert_called_once_with(current, (queued,))
         player.restore_playback.assert_awaited_once_with(
             current, start_time=0, volume=50, pause=True
         )
@@ -732,6 +774,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         bot = MagicMock()
         connection = MagicMock()
+        _route_player_invalidation(connection)
         state = StateManager()
         ui = MagicMock()
         ui.spawn_controller = AsyncMock()
@@ -750,7 +793,6 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player = object.__new__(MusicPlayer)
         player.queue = QueueManager()
         player.repeat = RepeatManager()
-        player._next_entry_id = 1
         player._next_attempt_id = 2
         player._current_attempt = None
         player._pending_end_attempts = deque()
@@ -773,14 +815,12 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         snapshot = PlayerStateSnapshot(
             guild_id=1,
             voice_channel_id=2,
-            text_channel_id=3,
             current_entry=entry,
             position=0,
             is_paused=False,
             volume=50,
-            queue=[],
+            queue=(),
             repeat_mode=RepeatMode.OFF,
-            filters=None,
             session=None,
         )
 
@@ -794,6 +834,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
 
     async def test_mismatched_mafic_current_detaches_restoring_player(self) -> None:
         connection = MagicMock()
+        _route_player_invalidation(connection)
         connection.is_player_usable.return_value = True
         connection.detach_stale_voice_client = AsyncMock()
         ui = MagicMock()
@@ -824,6 +865,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         bot = MagicMock()
         connection = MagicMock()
+        _route_player_invalidation(connection)
         state = StateManager()
         ui = MagicMock()
         ui.spawn_controller = AsyncMock()
@@ -846,7 +888,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             _entry: object, **_kwargs: object
         ) -> PlaybackAttempt:
             player.current_attempt = attempt
-            player.current = entry.track
+            player.current = _tagged_track(attempt)
             return attempt
 
         player.restore_playback = AsyncMock(side_effect=restore_playback)
@@ -855,14 +897,12 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         snapshot = PlayerStateSnapshot(
             guild_id=1,
             voice_channel_id=2,
-            text_channel_id=3,
             current_entry=entry,
             position=0,
             is_paused=False,
             volume=50,
-            queue=[],
+            queue=(),
             repeat_mode=RepeatMode.OFF,
-            filters=None,
             session=None,
         )
 

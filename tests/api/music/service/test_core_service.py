@@ -44,14 +44,16 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.connection.invalidate_node_and_players = AsyncMock()
         self.state = MagicMock()
         self.volume_repo = MagicMock()
-        self.events = MagicMock()
+        self.playback_events = MagicMock()
+        self.voice_lifecycle = MagicMock()
         self.ui = MagicMock()
         self.service = CoreMusicService(
             self.bot,
             self.connection,
             self.state,
             self.volume_repo,
-            self.events,
+            self.playback_events,
+            self.voice_lifecycle,
             self.ui,
         )
 
@@ -192,7 +194,8 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
     async def test_initialize_does_not_raise_when_connection_unavailable(self) -> None:
         await self.service.initialize()
 
-        self.events.setup.assert_called_once()
+        self.playback_events.setup.assert_called_once()
+        self.voice_lifecycle.setup.assert_called_once()
         self.assertTrue(self.service._initialized)
         self.connection.ensure_available.assert_not_awaited()
         self.connection.start_lazy_connect.assert_called_once()
@@ -666,7 +669,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
     async def test_auto_leave_isolates_each_expired_guild(self) -> None:
         first = MagicMock(id=1)
         second = MagicMock(id=2)
-        self.state.check_auto_leave = AsyncMock(return_value=[1, 2])
+        self.state.check_auto_leave = MagicMock(return_value=[1, 2])
         self.bot.get_guild.side_effect = [first, second]
         self.service.leave = AsyncMock(
             side_effect=[

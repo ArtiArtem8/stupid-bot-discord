@@ -8,34 +8,24 @@ from discord import Interaction, Member, app_commands
 from discord.ext import commands, tasks
 
 import config
-from api.music import (
+from api.music.models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+    MusicResult,
     MusicResultStatus,
     MusicSession,
+    PlayResponseData,
+    QueuePlacement,
     QueueSnapshot,
     RepeatMode,
+    TrackExceptionPayload,
     VoiceCheckResult,
     VoiceJoinResult,
 )
-from api.music.healer import SessionHealer
-from api.music.models import (
-    MusicResult,
-    PlayResponseData,
-    QueuePlacement,
-    TrackExceptionPayload,
-)
-from api.music.protocols import ControllerManagerProtocol, HealerProtocol
-from api.music.service import (
-    ConnectionManager,
-    CoreMusicService,
-    MusicEventHandlers,
-    StateManager,
-    UIOrchestrator,
-)
-from di.container import Container
-from framework import BaseCog, FeedbackUI, run_with_defer
-from repositories.volume_repository import VolumeRepository
+from framework.base_cog import BaseCog
+from framework.feedback_ui import FeedbackUI
+from framework.interaction_flow import run_with_defer
 
+from .composition import create_music_components
 from .feedback import (
     send_error,
     send_info,
@@ -57,7 +47,6 @@ from .views import (
     QueuePaginator,
     QueueUndoView,
     SessionSummaryView,
-    TrackControllerManager,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,28 +82,15 @@ class MusicCog(BaseCog):
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
 
-        self.container = Container()
-        self.container.register(commands.Bot, factory=lambda _c: bot)
-        self.container.register(ConnectionManager)
-        self.container.register(StateManager)
-        self.container.register(VolumeRepository)
-        self.container.register(
-            ControllerManagerProtocol, implementation=TrackControllerManager
-        )
-        self.container.register(UIOrchestrator)
-
-        self.container.register(HealerProtocol, implementation=SessionHealer)
-
-        self.container.register(MusicEventHandlers)
-        self.container.register(CoreMusicService)
-
-        self.service = self.container.resolve(CoreMusicService)
+        self.components = create_music_components(bot)
+        self.service = self.components.service
 
     @override
     async def cog_load(self) -> None:
         if self.bot.is_ready():
             await self.service.initialize()
-        self.auto_leave_monitor.start()
+        if not self.auto_leave_monitor.is_running():
+            self.auto_leave_monitor.start()
 
     @override
     async def cog_unload(self) -> None:

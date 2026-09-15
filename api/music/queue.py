@@ -65,15 +65,15 @@ class QueueManager:
         self,
         expected: Sequence[QueueEntry],
     ) -> tuple[QueueEntry, ...]:
-        """Remove waiting entries matching any expected object by identity."""
+        """Remove waiting entries matching the stable queue-entry identity."""
         if not expected:
             return ()
 
-        expected_ids = {id(entry) for entry in expected}
+        expected_ids = {entry.entry_id for entry in expected}
         remaining: deque[QueueEntry] = deque()
         removed: list[QueueEntry] = []
         for queued_entry in self._queue:
-            if id(queued_entry) in expected_ids:
+            if queued_entry.entry_id in expected_ids:
                 removed.append(queued_entry)
             else:
                 remaining.append(queued_entry)

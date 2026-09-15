@@ -11,6 +11,6 @@ def is_owner_app[T]() -> Callable[[T], T]:
         bot = interaction.client
         if not isinstance(bot, commands.Bot):
             return False
-        return await bot.is_owner(interaction.user)
+        return await bot.is_owner(interaction.user)  # ty: ignore[invalid-argument-type]
 
     return app_commands.check(predicate)

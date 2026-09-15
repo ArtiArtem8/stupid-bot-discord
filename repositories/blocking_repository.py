@@ -8,7 +8,7 @@ from api.blocking_models import BlockedUser
 from repositories.base_repository import BaseRepository
 from repositories.blocking_codec import as_json_object, try_decode_user
 from repositories.json_object_store import JsonObjectStore
-from utils import AsyncJsonFileStore
+from utils.json_store import AsyncJsonFileStore
 from utils.json_types import JsonObject, JsonValue
 
 type BlockedUserKey = tuple[int, int]  # (guild_id, user_id)

@@ -8,8 +8,11 @@ from typing import NotRequired, Self, TypedDict
 import discord
 
 import config
-from utils import is_birthday_today
-from utils.birthday_utils import calculate_days_until_birthday, format_birthday_date
+from utils.birthday_utils import (
+    calculate_days_until_birthday,
+    format_birthday_date,
+    is_birthday_today,
+)
 
 
 class BirthdayListEntry(TypedDict):

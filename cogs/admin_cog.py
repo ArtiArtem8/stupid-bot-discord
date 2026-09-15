@@ -18,10 +18,13 @@ from discord.ext import commands
 from discord.utils import format_dt
 
 import config
-from api import block_manager
-from framework import BaseCog, FeedbackType, FeedbackUI, is_owner_app
+from api.blocking import block_manager
+from framework.base_cog import BaseCog
+from framework.checks import is_owner_app
+from framework.feedback_ui import FeedbackType, FeedbackUI
 from resources import ACTION_TITLES
-from utils import SafeEmbed, truncate_sequence, truncate_text
+from utils.embeds import SafeEmbed
+from utils.text_utils import truncate_sequence, truncate_text
 
 logger = logging.getLogger(__name__)
 

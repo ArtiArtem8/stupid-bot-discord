@@ -112,7 +112,7 @@ class StateManager:
         for guild_id in expired_guild_ids:
             self.empty_channel_timers.pop(guild_id, None)
 
-    async def check_auto_leave(self) -> list[int]:
+    def check_auto_leave(self) -> list[int]:
         """Check for guilds that have been empty for too long."""
         import config
 

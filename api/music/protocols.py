@@ -39,6 +39,3 @@ class ControllerManagerProtocol(Protocol):
 
 class HealerProtocol(Protocol):
     async def capture_and_heal(self, guild_id: int) -> bool: ...
-    async def cleanup_after_disconnect(
-        self, guild_id: int, is_healing: bool = False
-    ) -> None: ...

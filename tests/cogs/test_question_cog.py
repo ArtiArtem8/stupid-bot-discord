@@ -10,7 +10,8 @@ from typing import Any, cast, override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from cogs.question_cog import QuestionCog
-from utils import AsyncJsonFileStore, str_local
+from utils.json_store import AsyncJsonFileStore
+from utils.text_utils import str_local
 
 
 class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):
@@ -53,6 +54,28 @@ class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):
             await self.cog._add_to_history("1", "Question?", "answer")
 
         self.assertEqual(await self.store.read(), {"1": "invalid"})
+
+    async def test_ask_log_contains_full_question(self) -> None:
+        interaction = MagicMock()
+        interaction.user.id = 1
+        interaction.user.__str__.return_value = "question-author"
+        interaction.response.send_message = AsyncMock()
+        self.cog.answers = ["answer"]
+
+        with patch("cogs.question_cog.logger.info") as log_info:
+            await cast(Any, QuestionCog.q).callback(
+                self.cog,
+                interaction,
+                text="Полный текст вопроса?",
+            )
+
+        rendered = [
+            cast(str, call.args[0]) % call.args[1:] for call in log_info.call_args_list
+        ]
+        self.assertTrue(
+            any("Полный текст вопроса?" in record for record in rendered),
+            rendered,
+        )
 
     async def test_concurrent_new_questions_store_the_answers_they_send(self) -> None:
         self.cog.answers = ["answer-one", "answer-two"]

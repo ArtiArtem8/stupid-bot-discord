@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-from api.music import (
+from api.music.models import (
     MusicResult,
     MusicResultStatus,
     QueueEntry,
@@ -20,7 +20,7 @@ from cogs.music.views import (
 )
 from cogs.music.views.queue import STALE_QUEUE_REQUEST_MESSAGE
 from cogs.music.views.queue import logger as queue_logger
-from framework import FeedbackType, FeedbackUI
+from framework.feedback_ui import FeedbackType, FeedbackUI
 from tests.api.music.helpers import make_entry
 
 
