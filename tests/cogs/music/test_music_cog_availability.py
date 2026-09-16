@@ -86,6 +86,36 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
 
         self.auto_leave_start.assert_called_once()
 
+    async def test_cog_unload_awaits_controller_cleanup(self) -> None:
+        components = MagicMock()
+        components.controllers.cleanup = AsyncMock()
+        self.cog.components = components
+
+        with patch.object(self.cog.service, "cleanup", new=AsyncMock()) as cleanup:
+            await self.cog.cog_unload()
+
+        cleanup.assert_awaited_once_with()
+        components.controllers.cleanup.assert_awaited_once_with()
+
+    async def test_cog_unload_cleans_controller_tasks_when_service_cleanup_fails(
+        self,
+    ) -> None:
+        components = MagicMock()
+        components.controllers.cleanup = AsyncMock()
+        self.cog.components = components
+
+        with (
+            patch.object(
+                self.cog.service,
+                "cleanup",
+                new=AsyncMock(side_effect=RuntimeError("bug")),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            await self.cog.cog_unload()
+
+        components.controllers.cleanup.assert_awaited_once_with()
+
     def test_unavailable_voice_message_has_no_raw_backend_details(self) -> None:
         message = _format_voice_result_message(
             VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE,
