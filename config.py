@@ -127,5 +127,5 @@ VOICE_PROBE_MONOTONIC_JUMP_SECONDS = 30.0
 """Delta above which the process clock is treated as suspended."""
 VOICE_PROBE_COMPACT_AFTER_DAYS = 1
 """Age in days before v2 JSONL files are replaced with gzip archives."""
-VOICE_PROBE_RETENTION_DAYS = 400
-"""Days of v2 history retained; legacy files are never pruned."""
+VOICE_PROBE_RETENTION_DAYS: int | None = None
+"""Optional v2 retention in days; None keeps all history. Legacy is never pruned."""

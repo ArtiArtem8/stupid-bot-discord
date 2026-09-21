@@ -185,6 +185,50 @@ class TestVoiceCodec(unittest.TestCase):
         )
         self.assertEqual(presence(timeline, 1).total_seconds, 10)
 
+    def test_legacy_raised_hand_preserves_true_false_and_unknown(self) -> None:
+        for flags, expected in (
+            ({"hr": True}, True),
+            ({"hr": False}, False),
+            ({}, None),
+        ):
+            with self.subTest(flags=flags):
+                item = decode_record(
+                    json.dumps(
+                        {
+                            "seq": 1,
+                            "boot": "old",
+                            "at": START.isoformat(),
+                            "mono": 0,
+                            "kind": "flags",
+                            "guild": 1,
+                            "user": 1,
+                            "channel_after": 10,
+                            "flags_after": flags,
+                        }
+                    )
+                )
+                self.assertIsInstance(item.fact, VoiceObservation)
+                if isinstance(item.fact, VoiceObservation):
+                    self.assertIs(item.fact.state.requested_to_speak, expected)
+                    self.assertIsNone(item.fact.state.requested_to_speak_at)
+                    self.assertEqual(decode_record(encode_record(item)), item)
+
+    def test_earlier_v2_without_raised_hand_boolean_keeps_unknown_null(self) -> None:
+        raw = {
+            "schema_version": 2,
+            "sequence": 1,
+            "boot_id": "v2",
+            "observed_at": START.isoformat(),
+            "monotonic": 0,
+            "guild_id": 1,
+            "kind": "observation",
+            "state": {"user_id": 1, "channel_id": 10, "requested_to_speak_at": None},
+        }
+        item = decode_record(json.dumps(raw))
+        self.assertIsInstance(item.fact, VoiceObservation)
+        if isinstance(item.fact, VoiceObservation):
+            self.assertIsNone(item.fact.state.requested_to_speak)
+
 
 class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
     @override
@@ -399,3 +443,124 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.journal.counts.failed, 2)
         self.assertEqual(self.journal.counts.persisted, 2)
         self.assertEqual(presence(timeline, 1).total_seconds, 10)
+
+    async def test_default_retention_preserves_compressed_and_uncompressed_history(
+        self,
+    ) -> None:
+        self.journal.start()
+        self.journal.submit(record(0, VoiceSnapshot(())))
+        self.journal.submit(record(86400, VoiceSnapshot(())))
+        await self.journal.close()
+        await self.journal.compact(before_day=START.date() + timedelta(days=1))
+        original = {path: path.read_bytes() for path in self.root.rglob("events_*")}
+        self.assertEqual(
+            await self.journal.prune(today=START.date() + timedelta(days=4000)), 0
+        )
+        self.assertEqual(
+            await self.journal.prune(
+                today=START.date() + timedelta(days=4000), retention_days=None
+            ),
+            0,
+        )
+        self.assertEqual({path: path.read_bytes() for path in original}, original)
+
+    async def test_guild_overflow_does_not_invalidate_another_guild(self) -> None:
+        journal = VoiceJournal(self.root, queue_size=3)
+        journal.start()
+        for item in (
+            record(0, VoiceSnapshot((human(),))),
+            record(0, VoiceSnapshot((human(2),)), guild=2, sequence=1),
+            record(10, VoiceCheckpoint(), guild=2),
+        ):
+            self.assertEqual(journal.submit(item), Submission.ACCEPTED)
+        self.assertEqual(
+            journal.submit(record(20, VoiceObservation(human(1, None)))),
+            Submission.FULL,
+        )
+        await journal.close()
+        records = (
+            *await journal.read_day(1, START.date()),
+            *await journal.read_day(2, START.date()),
+        )
+        timeline = build_timeline(records)
+        self.assertEqual(presence(timeline, 2).total_seconds, 10)
+        self.assertEqual([gap.guild_id for gap in timeline.gaps], [1])
+        self.assertEqual(timeline.gaps[0].started_at, at(20))
+        self.assertEqual(await journal.read_day(None, START.date()), ())
+
+    async def test_overflow_keeps_independent_guild_and_global_markers(self) -> None:
+        journal = VoiceJournal(self.root, queue_size=1)
+        journal.start()
+        journal.submit(record(0, VoiceCheckpoint(), guild=None))
+        for item in (
+            record(10, VoiceObservation(human()), guild=1),
+            record(20, VoiceObservation(human(2)), guild=2),
+            record(30, VoiceObservation(human()), guild=1),
+            record(40, VoiceCheckpoint(), guild=None),
+        ):
+            self.assertEqual(journal.submit(item), Submission.FULL)
+        await journal.close()
+        for guild_id, start in ((1, 10), (2, 20), (None, 40)):
+            with self.subTest(guild_id=guild_id):
+                gaps = [
+                    item.fact
+                    for item in await journal.read_day(guild_id, START.date())
+                    if isinstance(item.fact, ObservationGap)
+                ]
+                self.assertEqual(len(gaps), 1)
+                self.assertEqual(gaps[0].guild_id, guild_id)
+                self.assertEqual(gaps[0].started_at, at(start))
+                self.assertTrue(gaps[0].known_bounds)
+
+    async def test_overflow_preserves_the_start_of_a_rejected_retrospective_gap(
+        self,
+    ) -> None:
+        journal = VoiceJournal(self.root, queue_size=1)
+        journal.start()
+        journal.submit(record(0, VoiceSnapshot((human(),))))
+        self.assertEqual(
+            journal.submit(
+                record(
+                    20,
+                    ObservationGap(
+                        at(5),
+                        None,
+                        GapReason.CLOCK_DISCONTINUITY,
+                        1,
+                        known_bounds=False,
+                    ),
+                )
+            ),
+            Submission.FULL,
+        )
+        await journal.close()
+        timeline = build_timeline(await journal.read_day(1, START.date()))
+        self.assertEqual(timeline.gaps[0].started_at, at(5))
+        self.assertFalse(timeline.gaps[0].known_bounds)
+        self.assertEqual(presence(timeline, 1).total_seconds, 5)
+
+    async def test_later_overflow_preserves_an_imprecise_pending_loss_bound(
+        self,
+    ) -> None:
+        journal = VoiceJournal(self.root, queue_size=1)
+        journal.start()
+        journal.submit(record(0, VoiceSnapshot((human(),))))
+        for item in (
+            record(
+                20,
+                ObservationGap(
+                    at(5), None, GapReason.CLOCK_DISCONTINUITY, 1, known_bounds=False
+                ),
+            ),
+            record(30, VoiceObservation(human(1, None))),
+        ):
+            self.assertEqual(journal.submit(item), Submission.FULL)
+        await journal.close()
+        gaps = [
+            item.fact
+            for item in await journal.read_day(1, START.date())
+            if isinstance(item.fact, ObservationGap)
+        ]
+        self.assertEqual(len(gaps), 1)
+        self.assertEqual(gaps[0].started_at, at(5))
+        self.assertFalse(gaps[0].known_bounds)

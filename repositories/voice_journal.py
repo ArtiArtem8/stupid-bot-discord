@@ -71,7 +71,7 @@ class VoiceJournal:
         self._files = asyncio.Lock()
         self._received = self._accepted = self._persisted = 0
         self._failed = self._rejected = 0
-        self._loss: VoiceJournalRecord | None = None
+        self._losses: dict[int | None, VoiceJournalRecord] = {}
         self._write_error: Exception | None = None
         self._close_task: asyncio.Task[None] | None = None
 
@@ -128,17 +128,26 @@ class VoiceJournal:
             ) from self._write_error
 
     def _mark_loss(self, record: VoiceJournalRecord, reason: GapReason) -> None:
+        guild_id = None if reason is GapReason.WRITE_FAILURE else record.guild_id
         start = record.observed_at
-        if self._loss is not None and isinstance(self._loss.fact, ObservationGap):
-            start = min(start, self._loss.fact.started_at)
-        self._loss = replace(
+        known_bounds = True
+        if isinstance(record.fact, ObservationGap) and record.fact.started_at <= start:
+            start = record.fact.started_at
+            known_bounds = record.fact.known_bounds
+        previous = self._losses.get(guild_id)
+        if previous is not None and isinstance(previous.fact, ObservationGap):
+            if previous.fact.started_at < start:
+                start = previous.fact.started_at
+                known_bounds = previous.fact.known_bounds
+            elif previous.fact.started_at == start:
+                known_bounds = known_bounds and previous.fact.known_bounds
+            if previous.fact.reason is GapReason.WRITE_FAILURE:
+                reason = GapReason.WRITE_FAILURE
+        self._losses[guild_id] = replace(
             record,
-            guild_id=None,
+            guild_id=guild_id,
             fact=ObservationGap(
-                start,
-                None,
-                reason,
-                known_bounds=False,
+                start, None, reason, guild_id, known_bounds=known_bounds
             ),
         )
 
@@ -160,14 +169,12 @@ class VoiceJournal:
                 else:
                     batch.append(item)
             await self._persist(batch)
-        if self._loss is not None:
+        if self._losses:
             await self._persist(())
 
     async def _persist(self, batch: Sequence[VoiceJournalRecord]) -> None:
-        loss, self._loss = self._loss, None
-        records = [*batch]
-        if loss is not None:
-            records.append(loss)
+        losses, self._losses = self._losses, {}
+        records = [*batch, *losses.values()]
         if not records:
             return
         try:
@@ -183,15 +190,14 @@ class VoiceJournal:
                 else r.observed_at
                 for r in records
             )
-            self._mark_loss(
-                replace(records[-1], observed_at=start), GapReason.WRITE_FAILURE
+            last = max(records, key=lambda record: record.sequence)
+            self._mark_loss(replace(last, observed_at=start), GapReason.WRITE_FAILURE)
+            loss = self._losses[None]
+            self._losses[None] = replace(
+                loss,
+                observed_at=last.observed_at,
+                monotonic=last.monotonic,
             )
-            if self._loss is not None:
-                self._loss = replace(
-                    self._loss,
-                    observed_at=records[-1].observed_at,
-                    monotonic=records[-1].monotonic,
-                )
             logger.warning(
                 "Voice journal write failed: batch=%d error=%s",
                 len(batch),
@@ -275,8 +281,10 @@ class VoiceJournal:
             count += 1
         return count
 
-    async def prune(self, *, today: date, retention_days: int) -> int:
-        """Remove expired v2 days only; retain at least one day."""
+    async def prune(self, *, today: date, retention_days: int | None = None) -> int:
+        """Prune v2 only for an explicit positive retention; None performs no I/O."""
+        if retention_days is None:
+            return 0
         if retention_days < 1:
             raise ValueError("Retention must be positive")
         return await self._file_work(
