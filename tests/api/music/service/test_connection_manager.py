@@ -19,7 +19,7 @@ from api.music.models import (
 )
 from api.music.player import MusicPlayer, music_player_factory
 from api.music.service import connection_manager as connection_module
-from api.music.service.connection_manager import ConnectionManager
+from api.music.service.connection_manager import ConnectionManager, _AvailabilityResult
 
 
 class _FakeMusicPlayer:
@@ -1215,7 +1215,13 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool_instance.close = AsyncMock()
         mock_pool_class.return_value = mock_pool_instance
         manager = ConnectionManager(self.bot)
-        ensure_available = AsyncMock(side_effect=(False, False, True))
+        check_availability = AsyncMock(
+            side_effect=(
+                _AvailabilityResult.RETRY_LATER,
+                _AvailabilityResult.RETRY_LATER,
+                _AvailabilityResult.READY,
+            )
+        )
         manager._next_connect_retry_at = 105.0
         sleep = AsyncMock()
 
@@ -1226,7 +1232,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
         sleep.side_effect = keep_one_bootstrap_task
         with (
-            patch.object(manager, "ensure_available", ensure_available),
+            patch.object(manager, "_check_availability", check_availability),
             patch.object(time, "monotonic", return_value=100.0),
             patch.object(asyncio, "sleep", sleep),
         ):
@@ -1240,7 +1246,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
                 self.fail("Bootstrap task was not scheduled")
             await task
 
-        self.assertEqual(ensure_available.await_count, 3)
+        self.assertEqual(check_availability.await_count, 3)
         self.assertEqual(sleep.await_args_list, [call(5.0), call(5.0)])
         await manager.cleanup()
         mock_pool_instance.close.assert_awaited_once()
@@ -1256,14 +1262,13 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         manager = ConnectionManager(self.bot)
         started = asyncio.Event()
 
-        async def wait_forever() -> bool:
+        async def wait_forever() -> None:
             started.set()
             await asyncio.Future()
-            return True
 
-        ensure_available = AsyncMock(side_effect=wait_forever)
+        initialize = AsyncMock(side_effect=wait_forever)
 
-        with patch.object(manager, "ensure_available", ensure_available):
+        with patch.object(manager, "initialize", initialize):
             manager.start_lazy_connect()
             await started.wait()
             await manager.cleanup()
@@ -1462,6 +1467,67 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.manager.cleanup()
 
+    async def test_ensure_available_returns_false_for_terminal_http_errors(
+        self,
+    ) -> None:
+        for error in (
+            mafic.HTTPUnauthorized("invalid credentials"),
+            mafic.HTTPException(403, "forbidden"),
+        ):
+            with self.subTest(error=type(error).__name__):
+                node = MagicMock()
+                node.close = AsyncMock()
+                self.pool.add_node = AsyncMock(side_effect=error)
+                self.manager._initialized = True
+
+                with patch.object(mafic, "Node", return_value=node):
+                    self.assertFalse(await self.manager.ensure_available())
+                    self.assertFalse(self.manager._initialized)
+                    self.assertTrue(self.manager.is_known_unavailable())
+                    self.assertEqual(
+                        self.manager._last_connect_error, type(error).__name__
+                    )
+                    self.assertEqual(self.manager._next_connect_retry_at, 0.0)
+                    self.assertFalse(await self.manager.ensure_available())
+
+                self.assertEqual(self.pool.add_node.await_count, 2)
+                self.assertEqual(node.close.await_count, 2)
+
+    async def test_join_unlocked_returns_unavailable_for_terminal_http_errors(
+        self,
+    ) -> None:
+        for error in (
+            mafic.HTTPUnauthorized("invalid credentials"),
+            mafic.HTTPException(403, "forbidden"),
+        ):
+            with self.subTest(error=type(error).__name__):
+                guild = MagicMock(spec=discord.Guild, voice_client=None)
+                channel = MagicMock(spec=discord.VoiceChannel)
+                channel.connect = AsyncMock()
+                node = MagicMock()
+                node.close = AsyncMock()
+                self.pool.add_node = AsyncMock(side_effect=error)
+
+                with patch.object(mafic, "Node", return_value=node):
+                    result = await self.manager._join_unlocked(guild, channel)
+
+                self.assertEqual(
+                    result, (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None)
+                )
+                self.pool.add_node.assert_awaited_once()
+                channel.connect.assert_not_awaited()
+
+    async def test_ensure_available_propagates_programming_errors(self) -> None:
+        for error in (RuntimeError("bug"), TypeError("bug"), AssertionError("bug")):
+            with (
+                self.subTest(error=type(error).__name__),
+                patch.object(self.manager, "initialize", side_effect=error),
+                self.assertRaises(type(error)) as raised,
+            ):
+                await self.manager.ensure_available()
+
+            self.assertIs(raised.exception, error)
+
     async def test_transient_connect_errors_become_retryable_node_unavailability(
         self,
     ) -> None:
@@ -1539,7 +1605,7 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                     patch.object(mafic, "Node", return_value=node),
                     patch.object(asyncio, "sleep", sleep),
                     self.assertLogs(
-                        connection_module.logger, level="ERROR"
+                        connection_module.logger, level="WARNING"
                     ) as captured,
                 ):
                     self.manager.start_lazy_connect()
@@ -1551,20 +1617,26 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 self.pool.add_node.assert_awaited_once()
                 node.close.assert_awaited_once_with()
                 sleep.assert_not_awaited()
-                self.assertIsNone(self.manager._last_connect_error)
+                self.assertFalse(self.manager._initialized)
+                self.assertTrue(self.manager.is_known_unavailable())
+                self.assertEqual(self.manager._last_connect_error, type(error).__name__)
                 self.assertEqual(self.manager._next_connect_retry_at, 0.0)
                 self.assertEqual(len(captured.records), 1)
-                exc_info = captured.records[0].exc_info
-                if exc_info is None:
-                    self.fail("Terminal failure was not logged with its traceback")
-                self.assertIs(exc_info[1], error)
+                self.assertEqual(
+                    captured.records[0].getMessage(),
+                    "Lavalink unavailable due to terminal connection failure "
+                    + f"({type(error).__name__})",
+                )
+                self.assertIsNone(captured.records[0].exc_info)
 
     async def test_first_attempt_success_exits_without_sleep(self) -> None:
-        ensure_available = AsyncMock(return_value=True)
+        initialize = AsyncMock(
+            side_effect=lambda: setattr(self.pool, "nodes", [MagicMock(available=True)])
+        )
         sleep = AsyncMock()
 
         with (
-            patch.object(self.manager, "ensure_available", ensure_available),
+            patch.object(self.manager, "initialize", initialize),
             patch.object(asyncio, "sleep", sleep),
         ):
             self.manager.start_lazy_connect()
@@ -1573,11 +1645,21 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 self.fail("Bootstrap task was not scheduled")
             await task
 
-        ensure_available.assert_awaited_once_with()
+        initialize.assert_awaited_once_with()
         sleep.assert_not_awaited()
         self.assertTrue(task.done())
 
     async def test_unavailable_attempt_retries_after_remaining_cooldown(self) -> None:
+        await self._assert_bootstrap_retries_after_cooldown(
+            aiohttp.ClientConnectionError("offline")
+        )
+
+    async def test_http_503_retries_after_remaining_cooldown(self) -> None:
+        await self._assert_bootstrap_retries_after_cooldown(
+            mafic.HTTPException(503, "unavailable")
+        )
+
+    async def _assert_bootstrap_retries_after_cooldown(self, error: Exception) -> None:
         node = MagicMock(label="test", available=True)
         node.close = AsyncMock()
         attempts = 0
@@ -1587,7 +1669,7 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
             self.assertIs(player_cls, MusicPlayer)
             attempts += 1
             if attempts == 1:
-                raise aiohttp.ClientConnectionError("offline")
+                raise error
             self.pool.nodes = [node]
             self.pool.label_to_node = {"test": node}
 
@@ -1648,14 +1730,14 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
 
     async def test_cleanup_cancels_bootstrap_while_sleeping(self) -> None:
         sleeping = asyncio.Event()
-        ensure_available = AsyncMock(return_value=False)
+        initialize = AsyncMock()
 
         async def wait_forever(_delay: float) -> None:
             sleeping.set()
             await asyncio.Event().wait()
 
         with (
-            patch.object(self.manager, "ensure_available", ensure_available),
+            patch.object(self.manager, "initialize", initialize),
             patch.object(asyncio, "sleep", wait_forever),
         ):
             self.manager.start_lazy_connect()
@@ -1667,16 +1749,16 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(task.cancelled())
         self.assertIsNone(self.manager._lazy_connect_task)
-        ensure_available.assert_awaited_once_with()
+        initialize.assert_awaited_once_with()
         self.pool.close.assert_awaited_once_with()
 
     async def test_unexpected_availability_error_is_logged_once_and_stops(self) -> None:
         for error in (RuntimeError("bug"), TypeError("bug"), AssertionError("bug")):
             with self.subTest(error=type(error).__name__):
-                ensure_available = AsyncMock(side_effect=error)
+                initialize = AsyncMock(side_effect=error)
                 sleep = AsyncMock()
                 with (
-                    patch.object(self.manager, "ensure_available", ensure_available),
+                    patch.object(self.manager, "initialize", initialize),
                     patch.object(asyncio, "sleep", sleep),
                     self.assertLogs(
                         connection_module.logger, level="ERROR"
@@ -1688,9 +1770,13 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                         self.fail("Bootstrap task was not scheduled")
                     await task
 
-                ensure_available.assert_awaited_once_with()
+                initialize.assert_awaited_once_with()
                 sleep.assert_not_awaited()
                 self.assertEqual(len(captured.records), 1)
+                self.assertEqual(
+                    captured.records[0].getMessage(),
+                    "Unexpected lazy Lavalink connection failure",
+                )
                 self.assertIsNotNone(captured.records[0].exc_info)
 
     async def test_programming_error_in_initialize_is_not_converted_to_unavailable(

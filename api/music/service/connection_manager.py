@@ -5,6 +5,7 @@ import contextlib
 import logging
 import time
 from dataclasses import dataclass
+from enum import Enum, auto
 from typing import TypeGuard, cast
 
 import aiohttp
@@ -24,6 +25,14 @@ from api.music.models import (
 from api.music.player import MusicPlayer, music_player_factory
 
 logger = logging.getLogger(__name__)
+
+
+class _AvailabilityResult(Enum):
+    """Distinguish readiness from retryable and terminal connection failures."""
+
+    READY = auto()
+    RETRY_LATER = auto()
+    TERMINAL_FAILURE = auto()
 
 
 def _is_retryable_connect_error(exc: Exception) -> bool:
@@ -122,6 +131,8 @@ class ConnectionManager:
 
             except (aiohttp.ClientError, TimeoutError, mafic.HTTPException) as exc:
                 if not _is_retryable_connect_error(exc):
+                    self._initialized = False
+                    self._last_connect_error = type(exc).__name__
                     await self._close_failed_node(node)
                     raise
                 self._initialized = False
@@ -354,9 +365,12 @@ class ConnectionManager:
         return {player.guild.id for player in invalidated}
 
     async def ensure_available(self) -> bool:
-        """Lazily connect to Lavalink, respecting the retry cooldown."""
+        """Ensure Lavalink is available for a command-facing operation."""
+        return await self._check_availability() is _AvailabilityResult.READY
+
+    async def _check_availability(self) -> _AvailabilityResult:
         if self.has_ready_node():
-            return True
+            return _AvailabilityResult.READY
 
         now = time.monotonic()
         if now < self._next_connect_retry_at:
@@ -369,14 +383,25 @@ class ConnectionManager:
                 self._last_connect_error,
                 self._next_connect_retry_at - now,
             )
-            return False
+            return _AvailabilityResult.RETRY_LATER
 
         try:
             await self.initialize()
         except NodeNotConnectedError:
-            return False
+            return _AvailabilityResult.RETRY_LATER
+        except (aiohttp.ClientError, TimeoutError, mafic.HTTPException) as exc:
+            # initialize converts retryable external failures to NodeNotConnectedError.
+            logger.warning(
+                "Lavalink unavailable due to terminal connection failure (%s)",
+                type(exc).__name__,
+            )
+            return _AvailabilityResult.TERMINAL_FAILURE
 
-        return self.has_ready_node()
+        return (
+            _AvailabilityResult.READY
+            if self.has_ready_node()
+            else _AvailabilityResult.RETRY_LATER
+        )
 
     def start_lazy_connect(self) -> None:
         """Start at most one bootstrap task, ending when Lavalink becomes ready."""
@@ -393,8 +418,11 @@ class ConnectionManager:
 
     async def _run_lazy_connect(self) -> None:
         try:
-            while not self.has_ready_node():
-                if await self.ensure_available():
+            while True:
+                result = await self._check_availability()
+                if result is _AvailabilityResult.READY:
+                    return
+                if result is _AvailabilityResult.TERMINAL_FAILURE:
                     return
                 retry_in = self._next_connect_retry_at - time.monotonic()
                 await asyncio.sleep(
