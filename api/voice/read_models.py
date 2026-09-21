@@ -18,7 +18,7 @@ class PresenceStat:
 
 @dataclass(frozen=True, slots=True)
 class CompanionStat:
-    """Time with one identified human; private means exactly two room occupants."""
+    """Time with one human; private allows bots but no third or unknown human."""
 
     user_id: int
     shared_seconds: float
@@ -35,7 +35,7 @@ class BotStat:
 
 @dataclass(frozen=True, slots=True)
 class ActivityProfile:
-    """UTC activity: 24 hours, Monday-first weekdays, and dated active seconds."""
+    """Local activity: 24 hours, Monday-first weekdays, and dated active seconds."""
 
     hourly_seconds: tuple[float, ...]
     weekday_seconds: tuple[float, ...]

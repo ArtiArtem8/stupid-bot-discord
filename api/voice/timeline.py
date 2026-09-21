@@ -48,11 +48,21 @@ class RoomInterval:
 
 
 @dataclass(frozen=True, slots=True)
+class ObservationInterval:
+    """Half-open confirmed guild coverage, including time with no occupied room."""
+
+    guild_id: int
+    started_at: datetime
+    ended_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class VoiceTimeline:
     """Rebuildable analytical history with gaps retained even for empty rooms."""
 
     rooms: tuple[RoomInterval, ...]
     gaps: tuple[ObservationGap, ...]
+    coverage: tuple[ObservationInterval, ...]
 
 
 def build_timeline(records: Iterable[VoiceJournalRecord]) -> VoiceTimeline:
@@ -66,6 +76,7 @@ def build_timeline(records: Iterable[VoiceJournalRecord]) -> VoiceTimeline:
     guild_ids = sorted({r.guild_id for r in ordered if r.guild_id is not None})
     rooms: list[RoomInterval] = []
     gaps: list[ObservationGap] = []
+    coverage: list[ObservationInterval] = []
     for guild_id in guild_ids:
         replay = _GuildReplay(guild_id)
         for record in ordered:
@@ -73,11 +84,17 @@ def build_timeline(records: Iterable[VoiceJournalRecord]) -> VoiceTimeline:
                 replay.apply(record)
         replay.finish()
         gaps.extend(replay.gaps)
+        coverage.extend(replay.observed_coverage())
         for room in replay.rooms:
             rooms.extend(_split_at_gaps(room, replay.gaps))
     return VoiceTimeline(
         tuple(sorted(rooms, key=lambda r: (r.started_at, r.guild_id, r.channel_id))),
         tuple(sorted(gaps, key=lambda g: (g.started_at, g.guild_id or 0))),
+        tuple(
+            sorted(
+                coverage, key=lambda interval: (interval.started_at, interval.guild_id)
+            )
+        ),
     )
 
 
@@ -106,11 +123,14 @@ class _GuildReplay:
     pending: list[ObservationGap] = field(default_factory=list)
     previous: VoiceJournalRecord | None = None
     cursor: datetime | None = None
+    history_started_at: datetime | None = None
     last_snapshot_at: datetime | None = None
     boot_started_at: datetime | None = None
 
     def apply(self, record: VoiceJournalRecord) -> None:
         moment = record.observed_at
+        if self.history_started_at is None:
+            self.history_started_at = moment
         if self.cursor is not None:
             moment = max(moment, self.cursor)
             self._emit(self.cursor, moment)
@@ -248,6 +268,22 @@ class _GuildReplay:
     def finish(self) -> None:
         self.gaps.extend(self.pending)
 
+    def observed_coverage(self) -> list[ObservationInterval]:
+        # Subtract finalized gaps, including retrospective invalidation, from
+        # the recorded horizon. Room occupancy does not establish coverage.
+        cursor, end = self.history_started_at, self.cursor
+        if cursor is None or end is None:
+            return []
+        result: list[ObservationInterval] = []
+        for gap in sorted(self.gaps, key=lambda gap: gap.started_at):
+            stop = min(gap.started_at, end)
+            if cursor < stop:
+                result.append(ObservationInterval(self.guild_id, cursor, stop))
+            cursor = max(cursor, gap.ended_at or end)
+        if cursor < end:
+            result.append(ObservationInterval(self.guild_id, cursor, end))
+        return result
+
 
 def _clock_changed(previous: VoiceJournalRecord, current: VoiceJournalRecord) -> bool:
     elapsed = current.monotonic - previous.monotonic
@@ -305,6 +341,7 @@ def _known_state_changed(before: VoiceStateSnapshot, after: VoiceStateSnapshot) 
         before.self_stream,
         before.self_video,
         before.suppress,
+        before.requested_to_speak,
         before.requested_to_speak_at,
         before.session_id,
     )
@@ -316,6 +353,7 @@ def _known_state_changed(before: VoiceStateSnapshot, after: VoiceStateSnapshot) 
         after.self_stream,
         after.self_video,
         after.suppress,
+        after.requested_to_speak,
         after.requested_to_speak_at,
         after.session_id,
     )

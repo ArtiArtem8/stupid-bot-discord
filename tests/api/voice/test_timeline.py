@@ -12,7 +12,7 @@ from api.voice.model import (
     VoiceStateSnapshot,
 )
 from api.voice.scope import VoiceScope, observed_rooms
-from api.voice.timeline import build_timeline
+from api.voice.timeline import ObservationInterval, build_timeline
 from tests.api.voice.examples import at, human, record
 
 
@@ -205,3 +205,91 @@ class TestVoiceTimeline(unittest.TestCase):
         )
         self.assertEqual(streaming_seconds, 20)
         self.assertEqual(presence(timeline, 1).session_count, 1)
+
+    def test_empty_guild_has_full_observed_coverage(self) -> None:
+        timeline = build_timeline(
+            [
+                record(0, VoiceSnapshot(())),
+                record(86400, VoiceCheckpoint()),
+            ]
+        )
+        self.assertEqual(timeline.rooms, ())
+        self.assertEqual(timeline.gaps, ())
+        self.assertEqual(timeline.coverage, (ObservationInterval(1, at(0), at(86400)),))
+        self.assertEqual(build_timeline([]).coverage, ())
+
+    def test_disconnect_splits_empty_coverage_until_authoritative_snapshot(
+        self,
+    ) -> None:
+        timeline = build_timeline(
+            [
+                record(0, VoiceSnapshot(())),
+                record(
+                    10,
+                    ObservationGap(at(10), None, GapReason.GATEWAY_DISCONNECT),
+                    guild=None,
+                ),
+                record(20, VoiceCheckpoint()),
+                record(30, VoiceSnapshot((), authoritative=False)),
+                record(40, VoiceSnapshot(())),
+                record(60, VoiceCheckpoint()),
+            ]
+        )
+        self.assertEqual(
+            timeline.coverage,
+            (
+                ObservationInterval(1, at(0), at(10)),
+                ObservationInterval(1, at(40), at(60)),
+            ),
+        )
+
+    def test_local_observations_cannot_establish_initial_coverage(self) -> None:
+        timeline = build_timeline(
+            [
+                record(0, VoiceSnapshot((), authoritative=False)),
+                record(10, VoiceCheckpoint()),
+            ]
+        )
+        self.assertEqual(timeline.coverage, ())
+
+    def test_retrospective_overlapping_gaps_remove_coverage_once(self) -> None:
+        timeline = build_timeline(
+            [
+                record(0, VoiceSnapshot(())),
+                record(10, VoiceCheckpoint()),
+                record(
+                    30, ObservationGap(at(5), None, GapReason.WRITE_FAILURE), guild=None
+                ),
+                record(
+                    40,
+                    ObservationGap(at(20), None, GapReason.GATEWAY_DISCONNECT),
+                    guild=None,
+                ),
+                record(50, VoiceSnapshot(())),
+                record(60, VoiceCheckpoint()),
+            ]
+        )
+        self.assertEqual(
+            timeline.coverage,
+            (
+                ObservationInterval(1, at(0), at(5)),
+                ObservationInterval(1, at(50), at(60)),
+            ),
+        )
+
+    def test_restart_does_not_bridge_empty_guild_coverage(self) -> None:
+        timeline = build_timeline(
+            [
+                record(0, VoiceSnapshot(())),
+                record(10, VoiceCheckpoint()),
+                record(100, VoiceSnapshot(()), boot="two"),
+                record(120, VoiceCheckpoint(), boot="two"),
+            ]
+        )
+        self.assertEqual(
+            timeline.coverage,
+            (
+                ObservationInterval(1, at(0), at(10)),
+                ObservationInterval(1, at(100), at(120)),
+            ),
+        )
