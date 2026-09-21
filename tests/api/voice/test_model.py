@@ -34,3 +34,15 @@ class TestVoiceModel(unittest.TestCase):
             TimeRange(datetime(2026, 1, 1), at(100))
         with self.assertRaises(ValueError):
             VoiceScope(channel_id=10)
+
+    def test_raised_hand_timestamp_implies_true_but_true_needs_no_timestamp(
+        self,
+    ) -> None:
+        state = VoiceStateSnapshot(1, 10, requested_to_speak_at=at(0))
+        self.assertIs(state.requested_to_speak, True)
+        legacy = VoiceStateSnapshot(1, 10, requested_to_speak=True)
+        self.assertIsNone(legacy.requested_to_speak_at)
+        with self.assertRaises(ValueError):
+            VoiceStateSnapshot(
+                1, 10, requested_to_speak=False, requested_to_speak_at=at(0)
+            )

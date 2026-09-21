@@ -67,19 +67,11 @@ class VoiceCollectorCog(commands.Cog):
         self._running = False
         self._last_tick: tuple[datetime, float] | None = None
         self._last_snapshot = 0.0
-        self._debug_was_enabled = False
 
     @override
     async def cog_load(self) -> None:
         if not config.VOICE_PROBE_ENABLED:
             return
-        # discord.py has no public runtime setter. Enable its documented raw
-        # event surface here so temporary bot construction stays untouched.
-        self._debug_was_enabled = self.bot._enable_debug_events  # pyright: ignore[reportPrivateUsage]
-        self.bot._enable_debug_events = True  # pyright: ignore[reportPrivateUsage]
-        if self.bot.ws:
-            # discord.py also rebinds this method when constructing a socket.
-            self.bot.ws.log_receive = self.bot.ws.debug_log_receive  # ty: ignore[invalid-assignment]
         self.journal.start()
         self._running = True
         self._record(VoiceLifecycle())
@@ -105,10 +97,6 @@ class VoiceCollectorCog(commands.Cog):
             self._record(VoiceLifecycle(stopped=True))
             self._running = False
 
-        # Keep other consumers' original debug setting. The socket's receive
-        # method remains enabled until reconnect; it has no collector listener
-        # after unload and restoring it could interfere with another consumer.
-        self.bot._enable_debug_events = self._debug_was_enabled  # pyright: ignore[reportPrivateUsage]
         await self.journal.close()
 
     @commands.Cog.listener()
@@ -150,18 +138,30 @@ class VoiceCollectorCog(commands.Cog):
         for state in states:
             if not is_json_object(state):
                 raise ValueError("Invalid guild voice state")
-            normalized.append(self._raw_state(state, guild_id))
+            normalized.append(self._raw_state(state, guild_id, guild_data=payload))
         self._record(VoiceSnapshot(tuple(normalized)), guild_id)
 
-    def _raw_state(self, payload: JsonObject, guild_id: int) -> VoiceStateSnapshot:
+    def _raw_state(
+        self,
+        payload: JsonObject,
+        guild_id: int,
+        *,
+        guild_data: JsonObject | None = None,
+    ) -> VoiceStateSnapshot:
         user_id = _id(payload.get("user_id"))
         if user_id is None:
             raise ValueError("Missing voice user ID")
         guild = self.bot.get_guild(guild_id)
         member = guild.get_member(user_id) if guild is not None else None
         user = member or self.bot.get_user(user_id)
+        afk_channel = guild.afk_channel if guild is not None else None
+        afk_channel_id = afk_channel.id if afk_channel is not None else None
+        if guild_data is not None and "afk_channel_id" in guild_data:
+            afk_channel_id = _id(guild_data["afk_channel_id"])
         return normalize_voice_state(
-            payload, is_bot=user.bot if user is not None else None
+            payload,
+            is_bot=user.bot if user is not None else None,
+            afk_channel_id=afk_channel_id,
         )
 
     @commands.Cog.listener()
@@ -300,7 +300,10 @@ class VoiceCollectorCog(commands.Cog):
 
 
 def normalize_voice_state(
-    payload: JsonObject, *, is_bot: bool | None = None
+    payload: JsonObject,
+    *,
+    is_bot: bool | None = None,
+    afk_channel_id: int | None = None,
 ) -> VoiceStateSnapshot:
     """Normalize a raw Discord state without requiring resolved Discord objects."""
     user_id = _id(payload.get("user_id"))
@@ -313,9 +316,15 @@ def normalize_voice_state(
             is_bot = _flag(user["bot"])
     requested = payload.get("request_to_speak_timestamp")
     session_id = payload.get("session_id")
+    channel_id = _id(payload.get("channel_id"))
+    requested_to_speak = None
+    if "request_to_speak_timestamp" in payload:
+        if requested is not None and not isinstance(requested, str):
+            raise ValueError("Invalid requested-to-speak timestamp")
+        requested_to_speak = requested is not None
     return VoiceStateSnapshot(
         user_id,
-        _id(payload.get("channel_id")),
+        channel_id,
         is_bot,
         self_mute=_flag(payload.get("self_mute")),
         self_deaf=_flag(payload.get("self_deaf")),
@@ -324,10 +333,12 @@ def normalize_voice_state(
         self_stream=_flag(payload.get("self_stream")),
         self_video=_flag(payload.get("self_video")),
         suppress=_flag(payload.get("suppress")),
+        requested_to_speak=requested_to_speak,
         requested_to_speak_at=datetime.fromisoformat(requested)
         if isinstance(requested, str)
         else None,
         session_id=session_id if isinstance(session_id, str) else None,
+        afk=channel_id == afk_channel_id if afk_channel_id is not None else None,
     )
 
 
@@ -347,10 +358,13 @@ def _cached_state(
         self_stream=state.self_stream,
         self_video=state.self_video,
         suppress=state.suppress,
+        requested_to_speak=state.requested_to_speak_at is not None,
         requested_to_speak_at=state.requested_to_speak_at,
         session_id=state.session_id,
         channel_known=channel is not None,
-        afk=channel is not None and channel == guild.afk_channel,
+        afk=channel == guild.afk_channel
+        if channel is not None and guild.afk_channel is not None
+        else None,
     )
 
 
@@ -367,6 +381,5 @@ def _flag(value: JsonValue) -> bool | None:
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Register once, including when the temporary legacy loader also calls us."""
-    if bot.get_cog("VoiceCollectorCog") is None:
-        await bot.add_cog(VoiceCollectorCog(bot))
+    """Register the voice collector through the normal extension lifecycle."""
+    await bot.add_cog(VoiceCollectorCog(bot))

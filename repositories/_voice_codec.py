@@ -43,6 +43,7 @@ def _encode_state(state: VoiceStateSnapshot) -> JsonObject:
         "self_stream": state.self_stream,
         "self_video": state.self_video,
         "suppress": state.suppress,
+        "requested_to_speak": state.requested_to_speak,
         "requested_to_speak_at": (
             state.requested_to_speak_at.isoformat()
             if state.requested_to_speak_at
@@ -144,6 +145,7 @@ def _decode_state(raw: JsonObject) -> VoiceStateSnapshot:
         self_stream=_boolean(raw.get("self_stream")),
         self_video=_boolean(raw.get("self_video")),
         suppress=_boolean(raw.get("suppress")),
+        requested_to_speak=_boolean(raw.get("requested_to_speak")),
         requested_to_speak_at=_datetime(requested) if requested else None,
         session_id=_optional_string(raw.get("session_id")),
         channel_known=_boolean(raw.get("channel_known")) is not False,
@@ -193,6 +195,7 @@ def _legacy_state(raw: JsonObject, is_bot: bool) -> VoiceStateSnapshot:
         self_stream=_boolean(flags.get("st")),
         self_video=_boolean(flags.get("sv")),
         suppress=_boolean(flags.get("sp")),
+        requested_to_speak=_boolean(flags.get("hr")),
     )
 
 

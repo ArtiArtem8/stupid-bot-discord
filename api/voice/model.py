@@ -30,7 +30,7 @@ class VoiceStateSnapshot:
     A known null channel is a leave. An unresolved cache channel instead has
     channel_known=False. Humans, bots and unresolved members share this model.
     requested_to_speak_at is a timestamp when available; None does not invent a
-    timestamp for legacy raised-hand booleans.
+    timestamp for legacy raised-hand booleans, which requested_to_speak preserves.
     """
 
     user_id: int
@@ -47,6 +47,7 @@ class VoiceStateSnapshot:
     session_id: str | None = None
     channel_known: bool = True
     afk: bool | None = None
+    requested_to_speak: bool | None = None
 
     def __post_init__(self) -> None:
         """Validate the value object invariants at construction."""
@@ -54,6 +55,9 @@ class VoiceStateSnapshot:
             raise ValueError("Discord IDs must be positive")
         if self.requested_to_speak_at is not None:
             require_aware(self.requested_to_speak_at)
+            if self.requested_to_speak is False:
+                raise ValueError("A raised-hand timestamp contradicts a false request")
+            object.__setattr__(self, "requested_to_speak", True)
 
 
 @dataclass(frozen=True, slots=True)
