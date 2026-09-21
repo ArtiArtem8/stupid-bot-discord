@@ -74,6 +74,7 @@ Platform launcher scripts are also included:
 Global configuration is loaded in `config.py`.
 
 - Environment variables cover the Discord token, optional owner ID, optional WolframAlpha ID, and Lavalink connection values.
+- `VOICE_PROBE_ENABLED=true` enables voice collection (`cogs/voice/collector_cog.py`). New raw facts are written under `data/voice_probe/v2/`; existing legacy journals remain read-only. Finished v2 days are compressed and retained for the configured window. `api/voice/` reconstructs timelines and prepares summary data; voice statistics commands are not yet included.
 - Runtime directories are `data/`, `backups/`, and `temp/`.
 - Logging is configured in `utils/logging_setup.py`.
 - Static strings and small resource lists live in `resources.py`.

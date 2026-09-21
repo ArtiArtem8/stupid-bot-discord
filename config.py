@@ -17,6 +17,8 @@ DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 DISCORD_BOT_OWNER_ID = os.environ.get("DISCORD_BOT_OWNER_ID")
 # Wolfram Alpha API (https://developer.wolframalpha.com/access)
 WOLFRAM_APP_ID = os.environ.get("WOLFRAM_APP_ID")
+# Voice collector (existing environment key retained)
+VOICE_PROBE_ENABLED = os.getenv("VOICE_PROBE_ENABLED", "true").lower() == "true"
 # Lavalink Music Server
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
 LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", "2333"))
@@ -71,6 +73,8 @@ REPORT_FILE = (DATA_DIR / "user_reports").with_suffix(_JSON_SUFFIX)  # Report co
 ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(_JSON_SUFFIX)  # Question cog
 # fmt: on
 
+VOICE_PROBE_DIR = DATA_DIR / "voice_probe"  # cogs/voice/collector_cog.py
+
 
 # --- Cog settings ---
 # main.py
@@ -109,3 +113,19 @@ SUGGESTION_THRESHOLD = 25
 # question_cog.py
 MAX_ANSWER_SAMPLE_SIZE = 8
 """Maximum number of answer samples to consider."""
+
+# Voice collection and journal lifecycle
+VOICE_PROBE_HEARTBEAT_SECONDS = 60
+"""Liveness checkpoint and clock-discontinuity check cadence in seconds."""
+VOICE_PROBE_FULL_ANCHOR_SECONDS = 900
+"""Seconds between full authoritative Discord cache snapshots."""
+VOICE_PROBE_EVENT_QUEUE_MAX = 10_000
+"""Buffer between the event listener and the single journal writer."""
+VOICE_PROBE_WRITER_BATCH_MAX = 500
+"""Maximum number of lines written per journal batch."""
+VOICE_PROBE_MONOTONIC_JUMP_SECONDS = 30.0
+"""Delta above which the process clock is treated as suspended."""
+VOICE_PROBE_COMPACT_AFTER_DAYS = 1
+"""Age in days before v2 JSONL files are replaced with gzip archives."""
+VOICE_PROBE_RETENTION_DAYS = 400
+"""Days of v2 history retained; legacy files are never pruned."""
