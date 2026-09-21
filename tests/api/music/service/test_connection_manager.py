@@ -449,18 +449,27 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         detach.assert_awaited_once_with(guild)
 
     async def test_lazy_connect_logs_unexpected_failure_at_boundary(self) -> None:
+        error = RuntimeError("programming failure")
+        check_availability = AsyncMock(side_effect=error)
+
         with (
             patch.object(
                 self.manager,
-                "ensure_available",
-                new=AsyncMock(side_effect=RuntimeError("programming failure")),
+                "_check_availability",
+                check_availability,
             ),
-            self.assertLogs(
-                "api.music.service.connection_manager",
-                level="ERROR",
-            ),
+            self.assertLogs(connection_module.logger, level="ERROR") as captured,
         ):
             await self.manager._run_lazy_connect()
+
+        check_availability.assert_awaited_once_with()
+        self.assertEqual(len(captured.records), 1)
+
+        exc_info = captured.records[0].exc_info
+        if exc_info is None:
+            self.fail("Expected the original exception in the log record")
+
+        self.assertIs(exc_info[1], error)
 
     async def test_join_cleans_stale_player_when_node_unavailable(self) -> None:
         guild = MagicMock()
