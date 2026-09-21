@@ -38,6 +38,7 @@ class StupidBot(commands.Bot):
             command_prefix=config.BOT_PREFIX,
             intents=intents,
             help_command=None,
+            enable_debug_events=config.VOICE_PROBE_ENABLED,
         )
         self.tree.error(handle_app_command_error)
         self.owner_id = (

@@ -29,3 +29,5 @@ Individual tools like Ruff, Basedpyright, ty, or pytest may still be run directl
 ## Commit Messages
 
 Use imperative messages with a reasonable scope, like `Fix birthday reminder timezone`.
+
+Voice subsystem invariants and schema: [architecture](docs/voice/architecture.md).
