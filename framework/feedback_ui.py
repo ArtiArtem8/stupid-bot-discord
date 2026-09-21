@@ -12,6 +12,7 @@ from datetime import timedelta
 from enum import Enum, auto
 from typing import Self, overload
 
+import aiohttp
 import discord
 from discord.ui import Button, View
 from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAny]
@@ -22,6 +23,7 @@ from utils.embeds import SafeEmbed
 logger = logging.getLogger(__name__)
 
 type ReportCallback = Callable[[discord.Interaction, str | None], Awaitable[None]]
+_TRANSPORT_ERRORS = (aiohttp.ClientError, TimeoutError)
 
 
 class ViewDirective(Enum):
@@ -188,6 +190,12 @@ class FeedbackUI:
                 interaction.id,
                 exc.status,
                 exc.code,
+            )
+        except _TRANSPORT_ERRORS as exc:
+            logger.warning(
+                "Discord transport unavailable for interaction %s (%s)",
+                interaction.id,
+                type(exc).__name__,
             )
 
     @staticmethod

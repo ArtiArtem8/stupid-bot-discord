@@ -96,7 +96,10 @@ class MusicCog(BaseCog):
     async def cog_unload(self) -> None:
         if self.auto_leave_monitor.is_running():
             self.auto_leave_monitor.cancel()
-        await self.service.cleanup()
+        try:
+            await self.service.cleanup()
+        finally:
+            await self.components.controllers.cleanup()
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:

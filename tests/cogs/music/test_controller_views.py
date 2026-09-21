@@ -1,8 +1,9 @@
 """Tests for track controller lifecycle and component acknowledgement."""
 
+import asyncio
 import unittest
-from typing import cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import cast, override
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import aiohttp
 import discord
@@ -10,6 +11,7 @@ from discord import Client, Interaction, ui
 
 from api.music.models import ControllerDestroyReason, PlaybackAttempt
 from cogs.music.views import TrackControllerManager, TrackControllerView
+from cogs.music.views import controller as controller_module
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from tests.api.music.helpers import make_entry
 
@@ -90,6 +92,285 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
             connection.invalidate_player,
         )
         self.assertIs(view_cls.call_args.kwargs["attempt"], attempt)
+
+
+class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
+    @override
+    def setUp(self) -> None:
+        self.message = MagicMock(id=20)
+        self.message.delete = AsyncMock()
+        self.channel = MagicMock(spec=discord.TextChannel)
+        self.channel.get_partial_message.return_value = self.message
+        self.bot = MagicMock()
+        self.bot.get_channel.return_value = self.channel
+        self.bot.fetch_channel = AsyncMock(return_value=self.channel)
+        self.manager = TrackControllerManager(self.bot, MagicMock())
+        self.old_view = MagicMock(attempt_id=1)
+        self.manager.controllers[1] = self.old_view
+        self.manager._active_messages[1] = (10, 20)
+
+    @override
+    async def asyncTearDown(self) -> None:
+        await self.manager.cleanup()
+
+    async def test_successful_delete_does_not_schedule_retry(self) -> None:
+        await self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
+
+        self.message.delete.assert_awaited_once_with()
+        self.assertEqual(self.manager._message_delete_tasks, {})
+        self.assertEqual(self.manager._active_messages, {})
+
+    async def test_missing_message_finishes_without_retry(self) -> None:
+        self.message.delete.side_effect = discord.NotFound(
+            MagicMock(status=404, reason="Not Found"), "missing"
+        )
+
+        await self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
+
+        self.message.delete.assert_awaited_once_with()
+        self.assertEqual(self.manager._message_delete_tasks, {})
+
+    async def test_forbidden_delete_is_logged_without_retry(self) -> None:
+        self.message.delete.side_effect = discord.Forbidden(
+            MagicMock(status=403, reason="Forbidden"), "denied"
+        )
+
+        with self.assertLogs(controller_module.logger, level="WARNING") as captured:
+            await self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
+
+        self.message.delete.assert_awaited_once_with()
+        self.assertEqual(self.manager._message_delete_tasks, {})
+        self.assertIn("abandoned", captured.output[0])
+
+    async def test_deterministic_http_errors_do_not_retry(self) -> None:
+        for status in (400, 401, 405):
+            with self.subTest(status=status):
+                self.message.delete.reset_mock()
+                self.message.delete.side_effect = discord.HTTPException(
+                    MagicMock(status=status, reason="Rejected"), "rejected"
+                )
+
+                with self.assertLogs(controller_module.logger, level="WARNING"):
+                    await self.manager._safe_delete_message(10, 20)
+
+                self.message.delete.assert_awaited_once_with()
+                self.assertEqual(self.manager._message_delete_tasks, {})
+
+    async def test_transient_delete_retries_then_releases_task(self) -> None:
+        errors = (
+            aiohttp.ClientConnectionError("offline"),
+            TimeoutError(),
+            discord.HTTPException(MagicMock(status=429, reason="Limited"), "limited"),
+            discord.HTTPException(MagicMock(status=500, reason="Failure"), "failure"),
+            discord.HTTPException(MagicMock(status=503, reason="Unavailable"), "down"),
+        )
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                self.message.delete.reset_mock()
+                self.message.delete.side_effect = (error, None)
+                sleep = AsyncMock()
+
+                with patch.object(asyncio, "sleep", sleep):
+                    await self.manager._safe_delete_message(10, 20)
+                    task = self.manager._message_delete_tasks[(10, 20)]
+                    await task
+
+                self.assertEqual(self.message.delete.await_count, 2)
+                sleep.assert_awaited_once_with(2.0)
+                self.assertEqual(self.manager._message_delete_tasks, {})
+
+    async def test_transient_channel_fetch_is_retried(self) -> None:
+        self.bot.get_channel.return_value = None
+        self.bot.fetch_channel.side_effect = (
+            aiohttp.ClientConnectionError("offline"),
+            self.channel,
+        )
+
+        with patch.object(asyncio, "sleep", AsyncMock()):
+            await self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
+            await self.manager._message_delete_tasks[(10, 20)]
+
+        self.assertEqual(self.bot.fetch_channel.await_count, 2)
+        self.message.delete.assert_awaited_once_with()
+        self.assertEqual(self.manager._message_delete_tasks, {})
+
+    async def test_retry_stops_when_message_is_missing_or_delete_is_terminal(
+        self,
+    ) -> None:
+        errors = (
+            discord.NotFound(MagicMock(status=404, reason="Missing"), "missing"),
+            discord.Forbidden(MagicMock(status=403, reason="Forbidden"), "denied"),
+            discord.HTTPException(MagicMock(status=400, reason="Bad Request"), "bad"),
+        )
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                self.message.delete.reset_mock()
+                self.message.delete.side_effect = (TimeoutError(), error)
+                sleep = AsyncMock()
+
+                with patch.object(asyncio, "sleep", sleep):
+                    await self.manager._safe_delete_message(10, 20)
+                    await self.manager._message_delete_tasks[(10, 20)]
+
+                self.assertEqual(self.message.delete.await_count, 2)
+                sleep.assert_awaited_once_with(2.0)
+                self.assertEqual(self.manager._message_delete_tasks, {})
+
+    async def test_persistent_transient_failure_exhausts_bounded_attempts(self) -> None:
+        self.message.delete.side_effect = TimeoutError()
+        sleep = AsyncMock()
+
+        with (
+            patch.object(asyncio, "sleep", sleep),
+            self.assertLogs(controller_module.logger, level="WARNING") as captured,
+        ):
+            await self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
+            await self.manager._message_delete_tasks[(10, 20)]
+
+        self.assertEqual(self.message.delete.await_count, 6)
+        self.assertEqual(
+            sleep.await_args_list,
+            [call(2.0), call(10.0), call(30.0), call(60.0), call(120.0)],
+        )
+        self.assertEqual(self.manager._message_delete_tasks, {})
+        self.assertIn("abandoned after 6 attempts", captured.output[0])
+
+    async def test_retry_sleep_allows_new_controller_and_ignores_stale_destroy(
+        self,
+    ) -> None:
+        self.message.delete.side_effect = (TimeoutError(), None)
+        sleeping = asyncio.Event()
+        resume = asyncio.Event()
+
+        async def wait_for_retry(_delay: float) -> None:
+            sleeping.set()
+            await resume.wait()
+
+        attempt = PlaybackAttempt(2, make_entry("new-track"))
+        player = MagicMock(current_attempt=attempt)
+        new_message = MagicMock(id=21)
+        new_message.channel.id = 10
+        self.channel.send = AsyncMock(return_value=new_message)
+        new_view = MagicMock(attempt_id=2)
+
+        with (
+            patch.object(asyncio, "sleep", wait_for_retry),
+            patch.object(
+                controller_module, "TrackControllerView", return_value=new_view
+            ),
+        ):
+            async with asyncio.timeout(5):
+                await self.manager.destroy_for_guild(
+                    1, ControllerDestroyReason.TRACK_END
+                )
+                task = self.manager._message_delete_tasks[(10, 20)]
+                await sleeping.wait()
+                self.assertFalse(self.manager._locks[1].locked())
+
+                await self.manager._safe_delete_message(10, 20)
+                self.assertIs(self.manager._message_delete_tasks[(10, 20)], task)
+                self.message.delete.assert_awaited_once_with()
+
+                await self.manager.create_for_user(
+                    guild_id=1,
+                    user_id=2,
+                    channel=self.channel,
+                    player=player,
+                    attempt=attempt,
+                )
+                await self.manager.destroy_for_guild(
+                    1, ControllerDestroyReason.STALE_VIEW, requesting_view=self.old_view
+                )
+                await self.manager.destroy_for_guild(
+                    1, ControllerDestroyReason.TRACK_END, expected_attempt_id=1
+                )
+                self.assertIs(self.manager.controllers[1], new_view)
+                self.assertEqual(self.manager._active_messages[1], (10, 21))
+                resume.set()
+                await task
+
+        self.assertIs(self.manager.controllers[1], new_view)
+        self.assertEqual(self.manager._active_messages[1], (10, 21))
+        self.assertEqual(
+            self.channel.get_partial_message.call_args_list, [call(20)] * 2
+        )
+        new_view.stop.assert_not_called()
+        self.assertEqual(self.manager._message_delete_tasks, {})
+
+    async def test_cleanup_cancels_sleeping_retry_and_releases_registry(self) -> None:
+        self.message.delete.side_effect = TimeoutError()
+        sleeping = asyncio.Event()
+
+        async def wait_forever(_delay: float) -> None:
+            sleeping.set()
+            await asyncio.Event().wait()
+
+        with patch.object(asyncio, "sleep", wait_forever):
+            await self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
+            task = self.manager._message_delete_tasks[(10, 20)]
+            await sleeping.wait()
+            await self.manager.cleanup()
+
+        self.assertTrue(task.cancelled())
+        self.assertEqual(self.manager._message_delete_tasks, {})
+        self.message.delete.assert_awaited_once_with()
+        await self.manager._safe_delete_message(10, 20)
+        self.message.delete.assert_awaited_once_with()
+
+    async def test_cleanup_before_retry_starts_releases_registry(self) -> None:
+        self.message.delete.side_effect = TimeoutError()
+        await self.manager._safe_delete_message(10, 20)
+        task = self.manager._message_delete_tasks[(10, 20)]
+
+        await self.manager.cleanup()
+
+        self.assertTrue(task.cancelled())
+        self.assertEqual(self.manager._message_delete_tasks, {})
+
+    async def test_cancelled_immediate_delete_propagates_without_retry(self) -> None:
+        self.message.delete.side_effect = asyncio.CancelledError()
+
+        with self.assertRaises(asyncio.CancelledError):
+            await self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
+
+        self.assertEqual(self.manager._message_delete_tasks, {})
+
+    async def test_inflight_failure_cannot_schedule_retry_after_cleanup(self) -> None:
+        deleting = asyncio.Event()
+        resume = asyncio.Event()
+
+        async def fail_after_cleanup() -> None:
+            deleting.set()
+            await resume.wait()
+            raise TimeoutError
+
+        self.message.delete.side_effect = fail_after_cleanup
+        async with asyncio.TaskGroup() as group:
+            group.create_task(self.manager._safe_delete_message(10, 20))
+            await deleting.wait()
+            await self.manager.cleanup()
+            resume.set()
+
+        self.assertEqual(self.manager._message_delete_tasks, {})
+        self.message.delete.assert_awaited_once_with()
+
+    async def test_unexpected_retry_error_is_retrieved_logged_and_stopped(self) -> None:
+        self.message.delete.side_effect = (TimeoutError(), RuntimeError("bug"))
+        finished = asyncio.Event()
+
+        with (
+            patch.object(asyncio, "sleep", AsyncMock()),
+            self.assertLogs(controller_module.logger, level="ERROR") as captured,
+        ):
+            await self.manager._safe_delete_message(10, 20)
+            task = self.manager._message_delete_tasks[(10, 20)]
+            task.add_done_callback(lambda _task: finished.set())
+            await finished.wait()
+
+        self.assertEqual(len(captured.records), 1)
+        self.assertIsNotNone(captured.records[0].exc_info)
+        self.assertEqual(self.message.delete.await_count, 2)
+        self.assertEqual(self.manager._message_delete_tasks, {})
 
 
 class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):

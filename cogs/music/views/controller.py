@@ -7,8 +7,10 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Coroutine
-from typing import TYPE_CHECKING, Self, override
+from functools import partial
+from typing import TYPE_CHECKING, Literal, Self, override
 
+import aiohttp
 import discord
 from discord import Interaction, ui
 from discord.abc import PrivateChannel
@@ -52,6 +54,7 @@ MUSIC_PLAYER_EMOJIS = {
 
 # Keep the seek interval aligned with the value shown by the button icons.
 _SEEK_STEP_MS = 10_000
+_MESSAGE_DELETE_RETRY_DELAYS: tuple[float, ...] = (2.0, 10.0, 30.0, 60.0, 120.0)
 
 
 class TrackControllerManager(ControllerManagerProtocol):
@@ -65,29 +68,100 @@ class TrackControllerManager(ControllerManagerProtocol):
         self.controllers: dict[int, TrackControllerView] = {}
         self._active_messages: dict[int, tuple[int, int]] = {}
         self._locks = defaultdict(asyncio.Lock)
+        self._message_delete_tasks: dict[tuple[int, int], asyncio.Task[None]] = {}
+        self._closing = False
 
     async def _safe_delete_message(self, channel_id: int, message_id: int) -> None:
-        """Safely delete a message, handling missing channels/messages."""
+        """Try cleanup now and own any bounded retries for these exact IDs."""
+        key = (channel_id, message_id)
+        if self._closing or key in self._message_delete_tasks:
+            return
+        result = await self._delete_message_once(channel_id, message_id)
+        if result != "retry" or self._closing or key in self._message_delete_tasks:
+            return
+
+        task = asyncio.create_task(
+            self._retry_message_delete(channel_id, message_id),
+            name=f"music-controller-delete-{channel_id}-{message_id}",
+        )
+        self._message_delete_tasks[key] = task
+        task.add_done_callback(partial(self._message_delete_finished, key))
+
+    async def _delete_message_once(
+        self, channel_id: int, message_id: int
+    ) -> Literal["done", "retry", "failed"]:
         try:
             channel = self.bot.get_channel(channel_id)
             if not channel:
-                try:
-                    channel = await self.bot.fetch_channel(channel_id)
-                except discord.HTTPException:
-                    return
+                channel = await self.bot.fetch_channel(channel_id)
             if isinstance(
                 channel, (discord.ForumChannel, discord.CategoryChannel, PrivateChannel)
             ):
-                return
+                logger.warning(
+                    "Controller cleanup abandoned: unsupported channel %s, message %s",
+                    channel_id,
+                    message_id,
+                )
+                return "failed"
             partial_msg = channel.get_partial_message(message_id)
             await partial_msg.delete()
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
-            logger.debug(
-                "Failed to delete message %s in channel %s: %s",
+        except discord.NotFound:
+            return "done"
+        except discord.HTTPException as exc:
+            retryable = exc.status == 429 or 500 <= exc.status < 600
+            logger.warning(
+                "Controller message %s cleanup in channel %s: HTTP %s, code %s (%s)",
                 message_id,
                 channel_id,
-                e,
+                exc.status,
+                exc.code,
+                "retry pending" if retryable else "abandoned",
             )
+            return "retry" if retryable else "failed"
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            logger.debug(
+                "Controller message %s cleanup in channel %s will retry (%s)",
+                message_id,
+                channel_id,
+                type(exc).__name__,
+            )
+            return "retry"
+        return "done"
+
+    async def _retry_message_delete(self, channel_id: int, message_id: int) -> None:
+        # Detached message IDs no longer participate in guild controller ownership.
+        for delay in _MESSAGE_DELETE_RETRY_DELAYS:
+            await asyncio.sleep(delay)
+            if await self._delete_message_once(channel_id, message_id) != "retry":
+                return
+        logger.warning(
+            "Controller message %s cleanup in channel %s abandoned after %s attempts",
+            message_id,
+            channel_id,
+            len(_MESSAGE_DELETE_RETRY_DELAYS) + 1,
+        )
+
+    def _message_delete_finished(
+        self, key: tuple[int, int], task: asyncio.Task[None]
+    ) -> None:
+        self._message_delete_tasks.pop(key, None)
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception:
+            logger.exception(
+                "Controller cleanup failed unexpectedly: channel %s message %s",
+                *key,
+            )
+
+    async def cleanup(self) -> None:
+        """Stop accepting message cleanup work and cancel and await owned retries."""
+        self._closing = True
+        tasks = tuple(self._message_delete_tasks.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     @override
     async def create_for_user(
