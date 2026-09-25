@@ -74,7 +74,8 @@ Platform launcher scripts are also included:
 Global configuration is loaded in `config.py`.
 
 - Environment variables cover the Discord token, optional owner ID, optional WolframAlpha ID, and Lavalink connection values.
-- `VOICE_PROBE_ENABLED=true` enables voice collection (`cogs/voice/collector_cog.py`). New raw facts are written under `data/voice_probe/v2/`; existing legacy journals remain read-only. Finished v2 days are compressed and retained indefinitely by default; pruning requires an explicit retention setting. `api/voice/` reconstructs timelines and prepares summary data; voice statistics commands are not yet included.
+- `VOICE_PROBE_ENABLED=true` enables voice collection (`cogs/voice/collector_cog.py`). New raw facts are written under `data/voice_probe/v2/`; existing legacy journals remain read-only. Finished v2 days are compressed and retained indefinitely by default; pruning requires an explicit retention setting.
+- `/voice-profile private:false` shows the invoking user's server-local lifetime XP, level and voice statistics with a 14-day activity chart. Set `private:true` to hide the response. Starter through Rare use PNG; Epic and higher use GIF when rendering fits the size budget. `VOICE_PROFILE_TIMEZONE` sets the chart timezone (default `UTC`).
 - Runtime directories are `data/`, `backups/`, and `temp/`.
 - Logging is configured in `utils/logging_setup.py`.
 - Static strings and small resource lists live in `resources.py`.

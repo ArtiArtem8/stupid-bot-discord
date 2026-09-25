@@ -74,6 +74,7 @@ ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(_JSON_SUFFIX)  # Question 
 # fmt: on
 
 VOICE_PROBE_DIR = DATA_DIR / "voice_probe"  # cogs/voice/collector_cog.py
+VOICE_PROFILE_TIMEZONE = os.getenv("VOICE_PROFILE_TIMEZONE", "UTC")
 
 
 # --- Cog settings ---

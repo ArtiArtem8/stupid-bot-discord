@@ -168,12 +168,15 @@ eight tier names and their order are fixed by `LevelTier` and `TIER_ORDER`.
 Custom palettes may change colors and breakpoints, but cannot add tier names or
 reorder tiers. `TIER_FEATURES` defines independent flags once per tier: border
 motion from epic, progress sheen from legendary, a secondary accent for ascendant,
-and a prismatic accent for transcendent. These flags are metadata for a later
-renderer; they do not start animation or affect XP and levels. A constructor
-validates start at 1, RGB range and tier order. No graphics dependency is needed.
+and a prismatic accent for transcendent. The profile renderer consumes these
+flags; they do not affect XP and levels. A constructor validates start at 1,
+RGB range and tier order. The appearance policy has no graphics dependency.
 
-Later UI should also show a numeric level/tier label, not communicate progression
-only by color. Visual testing on Discord themes is deliberately deferred.
+`/voice-profile private:false` shows the invoking user's server-local lifetime
+XP, level, voice stats and a 14-day activity chart. `private:true` hides the
+response from other members. Starter, Uncommon and Rare use PNG; Epic and higher
+use a restrained animated GIF when the render budget permits, with PNG fallback.
+The card labels its level and tier as well as showing tier color.
 
 ## Balance revisions and deferred work
 
@@ -182,10 +185,10 @@ parameters plus a distinct version, e.g. `voice-v3-largegroup-50`. There are no
 stored XP balances to migrate and no account linking. Recalculation under a changed
 formula may lower previously displayed levels. This is expected while tuning.
 
-Deferred: `/stats`, Components V2 UI, generated cards, roles, leaderboards,
+Deferred: `/stats`, Components V2 UI, roles, leaderboards,
 persistent caches, spendable XP, global presence-time union and a full flag-statistics
 catalog.
-No collector or journal changes are justified by adding these read-side policies.
+Collector and journal write semantics remain unchanged by these read-side policies.
 
 ## Technical references
 

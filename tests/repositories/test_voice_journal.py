@@ -387,6 +387,47 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(legacy.read_bytes(), before)
 
+    async def test_read_all_combines_legacy_gzip_and_uncompressed_days(self) -> None:
+        legacy = self.root / "guild_1" / f"events_{START.date()}.jsonl"
+        legacy.parent.mkdir(parents=True)
+        old = record(0, VoiceCheckpoint(), boot="legacy", sequence=1)
+        legacy.write_text(encode_record(old) + "\n", encoding="utf-8")
+        first = record(60, VoiceCheckpoint())
+        later = record(86400, VoiceCheckpoint())
+        self.journal.start()
+        self.journal.submit(first)
+        self.journal.submit(later)
+        await self.journal.close()
+        await self.journal.compact(before_day=START.date() + timedelta(days=1))
+        self.assertEqual(await self.journal.read_all(1), (old, first, later))
+        self.assertEqual(await self.journal.read_all(None), ())
+
+    async def test_read_all_waits_for_writer_file_lock_and_only_returns_disk_facts(
+        self,
+    ) -> None:
+        started, release = asyncio.Event(), asyncio.Event()
+        loop = asyncio.get_running_loop()
+        append = self.journal._append
+
+        def blocked(records: Sequence[VoiceJournalRecord]) -> None:
+            loop.call_soon_threadsafe(started.set)
+            asyncio.run_coroutine_threadsafe(release.wait(), loop).result(timeout=10)
+            append(records)
+
+        with patch.object(self.journal, "_append", side_effect=blocked):
+            self.journal.start()
+            item = record(0, VoiceCheckpoint())
+            self.journal.submit(item)
+            await asyncio.wait_for(started.wait(), 5)
+            reading = asyncio.create_task(self.journal.read_all(1))
+            reading_started = asyncio.Event()
+            loop.call_soon(reading_started.set)
+            await reading_started.wait()
+            self.assertFalse(reading.done())
+            release.set()
+            self.assertEqual(await reading, (item,))
+            await self.journal.close()
+
     async def test_reader_does_not_hide_corrupt_line_as_continuous_presence(
         self,
     ) -> None:

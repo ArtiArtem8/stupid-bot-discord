@@ -240,6 +240,26 @@ class VoiceJournal:
         """
         return await self._file_work(partial(self._read_day, guild_id, day))
 
+    async def read_all(self, guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
+        """Read all persisted legacy and v2 facts for one scope in day order.
+
+        The writer queue is intentionally untouched. File access shares the
+        writer and maintenance lock, including gzip replacement.
+        """
+        return await self._file_work(partial(self._read_all, guild_id))
+
+    def _read_all(self, guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
+        area = "session" if guild_id is None else f"guild_{guild_id}"
+        days: set[date] = set()
+        for root in (self.root, self.root / "v2"):
+            for path in (root / area).glob("events_*.jsonl*"):
+                day = _day_from_name(path.name)
+                if day is not None:
+                    days.add(day)
+        return tuple(
+            record for day in sorted(days) for record in self._read_day(guild_id, day)
+        )
+
     def _read_day(
         self, guild_id: int | None, day: date
     ) -> tuple[VoiceJournalRecord, ...]:
