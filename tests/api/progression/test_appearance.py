@@ -1,4 +1,4 @@
-"""Behavioural checks for fixed tier features and colour boundaries."""
+"""Behavioural checks for fixed tier features and color boundaries."""
 
 import unittest
 from itertools import combinations
@@ -125,7 +125,7 @@ class TestAppearance(unittest.TestCase):
         policy = LevelAppearancePolicy()
         self.assertEqual(policy.for_level(150), policy.for_level(10**20))
 
-    def test_custom_palette_can_change_colours_and_breakpoints(self) -> None:
+    def test_custom_palette_can_change_colors_and_breakpoints(self) -> None:
         level = LevelPolicy().level_for(4100)
         palette = (
             LevelColorBand(1, LevelTier.STARTER, 0x123456),

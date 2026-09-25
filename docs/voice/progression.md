@@ -27,7 +27,7 @@ Discord. No service locator, registry, abstract policy base or I/O is needed.
   Imports the existing model, timeline, scope and read models only.
 - `api/voice/read_models.py`: adds `VoiceXpBreakdown`. A summary exposes
   `xp_breakdown`, numeric `.xp` as a computed property and `xp_policy_version`.
-- `api/voice/queries.py`: evaluates the breakdown once; does not choose colours.
+- `api/voice/queries.py`: evaluates the breakdown once; does not choose colors.
 - `api/progression/levels.py`: the level curve and exact progress value.
 - `api/progression/appearance.py`: stepped presentation data and selection.
 - `api/progression/__init__.py`: documentation only, no eager exports.
@@ -153,19 +153,19 @@ both the formula version and coefficient; do not cache solely by version string.
 ## Appearance
 
 `LevelAppearancePolicy` returns `LevelAppearance`: fixed `LevelTier`, integer RGB
-colour, reached band minimum, palette version and `AppearanceFeature` flags. It
+color, reached band minimum, palette version and `AppearanceFeature` flags. It
 creates no Embed or card.
 
 `DEFAULT_BANDS` contains 41 explicit shade breakpoints across tiers beginning at
 1, 5, 10, 20, 35, 50, 75 and 100. There are no maximum-level fields to drift out
 of sync: the next minimum closes the preceding band. Tier switches are discrete,
 as are the shades inside a tier. There is no cross-tier interpolation.
-The final tier has shades through 150; at 150+ the last colour remains,
+The final tier has shades through 150; at 150+ the last color remains,
 while levels continue indefinitely.
 
 The `level-colors-v1` values follow the supplied final-design-v1 palette. The
 eight tier names and their order are fixed by `LevelTier` and `TIER_ORDER`.
-Custom palettes may change colours and breakpoints, but cannot add tier names or
+Custom palettes may change colors and breakpoints, but cannot add tier names or
 reorder tiers. `TIER_FEATURES` defines independent flags once per tier: border
 motion from epic, progress sheen from legendary, a secondary accent for ascendant,
 and a prismatic accent for transcendent. These flags are metadata for a later
@@ -173,7 +173,7 @@ renderer; they do not start animation or affect XP and levels. A constructor
 validates start at 1, RGB range and tier order. No graphics dependency is needed.
 
 Later UI should also show a numeric level/tier label, not communicate progression
-only by colour. Visual testing on Discord themes is deliberately deferred.
+only by color. Visual testing on Discord themes is deliberately deferred.
 
 ## Balance revisions and deferred work
 
@@ -194,7 +194,7 @@ No collector or journal changes are justified by adding these read-side policies
 - Duration precision and UTC arithmetic: https://docs.python.org/3.12/library/datetime.html
 - Logical separation, not mandatory layers/services:
   https://martinfowler.com/bliki/PresentationDomainDataLayering.html
-- Discord Embed colour is an integer field:
+- Discord Embed color is an integer field:
   https://docs.discord.com/developers/resources/message#embed-object-embed-structure
-- Colour should not be the only indicator:
+- Color should not be the only indicator:
   https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html

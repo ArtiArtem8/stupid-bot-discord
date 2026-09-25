@@ -1,7 +1,7 @@
-"""Versioned level colours and feature metadata, without Discord or XP imports.
+"""Versioned level colors and feature metadata, without Discord or XP imports.
 
-Each row starts a band ending before the next row. Colours do not interpolate
-between tiers. The final colour saturates at 150+, while levels keep growing.
+Each row starts a band ending before the next row. Colors do not interpolate
+between tiers. The final color saturates at 150+, while levels keep growing.
 The palette is presentation data, not an XP or level rule.
 """
 
@@ -73,14 +73,14 @@ def _require_level(level: object) -> None:
 
 def _require_color(color: object) -> None:
     if isinstance(color, bool) or not isinstance(color, int):
-        raise TypeError("Colour must be a 24-bit integer")
+        raise TypeError("Color must be a 24-bit integer")
     if not 0 <= color <= 0xFFFFFF:
-        raise ValueError("Colour must fit 0x000000..0xFFFFFF")
+        raise ValueError("Color must fit 0x000000..0xFFFFFF")
 
 
 @dataclass(frozen=True, slots=True)
 class LevelColorBand:
-    """A minimum-level breakpoint with a fixed tier and RGB colour."""
+    """A minimum-level breakpoint with a fixed tier and RGB color."""
 
     minimum_level: int
     tier: LevelTier
@@ -162,7 +162,7 @@ class LevelAppearance:
 
 @dataclass(frozen=True, slots=True)
 class LevelAppearancePolicy:
-    """Select one stepped colour; palette changes cannot affect levels or XP."""
+    """Select one stepped color; palette changes cannot affect levels or XP."""
 
     bands: tuple[LevelColorBand, ...] = DEFAULT_BANDS
     version: str = "level-colors-v1"
@@ -175,7 +175,7 @@ class LevelAppearancePolicy:
             raise ValueError("A palette must start at level one")
         levels = tuple(band.minimum_level for band in self.bands)
         if levels != tuple(sorted(set(levels))):
-            raise ValueError("Colour breakpoints must be strictly increasing")
+            raise ValueError("Color breakpoints must be strictly increasing")
         _require_tier_order(self.bands)
 
     def for_level(self, level: int) -> LevelAppearance:
