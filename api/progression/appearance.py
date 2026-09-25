@@ -1,20 +1,67 @@
-"""Versioned level colours and motion hints, without Discord or XP imports.
+"""Versioned level colours and feature metadata, without Discord or XP imports.
 
 Each row starts a band ending before the next row. Colours do not interpolate
 between tiers. The final colour saturates at 150+, while levels keep growing.
 The palette is presentation data, not an XP or level rule.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+from enum import Flag, StrEnum
+from types import MappingProxyType
 
-type MotionHint = Literal[
-    "none",
-    "border_shift",
-    "border_shift+bar_sheen",
-    "border_shift+bar_sheen+secondary_line",
-    "border_shift+bar_sheen+prismatic_microaccent",
-]
+
+class AppearanceFeature(Flag):
+    """Independent visual capabilities for a later renderer."""
+
+    NONE = 0
+    BORDER_MOTION = 1
+    PROGRESS_SHEEN = 2
+    SECONDARY_ACCENT = 4
+    PRISMATIC_ACCENT = 8
+
+
+class LevelTier(StrEnum):
+    """The eight fixed names of progression grades."""
+
+    STARTER = "starter"
+    UNCOMMON = "uncommon"
+    RARE = "rare"
+    EPIC = "epic"
+    MYTHIC = "mythic"
+    LEGENDARY = "legendary"
+    ASCENDANT = "ascendant"
+    TRANSCENDENT = "transcendent"
+
+
+TIER_ORDER = (
+    LevelTier.STARTER,
+    LevelTier.UNCOMMON,
+    LevelTier.RARE,
+    LevelTier.EPIC,
+    LevelTier.MYTHIC,
+    LevelTier.LEGENDARY,
+    LevelTier.ASCENDANT,
+    LevelTier.TRANSCENDENT,
+)
+
+TIER_FEATURES: Mapping[LevelTier, AppearanceFeature] = MappingProxyType(
+    {
+        LevelTier.STARTER: AppearanceFeature.NONE,
+        LevelTier.UNCOMMON: AppearanceFeature.NONE,
+        LevelTier.RARE: AppearanceFeature.NONE,
+        LevelTier.EPIC: AppearanceFeature.BORDER_MOTION,
+        LevelTier.MYTHIC: AppearanceFeature.BORDER_MOTION,
+        LevelTier.LEGENDARY: AppearanceFeature.BORDER_MOTION
+        | AppearanceFeature.PROGRESS_SHEEN,
+        LevelTier.ASCENDANT: AppearanceFeature.BORDER_MOTION
+        | AppearanceFeature.PROGRESS_SHEEN
+        | AppearanceFeature.SECONDARY_ACCENT,
+        LevelTier.TRANSCENDENT: AppearanceFeature.BORDER_MOTION
+        | AppearanceFeature.PROGRESS_SHEEN
+        | AppearanceFeature.PRISMATIC_ACCENT,
+    }
+)
 
 
 def _require_level(level: object) -> None:
@@ -33,18 +80,15 @@ def _require_color(color: object) -> None:
 
 @dataclass(frozen=True, slots=True)
 class LevelColorBand:
-    """A minimum-level breakpoint with tier, RGB colour and motion hint."""
+    """A minimum-level breakpoint with a fixed tier and RGB colour."""
 
     minimum_level: int
-    tier: str
+    tier: LevelTier
     color: int
-    motion: MotionHint = "none"
 
     def __post_init__(self) -> None:
-        """Reject invalid levels, missing tier keys and non-RGB values."""
+        """Reject invalid levels and non-RGB values."""
         _require_level(self.minimum_level)
-        if not self.tier.strip():
-            raise ValueError("A colour band needs a tier key")
         _require_color(self.color)
 
 
@@ -52,72 +96,56 @@ class LevelColorBand:
 # Solo at 300 XP/h takes 4x longer; default T(L) = 250 * (L - 1) ** 2.
 DEFAULT_BANDS = (
     # starter: ~0.0 h.
-    LevelColorBand(1, "starter", 0x7F8A98, "none"),
+    LevelColorBand(1, LevelTier.STARTER, 0x7F8A98),
     # uncommon: ~3.3, 10.2 h.
-    LevelColorBand(5, "uncommon", 0x4A9A5E, "none"),
-    LevelColorBand(8, "uncommon", 0x45B164, "none"),
+    LevelColorBand(5, LevelTier.UNCOMMON, 0x4A9A5E),
+    LevelColorBand(8, LevelTier.UNCOMMON, 0x45B164),
     # rare: ~16.9, 35.2, 53.3 h.
-    LevelColorBand(10, "rare", 0x367ED4, "none"),
-    LevelColorBand(14, "rare", 0x2A8EEF, "none"),
-    LevelColorBand(17, "rare", 0x28A1FF, "none"),
+    LevelColorBand(10, LevelTier.RARE, 0x367ED4),
+    LevelColorBand(14, LevelTier.RARE, 0x2A8EEF),
+    LevelColorBand(17, LevelTier.RARE, 0x28A1FF),
     # epic: ~75.2, 120.0, 163.3, 200.2 h.
-    LevelColorBand(20, "epic", 0x8460D2, "border_shift"),
-    LevelColorBand(25, "epic", 0x9965E3, "border_shift"),
-    LevelColorBand(29, "epic", 0xAF6CF0, "border_shift"),
-    LevelColorBand(32, "epic", 0xC74AF9, "border_shift"),
+    LevelColorBand(20, LevelTier.EPIC, 0x8460D2),
+    LevelColorBand(25, LevelTier.EPIC, 0x9965E3),
+    LevelColorBand(29, LevelTier.EPIC, 0xAF6CF0),
+    LevelColorBand(32, LevelTier.EPIC, 0xC74AF9),
     # mythic: ~240.8, 285.2, 350.2, 403.3, 440.8 h.
-    LevelColorBand(35, "mythic", 0xA646AD, "border_shift"),
-    LevelColorBand(38, "mythic", 0xB946B3, "border_shift"),
-    LevelColorBand(42, "mythic", 0xCC48B6, "border_shift"),
-    LevelColorBand(45, "mythic", 0xDB50B6, "border_shift"),
-    LevelColorBand(47, "mythic", 0xE65FB3, "border_shift"),
+    LevelColorBand(35, LevelTier.MYTHIC, 0xA646AD),
+    LevelColorBand(38, LevelTier.MYTHIC, 0xB946B3),
+    LevelColorBand(42, LevelTier.MYTHIC, 0xCC48B6),
+    LevelColorBand(45, LevelTier.MYTHIC, 0xDB50B6),
+    LevelColorBand(47, LevelTier.MYTHIC, 0xE65FB3),
     # legendary: ~500.2, 585.2, 653.3, 750.0, 826.9, 907.5, 991.9, 1050.2 h.
-    LevelColorBand(50, "legendary", 0xB3222B, "border_shift+bar_sheen"),
-    LevelColorBand(54, "legendary", 0xC02621, "border_shift+bar_sheen"),
-    LevelColorBand(57, "legendary", 0xCC2C05, "border_shift+bar_sheen"),
-    LevelColorBand(61, "legendary", 0xD24100, "border_shift+bar_sheen"),
-    LevelColorBand(64, "legendary", 0xD75300, "border_shift+bar_sheen"),
-    LevelColorBand(67, "legendary", 0xDD6300, "border_shift+bar_sheen"),
-    LevelColorBand(70, "legendary", 0xE17200, "border_shift+bar_sheen"),
-    LevelColorBand(72, "legendary", 0xE68100, "border_shift+bar_sheen"),
+    LevelColorBand(50, LevelTier.LEGENDARY, 0xB3222B),
+    LevelColorBand(54, LevelTier.LEGENDARY, 0xC02621),
+    LevelColorBand(57, LevelTier.LEGENDARY, 0xCC2C05),
+    LevelColorBand(61, LevelTier.LEGENDARY, 0xD24100),
+    LevelColorBand(64, LevelTier.LEGENDARY, 0xD75300),
+    LevelColorBand(67, LevelTier.LEGENDARY, 0xDD6300),
+    LevelColorBand(70, LevelTier.LEGENDARY, 0xE17200),
+    LevelColorBand(72, LevelTier.LEGENDARY, 0xE68100),
     # ascendant: ~1140.8, 1235.2, 1333.3, 1400.8, 1505.2,
     # 1576.9, 1687.5, 1763.3, 1880.2, 1960.2 h.
-    LevelColorBand(75, "ascendant", 0x966C00, "border_shift+bar_sheen+secondary_line"),
-    LevelColorBand(78, "ascendant", 0x9B7300, "border_shift+bar_sheen+secondary_line"),
-    LevelColorBand(81, "ascendant", 0xA17A00, "border_shift+bar_sheen+secondary_line"),
-    LevelColorBand(83, "ascendant", 0xA68000, "border_shift+bar_sheen+secondary_line"),
-    LevelColorBand(86, "ascendant", 0xAB8700, "border_shift+bar_sheen+secondary_line"),
-    LevelColorBand(88, "ascendant", 0xB08E00, "border_shift+bar_sheen+secondary_line"),
-    LevelColorBand(91, "ascendant", 0xB59600, "border_shift+bar_sheen+secondary_line"),
-    LevelColorBand(93, "ascendant", 0xB99D00, "border_shift+bar_sheen+secondary_line"),
-    LevelColorBand(96, "ascendant", 0xBEA400, "border_shift+bar_sheen+secondary_line"),
-    LevelColorBand(98, "ascendant", 0xC1AC15, "border_shift+bar_sheen+secondary_line"),
+    LevelColorBand(75, LevelTier.ASCENDANT, 0x966C00),
+    LevelColorBand(78, LevelTier.ASCENDANT, 0x9B7300),
+    LevelColorBand(81, LevelTier.ASCENDANT, 0xA17A00),
+    LevelColorBand(83, LevelTier.ASCENDANT, 0xA68000),
+    LevelColorBand(86, LevelTier.ASCENDANT, 0xAB8700),
+    LevelColorBand(88, LevelTier.ASCENDANT, 0xB08E00),
+    LevelColorBand(91, LevelTier.ASCENDANT, 0xB59600),
+    LevelColorBand(93, LevelTier.ASCENDANT, 0xB99D00),
+    LevelColorBand(96, LevelTier.ASCENDANT, 0xBEA400),
+    LevelColorBand(98, LevelTier.ASCENDANT, 0xC1AC15),
     # transcendent: ~2041.9, 2253.3, 2475.2, 2707.5,
     # 2950.2, 3466.9, 4025.2, 4625.2 h.
-    LevelColorBand(
-        100, "transcendent", 0x0071C3, "border_shift+bar_sheen+prismatic_microaccent"
-    ),
-    LevelColorBand(
-        105, "transcendent", 0x007DBD, "border_shift+bar_sheen+prismatic_microaccent"
-    ),
-    LevelColorBand(
-        110, "transcendent", 0x0088BB, "border_shift+bar_sheen+prismatic_microaccent"
-    ),
-    LevelColorBand(
-        115, "transcendent", 0x0092BA, "border_shift+bar_sheen+prismatic_microaccent"
-    ),
-    LevelColorBand(
-        120, "transcendent", 0x009CBA, "border_shift+bar_sheen+prismatic_microaccent"
-    ),
-    LevelColorBand(
-        130, "transcendent", 0x00A8BC, "border_shift+bar_sheen+prismatic_microaccent"
-    ),
-    LevelColorBand(
-        140, "transcendent", 0x00B4BE, "border_shift+bar_sheen+prismatic_microaccent"
-    ),
-    LevelColorBand(
-        150, "transcendent", 0x00BFC1, "border_shift+bar_sheen+prismatic_microaccent"
-    ),
+    LevelColorBand(100, LevelTier.TRANSCENDENT, 0x0071C3),
+    LevelColorBand(105, LevelTier.TRANSCENDENT, 0x007DBD),
+    LevelColorBand(110, LevelTier.TRANSCENDENT, 0x0088BB),
+    LevelColorBand(115, LevelTier.TRANSCENDENT, 0x0092BA),
+    LevelColorBand(120, LevelTier.TRANSCENDENT, 0x009CBA),
+    LevelColorBand(130, LevelTier.TRANSCENDENT, 0x00A8BC),
+    LevelColorBand(140, LevelTier.TRANSCENDENT, 0x00B4BE),
+    LevelColorBand(150, LevelTier.TRANSCENDENT, 0x00BFC1),
 )
 
 
@@ -125,11 +153,11 @@ DEFAULT_BANDS = (
 class LevelAppearance:
     """Presentation metadata, not an Embed, role, permission or reward."""
 
-    tier: str
+    tier: LevelTier
     color: int
     band_minimum_level: int
     palette_version: str
-    motion: MotionHint
+    features: AppearanceFeature
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,23 +176,25 @@ class LevelAppearancePolicy:
         levels = tuple(band.minimum_level for band in self.bands)
         if levels != tuple(sorted(set(levels))):
             raise ValueError("Colour breakpoints must be strictly increasing")
-        _require_contiguous_tiers(self.bands)
+        _require_tier_order(self.bands)
 
     def for_level(self, level: int) -> LevelAppearance:
         """Select the last reached breakpoint, without wrapping at high levels."""
         _require_level(level)
         band = next(b for b in reversed(self.bands) if level >= b.minimum_level)
         return LevelAppearance(
-            band.tier, band.color, band.minimum_level, self.version, band.motion
+            band.tier,
+            band.color,
+            band.minimum_level,
+            self.version,
+            TIER_FEATURES[band.tier],
         )
 
 
-def _require_contiguous_tiers(bands: tuple[LevelColorBand, ...]) -> None:
-    seen: set[str] = set()
-    previous = ""
+def _require_tier_order(bands: tuple[LevelColorBand, ...]) -> None:
+    previous_index = -1
     for band in bands:
-        if band.tier != previous:
-            if band.tier in seen:
-                raise ValueError("A tier cannot reappear after another tier")
-            seen.add(band.tier)
-            previous = band.tier
+        index = TIER_ORDER.index(band.tier)
+        if index < previous_index:
+            raise ValueError("Palette tiers must follow TIER_ORDER")
+        previous_index = index

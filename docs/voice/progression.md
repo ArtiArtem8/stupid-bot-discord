@@ -14,7 +14,7 @@ Three independent responsibilities:
 VoiceTimeline + VoiceScope + user_id
     -> VoiceXpPolicy.explain() -> VoiceXpBreakdown.total (Fraction)
     -> LevelPolicy.progress() -> LevelProgress.level (int)
-    -> LevelAppearancePolicy.for_level() -> tier + RGB integer + motion hint
+    -> LevelAppearancePolicy.for_level() -> LevelTier + RGB + AppearanceFeature
 ```
 
 These are caller compositions, not an import chain. `levels.py` does not import
@@ -152,8 +152,9 @@ both the formula version and coefficient; do not cache solely by version string.
 
 ## Appearance
 
-`LevelAppearancePolicy` returns `LevelAppearance`: tier key, integer RGB colour,
-reached band minimum, palette version and motion hint. It creates no Embed or card.
+`LevelAppearancePolicy` returns `LevelAppearance`: fixed `LevelTier`, integer RGB
+colour, reached band minimum, palette version and `AppearanceFeature` flags. It
+creates no Embed or card.
 
 `DEFAULT_BANDS` contains 41 explicit shade breakpoints across tiers beginning at
 1, 5, 10, 20, 35, 50, 75 and 100. There are no maximum-level fields to drift out
@@ -162,11 +163,14 @@ as are the shades inside a tier. There is no cross-tier interpolation.
 The final tier has shades through 150; at 150+ the last colour remains,
 while levels continue indefinitely.
 
-The `level-colors-v1` values follow the supplied final-design-v1 palette. Motion
-hints are metadata for a later renderer: static below epic, border movement from
-epic, and restrained additional accents at higher tiers. The motion hint does
-not start animation or affect XP and levels. A constructor validates order,
-start at 1, RGB range and contiguous tiers. No graphics dependency is needed.
+The `level-colors-v1` values follow the supplied final-design-v1 palette. The
+eight tier names and their order are fixed by `LevelTier` and `TIER_ORDER`.
+Custom palettes may change colours and breakpoints, but cannot add tier names or
+reorder tiers. `TIER_FEATURES` defines independent flags once per tier: border
+motion from epic, progress sheen from legendary, a secondary accent for ascendant,
+and a prismatic accent for transcendent. These flags are metadata for a later
+renderer; they do not start animation or affect XP and levels. A constructor
+validates start at 1, RGB range and tier order. No graphics dependency is needed.
 
 Later UI should also show a numeric level/tier label, not communicate progression
 only by colour. Visual testing on Discord themes is deliberately deferred.
