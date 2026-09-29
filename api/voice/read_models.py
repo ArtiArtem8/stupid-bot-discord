@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import date
+from fractions import Fraction
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,13 +44,50 @@ class ActivityProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class VoiceXpBreakdown:
+    """Exact XP components; reductions are positive amounts to subtract.
+
+    A policy rate returns this award for one hour. An integrated explanation
+    returns the same components accumulated over the requested period. Neither
+    value is persisted or rounded. Bonuses remain visible before the cap, with
+    the excess shown explicitly as bonus_cap_reduction.
+    """
+
+    solo_base: Fraction = Fraction()
+    social_base: Fraction = Fraction()
+    large_group_bonus: Fraction = Fraction()
+    audio_reduction: Fraction = Fraction()
+    stream_bonus: Fraction = Fraction()
+    video_bonus: Fraction = Fraction()
+    bonus_cap_reduction: Fraction = Fraction()
+
+    @property
+    def total(self) -> Fraction:
+        """Return the exact sum after audio and contribution-cap reductions."""
+        return (
+            self.solo_base
+            + self.social_base
+            + self.large_group_bonus
+            - self.audio_reduction
+            + self.stream_bonus
+            + self.video_bonus
+            - self.bonus_cap_reduction
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class UserVoiceSummary:
-    """A user summary ready for presentation without Discord or storage objects."""
+    """A user summary; presence remains guild-additive, XP uses temporal MAX."""
 
     user_id: int
     presence: PresenceStat
     companions: tuple[CompanionStat, ...]
     bots: BotStat
     activity: ActivityProfile
-    xp: float
+    xp_breakdown: VoiceXpBreakdown
     xp_policy_version: str
+
+    @property
+    def xp(self) -> Fraction:
+        """Return XP without rounding or duplicating the breakdown's total."""
+        return self.xp_breakdown.total

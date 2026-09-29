@@ -51,6 +51,15 @@ class JournalWriteError(OSError):
     """At least one accepted batch failed; close could not promise persistence."""
 
 
+@dataclass(frozen=True, slots=True)
+class VoiceJournalSnapshot:
+    """Guild and shared session facts read under one file lock, without flushing."""
+
+    guild_records: tuple[VoiceJournalRecord, ...]
+    session_records: tuple[VoiceJournalRecord, ...]
+    generation: int
+
+
 class VoiceJournal:
     """Own queue, writer lifecycle and serialized file maintenance for one root."""
 
@@ -239,6 +248,39 @@ class VoiceJournal:
         without a preceding authoritative snapshot intentionally starts unknown.
         """
         return await self._file_work(partial(self._read_day, guild_id, day))
+
+    async def read_all(self, guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
+        """Read all persisted legacy and v2 facts for one scope in day order.
+
+        The writer queue is intentionally untouched. File access shares the
+        writer and maintenance lock, including gzip replacement.
+        """
+        return await self._file_work(partial(self._read_all, guild_id))
+
+    async def snapshot_for_guild(self, guild_id: int) -> VoiceJournalSnapshot:
+        """Read both histories without interleaved writes or maintenance.
+
+        Generation is the journal-wide persisted count, not a per-guild revision.
+        Cancellation waits for physical reads before releasing the file lock.
+        """
+        return await self._file_work(partial(self._snapshot_for_guild, guild_id))
+
+    def _snapshot_for_guild(self, guild_id: int) -> VoiceJournalSnapshot:
+        return VoiceJournalSnapshot(
+            self._read_all(guild_id), self._read_all(None), self._persisted
+        )
+
+    def _read_all(self, guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
+        area = "session" if guild_id is None else f"guild_{guild_id}"
+        days: set[date] = set()
+        for root in (self.root, self.root / "v2"):
+            for path in (root / area).glob("events_*.jsonl*"):
+                day = _day_from_name(path.name)
+                if day is not None:
+                    days.add(day)
+        return tuple(
+            record for day in sorted(days) for record in self._read_day(guild_id, day)
+        )
 
     def _read_day(
         self, guild_id: int | None, day: date

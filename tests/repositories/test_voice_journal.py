@@ -387,6 +387,123 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(legacy.read_bytes(), before)
 
+    async def test_read_all_combines_legacy_gzip_and_uncompressed_days(self) -> None:
+        legacy = self.root / "guild_1" / f"events_{START.date()}.jsonl"
+        legacy.parent.mkdir(parents=True)
+        old = record(0, VoiceCheckpoint(), boot="legacy", sequence=1)
+        legacy.write_text(encode_record(old) + "\n", encoding="utf-8")
+        first = record(60, VoiceCheckpoint())
+        later = record(86400, VoiceCheckpoint())
+        self.journal.start()
+        self.journal.submit(first)
+        self.journal.submit(later)
+        await self.journal.close()
+        await self.journal.compact(before_day=START.date() + timedelta(days=1))
+        self.assertEqual(await self.journal.read_all(1), (old, first, later))
+        self.assertEqual(await self.journal.read_all(None), ())
+
+    async def test_read_all_waits_for_writer_file_lock_and_only_returns_disk_facts(
+        self,
+    ) -> None:
+        started, release = asyncio.Event(), asyncio.Event()
+        loop = asyncio.get_running_loop()
+        append = self.journal._append
+
+        def blocked(records: Sequence[VoiceJournalRecord]) -> None:
+            loop.call_soon_threadsafe(started.set)
+            asyncio.run_coroutine_threadsafe(release.wait(), loop).result(timeout=10)
+            append(records)
+
+        with patch.object(self.journal, "_append", side_effect=blocked):
+            self.journal.start()
+            item = record(0, VoiceCheckpoint())
+            self.journal.submit(item)
+            await asyncio.wait_for(started.wait(), 5)
+            reading = asyncio.create_task(self.journal.read_all(1))
+            reading_started = asyncio.Event()
+            loop.call_soon(reading_started.set)
+            await reading_started.wait()
+            self.assertFalse(reading.done())
+            release.set()
+            self.assertEqual(await reading, (item,))
+            await self.journal.close()
+
+    async def test_snapshot_keeps_both_scopes_in_one_generation(self) -> None:
+        started, release = asyncio.Event(), asyncio.Event()
+        loop = asyncio.get_running_loop()
+        read_all = self.journal._read_all
+
+        def blocked(guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
+            records = read_all(guild_id)
+            if guild_id is not None:
+                loop.call_soon_threadsafe(started.set)
+                asyncio.run_coroutine_threadsafe(release.wait(), loop).result(
+                    timeout=10
+                )
+            return records
+
+        guild_record = record(0, VoiceSnapshot((human(),)))
+        session_record = record(1, VoiceCheckpoint(), guild=None)
+        with patch.object(self.journal, "_read_all", side_effect=blocked):
+            reading = asyncio.create_task(self.journal.snapshot_for_guild(1))
+            await asyncio.wait_for(started.wait(), 5)
+            try:
+                self.journal.start()
+                self.journal.submit(guild_record)
+                self.journal.submit(session_record)
+                closing = asyncio.create_task(self.journal.close())
+                writer_waiting = asyncio.Event()
+                loop.call_soon(writer_waiting.set)
+                await writer_waiting.wait()
+                self.assertFalse(closing.done())
+            finally:
+                release.set()
+            snapshot = await reading
+            await closing
+        self.assertEqual(snapshot.guild_records, ())
+        self.assertEqual(snapshot.session_records, ())
+        self.assertEqual(snapshot.generation, 0)
+        updated = await self.journal.snapshot_for_guild(1)
+        self.assertEqual(updated.guild_records, (guild_record,))
+        self.assertEqual(updated.session_records, (session_record,))
+        self.assertEqual(updated.generation, 2)
+
+    async def test_cancelled_snapshot_keeps_file_lock_until_worker_finishes(
+        self,
+    ) -> None:
+        started, release = asyncio.Event(), asyncio.Event()
+        loop = asyncio.get_running_loop()
+        read_all = self.journal._read_all
+
+        def blocked(guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
+            if guild_id is not None:
+                loop.call_soon_threadsafe(started.set)
+                asyncio.run_coroutine_threadsafe(release.wait(), loop).result(
+                    timeout=10
+                )
+            return read_all(guild_id)
+
+        with patch.object(self.journal, "_read_all", side_effect=blocked):
+            reading = asyncio.create_task(self.journal.snapshot_for_guild(1))
+            await asyncio.wait_for(started.wait(), 5)
+            try:
+                reading.cancel()
+                self.journal.start()
+                self.journal.submit(record(0, VoiceCheckpoint()))
+                closing = asyncio.create_task(self.journal.close())
+                writer_waiting = asyncio.Event()
+                loop.call_soon(writer_waiting.set)
+                await writer_waiting.wait()
+                self.assertFalse(reading.done())
+                self.assertFalse(closing.done())
+                self.assertEqual(self.journal.counts.persisted, 0)
+            finally:
+                release.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await reading
+            await closing
+        self.assertEqual(self.journal.counts.persisted, 1)
+
     async def test_reader_does_not_hide_corrupt_line_as_continuous_presence(
         self,
     ) -> None:

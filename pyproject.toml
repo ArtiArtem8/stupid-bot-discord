@@ -1,6 +1,6 @@
 [project]
 name = "stupid-bot-discord"
-version = "2.5.0"
+version = "2.6.0"
 description = "A feature-rich Discord bot built with discord.py"
 authors = [
     { name = "ArtiArtem", email = "ArtiArtem8@users.noreply.github.com" },
@@ -14,6 +14,8 @@ dependencies = [
     "pillow>=12.3.0",
     "python-dotenv>=1.1.0",
     "rapidfuzz>=3.14.1",
+    "regex>=2026.9.18",
+    "tzdata>=2026.4",
 ]
 
 [dependency-groups]
@@ -151,6 +153,7 @@ testpaths = ["tests"]
 filterwarnings = ["ignore:.*audioop.*:DeprecationWarning:discord.player"]
 pythonpath = ["."]
 markers = [
+    "profile_native: requires Inkscape and VOICE_PROFILE_NATIVE=1",
     "lavalink_live: performs real Lavalink v4 contract checks",
     "wolfram_live: performs a real Wolfram API request",
 ]

@@ -1,4 +1,5 @@
 import unittest
+from fractions import Fraction
 
 from api.voice.queries import user_summary
 from tests.api.voice.examples import example
@@ -11,6 +12,7 @@ class TestQueries(unittest.TestCase):
         self.assertEqual(summary.presence.total_seconds, 1200)
         self.assertEqual(sum(summary.activity.hourly_seconds), 1200)
         self.assertEqual(summary.companions[0].shared_seconds, 600)
-        self.assertEqual(summary.xp, 20)
-        self.assertEqual(summary.xp_policy_version, "voice-v1")
+        self.assertEqual(summary.xp, Fraction(325))
+        self.assertEqual(summary.xp, summary.xp_breakdown.total)
+        self.assertEqual(summary.xp_policy_version, "voice-v3")
         self.assertEqual(user_summary(timeline, 1), summary)
