@@ -17,7 +17,6 @@ from discord.ext import commands
 import config
 from api.voice.profile.build import build_profile
 from api.voice.timeline import VoiceTimeline, build_timeline
-from cogs.voice.collector_cog import VoiceCollectorCog
 from cogs.voice.profile.cache import MediaKey, ProfileMediaCache
 from cogs.voice.profile.design import CardIdentity
 from cogs.voice.profile.media import (
@@ -148,6 +147,9 @@ class VoiceProfileCog(commands.Cog):
 
     async def _timeline(self, guild_id: int) -> ProfileSnapshot:
         async with self._cache_lock:
+            # Resolve the current class after waiting; reload replaces its module.
+            from cogs.voice.collector_cog import VoiceCollectorCog
+
             collector = self.bot.get_cog("VoiceCollectorCog")
             if not isinstance(collector, VoiceCollectorCog):
                 raise RuntimeError("Voice collector is unavailable")

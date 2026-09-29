@@ -1,6 +1,7 @@
 """Voice profile command privacy, owner control and attachment behavior."""
 
 import asyncio
+import sys
 import unittest
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -11,11 +12,13 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
+from discord.ext import commands
 
+import cogs.voice.collector_cog
+import config
 from api.voice.model import VoiceCheckpoint, VoiceSnapshot
 from api.voice.timeline import VoiceTimeline
 from cogs.voice import profile_cog as cog_module
-from cogs.voice.collector_cog import VoiceCollectorCog
 from cogs.voice.profile.media import ProfileMedia, RenderBusyError
 from cogs.voice.profile.view import VoiceProfileView
 from cogs.voice.profile_cog import ProfileSnapshot, VoiceProfileCog
@@ -107,6 +110,8 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
     async def test_timeline_cache_reuses_and_invalidates_on_persisted_count(
         self,
     ) -> None:
+        from cogs.voice.collector_cog import VoiceCollectorCog
+
         with TemporaryDirectory() as directory:
             bot = MagicMock()
             journal = VoiceJournal(Path(directory))
@@ -278,6 +283,8 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         await cog.cog_unload()
 
     async def test_collector_replacement_changes_snapshot_epoch(self) -> None:
+        from cogs.voice.collector_cog import VoiceCollectorCog
+
         with TemporaryDirectory() as directory:
             bot = MagicMock()
             old = VoiceJournal(Path(directory) / "old")
@@ -289,6 +296,27 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             second = await cog._timeline(42)
             self.assertNotEqual(first.epoch, second.epoch)
             self.assertEqual(first.generation, second.generation)
+
+    async def test_real_collector_reload_preserves_profile_access(self) -> None:
+        # Extension loading replaces sys.modules entries and the package's
+        # module attribute; restore both so other tests keep their class refs.
+        with (
+            TemporaryDirectory() as directory,
+            patch.dict(sys.modules),
+            patch.object(cogs.voice, "collector_cog", cogs.voice.collector_cog),
+            patch.object(config, "VOICE_PROBE_DIR", Path(directory)),
+            patch.object(config, "VOICE_PROBE_ENABLED", False),
+        ):
+            async with commands.Bot(
+                command_prefix="!", intents=discord.Intents.none()
+            ) as bot:
+                cog = VoiceProfileCog(bot)
+                await bot.load_extension("cogs.voice.collector_cog")
+                first = await cog._timeline(42)
+                await bot.reload_extension("cogs.voice.collector_cog")
+                second = await cog._timeline(42)
+                self.assertGreater(second.epoch, first.epoch)
+                self.assertEqual(second.timeline, first.timeline)
 
     def test_command_exposes_only_private(self) -> None:
         self.assertEqual(
