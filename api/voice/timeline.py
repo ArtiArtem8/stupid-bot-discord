@@ -333,6 +333,8 @@ def _snapshot_disagrees(
 def _known_state_changed(before: VoiceStateSnapshot, after: VoiceStateSnapshot) -> bool:
     if before.channel_known and before.channel_id != after.channel_id:
         return True
+    # discord.py can retain an old transport session_id in its voice cache.
+    # That diagnostic field cannot prove a missed presence or flag change.
     previous = (
         before.self_mute,
         before.self_deaf,
@@ -343,7 +345,6 @@ def _known_state_changed(before: VoiceStateSnapshot, after: VoiceStateSnapshot) 
         before.suppress,
         before.requested_to_speak,
         before.requested_to_speak_at,
-        before.session_id,
     )
     current = (
         after.self_mute,
@@ -355,7 +356,6 @@ def _known_state_changed(before: VoiceStateSnapshot, after: VoiceStateSnapshot) 
         after.suppress,
         after.requested_to_speak,
         after.requested_to_speak_at,
-        after.session_id,
     )
     return any(
         old != new
