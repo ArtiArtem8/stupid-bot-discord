@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
 from time import perf_counter
 
-from defusedxml.ElementTree import fromstring
+from defusedxml.ElementTree import fromstring, tostring
 from PIL import Image
 
 from api.voice.profile.model import VoiceProfile
@@ -102,7 +101,7 @@ class SvgProfileRenderer:
                     for node in static_root.iter():
                         if node.get("id") == "user-avatar":
                             style(node, "display", "none")
-                    static_svg = ET.tostring(static_root)
+                    static_svg = tostring(static_root)
             except ValueError as error:
                 avatar = None
                 design = replace(

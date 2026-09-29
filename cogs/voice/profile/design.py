@@ -8,11 +8,13 @@ import math
 import re
 import unicodedata
 import warnings
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Final
+
+# Non-parsing tree/serialization APIs only; parsing always uses defusedxml.
+from xml.etree.ElementTree import Element, ElementTree, register_namespace  # nosec B405
 
 import regex
 from defusedxml.ElementTree import fromstring
@@ -28,9 +30,9 @@ from utils.json_utils import get_json
 SVG: Final = "http://www.w3.org/2000/svg"
 XLINK: Final = "http://www.w3.org/1999/xlink"
 INKSCAPE: Final = "http://www.inkscape.org/namespaces/inkscape"
-ET.register_namespace("", SVG)
-ET.register_namespace("xlink", XLINK)
-ET.register_namespace("inkscape", INKSCAPE)
+register_namespace("", SVG)
+register_namespace("xlink", XLINK)
+register_namespace("inkscape", INKSCAPE)
 ASSETS: Final = Path(__file__).with_name("assets")
 REQUIRED: Final = frozenset(
     {
@@ -100,14 +102,14 @@ def json_object(value: object) -> JsonObject:
     return value
 
 
-def document_bytes(root: ET.Element) -> bytes:
+def document_bytes(root: Element) -> bytes:
     """Serialize an SVG tree with explicit UTF-8 XML metadata."""
     output = BytesIO()
-    ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
+    ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
     return output.getvalue()
 
 
-def style(element: ET.Element, property_name: str, value: str) -> None:
+def style(element: Element, property_name: str, value: str) -> None:
     """Respect Inkscape's inline styles without replacing unrelated placement."""
     properties: dict[str, str] = {}
     for part in element.get("style", "").split(";"):
@@ -119,7 +121,7 @@ def style(element: ET.Element, property_name: str, value: str) -> None:
     element.set(property_name, value)
 
 
-def property_value(element: ET.Element, key: str, default: str) -> str:
+def property_value(element: Element, key: str, default: str) -> str:
     """Resolve inline style before its presentation attribute."""
     properties = dict(
         part.split(":", 1)
@@ -129,7 +131,7 @@ def property_value(element: ET.Element, key: str, default: str) -> str:
     return properties.get(key, element.get(key, default)).strip()
 
 
-def replace_text(element: ET.Element, text: str) -> None:
+def replace_text(element: Element, text: str) -> None:
     """Replace a declared text slot while preserving its authored position."""
     # Inkscape may wrap editable text in tspans. Copy its positioning to the
     # text root, then replace only this declared value slot, not nearby artwork.
@@ -186,13 +188,13 @@ def normalized_png(data: bytes | None, *, size: int = 256) -> bytes | None:
     return output.getvalue()
 
 
-def _check_template(data: bytes) -> tuple[ET.Element, dict[str, ET.Element]]:
+def _check_template(data: bytes) -> tuple[Element, dict[str, Element]]:
     if len(data) > 2_000_000:
         raise ValueError("SVG template exceeds 2 MiB")
-    root = fromstring(data)
+    root = fromstring(data, forbid_dtd=True)
     if root.tag != f"{{{SVG}}}svg":
         raise ValueError("Template must have an SVG root")
-    nodes: dict[str, ET.Element] = {}
+    nodes: dict[str, Element] = {}
     prohibited = {
         "script",
         "foreignObject",
@@ -218,7 +220,7 @@ def _check_template(data: bytes) -> tuple[ET.Element, dict[str, ET.Element]]:
     return root, nodes
 
 
-def _check_resources(element: ET.Element) -> None:
+def _check_resources(element: Element) -> None:
     for key, value in element.attrib.items():
         if key.startswith("on"):
             raise ValueError("SVG event handlers are not permitted")
@@ -255,7 +257,7 @@ def _tokens(path: Path, profile: VoiceProfile) -> dict[str, str]:
 
 
 def _fit_texts(
-    root: ET.Element, nodes: dict[str, ET.Element], raster: NativeRasterizer
+    root: Element, nodes: dict[str, Element], raster: NativeRasterizer
 ) -> dict[str, Box]:
     targets = [node for node in nodes.values() if node.get("data-width") is not None]
     for _ in range(6):
@@ -349,7 +351,7 @@ def bind_design(
 
 
 def _bind_metrics(
-    nodes: dict[str, ET.Element], profile: VoiceProfile, identity: CardIdentity
+    nodes: dict[str, Element], profile: VoiceProfile, identity: CardIdentity
 ) -> None:
     if (
         not math.isfinite(profile.progress_ratio)
@@ -382,9 +384,7 @@ def _bind_metrics(
     replace_text(nodes["avatar-fallback"], "".join(label_clusters[:2]).upper())
 
 
-def _bind_images(
-    nodes: dict[str, ET.Element], identity: CardIdentity
-) -> tuple[str, ...]:
+def _bind_images(nodes: dict[str, Element], identity: CardIdentity) -> tuple[str, ...]:
     notes: list[str] = []
     for identifier, fallback, data in (
         ("user-avatar", "avatar-fallback", identity.avatar_bytes),
@@ -407,11 +407,12 @@ def _bind_images(
 
 
 def _bind_emblem(
-    nodes: dict[str, ET.Element], profile: VoiceProfile, tokens: dict[str, str]
+    nodes: dict[str, Element], profile: VoiceProfile, tokens: dict[str, str]
 ) -> None:
     # Emblem source is reusable artwork, not a separate card template.
     emblem = fromstring(
-        (ASSETS / f"emblem-{TIER_EMBLEM[profile.appearance.tier]}.svg").read_bytes()
+        (ASSETS / f"emblem-{TIER_EMBLEM[profile.appearance.tier]}.svg").read_bytes(),
+        forbid_dtd=True,
     )
     group = nodes["emblem-art"]
     for child in list(group):
@@ -431,10 +432,8 @@ def _bind_emblem(
         group.append(item)
 
 
-def _activate_stars(
-    nodes: dict[str, ET.Element], profile: VoiceProfile
-) -> list[ET.Element]:
-    active_stars: list[ET.Element] = []
+def _activate_stars(nodes: dict[str, Element], profile: VoiceProfile) -> list[Element]:
+    active_stars: list[Element] = []
     tier_index = TIER_ORDER.index(profile.appearance.tier)
     for node in nodes.values():
         if node.get("data-fx") == "star":
@@ -446,7 +445,7 @@ def _activate_stars(
     return active_stars
 
 
-def _apply_tokens(root: ET.Element, tokens: dict[str, str]) -> None:
+def _apply_tokens(root: Element, tokens: dict[str, str]) -> None:
     for node in root.iter():
         for attribute in ("fill", "stroke"):
             token = node.get(f"data-{attribute}")
@@ -454,7 +453,7 @@ def _apply_tokens(root: ET.Element, tokens: dict[str, str]) -> None:
                 style(node, attribute, tokens[token])
 
 
-def _split_layers(root: ET.Element) -> tuple[bytes, bytes]:
+def _split_layers(root: Element) -> tuple[bytes, bytes]:
     static_root = copy.deepcopy(root)
     star_root = copy.deepcopy(root)
     for item in static_root.iter():
