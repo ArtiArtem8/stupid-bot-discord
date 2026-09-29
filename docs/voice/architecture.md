@@ -76,6 +76,9 @@ Disconnects, clock discontinuities, boot changes and lost writes interrupt
 coverage. A subsequent full snapshot restores only its guild from that timestamp
 forward. A snapshot disagreeing with replay invalidates the interval since the
 preceding authoritative snapshot: the time of a missing change is unknown.
+Transport `session_id` differences alone do not establish drift: discord.py's
+cache-backed snapshots can retain an older ID than raw Gateway observations.
+The journal retains both observed values as diagnostic telemetry.
 Retrospective and overlapping gaps are subtracted from coverage as well as room
 credit. Nothing is extrapolated beyond the last recorded observation.
 
@@ -111,7 +114,11 @@ bots, and excludes intervals with any unidentified participant. A third human is
 not private. Bot co-presence is separate and implies nothing about music playback.
 Solo presence similarly ignores known bots but cannot credit an unidentified room
 occupant as absent. Presence sessions are contiguous observed visits per guild;
-gaps, query clipping and changed known session IDs can split or truncate them.
+absent or unobserved time splits visits, and query clipping can truncate them.
+Transport session-ID changes without interrupted presence do not start a new visit.
+Replaying existing journals applies these rules to historical statistics; raw
+journal files need no migration or rewriting. Restart analytical consumers to
+discard any in-memory timelines derived with earlier reconstruction rules.
 
 Activity accepts a `tzinfo` projection parameter, defaulting to UTC. Arithmetic
 uses real elapsed UTC seconds, while hours, weekdays and dates use the supplied

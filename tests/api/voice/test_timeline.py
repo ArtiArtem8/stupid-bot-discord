@@ -17,6 +17,56 @@ from tests.api.voice.examples import at, human, record
 
 
 class TestVoiceTimeline(unittest.TestCase):
+    def test_stale_snapshot_session_id_does_not_invalidate_guild_presence(self) -> None:
+        initial = replace(human(), session_id="old", self_mute=True)
+        unmuted = replace(initial, self_mute=False)
+        reconnected = replace(unmuted, session_id="new")
+        others = (human(2), human(3, 20), human(4, 20))
+        timeline = build_timeline(
+            [
+                record(0, VoiceSnapshot((initial, *others))),
+                record(10, VoiceObservation(unmuted)),
+                record(20, VoiceObservation(reconnected)),
+                record(30, VoiceSnapshot((unmuted, *others))),
+                record(40, VoiceSnapshot((unmuted, *others))),
+                record(50, VoiceObservation(replace(reconnected, channel_id=None))),
+            ]
+        )
+        self.assertEqual(timeline.gaps, ())
+        self.assertEqual(timeline.coverage, (ObservationInterval(1, at(0), at(50)),))
+        for user_id in (1, 2, 3, 4):
+            with self.subTest(user_id=user_id):
+                result = presence(timeline, user_id)
+                self.assertEqual(result.total_seconds, 50)
+                self.assertEqual(result.group_seconds, 50)
+                self.assertEqual(result.session_count, 1)
+        self.assertTrue(
+            any(reconnected in interval.states for interval in timeline.rooms)
+        )
+
+    def test_session_id_difference_does_not_hide_real_snapshot_drift(self) -> None:
+        initial = replace(human(), session_id="old", self_mute=False)
+        for changed in (
+            replace(initial, channel_id=20),
+            replace(initial, self_mute=True),
+        ):
+            with self.subTest(changed=changed):
+                timeline = build_timeline(
+                    [
+                        record(0, VoiceSnapshot((initial,))),
+                        record(
+                            10, VoiceObservation(replace(initial, session_id="new"))
+                        ),
+                        record(20, VoiceSnapshot((changed,))),
+                        record(30, VoiceCheckpoint()),
+                    ]
+                )
+                self.assertEqual(
+                    [(gap.started_at, gap.ended_at) for gap in timeline.gaps],
+                    [(at(0), at(20))],
+                )
+                self.assertEqual(presence(timeline, 1).total_seconds, 10)
+
     def test_startup_join_move_flags_and_leave_preserve_states(self) -> None:
         initial = human()
         flags = replace(

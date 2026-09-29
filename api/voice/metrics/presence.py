@@ -13,7 +13,6 @@ from api.voice.timeline import RoomInterval, VoiceTimeline
 class _Visit:
     started_at: datetime
     ended_at: datetime
-    session_id: str | None
 
 
 def presence(
@@ -21,10 +20,10 @@ def presence(
 ) -> PresenceStat:
     """Measure a human's credited time; bot/unknown users never earn presence.
 
-    Visits merge adjacent intervals across flag changes and channel moves in a
-    guild, but split at a gap or changed Discord session ID. Query clipping can
-    truncate visits. Solo requires one known human and no unidentified occupant;
-    bots do not increase human group size.
+    Visits merge adjacent intervals across flag changes, channel moves and
+    transport session-ID changes in a guild. Unobserved or absent time splits
+    visits; query clipping can truncate them. Solo requires one known human and
+    no unidentified occupant; bots do not increase human group size.
     """
     rooms = tuple(
         room for room in observed_rooms(timeline, scope) if user_id in room.humans
@@ -37,7 +36,7 @@ def presence(
         and all(state.is_bot is not None for state in room.states)
     )
     group = sum(room.seconds for room in rooms if len(room.humans) >= 2)
-    durations = _visit_durations(rooms, user_id)
+    durations = _visit_durations(rooms)
     return PresenceStat(
         total,
         solo,
@@ -48,26 +47,15 @@ def presence(
     )
 
 
-def _visit_durations(rooms: tuple[RoomInterval, ...], user_id: int) -> list[float]:
+def _visit_durations(rooms: tuple[RoomInterval, ...]) -> list[float]:
     visits: list[_Visit] = []
     latest: dict[int, _Visit] = {}
     for room in rooms:
-        state = next(state for state in room.states if state.user_id == user_id)
         previous = latest.get(room.guild_id)
-        if (
-            previous is not None
-            and previous.ended_at == room.started_at
-            and (
-                previous.session_id is None
-                or state.session_id is None
-                or previous.session_id == state.session_id
-            )
-        ):
+        if previous is not None and previous.ended_at == room.started_at:
             previous.ended_at = room.ended_at
-            if state.session_id is not None:
-                previous.session_id = state.session_id
         else:
-            visit = _Visit(room.started_at, room.ended_at, state.session_id)
+            visit = _Visit(room.started_at, room.ended_at)
             visits.append(visit)
             latest[room.guild_id] = visit
     return [(visit.ended_at - visit.started_at).total_seconds() for visit in visits]

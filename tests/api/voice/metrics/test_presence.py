@@ -9,6 +9,26 @@ from tests.api.voice.examples import at, example, human, record
 
 
 class TestPresence(unittest.TestCase):
+    def test_transport_session_changes_preserve_a_contiguous_visit(self) -> None:
+        initial = replace(human(), session_id="a")
+        timeline = build_timeline(
+            [
+                record(0, VoiceSnapshot((initial,))),
+                record(10, VoiceObservation(replace(initial, session_id="b"))),
+                record(20, VoiceObservation(replace(initial, session_id=None))),
+                record(
+                    30,
+                    VoiceObservation(replace(initial, session_id="c", channel_id=20)),
+                ),
+                record(60, VoiceCheckpoint()),
+            ]
+        )
+        result = presence(timeline, 1)
+        self.assertEqual(result.total_seconds, 60)
+        self.assertEqual(result.session_count, 1)
+        self.assertEqual(result.average_session_seconds, 60)
+        self.assertEqual(result.median_session_seconds, 60)
+
     def test_hand_computable_minutes_and_sessions(self) -> None:
         timeline = example()
         a, b, c = (presence(timeline, user) for user in (1, 2, 3))
