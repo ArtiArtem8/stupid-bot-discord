@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 100 100"
+   role="img"
+   aria-hidden="true"
+   version="1.1"
+   id="svg4"
+   sodipodi:docname="emblem-winged-gem.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="namedview4"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:zoom="6.045763"
+     inkscape:cx="-8.6010649"
+     inkscape:cy="76.499856"
+     inkscape:window-width="2560"
+     inkscape:window-height="1417"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg4" />
+  <path
+     d="M 50 10 66 31 58 58 50 72 42 58 34 31 50 10 Z"
+     id="path1" />
+  <path
+     d="M 34 34 17 26 24 42 9 49 21 58 6 66 21 69.2 42 58 M 66 31 83 26 76 42 91 49 79 58 94 66 79.9 69.1 58 58"
+     id="path2"
+     sodipodi:nodetypes="cccccccccccccccc" />
+  <path
+     class="emblem-cut"
+     d="m 50 18 8 15 -8 27 -8 -27 z m -16 13 8 27 8 14 M 66 31 58 58 50 72"
+     id="path3"
+     style="stroke:#ca94ff;stroke-opacity:1"
+     sodipodi:nodetypes="ccccccccccc" />
+  <path
+     id="path4"
+     style="stroke:#ca94ff;stroke-opacity:1"
+     class="emblem-detail"
+     d="m 22 31 12 14 z m 56 0 -11 14 z M 18 50 34 50 Z m 64 0 L 67 50 Z m -49 6 -16 9 z m 33 0 16 9 z"
+     sodipodi:nodetypes="cccccccccccccccccc" />
+</svg>

@@ -1,0 +1,110 @@
+{
+  "version": "profile-motion-1",
+  "loop_ms": 4000,
+  "tiers": {
+    "starter": {
+      "stars": false,
+      "twinkle_cycles": 1,
+      "border_copies": 0,
+      "border_cycles": 1,
+      "border_length": 0.12,
+      "avatar_orbits": 0,
+      "emblem_orbits": 0,
+      "progress_packet": false,
+      "packet_cycles": 1,
+      "solar_rays": 0,
+      "prismatic": false
+    },
+    "uncommon": {
+      "stars": false,
+      "twinkle_cycles": 1,
+      "border_copies": 0,
+      "border_cycles": 1,
+      "border_length": 0.12,
+      "avatar_orbits": 0,
+      "emblem_orbits": 0,
+      "progress_packet": false,
+      "packet_cycles": 1,
+      "solar_rays": 0,
+      "prismatic": false
+    },
+    "rare": {
+      "stars": false,
+      "twinkle_cycles": 1,
+      "border_copies": 0,
+      "border_cycles": 1,
+      "border_length": 0.12,
+      "avatar_orbits": 0,
+      "emblem_orbits": 0,
+      "progress_packet": false,
+      "packet_cycles": 1,
+      "solar_rays": 0,
+      "prismatic": false
+    },
+    "epic": {
+      "stars": true,
+      "twinkle_cycles": 1,
+      "border_copies": 1,
+      "border_cycles": 1,
+      "border_length": 0.12,
+      "avatar_orbits": 0,
+      "emblem_orbits": 1,
+      "progress_packet": false,
+      "packet_cycles": 1,
+      "solar_rays": 0,
+      "prismatic": false
+    },
+    "mythic": {
+      "stars": true,
+      "twinkle_cycles": 2,
+      "border_copies": 1,
+      "border_cycles": 1,
+      "border_length": 0.12,
+      "avatar_orbits": 0,
+      "emblem_orbits": 1,
+      "progress_packet": true,
+      "packet_cycles": 1,
+      "solar_rays": 0,
+      "prismatic": false
+    },
+    "legendary": {
+      "stars": true,
+      "twinkle_cycles": 2,
+      "border_copies": 2,
+      "border_cycles": 1,
+      "border_length": 0.12,
+      "avatar_orbits": 0,
+      "emblem_orbits": 1,
+      "progress_packet": true,
+      "packet_cycles": 1,
+      "solar_rays": 0,
+      "prismatic": false
+    },
+    "ascendant": {
+      "stars": true,
+      "twinkle_cycles": 2,
+      "border_copies": 2,
+      "border_cycles": 1,
+      "border_length": 0.15,
+      "avatar_orbits": 1,
+      "emblem_orbits": 2,
+      "progress_packet": true,
+      "packet_cycles": 1,
+      "solar_rays": 12,
+      "prismatic": false
+    },
+    "transcendent": {
+      "stars": true,
+      "twinkle_cycles": 2,
+      "border_copies": 3,
+      "border_cycles": 1,
+      "border_length": 0.15,
+      "avatar_orbits": 2,
+      "emblem_orbits": 2,
+      "progress_packet": true,
+      "packet_cycles": 1,
+      "solar_rays": 0,
+      "prismatic": true
+    }
+  }
+}

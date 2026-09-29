@@ -2,6 +2,7 @@
 
 import unittest
 from datetime import UTC, datetime, timedelta
+from fractions import Fraction
 from zoneinfo import ZoneInfo
 
 from api.progression.appearance import LevelAppearancePolicy
@@ -90,6 +91,15 @@ class TestProfile(unittest.TestCase):
         self.assertEqual(
             profile.appearance, LevelAppearancePolicy().for_level(exact.level)
         )
+
+    def test_fractional_xp_survives_in_render_independent_model(self) -> None:
+        start = NOW - timedelta(seconds=1)
+        profile = build_profile(
+            timeline((room(start, NOW, (1, 2)),)), 1, 1, NOW, UTC, "UTC"
+        )
+        self.assertEqual(profile.total_xp, 0)
+        self.assertEqual(profile.exact_total_xp, Fraction(1, 3))
+        self.assertEqual(profile.exact_level_earned_xp, Fraction(1, 3))
 
     def test_partial_day_and_unknown_gap_break_moving_average(self) -> None:
         start = NOW - timedelta(days=14)

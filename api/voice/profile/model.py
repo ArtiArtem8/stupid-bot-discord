@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import date
+from fractions import Fraction
 
 from api.progression.appearance import LevelAppearance
 
@@ -50,3 +51,6 @@ class VoiceProfile:
     stats: VoiceProfileStats
     days: tuple[DailyActivityPoint, ...]
     timezone_label: str
+    exact_total_xp: Fraction
+    exact_level_earned_xp: Fraction
+    exact_xp_to_next_level: Fraction

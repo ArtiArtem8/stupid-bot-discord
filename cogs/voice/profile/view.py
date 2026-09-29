@@ -4,6 +4,9 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 import discord
+from discord import app_commands
+
+from framework.error_handler import handle_app_command_error
 
 
 class VoiceProfileView(discord.ui.View):
@@ -38,4 +41,9 @@ class VoiceProfileView(discord.ui.View):
             return
         async with self._render_lock:
             await interaction.response.defer()
-            await self._on_refresh(interaction)
+            try:
+                await self._on_refresh(interaction)
+            except Exception as error:
+                wrapped = app_commands.AppCommandError("Voice profile refresh failed")
+                wrapped.__cause__ = error
+                await handle_app_command_error(interaction, wrapped)

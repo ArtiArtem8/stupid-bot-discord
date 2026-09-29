@@ -1,0 +1,739 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="960"
+   height="480"
+   viewBox="0 0 960 480"
+   data-template-version="profile-card-1"
+   version="1.1"
+   id="svg7"
+   sodipodi:docname="profile.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:zoom="4"
+     inkscape:cx="858.25"
+     inkscape:cy="56.625"
+     inkscape:window-width="2560"
+     inkscape:window-height="1417"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="static-layer"
+     showguides="true">
+    <sodipodi:guide
+       position="960,480"
+       orientation="0.70710678,-0.70710678"
+       id="guide1"
+       inkscape:locked="false" />
+  </sodipodi:namedview>
+  <title
+     id="title1">Voice profile. Editable layout</title>
+  <desc
+     id="desc1">Move named groups, not their IDs. Placement and motion are separate. All tiers use this one document.</desc>
+  <defs
+     id="defs2">
+    <clipPath
+       id="clip-card">
+      <rect
+         id="clip-shape"
+         x="1"
+         y="1"
+         width="958"
+         height="478"
+         rx="28" />
+    </clipPath>
+    <clipPath
+       id="clip-avatar">
+      <circle
+         cx="52"
+         cy="52"
+         r="46"
+         id="circle1" />
+    </clipPath>
+    <clipPath
+       id="clip-guild">
+      <circle
+         cx="13"
+         cy="13"
+         r="13"
+         id="circle2" />
+    </clipPath>
+    <symbol
+       id="star-shape"
+       viewBox="0 0 24 24">
+      <path
+         d="M12 0 14.2 9.8 24 12 14.2 14.2 12 24 9.8 14.2 0 12 9.8 9.8Z"
+         id="path2" />
+    </symbol>
+  </defs>
+  <g
+     id="static-layer"
+     inkscape:groupmode="layer"
+     inkscape:label="Card · data and layout">
+    <rect
+       id="card-shell"
+       x="1"
+       y="1"
+       width="958"
+       height="478"
+       rx="28"
+       fill="#14131e"
+       data-fill="surface"
+       stroke="#403047"
+       data-stroke="border" />
+    <g
+       id="avatar-placement"
+       transform="translate(36, 32)">
+      <circle
+         id="avatar-outline"
+         cx="52"
+         cy="52"
+         r="51"
+         fill="none"
+         stroke="#f45cd6"
+         stroke-width="2.5"
+         data-stroke="bright" />
+      <circle
+         cx="52"
+         cy="52"
+         r="46"
+         fill="#28232f"
+         data-fill="panel"
+         id="circle3" />
+      <image
+         id="user-avatar"
+         x="6"
+         y="6"
+         width="92"
+         height="92"
+         clip-path="url(#clip-avatar)"
+         preserveAspectRatio="xMidYMid slice" />
+      <text
+         id="avatar-fallback"
+         x="52"
+         y="63"
+         text-anchor="middle"
+         font-family="Inter"
+         font-weight="600"
+         font-size="28"
+         fill="#f4f6fa"
+         data-fill="text">SL</text>
+    </g>
+    <g
+       id="identity-placement"
+       transform="translate(164, 0)">
+      <text
+         id="display-name"
+         x="0"
+         y="75"
+         font-family="Inter"
+         font-size="38"
+         font-weight="700"
+         fill="#f4f6fa"
+         data-fill="text"
+         data-width="430"
+         data-min-size="32">Stupid Listener</text>
+      <g
+         id="guild-placement"
+         transform="translate(0, 98)">
+        <circle
+           cx="13"
+           cy="13"
+           r="13"
+           fill="#28232f"
+           data-fill="panel"
+           id="circle4" />
+        <image
+           id="guild-avatar"
+           x="0"
+           y="0"
+           width="26"
+           height="26"
+           clip-path="url(#clip-guild)"
+           preserveAspectRatio="xMidYMid slice" />
+        <path
+           id="guild-fallback"
+           d="M13 4 21 9v8l-8 5-8-5V9Z"
+           fill="#f45cd6"
+           data-fill="bright" />
+        <text
+           id="guild-name"
+           x="37"
+           y="22"
+           font-family="Inter"
+           font-size="25"
+           font-weight="500"
+           fill="#bdacc9"
+           data-fill="muted"
+           data-width="387"
+           data-min-size="23">Stupid Test Server</text>
+      </g>
+    </g>
+    <g
+       id="rank-placement"
+       transform="translate(644, 0)">
+      <text
+         id="tier-name"
+         x="0"
+         y="53"
+         font-family="Inter"
+         font-size="23"
+         font-weight="650"
+         letter-spacing="0.8"
+         fill="#f45cd6"
+         data-fill="bright"
+         data-width="220"
+         data-min-size="21">MYTHIC</text>
+      <text
+         id="level-prefix"
+         x="0"
+         y="112"
+         font-family="Inter"
+         font-size="26"
+         font-weight="650"
+         fill="#bdacc9"
+         data-fill="muted">LVL</text>
+      <text
+         id="level-value"
+         x="60"
+         y="114"
+         font-family="Inter"
+         font-size="62"
+         font-weight="750"
+         letter-spacing="-2"
+         fill="#f4f6fa"
+         data-fill="text"
+         data-width="130"
+         data-min-size="26">41</text>
+      <text
+         id="total-xp"
+         x="0"
+         y="142"
+         font-family="Inter"
+         font-size="20"
+         font-weight="550"
+         fill="#bdacc9"
+         data-fill="muted"
+         data-width="220"
+         data-min-size="17">415,795 XP</text>
+    </g>
+    <g
+       id="emblem-placement"
+       transform="translate(829,35)">
+      <rect
+         id="emblem-area"
+         x="0"
+         y="0"
+         width="96"
+         height="96"
+         fill="none" />
+      <g
+         id="emblem-art"
+         transform="scale(0.96)"
+         fill="#b946b3"
+         data-fill="accent">
+        <path
+           d="M 50,9 62,38 50,72 38,38 Z M 36,25 48,53 35,82 17,45 Z M 64,25 52,53 65,82 83,45 Z M 29,52 50,88 71,52 66,87 H 34 Z"
+           id="path4" />
+      </g>
+    </g>
+    <path
+       d="M32 163H928"
+       stroke="#403047"
+       data-stroke="border"
+       id="path5" />
+    <g
+       id="progress-placement">
+      <text
+         x="32"
+         y="196"
+         font-family="Inter"
+         font-size="22"
+         font-weight="600"
+         fill="#bdacc9"
+         data-fill="muted"
+         id="text5">LEVEL PROGRESS</text>
+      <text
+         id="progress-label"
+         x="928"
+         y="196"
+         text-anchor="end"
+         font-family="Inter"
+         font-size="21"
+         font-weight="600"
+         fill="#f4f6fa"
+         data-fill="text"
+         data-width="450"
+         data-min-size="18">15,795 / 20,250 XP</text>
+      <rect
+         id="progress-track"
+         x="32"
+         y="216"
+         width="896"
+         height="16"
+         rx="8"
+         fill="#282632"
+         data-fill="track" />
+      <rect
+         id="progress-fill"
+         x="32"
+         y="216"
+         width="699"
+         height="16"
+         rx="8"
+         fill="#b946b3"
+         data-fill="accent" />
+    </g>
+    <g
+       id="voice-placement"
+       transform="translate(32, 262)">
+      <rect
+         width="548"
+         height="146"
+         rx="18"
+         fill="#201726"
+         data-fill="panel"
+         stroke="#403047"
+         data-stroke="border"
+         id="rect5" />
+      <g
+         id="voice-icon"
+         transform="translate(23, 23)"
+         fill="none"
+         stroke="#f45cd6"
+         data-stroke="bright"
+         stroke-width="2.4"
+         stroke-linecap="round"
+         stroke-linejoin="round">
+        <rect
+           x="9"
+           y="1"
+           width="12"
+           height="20"
+           rx="6"
+           id="rect6" />
+        <path
+           d="M4 15a11 11 0 0 0 22 0M15 26v7m-6 0h12"
+           id="path6" />
+      </g>
+      <text
+         x="71"
+         y="48"
+         font-family="Inter"
+         font-size="24"
+         font-weight="600"
+         fill="#bdacc9"
+         data-fill="muted"
+         id="text6">VOICE TIME</text>
+      <text
+         id="voice-value"
+         x="23"
+         y="117"
+         font-family="Inter"
+         font-size="62"
+         font-weight="700"
+         letter-spacing="-1.5"
+         fill="#f4f6fa"
+         data-fill="text"
+         data-width="502"
+         data-min-size="32">128h 42m</text>
+    </g>
+    <g
+       id="sessions-placement"
+       transform="translate(596, 262)">
+      <rect
+         width="332"
+         height="146"
+         rx="18"
+         fill="#201726"
+         data-fill="panel"
+         stroke="#403047"
+         data-stroke="border"
+         id="rect7" />
+      <g
+         transform="translate(23, 23)"
+         fill="none"
+         stroke="#f45cd6"
+         data-stroke="bright"
+         stroke-width="2.4"
+         stroke-linecap="round"
+         id="g7">
+        <path
+           d="m12 2-5 29m17-29-5 29M2 12h29M0 23h29"
+           id="path7" />
+      </g>
+      <text
+         x="71"
+         y="48"
+         font-family="Inter"
+         font-size="24"
+         font-weight="600"
+         fill="#bdacc9"
+         data-fill="muted"
+         id="text7">SESSIONS</text>
+      <text
+         id="sessions-value"
+         x="23"
+         y="117"
+         font-family="Inter"
+         font-size="62"
+         font-weight="700"
+         letter-spacing="-1.5"
+         fill="#f4f6fa"
+         data-fill="text"
+         data-width="286"
+         data-min-size="32">41</text>
+    </g>
+    <text
+       id="scope-label"
+       x="32"
+       y="448"
+       font-family="Inter"
+       font-size="20"
+       font-weight="500"
+       fill="#bdacc9"
+       data-fill="muted">On this server · observed time</text>
+    <text
+       id="timezone-label"
+       x="928"
+       y="448"
+       text-anchor="end"
+       font-family="Inter"
+       font-size="20"
+       font-weight="500"
+       fill="#bdacc9"
+       data-fill="muted"
+       data-width="310"
+       data-min-size="18">UTC</text>
+  </g>
+  <g
+     id="effects-layer"
+     inkscape:groupmode="layer"
+     inkscape:label="Effects · editable stars"
+     clip-path="url(#clip-card)">
+    <use
+       id="star-00"
+       xlink:href="#star-shape"
+       x="39"
+       y="242"
+       width="14"
+       height="14"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="epic"
+       data-offset="0.0000" />
+    <use
+       id="star-01"
+       xlink:href="#star-shape"
+       x="920"
+       y="244"
+       width="13"
+       height="13"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="epic"
+       data-offset="0.1730" />
+    <use
+       id="star-02"
+       xlink:href="#star-shape"
+       x="618"
+       y="120"
+       width="10"
+       height="10"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="mythic"
+       data-offset="0.3460" />
+    <use
+       id="star-03"
+       xlink:href="#star-shape"
+       x="467"
+       y="247"
+       width="9"
+       height="9"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="mythic"
+       data-offset="0.5190" />
+    <use
+       id="star-04"
+       xlink:href="#star-shape"
+       x="776"
+       y="420"
+       width="10"
+       height="10"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="mythic"
+       data-offset="0.6920" />
+    <use
+       id="star-05"
+       xlink:href="#star-shape"
+       x="561"
+       y="446"
+       width="9"
+       height="9"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="mythic"
+       data-offset="0.8650" />
+    <use
+       id="star-06"
+       xlink:href="#star-shape"
+       x="17"
+       y="305"
+       width="10"
+       height="10"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="mythic"
+       data-offset="0.0380" />
+    <use
+       id="star-07"
+       xlink:href="#star-shape"
+       x="447"
+       y="143"
+       width="7"
+       height="7"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="mythic"
+       data-offset="0.2110" />
+    <use
+       id="star-08"
+       xlink:href="#star-shape"
+       x="908"
+       y="174"
+       width="8"
+       height="8"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="legendary"
+       data-offset="0.3840" />
+    <use
+       id="star-09"
+       xlink:href="#star-shape"
+       x="250"
+       y="16"
+       width="10"
+       height="10"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="legendary"
+       data-offset="0.5570" />
+    <use
+       id="star-10"
+       xlink:href="#star-shape"
+       x="643"
+       y="21"
+       width="9"
+       height="9"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="legendary"
+       data-offset="0.7300" />
+    <use
+       id="star-11"
+       xlink:href="#star-shape"
+       x="371"
+       y="426"
+       width="12"
+       height="12"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="legendary"
+       data-offset="0.9030" />
+    <use
+       id="star-12"
+       xlink:href="#star-shape"
+       x="742"
+       y="248"
+       width="9"
+       height="9"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="ascendant"
+       data-offset="0.0760" />
+    <use
+       id="star-13"
+       xlink:href="#star-shape"
+       x="602"
+       y="175"
+       width="9"
+       height="9"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="ascendant"
+       data-offset="0.2490" />
+    <use
+       id="star-14"
+       xlink:href="#star-shape"
+       x="873"
+       y="18"
+       width="9"
+       height="9"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="ascendant"
+       data-offset="0.4220" />
+    <use
+       id="star-15"
+       xlink:href="#star-shape"
+       x="182"
+       y="427"
+       width="8"
+       height="8"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="ascendant"
+       data-offset="0.5950" />
+    <use
+       id="star-16"
+       xlink:href="#star-shape"
+       x="642"
+       y="455"
+       width="8"
+       height="8"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="ascendant"
+       data-offset="0.7680" />
+    <use
+       id="star-17"
+       xlink:href="#star-shape"
+       x="152"
+       y="149"
+       width="8"
+       height="8"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="ascendant"
+       data-offset="0.9410" />
+    <use
+       id="star-18"
+       xlink:href="#star-shape"
+       x="510"
+       y="20"
+       width="12"
+       height="12"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="transcendent"
+       data-offset="0.1140" />
+    <use
+       id="star-19"
+       xlink:href="#star-shape"
+       x="549"
+       y="124"
+       width="11"
+       height="11"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="transcendent"
+       data-offset="0.2870" />
+    <use
+       id="star-20"
+       xlink:href="#star-shape"
+       x="897"
+       y="425"
+       width="10"
+       height="10"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="transcendent"
+       data-offset="0.4600" />
+    <use
+       id="star-21"
+       xlink:href="#star-shape"
+       x="477"
+       y="458"
+       width="8"
+       height="8"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="transcendent"
+       data-offset="0.6330" />
+    <use
+       id="star-22"
+       xlink:href="#star-shape"
+       x="221"
+       y="246"
+       width="9"
+       height="9"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="transcendent"
+       data-offset="0.8060" />
+    <use
+       id="star-23"
+       xlink:href="#star-shape"
+       x="657"
+       y="238"
+       width="8"
+       height="8"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="transcendent"
+       data-offset="0.9790" />
+    <use
+       id="star-24"
+       xlink:href="#star-shape"
+       x="617"
+       y="396"
+       width="8"
+       height="8"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="transcendent"
+       data-offset="0.1520" />
+    <use
+       id="star-25"
+       xlink:href="#star-shape"
+       x="944"
+       y="322"
+       width="9"
+       height="9"
+       fill="#f45cd6"
+       data-fill="bright"
+       data-fx="star"
+       data-min-tier="transcendent"
+       data-offset="0.3250" />
+  </g>
+</svg>
