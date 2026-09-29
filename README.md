@@ -75,7 +75,7 @@ Global configuration is loaded in `config.py`.
 
 - Environment variables cover the Discord token, optional owner ID, optional WolframAlpha ID, and Lavalink connection values.
 - `VOICE_PROBE_ENABLED=true` enables voice collection (`cogs/voice/collector_cog.py`). New raw facts are written under `data/voice_probe/v2/`; existing legacy journals remain read-only. Finished v2 days are compressed and retained indefinitely by default; pruning requires an explicit retention setting.
-- `/voice-profile private:false` shows the invoking user's server-local lifetime XP, level and voice statistics with a 14-day activity chart. Set `private:true` to hide the response. Starter through Rare use PNG; Epic and higher use GIF when rendering fits the size budget. `VOICE_PROFILE_TIMEZONE` sets the chart timezone (default `UTC`).
+- `/voice-profile private:false` shows your server-local voice XP, level and statistics. `private:true` makes the card private; its Refresh button is owner-only. Starter through Rare use PNG; Epic and higher use four-second lossless animated WebP, with PNG fallback. The renderer requires **Inkscape** on the bot host and the bundled Inter fonts. `VOICE_PROFILE_TIMEZONE` defaults to `UTC`. See [profile card setup](docs/voice/profile-card.md).
 - Runtime directories are `data/`, `backups/`, and `temp/`.
 - Logging is configured in `utils/logging_setup.py`.
 - Static strings and small resource lists live in `resources.py`.
