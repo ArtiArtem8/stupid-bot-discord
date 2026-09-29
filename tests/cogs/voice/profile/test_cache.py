@@ -3,16 +3,13 @@
 import asyncio
 import unittest
 from dataclasses import replace
-from datetime import date
 from unittest.mock import AsyncMock, patch
 
 from cogs.voice.profile import cache as cache_module
 from cogs.voice.profile.cache import MediaKey, ProfileMediaCache
 from cogs.voice.profile.media import ProfileMedia, RenderBusyError
 
-KEY = MediaKey(
-    1, 2, 0, 3, 4, date(2026, 9, 29), "UTC", "Name", "Guild", "a", None, "v1"
-)
+KEY = MediaKey(1, 2, 0, 3, "UTC", "Name", "Guild", "a", None, "v1")
 
 
 class TestMediaCache(unittest.IsolatedAsyncioTestCase):

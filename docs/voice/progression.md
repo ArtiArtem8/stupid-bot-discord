@@ -173,9 +173,9 @@ flags; they do not affect XP and levels. A constructor validates start at 1,
 RGB range and tier order. The appearance policy has no graphics dependency.
 
 `/voice-profile private:false` shows the invoking user's server-local lifetime
-XP, level, voice stats and a 14-day activity chart. `private:true` hides the
+XP, level, total voice time and session count. `private:true` hides the
 response from other members. Starter, Uncommon and Rare use PNG; Epic and higher
-use a restrained animated GIF when the render budget permits, with PNG fallback.
+use lossless animated WebP, with PNG fallback.
 The card labels its level and tier as well as showing tier color.
 
 ## Balance revisions and deferred work

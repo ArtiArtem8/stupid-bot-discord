@@ -3,7 +3,6 @@
 import asyncio
 import unittest
 from dataclasses import replace
-from datetime import UTC, datetime
 from io import BytesIO
 from threading import Event
 from unittest.mock import MagicMock, patch
@@ -27,8 +26,6 @@ def profile_at(level: int = 1) -> VoiceProfile:
         VoiceTimeline((), (), ()),
         10,
         42,
-        datetime(2026, 9, 29, tzinfo=UTC),
-        UTC,
         "UTC",
     )
     return replace(

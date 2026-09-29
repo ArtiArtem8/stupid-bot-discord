@@ -9,7 +9,6 @@ import asyncio
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import date
 from time import monotonic
 
 from cogs.voice.profile.media import ProfileMedia, RenderBusyError
@@ -23,8 +22,6 @@ class MediaKey:
     user_id: int
     epoch: int
     generation: int
-    time_bucket: int
-    local_day: date
     timezone: str
     display_name: str
     guild_name: str

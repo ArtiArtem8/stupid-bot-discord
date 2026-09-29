@@ -358,11 +358,11 @@ def _bind_metrics(
         raise ValueError("Profile progress must be finite and in [0, 1]")
     if (
         profile.level < 1
-        or profile.stats.total_voice_seconds < 0
-        or profile.stats.session_count < 0
+        or profile.total_voice_seconds < 0
+        or profile.session_count < 0
     ):
         raise ValueError("Negative profile metrics are not valid")
-    minutes = int(profile.stats.total_voice_seconds // 60)
+    minutes = int(profile.total_voice_seconds // 60)
     values = {
         "display-name": safe_label(identity.display_name),
         "guild-name": safe_label(identity.guild_name),
@@ -373,7 +373,7 @@ def _bind_metrics(
             f"{profile.level_earned_xp:,} / {profile.level_required_xp:,} XP"
         ),
         "voice-value": f"{minutes // 60:,}h {minutes % 60:02}m",
-        "sessions-value": f"{profile.stats.session_count:,}",
+        "sessions-value": f"{profile.session_count:,}",
         "timezone-label": safe_label(profile.timezone_label, limit=64),
     }
     for key, value in values.items():

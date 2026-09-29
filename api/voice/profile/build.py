@@ -1,14 +1,11 @@
-"""Compose server-local lifetime and recent voice projections for one user."""
-
-from datetime import datetime, timedelta, tzinfo
+"""Project the guild-local lifetime values displayed by the voice card."""
 
 from api.progression.appearance import LevelAppearancePolicy
 from api.progression.levels import LevelPolicy
+from api.voice.metrics.presence import presence
 from api.voice.metrics.xp import VoiceXpPolicy
-from api.voice.profile.chart import chart_days
-from api.voice.profile.model import VoiceProfile, VoiceProfileStats
-from api.voice.queries import user_summary
-from api.voice.scope import TimeRange, VoiceScope
+from api.voice.profile.model import VoiceProfile
+from api.voice.scope import VoiceScope
 from api.voice.timeline import VoiceTimeline
 
 
@@ -16,60 +13,23 @@ def build_profile(
     timeline: VoiceTimeline,
     user_id: int,
     guild_id: int,
-    now: datetime,
-    timezone: tzinfo,
     timezone_label: str,
 ) -> VoiceProfile:
-    """Build display numbers while preserving exact XP for level selection."""
+    """Calculate presence and XP; preserve exact XP through level selection."""
     scope = VoiceScope(guild_id=guild_id)
-    xp_policy = VoiceXpPolicy()
-    summary = user_summary(
-        timeline, user_id, scope, xp_policy=xp_policy, timezone=timezone
-    )
-    progress = LevelPolicy().progress(summary.xp)
-    appearance = LevelAppearancePolicy().for_level(progress.level)
-    companion = min(
-        summary.companions,
-        key=lambda item: (-item.shared_seconds, item.user_id),
-        default=None,
-    )
-    peak = (
-        min(range(24), key=lambda hour: (-summary.activity.hourly_seconds[hour], hour))
-        if any(summary.activity.hourly_seconds)
-        else None
-    )
-    last_week = VoiceScope(
-        guild_id=guild_id,
-        time_range=TimeRange(now - timedelta(days=7), now),
-    )
-    stats = VoiceProfileStats(
-        total_voice_seconds=summary.presence.total_seconds,
-        session_count=summary.presence.session_count,
-        average_session_seconds=summary.presence.average_session_seconds,
-        social_ratio=(
-            summary.presence.group_seconds / summary.presence.total_seconds
-            if summary.presence.total_seconds
-            else 0.0
-        ),
-        top_companion_id=companion.user_id if companion else None,
-        top_companion_seconds=companion.shared_seconds if companion else 0.0,
-        peak_hour=peak,
-        xp_last_7_days=int(xp_policy.calculate(timeline, user_id, last_week)),
-    )
+    observed = presence(timeline, user_id, scope)
+    xp = VoiceXpPolicy().calculate(timeline, user_id, scope)
+    progress = LevelPolicy().progress(xp)
     return VoiceProfile(
         guild_id=guild_id,
         user_id=user_id,
         level=progress.level,
-        total_xp=int(summary.xp),
+        total_xp=int(xp),
         level_earned_xp=int(progress.earned),
         level_required_xp=progress.required,
-        xp_to_next_level=int(progress.remaining),
         progress_ratio=float(progress.ratio),
-        appearance=appearance,
-        stats=stats,
-        days=chart_days(timeline, user_id, guild_id, now, timezone),
+        appearance=LevelAppearancePolicy().for_level(progress.level),
+        total_voice_seconds=observed.total_seconds,
+        session_count=observed.session_count,
         timezone_label=timezone_label,
-        exact_total_xp=progress.total_xp,
-        exact_level_earned_xp=progress.earned,
-        exact_xp_to_next_level=progress.remaining,
     )

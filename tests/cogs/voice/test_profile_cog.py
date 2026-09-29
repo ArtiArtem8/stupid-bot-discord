@@ -4,7 +4,6 @@ import asyncio
 import sys
 import unittest
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -84,7 +83,6 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                         VoiceTimeline((), (), ()),
                         0,
                         0,
-                        datetime(2026, 9, 29, tzinfo=UTC),
                     )
                 ),
             ),
@@ -110,18 +108,20 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
     async def test_timeline_cache_reuses_and_invalidates_on_persisted_count(
         self,
     ) -> None:
-        from cogs.voice.collector_cog import VoiceCollectorCog
-
         with TemporaryDirectory() as directory:
             bot = MagicMock()
             journal = VoiceJournal(Path(directory))
-            bot.get_cog.return_value = VoiceCollectorCog(bot, journal=journal)
+            bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
+                bot, journal=journal
+            )
             cog = VoiceProfileCog(bot)
-            with patch.object(journal, "read_all", wraps=journal.read_all) as reading:
+            with patch.object(
+                journal, "snapshot_for_guild", wraps=journal.snapshot_for_guild
+            ) as reading:
                 empty = await cog._timeline(1)
                 self.assertEqual(empty.timeline.rooms, ())
                 await cog._timeline(1)
-                self.assertEqual(reading.await_count, 2)
+                self.assertEqual(reading.await_count, 1)
                 journal.start()
                 journal.submit(record(0, VoiceSnapshot((human(),))))
                 journal.submit(record(3600, VoiceCheckpoint()))
@@ -129,7 +129,31 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 updated = await cog._timeline(1)
                 self.assertEqual(len(updated.timeline.rooms), 1)
                 await cog._timeline(1)
+                self.assertEqual(reading.await_count, 2)
+
+    async def test_timeline_cache_evicts_least_recent_guild(self) -> None:
+        with TemporaryDirectory() as directory:
+            bot = MagicMock()
+            journal = VoiceJournal(Path(directory))
+            bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
+                bot, journal=journal
+            )
+            cog = VoiceProfileCog(bot)
+            with (
+                patch.object(cog_module, "_TIMELINE_CACHE_ENTRIES", 2),
+                patch.object(
+                    journal, "snapshot_for_guild", wraps=journal.snapshot_for_guild
+                ) as reading,
+            ):
+                await cog._timeline(1)
+                await cog._timeline(2)
+                await cog._timeline(1)
+                await cog._timeline(3)
+                await cog._timeline(1)
+                self.assertEqual(reading.await_count, 3)
+                await cog._timeline(2)
                 self.assertEqual(reading.await_count, 4)
+                self.assertEqual(len(cog._timeline_cache), 2)
 
     async def test_guild_only_failure_is_ephemeral_without_defer(self) -> None:
         bot = MagicMock()
@@ -257,9 +281,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         item.guild.icon = None
         avatar = item.user.display_avatar.with_format.return_value
         avatar.read = AsyncMock(return_value=b"avatar")
-        snapshot = ProfileSnapshot(
-            VoiceTimeline((), (), ()), 0, 0, datetime(2026, 9, 29, tzinfo=UTC)
-        )
+        snapshot = ProfileSnapshot(VoiceTimeline((), (), ()), 0, 0)
         with (
             patch.object(cog, "_timeline", AsyncMock(return_value=snapshot)),
             patch.object(
@@ -283,16 +305,18 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         await cog.cog_unload()
 
     async def test_collector_replacement_changes_snapshot_epoch(self) -> None:
-        from cogs.voice.collector_cog import VoiceCollectorCog
-
         with TemporaryDirectory() as directory:
             bot = MagicMock()
             old = VoiceJournal(Path(directory) / "old")
             new = VoiceJournal(Path(directory) / "new")
             cog = VoiceProfileCog(bot)
-            bot.get_cog.return_value = VoiceCollectorCog(bot, journal=old)
+            bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
+                bot, journal=old
+            )
             first = await cog._timeline(42)
-            bot.get_cog.return_value = VoiceCollectorCog(bot, journal=new)
+            bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
+                bot, journal=new
+            )
             second = await cog._timeline(42)
             self.assertNotEqual(first.epoch, second.epoch)
             self.assertEqual(first.generation, second.generation)

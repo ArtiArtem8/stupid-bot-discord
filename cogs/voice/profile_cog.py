@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import OrderedDict
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from io import BytesIO
 from typing import override
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -30,19 +30,18 @@ from framework.feedback_ui import FeedbackType, FeedbackUI
 from repositories.voice_journal import VoiceJournal
 
 logger = logging.getLogger(__name__)
-_CACHE_SECONDS = 300
+_TIMELINE_CACHE_ENTRIES = 4
 _DATA_TIMEOUT = 10
 _ASSET_TIMEOUT = 5
 
 
 @dataclass(frozen=True, slots=True)
 class ProfileSnapshot:
-    """An immutable timeline paired with its owner, persisted generation and clock."""
+    """An immutable timeline paired with its owner and persisted generation."""
 
     timeline: VoiceTimeline
     epoch: int
     generation: int
-    as_of: datetime
 
 
 class VoiceProfileCog(commands.Cog):
@@ -50,7 +49,9 @@ class VoiceProfileCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self._timeline_cache: dict[int, tuple[int, VoiceTimeline]] = {}
+        self._timeline_cache: OrderedDict[int, tuple[int, VoiceTimeline]] = (
+            OrderedDict()
+        )
         self._cache_lock = asyncio.Lock()
         self._journal_owner: VoiceJournal | None = None
         self._epoch = 0
@@ -147,13 +148,11 @@ class VoiceProfileCog(commands.Cog):
 
     async def _timeline(self, guild_id: int) -> ProfileSnapshot:
         async with self._cache_lock:
-            # Resolve the current class after waiting; reload replaces its module.
-            from cogs.voice.collector_cog import VoiceCollectorCog
-
             collector = self.bot.get_cog("VoiceCollectorCog")
-            if not isinstance(collector, VoiceCollectorCog):
+            # Extension reload replaces the Cog class, but not the journal type.
+            journal: object = getattr(collector, "journal", None)
+            if not isinstance(journal, VoiceJournal):
                 raise RuntimeError("Voice collector is unavailable")
-            journal = collector.journal
             if self._journal_owner is not journal:
                 self._timeline_cache.clear()
                 self._journal_owner = journal
@@ -164,26 +163,19 @@ class VoiceProfileCog(commands.Cog):
     async def _read_snapshot(
         self, journal: VoiceJournal, guild_id: int
     ) -> ProfileSnapshot:
-        # Writes between the two file reads would mix generations. Retry until
-        # both reads observe one persisted generation; the caller bounds time.
-        while True:
-            generation = journal.counts.persisted
-            cached = self._timeline_cache.get(guild_id)
-            if cached is not None and cached[0] == generation:
-                return ProfileSnapshot(
-                    cached[1], self._epoch, generation, datetime.now(UTC)
-                )
-            guild_records, session_records = await asyncio.gather(
-                journal.read_all(guild_id), journal.read_all(None)
-            )
-            as_of = datetime.now(UTC)
-            if journal.counts.persisted != generation:
-                continue
-            timeline = await asyncio.to_thread(
-                build_timeline, (*guild_records, *session_records)
-            )
-            self._timeline_cache[guild_id] = (generation, timeline)
-            return ProfileSnapshot(timeline, self._epoch, generation, as_of)
+        cached = self._timeline_cache.get(guild_id)
+        if cached is not None and cached[0] == journal.counts.persisted:
+            self._timeline_cache.move_to_end(guild_id)
+            return ProfileSnapshot(cached[1], self._epoch, cached[0])
+        snapshot = await journal.snapshot_for_guild(guild_id)
+        timeline = await asyncio.to_thread(
+            build_timeline, (*snapshot.guild_records, *snapshot.session_records)
+        )
+        self._timeline_cache[guild_id] = (snapshot.generation, timeline)
+        self._timeline_cache.move_to_end(guild_id)
+        while len(self._timeline_cache) > _TIMELINE_CACHE_ENTRIES:
+            self._timeline_cache.popitem(last=False)
+        return ProfileSnapshot(timeline, self._epoch, snapshot.generation)
 
     async def _attachment(
         self,
@@ -195,13 +187,12 @@ class VoiceProfileCog(commands.Cog):
             raise RuntimeError("Profile renderer is unavailable")
         timezone_name = config.VOICE_PROFILE_TIMEZONE
         try:
-            timezone = ZoneInfo(timezone_name)
+            _ = ZoneInfo(timezone_name)
         except (ZoneInfoNotFoundError, ValueError):
             logger.warning(
                 "Invalid voice profile timezone %s; using UTC", timezone_name
             )
             timezone_name = "UTC"
-            timezone = ZoneInfo("UTC")
         snapshot = await asyncio.wait_for(self._timeline(guild.id), _DATA_TIMEOUT)
         avatar_asset = user.display_avatar.with_format(
             "gif" if user.display_avatar.is_animated() else "png"
@@ -213,8 +204,6 @@ class VoiceProfileCog(commands.Cog):
             user.id,
             snapshot.epoch,
             snapshot.generation,
-            int(snapshot.as_of.timestamp() // _CACHE_SECONDS),
-            snapshot.as_of.astimezone(timezone).date(),
             timezone_name,
             display_name,
             guild_name,
@@ -230,8 +219,6 @@ class VoiceProfileCog(commands.Cog):
                     snapshot.timeline,
                     key.user_id,
                     key.guild_id,
-                    snapshot.as_of,
-                    timezone,
                     timezone_name,
                 ),
                 _DATA_TIMEOUT,

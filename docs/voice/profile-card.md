@@ -24,7 +24,7 @@ disable system fallback. No FFmpeg or gifsicle is needed for profile cards.
 | `INKSCAPE_BIN` | Optional executable path; otherwise PATH and conventional Windows installation directories are checked. |
 | `PROFILE_FONT_DIR` | Optional directory containing all three Inter fonts; defaults to the repository's `resources/fonts/`, independently of cwd. |
 | `PROFILE_CACHE_DIR` | Optional writable cache root; `fontconfig/` is created below it. Defaults to the service user's local application cache under `stupid-bot-discord/`. |
-| `VOICE_PROFILE_TIMEZONE` | Profile time window timezone, default `UTC`; invalid names fall back to UTC. |
+| `VOICE_PROFILE_TIMEZONE` | Visible timezone label, default `UTC`; invalid names fall back to UTC. |
 
 The service account must be able to launch its own Inkscape child, write temporary
 files, and write the persistent Fontconfig cache. Writable cache is separate from
@@ -35,7 +35,7 @@ the log. Reload the Cog after correcting configuration.
 ## Data and ownership
 
 ```text
-VoiceCollectorCog.journal -> _timeline() -> build_profile()
+VoiceCollectorCog.journal.snapshot_for_guild() -> _timeline() -> build_profile()
 Discord member/assets -> CardIdentity
 VoiceProfileCog -> ProfileMediaCache -> ProfileMediaRenderer
                                       -> SvgProfileRenderer -> NativeRasterizer
@@ -43,9 +43,15 @@ VoiceProfileCog -> ProfileMediaCache -> ProfileMediaRenderer
 ```
 
 The existing voice/progression policies remain authoritative. Timeline reads are
-paired with journal owner epoch, persisted generation and `as_of`; a write between
-file reads causes a retry. Domain calculations run off the event loop. Renderer
-inputs contain typed profile values and image bytes, never Discord objects.
+paired with journal owner epoch and persisted generation. The journal reads guild
+and shared session history under one file lock; the Cog never retries full reads
+because another batch arrived. The timeline LRU retains at most four guilds.
+A miss still reads full history, and the generation remains journal-wide: writes
+in another guild can invalidate an entry. Per-guild revisions and incremental
+history reads are deferred. The entry limit does not bound one guild's history.
+Domain calculations run off the event loop and compute only lifetime presence
+and XP for the card. Renderer inputs contain typed profile values and image bytes,
+never Discord objects.
 
 One Cog owns one cache and one renderer. Initialization runs during Cog load, off
 the event loop. One persistent shell rasterizes the base and effects layers;
@@ -65,6 +71,10 @@ The approved layout is 960×480 for every tier:
 - Animation encoding failure or oversized WebP: the already prepared PNG.
   Failure to prepare the base is an error, not an animation fallback.
 
+The 80 RGBA frames require about 140.6 MiB of raw pixels at 960×480, plus Pillow
+and encoder overhead. The 42-million-pixel guard permits about 160 MiB of raw
+RGBA pixels; it is not a peak RSS limit.
+
 The internal attachment limit is 5 MiB. Both initial delivery and Refresh use the
 smaller of that limit and Discord's current `interaction.filesize_limit`, falling
 back to the existing still if it fits. Every send creates a fresh `discord.File`.
@@ -80,9 +90,9 @@ The cache admits at most four distinct jobs and executes one build at a time.
 Matching keys share one owned task. Excess work gets a Russian busy response;
 there is no cross-user latest-request-wins behavior. Cached immutable bytes use a
 300-second TTL and LRU bounds of 32 entries and 64 MiB, including PNG fallbacks.
-Keys include guild/user, journal epoch/generation, five-minute time bucket and
-local day/timezone, visible names and asset keys, and artwork/font/runtime
-revision. Old-epoch/generation results cannot publish over current results.
+Keys include guild/user, journal epoch/generation, the visible timezone label,
+names and asset keys, and artwork/font/runtime revision. Old-epoch/generation
+results cannot publish over current results.
 
 ## Updating approved artwork
 

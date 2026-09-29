@@ -1,10 +1,11 @@
-"""One native renderer for both the editor preview and delivery frames."""
+"""Persistent Inkscape rasterizer for production profile layers."""
 
 from __future__ import annotations
 
 import os
 import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from html import escape
 from io import BytesIO
@@ -218,37 +219,17 @@ class NativeRasterizer:
         _ = self._wait_prompt()
         return process
 
-    def _run(self, arguments: list[str], directory: Path) -> str:
-        # This is Inkscape's action interpreter, never an OS command shell.
-        paths = [
-            (directory / value).resolve().as_posix()
-            for value in arguments
-            if not value.startswith("--")
-        ]
-        if any(any(char in path for char in ";\r\n") for path in paths):
+    @staticmethod
+    def _action_path(path: Path) -> str:
+        value = path.resolve().as_posix()
+        if any(char in value for char in ";\r\n"):
             raise ValueError(
                 "SVG temporary paths cannot contain Inkscape action delimiters"
             )
-        actions: list[str]
-        if "--query-all" in arguments:
-            actions = [f"file-open:{paths[0]}", "query-all", "file-close"]
-        else:
-            actions = []
-            for path in paths:
-                actions.extend(
-                    (
-                        f"file-open:{path}",
-                        "export-type:png",
-                        "export-area-page",
-                        "export-background-opacity:0",
-                        "export-png-compression:1",
-                        "export-png-antialias:2",
-                        "export-png-use-dithering:false",
-                        f"export-filename:{Path(path).with_suffix('.png').as_posix()}",
-                        "export-do",
-                        "file-close",
-                    )
-                )
+        return value
+
+    def _execute_actions(self, actions: Sequence[str]) -> str:
+        # This is Inkscape's action interpreter, never an OS command shell.
         with self._lock:
             try:
                 if self._closed:
@@ -269,7 +250,9 @@ class NativeRasterizer:
             directory = Path(name)
             path = directory / "card.svg"
             _ = path.write_bytes(svg)
-            output = self._run([str(path), "--query-all"], directory)
+            output = self._execute_actions(
+                (f"file-open:{self._action_path(path)}", "query-all", "file-close")
+            )
         boxes: dict[str, Box] = {}
         for line in output.splitlines():
             values = line.split(",")
@@ -293,18 +276,23 @@ class NativeRasterizer:
                 path = directory / f"layer-{index}.svg"
                 _ = path.write_bytes(svg)
                 paths.append(path)
-            _ = self._run(
-                [
-                    "--export-type=png",
-                    "--export-area-page",
-                    "--export-background-opacity=0",
-                    "--export-png-compression=1",
-                    "--export-png-antialias=2",
-                    "--export-png-use-dithering=false",
-                    *map(str, paths),
-                ],
-                directory,
-            )
+            actions: list[str] = []
+            for path in paths:
+                actions.extend(
+                    (
+                        f"file-open:{self._action_path(path)}",
+                        "export-type:png",
+                        "export-area-page",
+                        "export-background-opacity:0",
+                        "export-png-compression:1",
+                        "export-png-antialias:2",
+                        "export-png-use-dithering:false",
+                        f"export-filename:{self._action_path(path.with_suffix('.png'))}",
+                        "export-do",
+                        "file-close",
+                    )
+                )
+            _ = self._execute_actions(actions)
             result: list[Image.Image] = []
             for path in paths:
                 with Image.open(
