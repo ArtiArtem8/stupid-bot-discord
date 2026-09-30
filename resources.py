@@ -2,6 +2,7 @@
 
 # Shared controls
 RESTART_EMOJI = "<:restart:1447913966939406366>"
+TRASH_EMOJI = "<:trash:1554958233444032653>"
 
 # Admin Cog
 ACTION_TITLES = {
