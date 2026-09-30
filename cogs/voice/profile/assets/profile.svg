@@ -22,15 +22,15 @@
      inkscape:pageopacity="0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#505050"
-     inkscape:zoom="4"
-     inkscape:cx="858.25"
-     inkscape:cy="56.625"
+     inkscape:zoom="2"
+     inkscape:cx="216.75"
+     inkscape:cy="313.75"
      inkscape:window-width="2560"
      inkscape:window-height="1417"
      inkscape:window-x="-8"
      inkscape:window-y="-8"
      inkscape:window-maximized="1"
-     inkscape:current-layer="static-layer"
+     inkscape:current-layer="effects-layer"
      showguides="true">
     <sodipodi:guide
        position="960,480"
@@ -401,10 +401,10 @@
        x="32"
        y="448"
        font-family="Inter"
-       font-size="20"
+       font-size="20px"
        font-weight="500"
        fill="#bdacc9"
-       data-fill="muted">On this server · observed time</text>
+       data-fill="muted">On this server · tracked since 21 Sep 2026</text>
     <text
        id="timezone-label"
        x="928"
@@ -566,7 +566,8 @@
        data-fill="bright"
        data-fx="star"
        data-min-tier="legendary"
-       data-offset="0.9030" />
+       data-offset="0.9030"
+       transform="translate(4.7729708,-10.883883)" />
     <use
        id="star-12"
        xlink:href="#star-shape"

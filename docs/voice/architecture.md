@@ -1,174 +1,122 @@
-# Voice architecture
+# Voice history and metrics
 
-## Ownership and invariants
+Voice history records what the bot observed. It does not infer activity while
+the bot was offline or disconnected.
 
-```text
-Discord raw observation -> typed journal fact -> append-only journal
-    -> pure timeline -> common scope -> pure metrics -> UI read model
-```
+## Collection and storage
 
-- `cogs/voice/collector_cog.py` normalizes Discord observations, takes snapshots
-  and records lifecycle boundaries. It never replays history or calculates metrics.
-- `api/voice/model.py` defines immutable facts. Humans, bots and unresolved users
-  share `VoiceStateSnapshot`; unknown fields remain `None`, not invented defaults.
-- `repositories/voice_journal.py` owns one bounded queue, one writer and serialized
-  file maintenance per root. `_voice_codec.py` owns wire encoding and legacy decoding.
-- `api/voice/timeline.py` reconstructs history once, without Discord or file I/O.
-  `scope.py` applies shared guild/channel/time selection to credited room intervals.
-- `metrics/` contains pure projections. `queries.py` composes UI-facing values from
-  one reusable timeline. UI code receives read models rather than raw JSONL.
+`VoiceCollectorCog` converts raw Discord observations and snapshots into facts.
+`VoiceJournal` owns their queue, writer and file maintenance. `build_timeline()`
+reconstructs history without Discord or file I/O; scoped queries calculate
+presence, companions, activity and XP from that timeline.
 
-A mutable journal root has one owner per process. Received, accepted into the
-buffer and persisted are separate counts. Only a successful flushed and fsynced
-append advances persisted. Shutdown stops acceptance and waits for the in-flight
-batch and queued records; cancelling the caller does not cancel physical I/O.
+Each journal root has one writer per process. Received, queued and persisted
+counts are distinct: only a successful flushed and fsynced append advances the
+persisted count. Shutdown drains admitted records. Cancelling a shutdown waiter
+does not cancel the physical write.
 
-## Journal schema v2
+New records use schema v2 and live under
+`data/voice_probe/v2/{session,guild_ID}/events_YYYY-MM-DD.jsonl`, rotated by UTC
+observation date. Global lifecycle records use the `session` scope.
 
-New records live under `data/voice_probe/v2/{session,guild_ID}/events_YYYY-MM-DD.jsonl`,
-rotated by the UTC observation date. The writer emits only `schema_version: 2`.
-
-| Kind | Payload beyond the envelope |
+| Kind | Payload |
 | --- | --- |
-| `observation` | `state` |
-| `snapshot` | `states`, explicit `authoritative` |
-| `gap` | `started_at`, nullable `ended_at`, `reason`, `known_bounds` |
-| `checkpoint` | Liveness only |
-| `lifecycle` | `stopped` |
+| `observation` | One voice state |
+| `snapshot` | Voice states and an explicit `authoritative` flag |
+| `gap` | Start, optional end, reason and whether bounds are known |
+| `checkpoint` | Liveness timestamp |
+| `lifecycle` | Stopped flag |
 
-The envelope contains `schema_version`, `sequence`, `boot_id`, `observed_at`,
-`monotonic`, `guild_id` and `kind`. A null guild denotes a global/session fact.
-Collector observation timestamps are UTC; monotonic time detects clock changes.
+Every record carries `schema_version`, `sequence`, `boot_id`, `observed_at`,
+`monotonic`, `guild_id` and `kind`. A null guild denotes a global record. Wall
+clock timestamps are UTC; monotonic time detects clock discontinuities. Within
+a boot, sequence determines record order. Boots use their earliest wall time;
+their true order cannot be recovered exactly when clocks overlap.
 
-State fields use full names: `user_id`, `channel_id`, `channel_known`, `is_bot`,
-`self_mute`, `self_deaf`, `server_mute`, `server_deaf`, `self_stream`, `self_video`,
-`suppress`, `requested_to_speak`, `requested_to_speak_at`, `session_id` and `afk`.
-A known null channel means leave. An unresolved cache channel has
-`channel_known=False`; its user ID is retained.
+Voice states retain user and channel IDs, bot identity, mute/deaf/stream/video
+flags, suppress, requested-to-speak state and timestamp, transport `session_id`,
+and AFK status. Unknown fields remain `None`. A known null channel means leave;
+`channel_known=False` means the channel is unresolved.
 
-For raw Discord records, a requested-to-speak timestamp implies `True`, explicit
-null means `False`, and an absent field remains unknown. A timestamp and `False`
-are contradictory and rejected. The nullable boolean is an additive v2 field;
-earlier v2 records still decode. An earlier v2 null timestamp alone cannot prove
-`False`, because the old format conflated absence and explicit null.
+A raw requested-to-speak timestamp means `True`, explicit null means `False`,
+and an absent field stays unknown. Earlier v2 records without the explicit
+boolean still decode, but a null timestamp alone cannot establish `False`.
+AFK comes from the channel ID and available guild AFK configuration; without that
+configuration it stays unknown.
 
-AFK is derived from the raw channel ID when an AFK channel ID is available.
-`GUILD_CREATE.afk_channel_id` takes precedence over resolved cache context, including
-when the channel object is unavailable. Without an AFK channel ID the result is
-unknown. No guild AFK configuration or user timezone is persisted separately.
+## Observed time and gaps
 
-## Timeline and observation quality
+A timeline contains room intervals, observation coverage and gaps. Intervals are
+half-open: their start is included and their end excluded. Only an authoritative
+full snapshot opens or restores coverage for its guild. An empty snapshot also
+establishes coverage; a checkpoint or cache snapshot does not.
 
-`VoiceTimeline` contains three independent immutable projections:
+Voice changes split intervals at their observation timestamps. Disconnects,
+clock changes, boot changes and lost writes interrupt coverage. A full snapshot
+that disagrees with replay invalidates time since the preceding authoritative
+snapshot, because the missing change's timestamp is unknown. A later snapshot
+restores coverage from its own timestamp; it does not fill the missing period.
 
-- `rooms`: half-open `RoomInterval` values with constant known states and any gaps
-  intersecting that slice. Intervals for a guild/channel never overlap.
-- `coverage`: positive, half-open `ObservationInterval` values for each guild,
-  including periods when every voice room was empty.
-- `gaps`: explicit `ObservationGap` values, including open-ended uncertainty.
+Transport `session_id` differences alone do not establish drift: Discord's cache
+may retain an older ID than the raw Gateway event. Both values remain diagnostic
+telemetry. Gaps are removed from room time and coverage, including retrospective
+and overlapping gaps. Nothing is extrapolated after the final observation.
 
-Replay starts unknown. Only an authoritative full snapshot opens coverage, at its
-own timestamp. An empty authoritative snapshot also opens coverage. A checkpoint
-or local/non-authoritative snapshot cannot establish coverage or close a gap.
-Thus an empty-room day with coverage differs from a day without observations.
+Queue overflow records the affected guild and earliest known lost timestamp.
+It does not invalidate other guilds. A failed disk batch may partially write
+multiple files, so it creates a conservative global gap. Failed batches are not
+retried or counted as persisted; shutdown reports the failure even if later
+batches recover.
 
-Disconnects, clock discontinuities, boot changes and lost writes interrupt
-coverage. A subsequent full snapshot restores only its guild from that timestamp
-forward. A snapshot disagreeing with replay invalidates the interval since the
-preceding authoritative snapshot: the time of a missing change is unknown.
-Transport `session_id` differences alone do not establish drift: discord.py's
-cache-backed snapshots can retain an older ID than raw Gateway observations.
-The journal retains both observed values as diagnostic telemetry.
-Retrospective and overlapping gaps are subtracted from coverage as well as room
-credit. Nothing is extrapolated beyond the last recorded observation.
+Timeline reconstruction needs the relevant guild and session records, including
+preceding full snapshots. Readers reject corruption and unknown schemas rather
+than silently skipping facts. Recover damaged files from copies; the writer does
+not rewrite them.
 
-Overflow markers retain the rejected record's guild and earliest known loss time.
-The writer keeps one pending marker per affected guild, plus a separate global
-marker when a global/session record is rejected. Loss in guild A does not invalidate
-guild B. A write failure can have partially appended multiple files, so it remains
-a conservative global gap. Failed batches are not retried or acknowledged as
-persisted; `close()` raises even if later batches recover.
+## Sessions and companions
 
-Read all relevant guild and session day files, including the preceding full
-snapshot, before building a timeline. Within a boot, sequence wins over wall-clock
-order. Boot groups use their earliest wall time; their true order cannot be
-recovered exactly when clocks overlap. Readers raise on corruption or unknown
-schemas rather than silently presenting lost facts as continuous observations.
-Partial append damage may require manual recovery of a copy; the writer never
-rewrites damaged source files.
+A presence session is a continuous observed visit within one guild. Channel moves
+and flag changes do not split it. Leaving, an observation gap or a bot restart
+does. It is not a count of Discord transport session IDs or necessarily a count
+of physical joins. A time-limited query can truncate a visit.
 
-## Scope and metric semantics
+Companion time counts overlap between known humans in the same guild and channel.
+Every pair receives the interval once, regardless of room size. Exactly two
+known humans count as private co-presence; known bots are allowed, unidentified
+participants are not. Solo presence also ignores known bots, but unidentified
+occupants prevent proving that a human was alone. Bot co-presence does not prove
+music playback.
 
-All metrics use the same scope and half-open time range. Global scope adds results
-from matching guild histories; guild scope restricts the same computation to one
-guild. Channel scope requires its guild. Global seconds are additive guild-seconds,
-not the union of simultaneous activity across guilds.
+Global presence and companion seconds add matching guild histories; they do not
+deduplicate simultaneous activity across guilds. XP instead uses the highest
+simultaneous room rate; see [progression](progression.md). Channel scope requires
+its guild. All metrics use the same selected half-open time range.
 
-Human co-presence counts elapsed seconds for a pair of known humans occupying the
-same channel in the same guild. Global co-presence sums these overlaps across guilds;
-it never pairs people in separate guilds or rooms. Each pair receives an interval's
-seconds once, regardless of room size.
+Activity arithmetic uses elapsed UTC seconds, while hour, weekday and date
+buckets use the requested timezone, default UTC. Repeated DST hours accumulate
+in one bucket; skipped hours receive no time.
 
-Private co-presence requires exactly two known humans, allows any number of known
-bots, and excludes intervals with any unidentified participant. A third human is
-not private. Bot co-presence is separate and implies nothing about music playback.
-Solo presence similarly ignores known bots but cannot credit an unidentified room
-occupant as absent. Presence sessions are contiguous observed visits per guild;
-absent or unobserved time splits visits, and query clipping can truncate them.
-Transport session-ID changes without interrupted presence do not start a new visit.
-Replaying existing journals applies these rules to historical statistics; raw
-journal files need no migration or rewriting. Restart analytical consumers to
-discard any in-memory timelines derived with earlier reconstruction rules.
+## Compression, retention and older records
 
-Activity accepts a `tzinfo` projection parameter, defaulting to UTC. Arithmetic
-uses real elapsed UTC seconds, while hours, weekdays and dates use the supplied
-calendar. Repeated DST hours accumulate in the same bucket; skipped hours receive
-no seconds. There are always 24 hourly and 7 Monday-first weekday buckets.
-Timezone selection also flows through `user_summary`; no timezone storage is added.
-XP remains a versioned display calculation, and graph edges remain projections.
+Finished v2 days are compressed losslessly. `VOICE_PROBE_RETENTION_DAYS` defaults
+to `None`, retaining all history. An explicit positive retention period deletes
+v2 files dated strictly before `today - retention_days`. Without persistent
+aggregates, pruning also limits future all-time statistics to retained history.
 
-## Legacy mapping and retention
+Legacy journals under the original root remain read-only. Their events map to
+observations, presence maps to snapshots and heartbeat-only records to checkpoints.
+Missing population maps cannot establish coverage. Legacy resume/drop/clock/drift
+markers map to gaps; missing lower bounds conservatively invalidate from the
+boot's first record. Missing flags, populations and event timestamps cannot be
+recovered. Legacy files are never compressed or pruned by the v2 writer.
 
-Legacy files under the original journal root are read-only: never rewritten,
-compressed or pruned by this implementation.
+## Discord integration
 
-- Join/leave/move/flags/noop and bot_voice decode into the same state observation.
-- Human and bot presence maps decode into snapshots with unknown flags. Missing
-  either population map makes the snapshot incomplete; it cannot establish coverage.
-- A heartbeat without maps becomes a checkpoint. Resume/drop/clock/drift markers
-  become gaps; legacy drops/drift without a lower bound conservatively invalidate
-  from the boot's first record.
-- Abbreviated flags are decoded only when present. `hr` preserves the nullable
-  requested-to-speak boolean without inventing a timestamp.
+The bot enables `on_socket_raw_receive` through the public `enable_debug_events`
+client option when `VOICE_PROBE_ENABLED=true`. The collector's sole private API
+access is `guild._voice_states`, needed to retain unresolved channel IDs in cache
+snapshots. Those snapshots remain non-authoritative.
 
-Absent mute/deaf/video/stream fields, session IDs, dropped user/channel IDs and
-precise times of missing events cannot be recovered. Neither `hr=True` nor
-`hr=False` reveals the original timestamp. Missing bot populations cannot prove
-absence of bots.
-
-`VOICE_PROBE_RETENTION_DAYS` defaults to `None`: raw history is retained indefinitely.
-Compression of finished v2 days remains enabled and lossless. `prune(...,
-retention_days=None)` performs no file I/O; only an explicitly supplied positive
-number deletes v2 day files with a UTC date strictly before `today - retention_days`.
-Legacy files are preserved regardless of retention. Without persistent aggregates,
-explicit pruning necessarily limits future all-time statistics to retained history.
-
-## Discord compatibility boundary
-
-The real bot constructor passes the public Client option
-`enable_debug_events=config.VOICE_PROBE_ENABLED`. The collector only listens to the
-documented `on_socket_raw_receive` event; it does not mutate Client debug flags or
-socket callbacks at runtime.
-
-The only private Discord access in production voice code is `guild._voice_states`
-in the cache snapshot method. Public per-channel state mappings omit unresolved
-channels; the guild cache retains their user IDs. Such snapshots are explicitly
-non-authoritative. A contract test constructs a real installed `discord.Guild`
-with an unresolved member/channel and verifies this behavior.
-
-The normal recursive cog loader discovers `cogs/voice/collector_cog.py` alongside
-the other bot extensions. There is no separate legacy entry point. Bot startup
-uses global command sync, restores uptime and starts activity/autosave tasks;
-shutdown saves uptime and unloads the collector, draining its journal.
-
-UI, new services, databases and persistent statistics caches remain outside scope.
+The ordinary Cog loader discovers the collector and profile command. Collector
+shutdown drains the journal; profile shutdown drains media work and closes its
+native renderer. See [profile cards](profile-card.md) for host setup and caching.

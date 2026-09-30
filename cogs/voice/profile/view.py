@@ -96,10 +96,9 @@ class VoiceProfileView(discord.ui.View):
         self,
         interaction: discord.Interaction,
         error: Exception,
-        item: discord.ui.Item[Self],
+        _item: discord.ui.Item[Self],
         /,
     ) -> None:
-        del item
         wrapped = app_commands.AppCommandError("Voice profile interaction failed")
         wrapped.__cause__ = error
         await handle_app_command_error(interaction, wrapped)

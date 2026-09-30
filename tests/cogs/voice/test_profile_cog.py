@@ -1,6 +1,7 @@
 """Voice profile command privacy, owner control and attachment behavior."""
 
 import asyncio
+import os
 import sys
 import unittest
 from collections.abc import Awaitable, Callable
@@ -384,6 +385,28 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("private host", send.call_args.kwargs["description"])
         await cog.cog_unload()
         await cog.cog_unload()
+
+    async def test_missing_inkscape_does_not_prevent_bot_from_loading_cog(self) -> None:
+        with TemporaryDirectory() as directory:
+            with patch.dict(
+                os.environ,
+                {"INKSCAPE_BIN": str(Path(directory) / "missing-inkscape.exe")},
+            ):
+                async with commands.Bot(
+                    command_prefix="!", intents=discord.Intents.none()
+                ) as bot:
+                    cog = VoiceProfileCog(bot)
+                    with self.assertLogs(cog_module.logger, level="WARNING"):
+                        await bot.add_cog(cog)
+                    self.assertIs(bot.get_cog("VoiceProfileCog"), cog)
+                    self.assertIsNotNone(bot.tree.get_command("voice-profile"))
+                    self.assertIsNone(cog._revision)
+                    with patch.object(FeedbackUI, "send", AsyncMock()) as send:
+                        await invoke(cog, interaction())
+                    self.assertIn("недоступна", send.call_args.kwargs["description"])
+                    self.assertTrue(send.call_args.kwargs["ephemeral"])
+                    await bot.remove_cog("VoiceProfileCog")
+                    self.assertTrue(cog._media_renderer._closed)
 
     async def test_refresh_resolves_member_again_and_honors_new_upload_limit(
         self,

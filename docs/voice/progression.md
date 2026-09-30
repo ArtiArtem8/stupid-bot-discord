@@ -1,157 +1,88 @@
-# Voice XP, levels and appearance
+# Voice XP, levels and colors
 
-## Scope
+XP is calculated from observed voice history, not stored as an account balance.
+The three policies have independent versions:
 
-This change is a pure read-side extension of the existing voice timeline.
-It does not alter collection, journal schema, retention, gaps, Discord events,
-music, cogs, commands, databases or account identity. It does not award roles or
-spendable currency. Numeric choices are a chosen game balance, not inferred
-facts about conversation quality.
+| Policy | Version | Purpose |
+| --- | --- | --- |
+| `VoiceXpPolicy` | `voice-v3` | Voice activity to XP |
+| `LevelPolicy` | `quadratic-linear-v3` | XP to level |
+| `LevelAppearancePolicy` | `level-colors-v1` | Level to tier, color and effects |
 
-Three independent responsibilities:
+## Earning XP
 
-```text
-VoiceTimeline + VoiceScope + user_id
-    -> VoiceXpPolicy.explain() -> VoiceXpBreakdown.total (Fraction)
-    -> LevelPolicy.progress() -> LevelProgress.level (int)
-    -> LevelAppearancePolicy.for_level() -> LevelTier + RGB + AppearanceFeature
-```
+Only known humans in observed rooms earn XP. Time inside observation gaps and
+known AFK activity earn nothing. Bots and unidentified participants do not count
+toward group bonuses; an unknown AFK flag does not disqualify a known human.
 
-These are caller compositions, not an import chain. `levels.py` does not import
-voice; `appearance.py` imports neither voice nor `levels.py`. No module imports
-Discord. No service locator, registry, abstract policy base or I/O is needed.
+| Humans in the room | Base XP/hour |
+| --- | ---: |
+| 1 | 300 |
+| 2–4 | 1200 |
+| 5+ | 1275 |
 
-## Files and dependencies
-
-- `api/voice/metrics/xp.py`: one-room hourly award, temporal MAX, exact integration.
-  Imports the existing model, timeline, scope and read models only.
-- `api/voice/read_models.py`: adds `VoiceXpBreakdown`. A summary exposes
-  `xp_breakdown`, numeric `.xp` as a computed property and `xp_policy_version`.
-- `api/voice/queries.py`: evaluates the breakdown once; does not choose colors.
-- `api/progression/levels.py`: the level curve and exact progress value.
-- `api/progression/appearance.py`: stepped presentation data and selection.
-- `api/progression/__init__.py`: documentation only, no eager exports.
-
-The old `VoiceXpPolicyV1` was a one-XP-per-minute calculation. The current
-`VoiceXpPolicy(version="voice-v3")` multiplies every voice-v2 XP/hour amount by
-100; its eligibility, modifiers and global overlap rules are unchanged. There is
-no runtime fallback. Journal records are unchanged and remain readable.
-
-## XP contract
-
-A recipient must be a positively identified human in a known room, outside a gap.
-Known AFK means zero XP, including all bonuses. `afk=None` is neutral.
-
-Human count is the number of known human Discord user IDs in this room, including
-the recipient. There is no linked-account/person model. Known bots and unknown
-occupants do not unlock either group threshold. Peer mute/deaf flags do not change
-headcount. AFK gates the recipient, not an additional hidden peer-count policy.
-
-Hourly base is 300 for one known human, 1200 for two or more. Add 75 to the base for
-five or more known humans. This is one threshold; a sixth or tenth person does
-not add another bonus.
-
-Use the smallest applicable audio factor, never their product:
+Audio restrictions use the smallest applicable factor, rather than multiplying
+penalties. Unknown flags do not apply a restriction.
 
 | State | Factor |
 | --- | ---: |
-| Normal / no known restriction | 1 |
+| Normal | 1 |
 | Self or server mute | 0.85 |
 | Suppress | 0.80 |
 | Self or server deaf | 0.25 |
 
-Only with another known human: stream adds 300 XP/hour, video adds 120 XP/hour.
-Their combined bonus is capped at 360 XP/hour. These bonuses are added AFTER audio
-adjustment. Thus deaf streaming still gets a contribution bonus. This is deliberate.
-A visible stream flag does not establish an audience or prove somebody watches it.
+With another known human present, streaming adds 300 XP/hour and video adds 120.
+Their combined bonus is capped at 360 XP/hour and added after the audio penalty.
+Solo streaming and video do not earn a bonus. Other members' mute/deaf states do
+not change the human count.
 
 ```text
-rate = (base + large_group_bonus) * minimum_audio_factor
-       + min(stream_bonus + video_bonus, contribution_cap)
+rate = base * minimum_audio_factor
+       + min(stream_bonus + video_bonus, 360)
 ```
 
-`None` audio flags do not trigger a restriction; `None` stream/video do not trigger
-a bonus. An unknown recipient is not silently classified as human. Raised hand,
-join counts, bots, streaks and message activity have no XP effect in this version.
+For example, normal social activity earns 1200 XP/hour, muted social activity
+1020, and deaf social activity with streaming 600. A stream flag records a
+broadcast, not proof of an audience. Raised hands, join counts, messages and
+streaks do not affect XP.
 
-Default examples in XP/hour:
+## Overlapping activity and precision
 
-| Context | Normal | Muted | Deaf | Stream | Stream + video |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Solo | 300 | 255 | 75 | 300 | 300 |
-| 2-4 humans | 1200 | 1020 | 300 | 1500 | 1560 |
-| 5+ humans | 1275 | 1083.75 | 318.75 | 1575 | 1635 |
+For simultaneous activity, XP uses the greatest complete room rate at each
+instant. It does not add simultaneous rates or combine flags from separate
+rooms. Equal rates select the smallest `(guild_id, channel_id)` for a stable
+breakdown. An unavailable room does not invalidate another observed room.
 
-## Global MAX and interval arithmetic
+For example, 1200 XP/hour from 00:00–01:00 and 1500 XP/hour from 00:30–01:30 give
+2100 XP: half an hour at 1200, then one hour at 1500.
 
-Filter and clip by `VoiceScope` first. For each subinterval between start/end
-boundaries, choose the greatest COMPLETE context rate for this user. Never merge
-flags across contexts, take the maximum of already-integrated totals, or add
-simultaneous contexts. This also applies within a guild if input contexts overlap.
-Normal canonical guild histories do not overlap for one user.
+Durations use UTC integer microseconds; XP and progress use `Fraction`.
+Rounding happens at display time. This preserves journal precision without
+claiming more accurate observation timestamps. Global voice seconds and companion
+time remain additive across guilds; they do not use XP's overlap rule.
 
-Tie break is the smallest `(guild_id, channel_id)`. A tie does not change total
-XP, but deterministic selection keeps the component explanation stable.
-An unavailable/gap context does not invalidate a separate observed context.
-
-Example: rate 1200 at 00:00-01:00, rate 1500 at 00:30-01:30 gives
-`0.5*1200 + 0.5*1500 + 0.5*1500 = 2100 XP`, not 2700 or 1500.
-
-The sweep visits event boundaries, not seconds. With N room slices and at most K
-simultaneous contexts, complexity is O(N log N + N*K), memory O(N + K). K is small
-for one Discord ID in this bot. A heap is unnecessary until measurements justify it.
-
-Endpoints are converted to UTC before duration arithmetic. Integer microseconds
-and Fraction coefficients preserve exact arithmetic at the precision of the input
-journal. They do not improve the accuracy of the original observation timestamps.
-Do not round each room, session, day or report component. Display rounding is a
-consumer concern. `Fraction(17, 20)` is exact; `Fraction(0.85)` imports float error.
-
-The input is a canonical `VoiceTimeline` from the existing builder. Its room gaps
-must already be split/attached, as required by `observed_rooms`; these tools do not
-replay a second uncertainty model.
-
-## Explanation and summary compatibility
-
-`VoiceXpBreakdown` records seven positive component amounts:
+`VoiceXpBreakdown` separates base awards, bonuses and reductions:
 
 ```text
 solo_base + social_base + large_group_bonus - audio_reduction
     + stream_bonus + video_bonus - bonus_cap_reduction = total
 ```
 
-Only winning contexts contribute to the global explanation. Audio reduction is
-one total, not three stacked penalties. Full stream/video contributions and the
-cap reduction are shown separately to avoid an arbitrary cap allocation.
-
-`rate()` returns these amounts for exactly one hour; `explain()` returns amounts
-for the requested history. `calculate()` returns the exact scalar total.
-`UserVoiceSummary.xp` is now Fraction, not float. Its dataclass field is now
-`xp_breakdown`, not a second mutable/independent XP total. Current known consumers
-are migrated. A future JSON boundary must explicitly choose decimal display or
-numerator/denominator serialization. Do not pass through float before level lookup.
-
-IMPORTANT: existing presence/activity/companions remain guild-additive. This patch
-changes global XP to temporal MAX, not all global statistics. A global elapsed-time
-union is a separate metric change. Do not label summed guild-seconds as deduplicated
-person-time or use them as an XP/hour denominator without deciding that semantics.
-
 ## Levels
 
-`LevelPolicy()` uses the cumulative quadratic-linear curve:
+For level `L`, the cumulative threshold is:
 
 ```text
 x = L - 1
 T(L) = 200*x^2 + 2050*x
 ```
 
-Level one starts at zero XP; there is no upper cap. The default version is
-`quadratic-linear-v3`. The linear component makes early tier changes require
-noticeable time. Marginal level cost still grows, while the late-game slope is
-softer than the previous pure quadratic curve.
+Level one starts at zero XP and levels have no upper cap. The linear component
+slows early tier changes; the cost of each additional level still grows, with a
+softer late-game slope than the former pure quadratic curve.
 
-The product anchors below assume normal social activity at 1200 XP/hour, without
-stream/video bonuses or audio penalties. Tier levels and colors stay fixed.
+These times assume normal social activity at 1200 XP/hour, without bonuses or
+penalties:
 
 | Tier | Level | Cumulative XP | Social hours |
 | --- | ---: | ---: | ---: |
@@ -164,79 +95,32 @@ stream/video bonuses or audio penalties. Tier levels and colors stay fixed.
 | Ascendant | 75 | 1,246,900 | 1039.1 |
 | Transcendent | 100 | 2,163,150 | 1802.6 |
 
-Level lookup remains exact. For `A = quadratic_coefficient` and
-`B = linear_coefficient`, take the integer part of nonnegative XP and solve:
+Level selection uses the whole part of nonnegative XP and an exact integer square
+root. For quadratic coefficient `A` and linear coefficient `B`:
 
 ```text
 D = B*B + 4*A*whole_xp
 L = (isqrt(D) - B) // (2*A) + 1
 ```
 
-Integer thresholds mean fractional XP cannot change that selection. Fractional
-XP is retained in progress; no floating-point square root is used, including
-for arbitrarily large levels.
+Fractional XP remains in progress. No floating-point square root is used, even
+for very large levels. At 5075 XP the level is 3, with 175 of 3050 XP earned toward
+level 4 and 2875 XP remaining. At 1,000,000 XP the level is 66.
 
-`LevelProgress` exposes total XP, level, current/next thresholds, earned,
-required, remaining and exact progress ratio. For 5075 XP: level 3, thresholds
-4900 and 7950, earned 175, required 3050, remaining 2875, ratio `7/122`.
-1,000,000 XP = level 66, between thresholds 978,250 and 1,006,500.
+Changing the balance recalculates levels from retained history; there are no XP
+balances to migrate. Coefficients are keyword-only, with positive integer `A`
+and nonnegative integer `B`; booleans and negative XP are rejected.
 
-Coefficients are keyword-only: `LevelPolicy(quadratic_coefficient=400,
-linear_coefficient=4100)` doubles every default threshold. The quadratic
-coefficient must be a positive integer and the linear coefficient a nonnegative
-integer; bools are rejected. Negative XP and non-positive levels are rejected.
-When comparing balance experiments, record the formula version and both
-coefficients; do not cache solely by version string. XP earning remains
-`voice-v3`, and appearance remains `level-colors-v1`.
+## Colors and effects
 
-## Appearance
+Tier starts are fixed at levels 1, 5, 10, 20, 35, 50, 75 and 100. The 41 color
+bands select discrete shades within those tiers. The last shade starts at 150
+and remains in use as levels continue.
 
-`LevelAppearancePolicy` returns `LevelAppearance`: fixed `LevelTier`, integer RGB
-color, reached band minimum, palette version and `AppearanceFeature` flags. It
-creates no Embed or card.
+The card uses the selected band color for its progress bar. Tier artwork colors
+come from `themes.json`. Feature flags enable border motion from Epic, progress
+sheen from Legendary, a secondary accent for Ascendant and a prismatic accent
+for Transcendent. These affect presentation, not XP.
 
-`DEFAULT_BANDS` contains 41 explicit shade breakpoints across tiers beginning at
-1, 5, 10, 20, 35, 50, 75 and 100. There are no maximum-level fields to drift out
-of sync: the next minimum closes the preceding band. Tier switches are discrete,
-as are the shades inside a tier. There is no cross-tier interpolation.
-The final tier has shades through 150; at 150+ the last color remains,
-while levels continue indefinitely.
-
-The `level-colors-v1` values follow the supplied final-design-v1 palette. The
-eight tier names and their order are fixed by `LevelTier` and `TIER_ORDER`.
-Custom palettes may change colors and breakpoints, but cannot add tier names or
-reorder tiers. `TIER_FEATURES` defines independent flags once per tier: border
-motion from epic, progress sheen from legendary, a secondary accent for ascendant,
-and a prismatic accent for transcendent. The profile renderer consumes these
-flags; they do not affect XP and levels. A constructor validates start at 1,
-RGB range and tier order. The appearance policy has no graphics dependency.
-
-`/voice-profile` privately shows the invoking user's server-local lifetime
-XP, level, total voice time and session count. `private:false` publishes the
-response in the channel. Starter, Uncommon and Rare use PNG; Epic and higher
-use lossless animated WebP, with PNG fallback.
-The card labels its level and tier as well as showing tier color.
-
-## Balance revisions and deferred work
-
-Rate parameters are immutable Fractions. For a comparison pass, supply changed
-parameters plus a distinct version, e.g. `voice-v3-largegroup-50`. There are no
-stored XP balances to migrate and no account linking. Recalculation under a changed
-formula may lower previously displayed levels. This is expected while tuning.
-
-Deferred: `/stats`, Components V2 UI, roles, leaderboards,
-persistent caches, spendable XP, global presence-time union and a full flag-statistics
-catalog.
-Collector and journal write semantics remain unchanged by these read-side policies.
-
-## Technical references
-
-- Python 3.12 rational arithmetic: <https://docs.python.org/3.12/library/fractions.html>
-- Exact integer square root: <https://docs.python.org/3.12/library/math.html#math.isqrt>
-- Duration precision and UTC arithmetic: <https://docs.python.org/3.12/library/datetime.html>
-- Logical separation, not mandatory layers/services:
-  <https://martinfowler.com/bliki/PresentationDomainDataLayering.html>
-- Discord Embed color is an integer field:
-  <https://docs.discord.com/developers/resources/message#embed-object-embed-structure>
-- Color should not be the only indicator:
-  <https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html>
+See [profile cards](profile-card.md) for rendering and setup, and
+[voice architecture](architecture.md) for observation and session semantics.
