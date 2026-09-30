@@ -93,29 +93,30 @@ class LevelColorBand:
 
 
 # Approximate cumulative social hours at 1200 XP/h, in band order.
-# Solo at 300 XP/h takes 4x longer; default T(L) = 250 * (L - 1) ** 2.
+# Solo at 300 XP/h takes 4x longer; x = L - 1, T(L) = 200*x*x + 2050*x.
 DEFAULT_BANDS = (
     # starter: ~0.0 h.
     LevelColorBand(1, LevelTier.STARTER, 0x7F8A98),
-    # uncommon: ~3.3, 10.2 h.
+    # uncommon: ~9.5, 20.1 h.
     LevelColorBand(5, LevelTier.UNCOMMON, 0x4A9A5E),
     LevelColorBand(8, LevelTier.UNCOMMON, 0x45B164),
-    # rare: ~16.9, 35.2, 53.3 h.
+    # rare: ~28.9, 50.4, 70.0 h.
     LevelColorBand(10, LevelTier.RARE, 0x367ED4),
     LevelColorBand(14, LevelTier.RARE, 0x2A8EEF),
     LevelColorBand(17, LevelTier.RARE, 0x28A1FF),
-    # epic: ~75.2, 120.0, 163.3, 200.2 h.
+    # epic: ~92.6, 137.0, 178.5, 213.1 h.
     LevelColorBand(20, LevelTier.EPIC, 0x8460D2),
     LevelColorBand(25, LevelTier.EPIC, 0x9965E3),
     LevelColorBand(29, LevelTier.EPIC, 0xAF6CF0),
     LevelColorBand(32, LevelTier.EPIC, 0xC74AF9),
-    # mythic: ~240.8, 285.2, 350.2, 403.3, 440.8 h.
+    # mythic: ~250.8, 291.4, 350.2, 397.8, 431.2 h.
     LevelColorBand(35, LevelTier.MYTHIC, 0xA646AD),
     LevelColorBand(38, LevelTier.MYTHIC, 0xB946B3),
     LevelColorBand(42, LevelTier.MYTHIC, 0xCC48B6),
     LevelColorBand(45, LevelTier.MYTHIC, 0xDB50B6),
     LevelColorBand(47, LevelTier.MYTHIC, 0xE65FB3),
-    # legendary: ~500.2, 585.2, 653.3, 750.0, 826.9, 907.5, 991.9, 1050.2 h.
+    # legendary: ~483.9, 558.7, 618.3, 702.5, 769.1,
+    # 838.8, 911.4, 961.5 h.
     LevelColorBand(50, LevelTier.LEGENDARY, 0xB3222B),
     LevelColorBand(54, LevelTier.LEGENDARY, 0xC02621),
     LevelColorBand(57, LevelTier.LEGENDARY, 0xCC2C05),
@@ -124,8 +125,8 @@ DEFAULT_BANDS = (
     LevelColorBand(67, LevelTier.LEGENDARY, 0xDD6300),
     LevelColorBand(70, LevelTier.LEGENDARY, 0xE17200),
     LevelColorBand(72, LevelTier.LEGENDARY, 0xE68100),
-    # ascendant: ~1140.8, 1235.2, 1333.3, 1400.8, 1505.2,
-    # 1576.9, 1687.5, 1763.3, 1880.2, 1960.2 h.
+    # ascendant: ~1039.1, 1119.7, 1203.3, 1260.8, 1349.4,
+    # 1410.1, 1503.8, 1567.8, 1666.5, 1733.9 h.
     LevelColorBand(75, LevelTier.ASCENDANT, 0x966C00),
     LevelColorBand(78, LevelTier.ASCENDANT, 0x9B7300),
     LevelColorBand(81, LevelTier.ASCENDANT, 0xA17A00),
@@ -136,8 +137,8 @@ DEFAULT_BANDS = (
     LevelColorBand(93, LevelTier.ASCENDANT, 0xB99D00),
     LevelColorBand(96, LevelTier.ASCENDANT, 0xBEA400),
     LevelColorBand(98, LevelTier.ASCENDANT, 0xC1AC15),
-    # transcendent: ~2041.9, 2253.3, 2475.2, 2707.5,
-    # 2950.2, 3466.9, 4025.2, 4625.2 h.
+    # transcendent: ~1802.6, 1980.3, 2166.4, 2360.8, 2563.5,
+    # 2993.9, 3457.6, 3954.7 h.
     LevelColorBand(100, LevelTier.TRANSCENDENT, 0x0071C3),
     LevelColorBand(105, LevelTier.TRANSCENDENT, 0x007DBD),
     LevelColorBand(110, LevelTier.TRANSCENDENT, 0x0088BB),

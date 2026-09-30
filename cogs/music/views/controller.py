@@ -27,6 +27,7 @@ from api.music.protocols import ControllerManagerProtocol
 from api.music.service.connection_manager import ConnectionManager
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from framework.interaction_flow import ack_component
+from resources import RESTART_EMOJI
 from utils.callables import callable_name
 
 from ..feedback import send_warning
@@ -43,7 +44,7 @@ MUSIC_PLAYER_EMOJIS = {
     "bar_left_empty": "<:graylineleftrounded:1447917287263830157>",
     "bar_mid_empty": "<:grayline:1447917284726411445>",
     "bar_right_empty": "<:graylinerightrounded:1447917289067515956>",
-    "restart": "<:restart:1447913966939406366>",
+    "restart": RESTART_EMOJI,
     "back_10": "<:replay10:1447914002482200720>",
     "play": "<:play:1447913953345929311>",
     "pause": "<:pause:1447913941672919081>",

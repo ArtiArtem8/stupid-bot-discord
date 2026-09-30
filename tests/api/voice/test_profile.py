@@ -67,15 +67,24 @@ class TestProfile(unittest.TestCase):
         self.assertEqual(profile.timezone_label, "Asia/Krasnoyarsk")
 
     def test_fractional_xp_is_preserved_until_display_rounding(self) -> None:
-        for seconds in (1, 749, 750, 751):
+        levels = LevelPolicy()
+        durations = [1]
+        for level in (2, 3, 5):
+            boundary_seconds = 3 * levels.threshold(level)
+            durations.extend(boundary_seconds + offset for offset in (-1, 0, 1))
+        for seconds in durations:
             with self.subTest(seconds=seconds):
                 start = NOW - timedelta(seconds=seconds)
                 profile = build_profile(
                     timeline((room(start, NOW, (1, 2)),)), 1, 1, "UTC"
                 )
-                exact = LevelPolicy().progress(Fraction(seconds, 3))
+                exact = levels.progress(Fraction(seconds, 3))
                 self.assertEqual(profile.total_xp, int(exact.total_xp))
                 self.assertEqual(profile.level, exact.level)
                 self.assertEqual(profile.level_earned_xp, int(exact.earned))
                 self.assertEqual(profile.level_required_xp, exact.required)
                 self.assertEqual(profile.progress_ratio, float(exact.ratio))
+                self.assertEqual(
+                    profile.appearance,
+                    LevelAppearancePolicy().for_level(exact.level),
+                )
