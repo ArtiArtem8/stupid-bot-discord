@@ -80,7 +80,13 @@ smaller of that limit and Discord's current `interaction.filesize_limit`, fallin
 back to the existing still if it fits. Every send creates a fresh `discord.File`.
 
 Animated Discord avatars are requested as GIF; static avatars and guild icons as
-PNG. Decoders inspect the actual format. CDN reads have a five-second timeout and
+PNG. Avatars request 256 pixels and guild icons 64 pixels, above their displayed
+sizes of 92 and 26 pixels. Each Cog keeps original compressed image bytes in an
+LRU cache of at most 64 entries and 16 MiB, in memory only. The full CDN URL,
+including image hash, format and size, is the key. New XP and other members' cards
+reuse unchanged images; failed downloads are not cached. The cache clears after
+media jobs drain during Cog unload. GIF frames and timing remain intact.
+Decoders inspect the actual format. CDN reads have a five-second timeout and
 2 MiB compressed limit. Image decoding additionally bounds source pixels, avatar
 frame count (200), total source pixels (32 million), and decoded avatar frames
 (8 MiB). Missing or corrupt assets use the SVG placeholder. Lower tiers retain

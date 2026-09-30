@@ -17,6 +17,7 @@ from discord.ext import commands
 import config
 from api.voice.profile.build import build_profile
 from api.voice.timeline import VoiceTimeline, build_timeline
+from cogs.voice.profile.asset_cache import ProfileAssetCache
 from cogs.voice.profile.cache import MediaKey, ProfileMediaCache
 from cogs.voice.profile.design import CardIdentity
 from cogs.voice.profile.media import (
@@ -57,6 +58,7 @@ class VoiceProfileCog(commands.Cog):
         self._epoch = 0
         self._media_renderer = ProfileMediaRenderer()
         self._media_cache = ProfileMediaCache()
+        self._asset_cache = ProfileAssetCache()
         self._revision: str | None = None
         self._close_task: asyncio.Task[None] | None = None
 
@@ -84,6 +86,7 @@ class VoiceProfileCog(commands.Cog):
 
     async def _close(self) -> None:
         await self._media_cache.aclose()
+        self._asset_cache.clear()
         await self._media_renderer.aclose()
 
     @app_commands.command(
@@ -196,8 +199,10 @@ class VoiceProfileCog(commands.Cog):
         snapshot = await asyncio.wait_for(self._timeline(guild.id), _DATA_TIMEOUT)
         avatar_asset = user.display_avatar.with_format(
             "gif" if user.display_avatar.is_animated() else "png"
+        ).with_size(256)
+        guild_asset = (
+            guild.icon.with_format("png").with_size(64) if guild.icon else None
         )
-        guild_asset = guild.icon.with_format("png") if guild.icon else None
         display_name, guild_name = user.display_name, guild.name
         key = MediaKey(
             guild.id,
@@ -244,11 +249,16 @@ class VoiceProfileCog(commands.Cog):
     ) -> bytes | None:
         if asset is None:
             return None
+        url = str(asset)
+        cached = self._asset_cache.get(url)
+        if cached is not None:
+            return cached
         try:
             data = await asyncio.wait_for(asset.read(), _ASSET_TIMEOUT)
             if len(data) > 2 * 1024 * 1024:
                 logger.warning("Voice profile %s exceeds image budget", label)
                 return None
+            self._asset_cache.put(url, data)
             return data
         except Exception:
             logger.warning("Voice profile %s unavailable", label)

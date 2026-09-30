@@ -12,13 +12,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 from discord.ext import commands
+from PIL import Image
 
 import cogs.voice.collector_cog
 import config
 from api.voice.model import VoiceCheckpoint, VoiceSnapshot
 from api.voice.timeline import VoiceTimeline
 from cogs.voice import profile_cog as cog_module
+from cogs.voice.profile.avatar import load_avatar
 from cogs.voice.profile.media import ProfileMedia, RenderBusyError
+from cogs.voice.profile.raster import Box
 from cogs.voice.profile.view import VoiceProfileView
 from cogs.voice.profile_cog import ProfileSnapshot, VoiceProfileCog
 from framework.feedback_ui import FeedbackUI
@@ -38,11 +41,15 @@ def interaction(user_id: int = 10, *, guild: bool = True) -> MagicMock:
     item.user.display_avatar.with_format.return_value.read = AsyncMock(
         side_effect=OSError("CDN unavailable")
     )
+    avatar = item.user.display_avatar.with_format.return_value
+    avatar.with_size.return_value = avatar
     item.guild = MagicMock(spec=discord.Guild) if guild else None
     if item.guild is not None:
         item.guild.id = 42
         item.guild.name = "Guild"
         item.guild.get_member.return_value = None
+        icon = item.guild.icon.with_format.return_value
+        icon.with_size.return_value = icon
     item.response.defer = AsyncMock()
     item.response.send_message = AsyncMock()
     item.edit_original_response = AsyncMock()
@@ -62,15 +69,26 @@ async def invoke(cog: VoiceProfileCog, item: MagicMock, private: bool = False) -
 
 
 class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
-    async def test_real_identity_reaches_media_and_cached_webp_attachment(self) -> None:
+    async def test_gif_assets_are_reused_across_new_png_and_webp_cards(self) -> None:
         bot = MagicMock()
         cog = VoiceProfileCog(bot)
         cog._revision = "test"
         item = interaction()
-        profile = profile_at(20)
         item.user.display_avatar.is_animated.return_value = True
         avatar = item.user.display_avatar.with_format.return_value
-        avatar.read = AsyncMock(return_value=b"avatar-bytes")
+        output = BytesIO()
+        with Image.new("RGB", (16, 16), "red") as first_frame:
+            with Image.new("RGB", (16, 16), "blue") as second_frame:
+                first_frame.save(
+                    output,
+                    "GIF",
+                    save_all=True,
+                    append_images=[second_frame],
+                    duration=[80, 120],
+                    loop=0,
+                )
+        gif = output.getvalue()
+        avatar.read = AsyncMock(return_value=gif)
         icon = item.guild.icon.with_format.return_value
         icon.read = AsyncMock(return_value=b"guild-icon-bytes")
         media = ProfileMedia(b"webp", "webp")
@@ -79,31 +97,148 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 cog,
                 "_timeline",
                 AsyncMock(
-                    return_value=ProfileSnapshot(
-                        VoiceTimeline((), (), ()),
-                        0,
-                        0,
-                    )
+                    side_effect=[
+                        ProfileSnapshot(VoiceTimeline((), (), ()), 0, generation)
+                        for generation in (0, 0, 1, 2)
+                    ]
                 ),
             ),
-            patch.object(cog_module, "build_profile", return_value=profile),
             patch.object(
-                cog._media_renderer, "render", AsyncMock(return_value=media)
+                cog_module,
+                "build_profile",
+                side_effect=[profile_at(20), profile_at(5), profile_at(20)],
+            ),
+            patch.object(
+                cog._media_renderer,
+                "render",
+                AsyncMock(side_effect=[media, ProfileMedia(b"png", "png"), media]),
             ) as render,
         ):
             first = await cog._attachment(item.guild, item.user, item.filesize_limit)
             second = await cog._attachment(item.guild, item.user, item.filesize_limit)
+            third = await cog._attachment(item.guild, item.user, item.filesize_limit)
+            fourth = await cog._attachment(item.guild, item.user, item.filesize_limit)
         self.assertEqual(first.filename, "voice-profile.webp")
         self.assertEqual(second.filename, "voice-profile.webp")
-        render.assert_awaited_once()
-        identity = render.call_args.args[1]
-        self.assertEqual(identity.avatar_bytes, b"avatar-bytes")
-        self.assertEqual(identity.guild_icon_png, b"guild-icon-bytes")
+        self.assertEqual(third.filename, "voice-profile.png")
+        self.assertEqual(fourth.filename, "voice-profile.webp")
+        self.assertEqual(render.await_count, 3)
+        for call in render.call_args_list:
+            identity = call.args[1]
+            self.assertEqual(identity.avatar_bytes, gif)
+            self.assertEqual(identity.guild_icon_png, b"guild-icon-bytes")
+            decoded = load_avatar(identity.avatar_bytes, Box(0, 0, 92, 92))
+            if decoded is None:
+                self.fail("Cached GIF lost its animation")
+            self.assertEqual(len(decoded.frames), 2)
+            self.assertEqual(decoded.ends_ms, (80, 200))
+            self.assertNotEqual(
+                decoded.frames[0].tobytes(), decoded.frames[1].tobytes()
+            )
         item.user.display_avatar.with_format.assert_called_with("gif")
+        avatar.with_size.assert_called_with(256)
+        icon.with_size.assert_called_with(64)
         avatar.read.assert_awaited_once()
         icon.read.assert_awaited_once()
         first.close()
         second.close()
+        third.close()
+        fourth.close()
+
+    async def test_guild_icon_is_shared_between_members_cards(self) -> None:
+        cog = VoiceProfileCog(MagicMock())
+        cog._revision = "test"
+        first, second = interaction(), interaction(user_id=11)
+        icon = first.guild.icon.with_format.return_value
+        icon.read = AsyncMock(return_value=b"icon")
+        for item in (first, second):
+            item.user.display_avatar.with_format.return_value.read = AsyncMock(
+                return_value=b"avatar"
+            )
+        with (
+            patch.object(
+                cog,
+                "_timeline",
+                AsyncMock(
+                    return_value=ProfileSnapshot(VoiceTimeline((), (), ()), 0, 0)
+                ),
+            ),
+            patch.object(cog_module, "build_profile", return_value=profile_at(20)),
+            patch.object(
+                cog._media_renderer,
+                "render",
+                AsyncMock(return_value=ProfileMedia(b"webp", "webp")),
+            ) as render,
+        ):
+            for item in (first, second):
+                attachment = await cog._attachment(
+                    first.guild, item.user, item.filesize_limit
+                )
+                attachment.close()
+        self.assertEqual(render.await_count, 2)
+        icon.read.assert_awaited_once()
+
+    async def test_changed_asset_url_downloads_new_bytes(self) -> None:
+        cog = VoiceProfileCog(MagicMock())
+        asset = MagicMock(spec=discord.Asset)
+        asset.configure_mock(
+            **{
+                "__str__.return_value": "https://cdn.discordapp.com/icons/42/old.png?size=64"
+            }
+        )
+        asset.read = AsyncMock(side_effect=[b"old", b"new"])
+        self.assertEqual(await cog._asset_bytes(asset, "guild icon"), b"old")
+        self.assertEqual(await cog._asset_bytes(asset, "guild icon"), b"old")
+        asset.configure_mock(
+            **{
+                "__str__.return_value": "https://cdn.discordapp.com/icons/42/new.png?size=64"
+            }
+        )
+        self.assertEqual(await cog._asset_bytes(asset, "guild icon"), b"new")
+        self.assertEqual(asset.read.await_count, 2)
+
+    async def test_failed_and_oversized_downloads_are_retried(self) -> None:
+        cog = VoiceProfileCog(MagicMock())
+        for failed in (TimeoutError(), b"x" * (2 * 1024 * 1024 + 1)):
+            with self.subTest(failed=type(failed).__name__):
+                asset = MagicMock(spec=discord.Asset)
+                asset.read = AsyncMock(side_effect=[failed, b"valid"])
+                with self.assertLogs(cog_module.logger, level="WARNING"):
+                    self.assertIsNone(await cog._asset_bytes(asset, "guild icon"))
+                self.assertEqual(await cog._asset_bytes(asset, "guild icon"), b"valid")
+                self.assertEqual(asset.read.await_count, 2)
+
+    async def test_format_and_size_are_part_of_the_asset_cache_key(self) -> None:
+        cog = VoiceProfileCog(MagicMock())
+        original = discord.Asset(
+            state=MagicMock(),
+            url="https://cdn.discordapp.com/avatars/10/a_hash.gif?size=1024",
+            key="a_hash",
+            animated=True,
+        )
+        gif = original.with_format("gif").with_size(256)
+        png = original.with_format("png").with_size(256)
+        small_png = original.with_format("png").with_size(64)
+        self.assertTrue(str(gif).endswith("a_hash.gif?size=256"))
+        with patch.object(
+            discord.Asset, "read", AsyncMock(side_effect=[b"gif", b"png", b"small"])
+        ) as read:
+            for asset, expected in (
+                (gif, b"gif"),
+                (png, b"png"),
+                (small_png, b"small"),
+            ):
+                self.assertEqual(await cog._asset_bytes(asset, "avatar"), expected)
+                self.assertEqual(await cog._asset_bytes(asset, "avatar"), expected)
+        self.assertEqual(read.await_count, 3)
+
+    async def test_unload_releases_image_cache(self) -> None:
+        cog = VoiceProfileCog(MagicMock())
+        asset = MagicMock(spec=discord.Asset)
+        asset.read = AsyncMock(return_value=b"icon")
+        await cog._asset_bytes(asset, "guild icon")
+        await cog.cog_unload()
+        self.assertIsNone(cog._asset_cache.get(str(asset)))
 
     async def test_timeline_cache_reuses_and_invalidates_on_persisted_count(
         self,
