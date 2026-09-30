@@ -126,7 +126,9 @@ class TestAppearance(unittest.TestCase):
         self.assertEqual(policy.for_level(150), policy.for_level(10**20))
 
     def test_custom_palette_can_change_colors_and_breakpoints(self) -> None:
-        level = LevelPolicy().level_for(4100)
+        levels = LevelPolicy()
+        xp = levels.threshold(5)
+        level = levels.level_for(xp)
         palette = (
             LevelColorBand(1, LevelTier.STARTER, 0x123456),
             LevelColorBand(7, LevelTier.UNCOMMON, 0x654321),
@@ -138,7 +140,7 @@ class TestAppearance(unittest.TestCase):
         self.assertEqual(policy.for_level(7).color, 0x654321)
         self.assertEqual(policy.for_level(7).features, AppearanceFeature.NONE)
         self.assertEqual(policy.for_level(7).palette_version, "custom-palette")
-        self.assertEqual(LevelPolicy().level_for(4100), level)
+        self.assertEqual(levels.level_for(xp), level)
         self.assertEqual(
             LevelAppearancePolicy().for_level(level).tier, LevelTier.UNCOMMON
         )

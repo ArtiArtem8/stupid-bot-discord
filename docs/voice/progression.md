@@ -138,17 +138,56 @@ person-time or use them as an XP/hour denominator without deciding that semantic
 
 ## Levels
 
-`LevelPolicy(coefficient=250)` uses cumulative `T(L) = 250*(L-1)^2`, with level one
-at zero XP. There is no upper cap. Level lookup uses `isqrt(total_xp // 250) + 1`,
-not a floating-point square root. Fractional XP is retained in progress.
+`LevelPolicy()` uses the cumulative quadratic-linear curve:
+
+```text
+x = L - 1
+T(L) = 200*x^2 + 2050*x
+```
+
+Level one starts at zero XP; there is no upper cap. The default version is
+`quadratic-linear-v3`. The linear component makes early tier changes require
+noticeable time. Marginal level cost still grows, while the late-game slope is
+softer than the previous pure quadratic curve.
+
+The product anchors below assume normal social activity at 1200 XP/hour, without
+stream/video bonuses or audio penalties. Tier levels and colors stay fixed.
+
+| Tier | Level | Cumulative XP | Social hours |
+| --- | ---: | ---: | ---: |
+| Starter | 1 | 0 | 0.0 |
+| Uncommon | 5 | 11,400 | 9.5 |
+| Rare | 10 | 34,650 | 28.9 |
+| Epic | 20 | 111,150 | 92.6 |
+| Mythic | 35 | 300,900 | 250.8 |
+| Legendary | 50 | 580,650 | 483.9 |
+| Ascendant | 75 | 1,246,900 | 1039.1 |
+| Transcendent | 100 | 2,163,150 | 1802.6 |
+
+Level lookup remains exact. For `A = quadratic_coefficient` and
+`B = linear_coefficient`, take the integer part of nonnegative XP and solve:
+
+```text
+D = B*B + 4*A*whole_xp
+L = (isqrt(D) - B) // (2*A) + 1
+```
+
+Integer thresholds mean fractional XP cannot change that selection. Fractional
+XP is retained in progress; no floating-point square root is used, including
+for arbitrarily large levels.
 
 `LevelProgress` exposes total XP, level, current/next thresholds, earned,
-required, remaining and exact progress ratio. For 5075 XP: level 5, 1075/2250
-earned, 1175 remaining. One million XP is level 64. Invalid negative XP and
-non-positive levels are rejected. The default version is `quadratic-v2`.
+required, remaining and exact progress ratio. For 5075 XP: level 3, thresholds
+4900 and 7950, earned 175, required 3050, remaining 2875, ratio `7/122`.
+1,000,000 XP = level 66, between thresholds 978,250 and 1,006,500.
 
-Changing the coefficient is a balance experiment. When comparing results, record
-both the formula version and coefficient; do not cache solely by version string.
+Coefficients are keyword-only: `LevelPolicy(quadratic_coefficient=400,
+linear_coefficient=4100)` doubles every default threshold. The quadratic
+coefficient must be a positive integer and the linear coefficient a nonnegative
+integer; bools are rejected. Negative XP and non-positive levels are rejected.
+When comparing balance experiments, record the formula version and both
+coefficients; do not cache solely by version string. XP earning remains
+`voice-v3`, and appearance remains `level-colors-v1`.
 
 ## Appearance
 

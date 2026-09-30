@@ -36,26 +36,38 @@ class LevelProgress:
         return self.earned / self.required
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class LevelPolicy:
-    """Use T(level) = coefficient * (level - 1)**2, starting at level one."""
+    """Cumulative quadratic-linear level curve starting at level one."""
 
-    coefficient: int = 250
-    version: ClassVar[str] = "quadratic-v2"
+    quadratic_coefficient: int = 200
+    linear_coefficient: int = 2050
+    version: ClassVar[str] = "quadratic-linear-v3"
 
     def __post_init__(self) -> None:
-        """Require a strictly positive integer scale."""
-        _require_positive_integer(self.coefficient)
+        """Require a positive quadratic and nonnegative linear coefficient."""
+        _require_positive_integer(self.quadratic_coefficient)
+        _require_nonnegative_integer(self.linear_coefficient)
 
     def threshold(self, level: int) -> int:
         """Return cumulative XP needed for a positive integer level."""
         _require_positive_integer(level)
-        return self.coefficient * (level - 1) ** 2
+        x = level - 1
+        return self.quadratic_coefficient * x * x + self.linear_coefficient * x
 
     def level_for(self, xp: Fraction | int) -> int:
         """Find the exact level, including at very large threshold boundaries."""
         amount = _xp_amount(xp)
-        return isqrt(amount // self.coefficient) + 1
+        # Thresholds are integers, so fractional XP cannot cross a new boundary.
+        whole_xp = amount.numerator // amount.denominator
+        discriminant = (
+            self.linear_coefficient * self.linear_coefficient
+            + 4 * self.quadratic_coefficient * whole_xp
+        )
+        x = (isqrt(discriminant) - self.linear_coefficient) // (
+            2 * self.quadratic_coefficient
+        )
+        return x + 1
 
     def progress(self, xp: Fraction | int) -> LevelProgress:
         """Return level and progress values; there is no upper level cap."""
@@ -68,9 +80,16 @@ class LevelPolicy:
 
 def _require_positive_integer(value: object) -> None:
     if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError("Levels and their coefficient must be integers")
+        raise TypeError("Levels and quadratic coefficient must be integers")
     if value < 1:
-        raise ValueError("Levels and their coefficient must be positive")
+        raise ValueError("Levels and quadratic coefficient must be positive")
+
+
+def _require_nonnegative_integer(value: object) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError("Linear coefficient must be an integer")
+    if value < 0:
+        raise ValueError("Linear coefficient must be nonnegative")
 
 
 def _xp_amount(value: object) -> Fraction:
