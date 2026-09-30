@@ -87,3 +87,6 @@ The project uses Ruff, Basedpyright, ty, pytest, and pre-commit. See [CONTRIBUTI
 ## License
 
 This project is licensed under the [MIT License](LICENSE). Free to use, modify, and distribute.
+
+Some UI icons are provided by [Icons8](https://icons8.com). Emoji images are kept in
+[resources/emojis/](resources/emojis/) with the same names as the Discord application emojis.
