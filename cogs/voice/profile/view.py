@@ -20,9 +20,7 @@ class VoiceProfileView(discord.ui.View):
         self._on_refresh = refresh
         self._render_lock = asyncio.Lock()
 
-    @discord.ui.button(
-        label="Обновить", emoji="🔄", style=discord.ButtonStyle.secondary
-    )
+    @discord.ui.button(emoji="🔄", style=discord.ButtonStyle.secondary)
     async def refresh_button(
         self,
         interaction: discord.Interaction,

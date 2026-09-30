@@ -231,12 +231,12 @@ Collector and journal write semantics remain unchanged by these read-side polici
 
 ## Technical references
 
-- Python 3.12 rational arithmetic: https://docs.python.org/3.12/library/fractions.html
-- Exact integer square root: https://docs.python.org/3.12/library/math.html#math.isqrt
-- Duration precision and UTC arithmetic: https://docs.python.org/3.12/library/datetime.html
+- Python 3.12 rational arithmetic: <https://docs.python.org/3.12/library/fractions.html>
+- Exact integer square root: <https://docs.python.org/3.12/library/math.html#math.isqrt>
+- Duration precision and UTC arithmetic: <https://docs.python.org/3.12/library/datetime.html>
 - Logical separation, not mandatory layers/services:
-  https://martinfowler.com/bliki/PresentationDomainDataLayering.html
+  <https://martinfowler.com/bliki/PresentationDomainDataLayering.html>
 - Discord Embed color is an integer field:
-  https://docs.discord.com/developers/resources/message#embed-object-embed-structure
+  <https://docs.discord.com/developers/resources/message#embed-object-embed-structure>
 - Color should not be the only indicator:
-  https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html
+  <https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html>
