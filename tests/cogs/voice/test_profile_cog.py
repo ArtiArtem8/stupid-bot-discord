@@ -19,6 +19,7 @@ import config
 from api.voice.model import VoiceCheckpoint, VoiceSnapshot
 from api.voice.timeline import VoiceTimeline
 from cogs.voice import profile_cog as cog_module
+from cogs.voice.profile import view as view_module
 from cogs.voice.profile.avatar import load_avatar
 from cogs.voice.profile.media import ProfileMedia, RenderBusyError
 from cogs.voice.profile.raster import Box
@@ -26,6 +27,7 @@ from cogs.voice.profile.view import VoiceProfileView
 from cogs.voice.profile_cog import ProfileSnapshot, VoiceProfileCog
 from framework.feedback_ui import FeedbackUI
 from repositories.voice_journal import VoiceJournal
+from resources import TRASH_EMOJI
 from tests.api.voice.examples import human, record
 from tests.cogs.voice.profile.test_media import profile_at
 
@@ -53,12 +55,15 @@ def interaction(user_id: int = 10, *, guild: bool = True) -> MagicMock:
     item.response.defer = AsyncMock()
     item.response.send_message = AsyncMock()
     item.edit_original_response = AsyncMock()
+    message = MagicMock(spec=discord.InteractionMessage)
+    message.edit = AsyncMock()
+    item.edit_original_response.return_value = message
     item.delete_original_response = AsyncMock()
     item.followup.send = AsyncMock()
     return item
 
 
-async def invoke(cog: VoiceProfileCog, item: MagicMock, private: bool = False) -> None:
+async def invoke(cog: VoiceProfileCog, item: MagicMock, private: bool = True) -> None:
     # discord.py types this callback as either bound or unbound; a Cog stores
     # the unbound variant until it is registered with the bot.
     callback = cast(
@@ -329,7 +334,10 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 )
                 view = item.edit_original_response.call_args.kwargs["view"]
                 self.assertIsInstance(view, VoiceProfileView)
-                self.assertEqual(len(view.children), 1)
+                self.assertEqual(len(view.children), 1 if private else 2)
+                self.assertIs(view.message, item.edit_original_response.return_value)
+                await view.on_timeout()
+                view.message.edit.assert_awaited_once_with(view=None)
 
     async def test_refresh_from_command_replaces_attachment_on_same_message(
         self,
@@ -354,6 +362,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             attachments=[updated], view=view
         )
         button.followup.send.assert_not_awaited()
+        self.assertIs(view.message, button.edit_original_response.return_value)
         initial.close()
         updated.close()
 
@@ -481,18 +490,164 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [p.name for p in VoiceProfileCog.voice_profile.parameters], ["private"]
         )
+        self.assertIs(VoiceProfileCog.voice_profile.parameters[0].default, True)
 
 
 class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
-    async def test_other_user_cannot_refresh(self) -> None:
+    async def test_other_user_cannot_use_public_controls(self) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(10, refresh)
+        view = VoiceProfileView(10, refresh, private=False)
         item = interaction(user_id=11)
-        await view.refresh_button.callback(item)
+        self.assertFalse(await view.interaction_check(item))
         refresh.assert_not_awaited()
+        item.delete_original_response.assert_not_awaited()
         item.response.send_message.assert_awaited_once_with(
             "Это не ваша карточка.", ephemeral=True
         )
+
+    async def test_private_view_has_only_refresh_and_public_view_has_trash(
+        self,
+    ) -> None:
+        private = VoiceProfileView(10, AsyncMock())
+        public = VoiceProfileView(10, AsyncMock(), private=False)
+        self.assertEqual(private.children, [private.refresh_button])
+        self.assertEqual(public.children, [public.refresh_button, public.delete_button])
+        self.assertEqual(str(public.delete_button.emoji), TRASH_EMOJI)
+        self.assertEqual(public.delete_button.style, discord.ButtonStyle.danger)
+
+    async def test_owner_can_delete_public_card_and_stop_controls(self) -> None:
+        refresh = AsyncMock()
+        view = VoiceProfileView(10, refresh, private=False)
+        item = interaction()
+        self.assertTrue(await view.interaction_check(item))
+        await view.delete_button.callback(item)
+        item.response.defer.assert_awaited_once_with()
+        item.delete_original_response.assert_awaited_once_with()
+        self.assertTrue(view.is_finished())
+        refresh.assert_not_awaited()
+
+    async def test_delete_already_missing_card_stops_controls(self) -> None:
+        view = VoiceProfileView(10, AsyncMock(), private=False)
+        item = interaction()
+        item.delete_original_response.side_effect = discord.NotFound(
+            MagicMock(status=404), "Unknown message"
+        )
+        await view.delete_button.callback(item)
+        self.assertTrue(view.is_finished())
+
+    async def test_timeout_removes_controls_without_deleting_card(self) -> None:
+        for private in (False, True):
+            with self.subTest(private=private):
+                view = VoiceProfileView(10, AsyncMock(), private=private)
+                message = MagicMock(spec=discord.InteractionMessage)
+                message.edit = AsyncMock()
+                message.delete = AsyncMock()
+                view.message = message
+                await view.on_timeout()
+                message.edit.assert_awaited_once_with(view=None)
+                message.delete.assert_not_awaited()
+                self.assertTrue(view.is_finished())
+
+    async def test_timeout_before_delivery_and_after_external_delete_is_safe(
+        self,
+    ) -> None:
+        view = VoiceProfileView(10, AsyncMock())
+        await view.on_timeout()
+        self.assertTrue(view.is_finished())
+        message = MagicMock(spec=discord.InteractionMessage)
+        message.edit = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "Unknown message")
+        )
+        view.message = message
+        await view.on_timeout()
+        self.assertTrue(view.is_finished())
+
+    async def test_timeout_logs_http_failure_and_keeps_controls_stopped(self) -> None:
+        view = VoiceProfileView(10, AsyncMock())
+        message = MagicMock(spec=discord.InteractionMessage)
+        message.edit = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(status=503), "Unavailable")
+        )
+        view.message = message
+        with self.assertLogs(view_module.logger, level="WARNING") as logs:
+            await view.on_timeout()
+        self.assertIn("HTTP 503", logs.output[0])
+        self.assertTrue(view.is_finished())
+
+    async def test_control_errors_use_global_feedback_with_original_cause(self) -> None:
+        view = VoiceProfileView(10, AsyncMock(), private=False)
+        item = interaction()
+        error = discord.HTTPException(MagicMock(status=503), "Unavailable")
+        with patch.object(
+            view_module, "handle_app_command_error", AsyncMock()
+        ) as handle:
+            await view.on_error(item, error, view.delete_button)
+        handle.assert_awaited_once()
+        self.assertIs(handle.call_args.args[0], item)
+        self.assertIs(handle.call_args.args[1].__cause__, error)
+
+    async def test_delete_waits_for_refresh_before_removing_card(self) -> None:
+        started, release, deletion_deferred = (
+            asyncio.Event(),
+            asyncio.Event(),
+            asyncio.Event(),
+        )
+        message_exists = True
+
+        async def refresh(_item: discord.Interaction) -> None:
+            started.set()
+            await release.wait()
+            self.assertTrue(message_exists)
+
+        async def delete() -> None:
+            nonlocal message_exists
+            message_exists = False
+
+        view = VoiceProfileView(10, refresh, private=False)
+        first, second = interaction(), interaction()
+        second.response.defer.side_effect = deletion_deferred.set
+        second.delete_original_response.side_effect = delete
+        rendering = asyncio.create_task(view.refresh_button.callback(first))
+        await started.wait()
+        deleting = asyncio.create_task(view.delete_button.callback(second))
+        await deletion_deferred.wait()
+        second.delete_original_response.assert_not_awaited()
+        release.set()
+        await asyncio.gather(rendering, deleting)
+        self.assertFalse(message_exists)
+        self.assertTrue(view.is_finished())
+
+    async def test_timeout_waits_for_refresh_then_removes_controls(self) -> None:
+        started, release = asyncio.Event(), asyncio.Event()
+        message = MagicMock(spec=discord.InteractionMessage)
+        message.edit = AsyncMock()
+
+        async def refresh(_item: discord.Interaction) -> None:
+            started.set()
+            await release.wait()
+            message.edit.assert_not_awaited()
+            view.message = message
+
+        view = VoiceProfileView(10, refresh)
+        rendering = asyncio.create_task(view.refresh_button.callback(interaction()))
+        await started.wait()
+        timing_out = asyncio.create_task(view.on_timeout())
+        await view.wait()
+        message.edit.assert_not_awaited()
+        release.set()
+        await asyncio.gather(rendering, timing_out)
+        message.edit.assert_awaited_once_with(view=None)
+        self.assertTrue(view.is_finished())
+
+    async def test_queued_clicks_cannot_refresh_after_delete(self) -> None:
+        refresh = AsyncMock()
+        view = VoiceProfileView(10, refresh, private=False)
+        item = interaction()
+        await view.delete_button.callback(item)
+        await view.refresh_button.callback(interaction())
+        await view.delete_button.callback(interaction())
+        refresh.assert_not_awaited()
+        item.delete_original_response.assert_awaited_once()
 
     async def test_refresh_edits_same_message_and_concurrent_click_is_ignored(
         self,

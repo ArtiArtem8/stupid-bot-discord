@@ -97,7 +97,7 @@ class VoiceProfileCog(commands.Cog):
     async def voice_profile(
         self,
         interaction: discord.Interaction,
-        private: bool = False,
+        private: bool = True,
     ) -> None:
         if interaction.guild is None:
             await interaction.response.send_message(
@@ -110,7 +110,7 @@ class VoiceProfileCog(commands.Cog):
         async def refresh(button_interaction: discord.Interaction) -> None:
             await self._deliver(button_interaction, guild_id, user_id, view)
 
-        view = VoiceProfileView(user_id, refresh)
+        view = VoiceProfileView(user_id, refresh, private=private)
         await self._deliver(interaction, guild_id, user_id, view)
 
     async def _deliver(
@@ -143,7 +143,7 @@ class VoiceProfileCog(commands.Cog):
             )
             return
         try:
-            await interaction.edit_original_response(
+            view.message = await interaction.edit_original_response(
                 attachments=[attachment], view=view
             )
         finally:

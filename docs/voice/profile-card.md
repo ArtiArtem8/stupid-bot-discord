@@ -1,9 +1,11 @@
 # Voice profile cards
 
-`/voice-profile private:false` renders the invoking user's current guild profile.
-`private:true` makes the response ephemeral. The owner-only Refresh button edits
-the same message and replaces its attachment. It resolves the current member and
-assets again using guild/user IDs.
+`/voice-profile` renders the invoking user's current guild profile privately by
+default. `private:false` publishes the card in the channel and adds a trash button
+that deletes only the message. Both controls are restricted to the command owner.
+After ten minutes of inactivity, the controls are removed and the card stays.
+The Refresh button edits the same message and replaces its attachment. It resolves
+the current member and assets again using guild/user IDs.
 
 ## Production setup
 

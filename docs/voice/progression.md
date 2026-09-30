@@ -211,9 +211,9 @@ and a prismatic accent for transcendent. The profile renderer consumes these
 flags; they do not affect XP and levels. A constructor validates start at 1,
 RGB range and tier order. The appearance policy has no graphics dependency.
 
-`/voice-profile private:false` shows the invoking user's server-local lifetime
-XP, level, total voice time and session count. `private:true` hides the
-response from other members. Starter, Uncommon and Rare use PNG; Epic and higher
+`/voice-profile` privately shows the invoking user's server-local lifetime
+XP, level, total voice time and session count. `private:false` publishes the
+response in the channel. Starter, Uncommon and Rare use PNG; Epic and higher
 use lossless animated WebP, with PNG fallback.
 The card labels its level and tier as well as showing tier color.
 
