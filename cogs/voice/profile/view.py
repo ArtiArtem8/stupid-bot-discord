@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 
 from framework.error_handler import handle_app_command_error
+from resources import RESTART_EMOJI
 
 
 class VoiceProfileView(discord.ui.View):
@@ -20,7 +21,7 @@ class VoiceProfileView(discord.ui.View):
         self._on_refresh = refresh
         self._render_lock = asyncio.Lock()
 
-    @discord.ui.button(emoji="🔄", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(emoji=RESTART_EMOJI, style=discord.ButtonStyle.secondary)
     async def refresh_button(
         self,
         interaction: discord.Interaction,

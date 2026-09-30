@@ -1,5 +1,8 @@
 # ruff: noqa: E501
 
+# Shared controls
+RESTART_EMOJI = "<:restart:1447913966939406366>"
+
 # Admin Cog
 ACTION_TITLES = {
     "block": "Блокировка",
