@@ -1,5 +1,6 @@
 """Birthday commands and daily congratulation orchestration."""
 
+import asyncio
 import logging
 import secrets
 from datetime import date
@@ -178,8 +179,9 @@ class BirthdayCog(BaseCog):
 
     @override
     async def cog_unload(self) -> None:
-        if self.birthday_timer.is_running():
-            self.birthday_timer.cancel()
+        self.birthday_timer.cancel()
+        if task := self.birthday_timer.get_task():
+            await asyncio.gather(task, return_exceptions=True)
 
     @tasks.loop(seconds=config.BIRTHDAY_CHECK_INTERVAL)
     async def birthday_timer(self) -> None:

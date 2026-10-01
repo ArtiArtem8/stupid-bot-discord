@@ -2,15 +2,50 @@
 
 import asyncio
 import unittest
+from functools import partial
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from discord.ext import commands
 
+import config
 from framework.bot import StupidBot
 from framework.cog_loader import CogLoader
 
 
 class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
+    async def test_successful_startup_still_starts_and_closes_background_loops(
+        self,
+    ) -> None:
+        ready = asyncio.Event()
+        loader = MagicMock(spec=CogLoader)
+        bot = StupidBot(cog_loader=loader)
+        with (
+            patch.object(bot.tree, "sync", new=AsyncMock()) as sync,
+            patch.object(
+                bot, "wait_until_ready", new=AsyncMock(side_effect=ready.wait)
+            ),
+        ):
+            try:
+                await bot.setup_hook()
+                for loop in (bot.autosave_task, bot.update_activity_task):
+                    self.assertIsNotNone(loop.get_task())
+                    self.assertTrue(loop.is_running())
+                loader.start_watcher.assert_called_once()
+            finally:
+                await bot.close()
+        loader.load_cogs.assert_awaited_once()
+        sync.assert_awaited_once()
+        loader.close.assert_awaited_once()
+        self.assertTrue(bot.is_closed())
+        for loop in (bot.autosave_task, bot.update_activity_task):
+            task = loop.get_task()
+            self.assertIsNotNone(task)
+            if task is not None:
+                self.assertTrue(task.done())
+
     async def test_close_before_startup_is_idempotent(self) -> None:
         bot = StupidBot()
         await bot.close()
@@ -29,6 +64,127 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
             await bot.close()
         loader.close.assert_awaited_once()
         discord_close.assert_awaited_once()
+
+    async def test_close_during_load_or_sync_prevents_background_start(self) -> None:
+        async def pause(entered: asyncio.Event, release: asyncio.Event) -> None:
+            entered.set()
+            await release.wait()
+
+        for stage in ("load", "sync"):
+            with self.subTest(stage=stage):
+                entered = asyncio.Event()
+                release = asyncio.Event()
+                ready = asyncio.Event()
+                loader = MagicMock(spec=CogLoader)
+                bot = StupidBot(cog_loader=loader)
+
+                with (
+                    patch.object(bot.tree, "sync", new=AsyncMock()) as sync,
+                    patch.object(
+                        bot, "wait_until_ready", new=AsyncMock(side_effect=ready.wait)
+                    ),
+                ):
+                    boundary = loader.load_cogs if stage == "load" else sync
+                    boundary.side_effect = partial(pause, entered, release)
+                    startup = asyncio.create_task(bot.setup_hook())
+                    try:
+                        await entered.wait()
+                        await bot.close()
+                        release.set()
+                        await asyncio.gather(startup, return_exceptions=True)
+                        self.assertTrue(bot.is_closed())
+                        self.assertIsNone(bot.autosave_task.get_task())
+                        self.assertIsNone(bot.update_activity_task.get_task())
+                        loader.start_watcher.assert_not_called()
+                        if stage == "load":
+                            sync.assert_not_awaited()
+                        await bot.close()
+                    finally:
+                        release.set()
+                        await asyncio.gather(startup, return_exceptions=True)
+                        for loop in (bot.autosave_task, bot.update_activity_task):
+                            loop.cancel()
+                            if task := loop.get_task():
+                                await asyncio.gather(task, return_exceptions=True)
+
+    async def test_close_waits_for_startup_cleanup_even_if_cancellation_is_caught(
+        self,
+    ) -> None:
+        class StartupCog(commands.Cog):
+            def __init__(self, unloaded: asyncio.Event) -> None:
+                self.unloaded = unloaded
+
+            @override
+            async def cog_unload(self) -> None:
+                self.unloaded.set()
+
+        async def pause(
+            entered: asyncio.Event, cancelling: asyncio.Event, release: asyncio.Event
+        ) -> None:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelling.set()
+                await release.wait()
+
+        for stage in ("load", "sync"):
+            with self.subTest(stage=stage):
+                entered = asyncio.Event()
+                cancelling = asyncio.Event()
+                release = asyncio.Event()
+                unloaded = asyncio.Event()
+                loader = MagicMock(spec=CogLoader)
+                bot = StupidBot(cog_loader=loader)
+
+                await bot.add_cog(StartupCog(unloaded))
+
+                with patch.object(bot.tree, "sync", new=AsyncMock()) as sync:
+                    boundary = loader.load_cogs if stage == "load" else sync
+                    boundary.side_effect = partial(pause, entered, cancelling, release)
+                    startup = asyncio.create_task(bot.setup_hook())
+                    closing: asyncio.Task[None] | None = None
+                    try:
+                        await entered.wait()
+                        closing = asyncio.create_task(bot.close())
+                        await asyncio.wait_for(cancelling.wait(), 5)
+                        self.assertFalse(closing.done())
+                        self.assertFalse(unloaded.is_set())
+                    finally:
+                        release.set()
+                        await asyncio.gather(startup, return_exceptions=True)
+                        if closing is not None:
+                            await closing
+                    self.assertTrue(unloaded.is_set())
+                    self.assertEqual(bot.cogs, {})
+                    self.assertTrue(bot.is_closed())
+                    self.assertIsNone(bot.autosave_task.get_task())
+                    self.assertIsNone(bot.update_activity_task.get_task())
+                    loader.start_watcher.assert_not_called()
+                    if stage == "load":
+                        sync.assert_not_awaited()
+
+    async def test_setup_after_close_does_not_load_or_sync(self) -> None:
+        loader = MagicMock(spec=CogLoader)
+        bot = StupidBot(cog_loader=loader)
+        await bot.close()
+        ready = asyncio.Event()
+        with (
+            patch.object(bot.tree, "sync", new=AsyncMock()) as sync,
+            patch.object(
+                bot, "wait_until_ready", new=AsyncMock(side_effect=ready.wait)
+            ),
+        ):
+            try:
+                await bot.setup_hook()
+                loader.load_cogs.assert_not_awaited()
+                sync.assert_not_awaited()
+                loader.start_watcher.assert_not_called()
+            finally:
+                for loop in (bot.autosave_task, bot.update_activity_task):
+                    loop.cancel()
+                    if task := loop.get_task():
+                        await asyncio.gather(task, return_exceptions=True)
 
     async def test_cancelled_and_concurrent_close_wait_for_inflight_autosave(
         self,
@@ -103,6 +259,37 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
 
 
 class TestCogLoaderShutdown(unittest.IsolatedAsyncioTestCase):
+    async def test_close_during_load_prevents_loading_remaining_extensions(
+        self,
+    ) -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def load(_name: str) -> None:
+            entered.set()
+            await release.wait()
+
+        bot = MagicMock(spec=commands.Bot)
+        bot.load_extension.side_effect = load
+        loader = CogLoader(bot)
+        with TemporaryDirectory() as root:
+            directory = Path(root)
+            for name in ("first_cog.py", "second_cog.py"):
+                (directory / name).touch()
+            with (
+                patch.object(config, "BASE_DIR", directory),
+                patch.object(config, "COGS_DIR", directory),
+            ):
+                loading = asyncio.create_task(loader.load_cogs())
+                try:
+                    await entered.wait()
+                    await loader.close()
+                finally:
+                    release.set()
+                    await loading
+                await loader.load_cogs()
+        bot.load_extension.assert_awaited_once()
+
     async def test_close_before_watcher_start_prevents_later_start(self) -> None:
         loader = CogLoader(MagicMock(), watch=True)
         await loader.close()

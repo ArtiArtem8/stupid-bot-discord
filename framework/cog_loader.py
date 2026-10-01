@@ -21,7 +21,10 @@ class CogLoader:
         self._close_task: asyncio.Task[None] | None = None
 
     async def load_cogs(self) -> None:
+        """Load entry extensions until closed; the bot owns the in-flight load."""
         for file_path in config.COGS_DIR.rglob("*_cog.py"):
+            if self._close_task is not None:
+                return
             if file_path.name.startswith("_"):
                 continue
             rel_path = file_path.relative_to(config.BASE_DIR)
