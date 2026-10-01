@@ -1,16 +1,15 @@
 import asyncio
 import inspect
-import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from functools import partial
 from os import PathLike
 from pathlib import Path
 
 from config import ENCODING
+from utils.asyncio_utils import run_in_thread
 from utils.json_types import JsonEncodableObject, JsonObject, freeze_json_object
 from utils.json_utils import get_json, save_json
-
-logger = logging.getLogger(__name__)
 
 type JsonDict = JsonObject
 type Updater = Callable[[JsonObject], Awaitable[None] | None]
@@ -49,8 +48,8 @@ class AsyncJsonFileStore:
             await self._write_unlocked(data)
 
     async def _write_unlocked(self, data: JsonEncodableObject) -> None:
-        work = asyncio.create_task(
-            asyncio.to_thread(
+        await run_in_thread(
+            partial(
                 save_json,
                 self.path,
                 data,
@@ -59,22 +58,6 @@ class AsyncJsonFileStore:
                 encoding=self.encoding,
             )
         )
-        cancellation: asyncio.CancelledError | None = None
-        # A cancelled coroutine cannot cancel a running thread. Retain file
-        # ownership even if shutdown cancels the caller more than once.
-        while True:
-            try:
-                await asyncio.shield(work)
-                break
-            except asyncio.CancelledError as error:
-                cancellation = error
-            except Exception:
-                if cancellation is None:
-                    raise
-                logger.exception("JSON write failed while its caller was cancelled")
-                break
-        if cancellation is not None:
-            raise cancellation
 
     async def update(self, updater: Updater) -> JsonObject:
         """Apply one atomic mutation to the stored JSON object.

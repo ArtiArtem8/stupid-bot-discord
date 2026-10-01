@@ -306,7 +306,7 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("utils.json_store.save_json", side_effect=failing_save),
-            self.assertLogs("utils.json_store", level="ERROR") as logs,
+            self.assertLogs("utils.asyncio_utils", level="ERROR") as logs,
         ):
             task = asyncio.create_task(store.write({"a": True}))
             try:

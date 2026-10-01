@@ -64,17 +64,18 @@ class StupidBot(commands.Bot):
 
         Concurrent callers share one shutdown task. Caller cancellation waits
         for shutdown before propagating, keeping main's final save after autosave.
-        This also supports a client closed before or during partial startup.
+        Independent cancellation of the shutdown task propagates immediately
+        once that task finishes; it is never retried.
         """
         if self._shutdown_task is None:
             self._shutdown_task = asyncio.create_task(self._close_owned_work())
         cancellation: asyncio.CancelledError | None = None
-        while True:
+        while not self._shutdown_task.done():
             try:
                 await asyncio.shield(self._shutdown_task)
-                break
             except asyncio.CancelledError as error:
                 cancellation = error
+        self._shutdown_task.result()
         if cancellation is not None:
             raise cancellation
 

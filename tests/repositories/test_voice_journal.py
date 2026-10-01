@@ -1,12 +1,14 @@
 import asyncio
 import json
+import shutil
+import threading
 import unittest
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import override
+from typing import BinaryIO, override
 from unittest.mock import patch
 
 from api.voice.metrics.presence import presence
@@ -503,6 +505,81 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
                 await reading
             await closing
         self.assertEqual(self.journal.counts.persisted, 1)
+
+    async def test_twice_cancelled_compact_cannot_erase_a_later_persisted_record(
+        self,
+    ) -> None:
+        journal = VoiceJournal(self.root, batch_size=1)
+        first = record(0, VoiceCheckpoint(), sequence=1)
+        second = record(10, VoiceCheckpoint(), sequence=2)
+        appended = asyncio.Event()
+        copied = asyncio.Event()
+        attempted = asyncio.Event()
+        release = threading.Event()
+        loop = asyncio.get_running_loop()
+        append = journal._append
+        copy = shutil.copyfileobj
+
+        def observed_append(records: Sequence[VoiceJournalRecord]) -> None:
+            append(records)
+            loop.call_soon_threadsafe(appended.set)
+
+        def blocked_copy(source: BinaryIO, sink: BinaryIO) -> None:
+            copy(source, sink)
+            loop.call_soon_threadsafe(copied.set)
+            if not release.wait(10):
+                raise TimeoutError("Test did not release the physical compactor")
+
+        async def submit_and_close() -> None:
+            self.assertEqual(journal.submit(second), Submission.ACCEPTED)
+            attempted.set()
+            await journal.close()
+
+        with patch.object(journal, "_append", side_effect=observed_append):
+            journal.start()
+            self.assertEqual(journal.submit(first), Submission.ACCEPTED)
+            await asyncio.wait_for(appended.wait(), 5)
+            self.assertEqual(await journal.read_day(1, START.date()), (first,))
+            self.assertEqual(journal.counts.persisted, 1)
+
+        with (
+            patch("repositories.voice_journal.shutil.copyfileobj", new=blocked_copy),
+            self.assertLogs("repositories.voice_journal", level="WARNING"),
+        ):
+            compacting = asyncio.create_task(
+                journal.compact(before_day=START.date() + timedelta(days=1))
+            )
+            closing: asyncio.Task[None] | None = None
+            try:
+                await asyncio.wait_for(copied.wait(), 5)
+                compacting.cancel()
+                checkpoint = asyncio.Event()
+                loop.call_soon(checkpoint.set)
+                await checkpoint.wait()
+                compacting.cancel()
+                closing = asyncio.create_task(submit_and_close())
+                await attempted.wait()
+                checkpoint.clear()
+                loop.call_soon(checkpoint.set)
+                await checkpoint.wait()
+                self.assertFalse(compacting.done())
+                self.assertFalse(closing.done())
+                self.assertEqual(journal.counts.persisted, 1)
+            finally:
+                release.set()
+                await asyncio.gather(compacting, return_exceptions=True)
+                if closing is not None:
+                    await asyncio.gather(closing, return_exceptions=True)
+
+        self.assertTrue(compacting.cancelled())
+        with self.assertRaises(JournalWriteError):
+            await journal.close()
+        self.assertEqual(journal.counts.persisted, 1)
+        self.assertEqual(journal.counts.failed, 1)
+        self.assertEqual(await journal.read_day(1, START.date()), (first,))
+        gaps = await journal.read_day(None, START.date())
+        self.assertEqual(len(gaps), 1)
+        self.assertIsInstance(gaps[0].fact, ObservationGap)
 
     async def test_reader_does_not_hide_corrupt_line_as_continuous_presence(
         self,
