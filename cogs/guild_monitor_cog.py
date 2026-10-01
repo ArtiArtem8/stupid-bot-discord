@@ -301,7 +301,7 @@ class ServerMonitorCog(BaseCog):
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS if restored else FeedbackType.WARNING,
-            title=f"Роли восстановлены для {user.display_name}",
+            title=f"Восстановление ролей: {user.display_name}",
             description=description,
             ephemeral=True,
         )

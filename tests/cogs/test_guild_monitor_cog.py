@@ -8,13 +8,44 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-from api.guild_monitoring import ServerMonitoringManager
+from api.guild_monitoring import (
+    MemberSnapshot,
+    ServerMonitoringManager,
+    monitor_manager,
+)
 from cogs import guild_monitor_cog as cog_module
 from cogs.guild_monitor_cog import ServerMonitorCog
 from framework.feedback_ui import FeedbackType, FeedbackUI
 
 
 class TestGuildMonitorCog(unittest.IsolatedAsyncioTestCase):
+    async def test_zero_success_restore_reports_warning_without_claiming_success(
+        self,
+    ) -> None:
+        item = MagicMock(spec=discord.Interaction)
+        item.guild = MagicMock(spec=discord.Guild, id=10)
+        item.response = MagicMock(spec=discord.InteractionResponse)
+        member = MagicMock(spec=discord.Member, id=5, display_name="Member")
+        cog = ServerMonitorCog(MagicMock())
+        snapshot = MemberSnapshot(5, "Member", [7], datetime.now(UTC))
+        with (
+            patch.object(
+                monitor_manager,
+                "get_snapshot",
+                new=AsyncMock(return_value=snapshot),
+            ),
+            patch.object(
+                monitor_manager,
+                "restore_snapshot",
+                new=AsyncMock(return_value=([], [7])),
+            ),
+            patch.object(FeedbackUI, "send", new=AsyncMock()) as send,
+        ):
+            await cog.monitor_restore._do_call(item, {"user": member})
+        send.assert_awaited_once()
+        self.assertEqual(send.call_args.kwargs["feedback_type"], FeedbackType.WARNING)
+        self.assertEqual(send.call_args.kwargs["title"], "Восстановление ролей: Member")
+
     async def test_cleanup_waits_for_ready(self) -> None:
         bot = MagicMock()
         bot.wait_until_ready = AsyncMock()
