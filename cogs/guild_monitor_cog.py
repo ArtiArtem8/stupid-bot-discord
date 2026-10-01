@@ -1,5 +1,6 @@
 """Server monitoring cog for tracking and restoring member roles."""
 
+import asyncio
 import logging
 from typing import override
 
@@ -30,8 +31,9 @@ class ServerMonitorCog(BaseCog):
     @override
     async def cog_unload(self) -> None:
         """Stop background tasks on unload."""
-        if self.cleanup_task.is_running():
-            self.cleanup_task.cancel()
+        self.cleanup_task.cancel()
+        if task := self.cleanup_task.get_task():
+            await asyncio.gather(task, return_exceptions=True)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
@@ -265,9 +267,11 @@ class ServerMonitorCog(BaseCog):
         if not restored and not skipped:
             await FeedbackUI.send(
                 interaction,
-                feedback_type=FeedbackType.ERROR,
-                title="Ошибка восстановления",
-                description="Не удалось восстановить ни одной роли. Проверьте права.",
+                feedback_type=FeedbackType.INFO,
+                description=(
+                    "Нет ролей для восстановления: снимок отсутствует, "
+                    "его срок хранения истёк или роли уже выданы."
+                ),
                 ephemeral=True,
             )
             return
@@ -280,7 +284,9 @@ class ServerMonitorCog(BaseCog):
 
         if skipped:
             description += (
-                f"\n\nПропущено {len(skipped)} ролей (удалены или недостаточно прав)"
+                f"\n\nПропущено {len(skipped)} ролей "
+                "(удалены, недоступны или запрос завершился ошибкой). "
+                "Существующие невыданные роли сохранены для повторной попытки."
             )
 
         logger.info(
@@ -294,7 +300,7 @@ class ServerMonitorCog(BaseCog):
 
         await FeedbackUI.send(
             interaction,
-            feedback_type=FeedbackType.SUCCESS,
+            feedback_type=FeedbackType.SUCCESS if restored else FeedbackType.WARNING,
             title=f"Роли восстановлены для {user.display_name}",
             description=description,
             ephemeral=True,
@@ -313,6 +319,10 @@ class ServerMonitorCog(BaseCog):
                     )
             except Exception:
                 logger.exception("Error cleaning up guild %d", guild.id)
+
+    @cleanup_task.before_loop
+    async def before_cleanup_task(self) -> None:
+        await self.bot.wait_until_ready()
 
 
 async def setup(bot: commands.Bot) -> None:

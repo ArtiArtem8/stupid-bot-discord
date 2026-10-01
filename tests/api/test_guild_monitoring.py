@@ -10,7 +10,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from typing import cast, override
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
@@ -24,6 +24,7 @@ def make_role(
     default: bool = False,
     managed: bool = False,
     premium: bool = False,
+    assignable: bool = True,
 ) -> SimpleNamespace:
     """Build a role-shaped test double."""
     return SimpleNamespace(
@@ -31,6 +32,7 @@ def make_role(
         managed=managed,
         is_default=lambda: default,
         is_premium_subscriber=lambda: premium,
+        is_assignable=lambda: assignable,
     )
 
 
@@ -279,44 +281,108 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
     async def test_restore_snapshot_validates_roles_and_deletes_exact_snapshot(
         self,
     ) -> None:
-        guild = SimpleNamespace(id=1)
-        add_roles = AsyncMock()
-        member = cast(
-            discord.Member,
-            cast(
-                object,
-                SimpleNamespace(
-                    guild=guild,
-                    id=5,
-                    add_roles=add_roles,
-                ),
-            ),
-        )
+        member = self._restore_member()
         snapshot = MemberSnapshot(
             user_id=5,
             username="u",
             roles=[10, 20],
             left_at=datetime.now(UTC),
         )
-        get_snapshot = AsyncMock(return_value=snapshot)
-        delete_snapshot = AsyncMock(return_value=True)
-        validate_role = AsyncMock(side_effect=[object(), None])
+        self._store_snapshot(snapshot)
+        role = make_role(10)
 
-        with (
-            patch.object(self.manager, "get_snapshot", get_snapshot),
-            patch.object(self.manager, "delete_snapshot", delete_snapshot),
-            patch.object(self.manager, "_validate_role", validate_role),
-        ):
-            restored, skipped = await self.manager.restore_snapshot(member)
+        def get_role(role_id: int) -> SimpleNamespace | None:
+            return role if role_id == 10 else None
+
+        member.guild.get_role.side_effect = get_role
+        restored, skipped = await self.manager.restore_snapshot(member)
 
         self.assertEqual(len(restored), 1)
         self.assertEqual(skipped, [20])
-        add_roles.assert_awaited_once()
-        delete_snapshot.assert_awaited_once_with(
-            1,
-            5,
-            expected_left_at=snapshot.left_at,
+        member.add_roles.assert_awaited_once_with(
+            role, reason="Автовосстановление ролей"
         )
+        self.assertIsNone(await self.manager.get_snapshot(10, 5))
+
+    def _restore_member(self) -> MagicMock:
+        member = MagicMock(spec=discord.Member, id=5, roles=[])
+        member.guild = MagicMock(spec=discord.Guild, id=10)
+        member.guild.me.guild_permissions.manage_roles = True
+        return member
+
+    def _store_snapshot(self, snapshot: MemberSnapshot, ttl: int | None = None) -> None:
+        self._write_guild(
+            10,
+            {
+                "enabled": True,
+                "ttl_days": ttl,
+                "members": {"5": snapshot.to_dict()},
+            },
+        )
+
+    async def test_restore_enforces_ttl_including_boundary_and_infinite_retention(
+        self,
+    ) -> None:
+        now = datetime(2026, 10, 1, tzinfo=UTC)
+        for age, ttl, expired in ((30, 1, True), (1, 1, False), (30, None, False)):
+            with self.subTest(age=age, ttl=ttl):
+                member = self._restore_member()
+                role = make_role(7)
+                member.guild.get_role.return_value = role
+                self._store_snapshot(
+                    MemberSnapshot(5, "u", [7], now - timedelta(days=age)), ttl
+                )
+                with patch("api.guild_monitoring.utcnow", return_value=now):
+                    restored, skipped = await self.manager.restore_snapshot(member)
+                self.assertEqual(restored, [] if expired else [role])
+                self.assertEqual(skipped, [])
+                self.assertEqual(member.add_roles.await_count, 0 if expired else 1)
+                self.assertIsNone(await self.manager.get_snapshot(10, 5))
+
+    async def test_partial_failure_preserves_success_and_retries_only_missing_roles(
+        self,
+    ) -> None:
+        member = self._restore_member()
+        roles = {7: make_role(7), 9: make_role(9)}
+        member.guild.get_role.side_effect = roles.get
+        snapshot = MemberSnapshot(5, "u", [7, 9], datetime.now(UTC))
+        self._store_snapshot(snapshot)
+        error = discord.HTTPException(
+            MagicMock(status=503, reason="unavailable"), "retry"
+        )
+
+        async def add(role: discord.Role, **_kwargs: object) -> None:
+            if role.id == 9:
+                raise error
+            member.roles.append(role)
+
+        member.add_roles.side_effect = add
+        with self.assertLogs("api.guild_monitoring", level="WARNING"):
+            restored, skipped = await self.manager.restore_snapshot(member)
+        self.assertEqual(restored, [roles[7]])
+        self.assertEqual(skipped, [9])
+        self.assertEqual(await self.manager.get_snapshot(10, 5), snapshot)
+        member.add_roles.reset_mock(side_effect=True)
+        restored, skipped = await self.manager.restore_snapshot(member)
+        self.assertEqual(restored, [roles[9]])
+        self.assertEqual(skipped, [])
+        member.add_roles.assert_awaited_once_with(
+            roles[9], reason="Автовосстановление ролей"
+        )
+        self.assertIsNone(await self.manager.get_snapshot(10, 5))
+
+    async def test_unassignable_roles_and_missing_permission_retain_snapshot(
+        self,
+    ) -> None:
+        for assignable, permission in ((False, True), (True, False)):
+            with self.subTest(assignable=assignable, permission=permission):
+                member = self._restore_member()
+                member.guild.get_role.return_value = make_role(7, assignable=assignable)
+                member.guild.me.guild_permissions.manage_roles = permission
+                self._store_snapshot(MemberSnapshot(5, "u", [7], datetime.now(UTC)))
+                self.assertEqual(await self.manager.restore_snapshot(member), ([], [7]))
+                member.add_roles.assert_not_awaited()
+                self.assertIsNotNone(await self.manager.get_snapshot(10, 5))
 
     async def test_restore_does_not_delete_newer_concurrent_snapshot(self) -> None:
         old_time = datetime(2025, 1, 1, tzinfo=UTC)
@@ -350,7 +416,9 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
 
         guild = SimpleNamespace(
             id=10,
-            me=SimpleNamespace(id=99),
+            me=SimpleNamespace(
+                id=99, guild_permissions=SimpleNamespace(manage_roles=True)
+            ),
             get_role=get_role,
             get_member=get_member,
         )
@@ -362,7 +430,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
                     bot=False,
                     id=5,
                     guild=guild,
-                    roles=[role],
+                    roles=[],
                     add_roles=AsyncMock(side_effect=add_roles),
                 ),
             ),
@@ -371,6 +439,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         restore = asyncio.create_task(self.manager.restore_snapshot(member))
         await add_started.wait()
 
+        member.roles.append(role)
         await self.manager.save_snapshot(member)
 
         release_add.set()
