@@ -25,6 +25,7 @@ from api.music.models import (
 )
 from api.music.protocols import ControllerManagerProtocol
 from api.music.service.connection_manager import ConnectionManager
+from framework.authorization import check_component_access
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from framework.interaction_flow import ack_component
 from resources import RESTART_EMOJI
@@ -582,6 +583,8 @@ class TrackControllerView(ui.View):
 
     async def _prepare_action(self, interaction: Interaction) -> PlaybackAttempt | None:
         if not await self._check_owner(interaction):
+            return None
+        if not await check_component_access(interaction):
             return None
         await ack_component(interaction)
         if self.player.current_attempt is not self.attempt:

@@ -19,6 +19,7 @@ from api.birthday import (
     safe_fetch_member,
 )
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
+from framework.authorization import check_component_access
 from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from resources import BIRTHDAY_WISHES
@@ -93,6 +94,8 @@ class ConfirmDeleteView(discord.ui.View):
             )
             return
 
+        if not await check_component_access(interaction):
+            return
         try:
             guild_exists, cleared = await birthday_manager.clear_user_birthday(
                 self.guild_id, self.user_id

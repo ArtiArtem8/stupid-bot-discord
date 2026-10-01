@@ -111,6 +111,7 @@ class WolframCog(BaseCog):
             name="Solve with Wolfram",
             callback=self._context_solve,
         )
+        self.ctx_menu.add_check(self.interaction_check)
         self.bot.tree.add_command(self.ctx_menu)
 
     @override

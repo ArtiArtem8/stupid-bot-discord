@@ -8,6 +8,7 @@ from typing import Self, override
 import discord
 from discord import app_commands
 
+from framework.authorization import check_component_access
 from framework.error_handler import handle_app_command_error
 from resources import RESTART_EMOJI, TRASH_EMOJI
 
@@ -55,6 +56,8 @@ class VoiceProfileView(discord.ui.View):
             )
             return
         async with self._action_lock:
+            if not await check_component_access(interaction):
+                return
             await interaction.response.defer()
             if not self.is_finished():
                 await self._on_refresh(interaction)
