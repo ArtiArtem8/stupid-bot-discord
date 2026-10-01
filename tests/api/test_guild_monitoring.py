@@ -400,7 +400,10 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
                 },
             },
         )
-        role = make_role(7)
+        role = MagicMock(spec=discord.Role, id=7, managed=False)
+        role.is_default.return_value = False
+        role.is_premium_subscriber.return_value = False
+        role.is_assignable.return_value = True
         add_started = asyncio.Event()
         release_add = asyncio.Event()
 
@@ -408,7 +411,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
             add_started.set()
             await release_add.wait()
 
-        def get_role(_role_id: int) -> SimpleNamespace:
+        def get_role(_role_id: int) -> MagicMock:
             return role
 
         def get_member(_member_id: int) -> object:
