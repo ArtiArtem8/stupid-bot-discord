@@ -8,14 +8,17 @@ from discord.ext import commands
 
 import config
 
-logger = logging.getLogger("StupidBot")
+logger = logging.getLogger(__name__)
 
 
 class CogLoader:
+    """Load discovered cogs and own the optional entry-file watcher lifetime."""
+
     def __init__(self, bot: commands.Bot, watch: bool = False) -> None:
         self.bot = bot
         self.enable_watch = watch
-        self._watcher_task = None
+        self._watcher_task: asyncio.Task[typing.NoReturn] | None = None
+        self._close_task: asyncio.Task[None] | None = None
 
     async def load_cogs(self) -> None:
         for file_path in config.COGS_DIR.rglob("*_cog.py"):
@@ -29,12 +32,32 @@ class CogLoader:
             logger.info("Loaded: %s", module_name)
 
     def start_watcher(self) -> None:
-        if self.enable_watch:
-            self._watcher_task = self.bot.loop.create_task(self._cog_watcher())
+        """Start at most one watcher, provided the loader has not been closed."""
+        if (
+            self.enable_watch
+            and self._close_task is None
+            and (self._watcher_task is None or self._watcher_task.done())
+        ):
+            self._watcher_task = asyncio.create_task(self._cog_watcher())
             logger.info("Cog watcher enabled (argument provided).")
 
+    async def close(self) -> None:
+        """Join the watcher once, shielding cleanup from caller cancellation."""
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self._stop_watcher())
+        await asyncio.shield(self._close_task)
+
+    async def _stop_watcher(self) -> None:
+        if self._watcher_task is None:
+            return
+        self._watcher_task.cancel()
+        try:
+            await self._watcher_task
+        except asyncio.CancelledError:
+            pass
+
     async def _cog_watcher(self) -> typing.NoReturn:
-        """Watch for file changes and reload cogs hot."""
+        """Watch loaded extension entry files; imported modules/assets need restart."""
         logger.info("Watching for changes...")
         last_check = time.time()
         while True:

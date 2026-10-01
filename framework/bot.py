@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from typing import override
@@ -14,7 +15,7 @@ from framework.feedback_ui import FeedbackUI
 from framework.uptime_manager import UptimeManager
 from utils.russian_time_utils import format_duration_ru
 
-logger = logging.getLogger("StupidBot")
+logger = logging.getLogger(__name__)
 
 
 class DevServer:
@@ -47,6 +48,7 @@ class StupidBot(commands.Bot):
 
         self.uptime_manager = uptime_manager or UptimeManager()
         self.cog_loader = cog_loader or CogLoader(self, watch=watch_cogs)
+        self._shutdown_task: asyncio.Task[None] | None = None
 
     async def restore_state(self) -> None:
         """Restore persisted uptime before the bot starts."""
@@ -55,6 +57,48 @@ class StupidBot(commands.Bot):
     async def save_state(self) -> float:
         """Persist accumulated uptime and return the saved duration in seconds."""
         return await self.uptime_manager.save_state()
+
+    @override
+    async def close(self) -> None:
+        """Join owned background work before unloading cogs and closing Discord.
+
+        Concurrent callers share one shutdown task. Caller cancellation waits
+        for shutdown before propagating, keeping main's final save after autosave.
+        This also supports a client closed before or during partial startup.
+        """
+        if self._shutdown_task is None:
+            self._shutdown_task = asyncio.create_task(self._close_owned_work())
+        cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                await asyncio.shield(self._shutdown_task)
+                break
+            except asyncio.CancelledError as error:
+                cancellation = error
+        if cancellation is not None:
+            raise cancellation
+
+    async def _close_owned_work(self) -> None:
+        try:
+            try:
+                await self.cog_loader.close()
+            except Exception:
+                logger.exception("Failed to stop cog watcher")
+            pending: list[tuple[str, asyncio.Task[None]]] = []
+            for loop in (self.update_activity_task, self.autosave_task):
+                task = loop.get_task()
+                loop.cancel()
+                if task is not None:
+                    pending.append((loop.coro.__name__, task))
+            for name, task in pending:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    logger.exception("Bot background task %s failed", name)
+        finally:
+            await super().close()
 
     @override
     async def setup_hook(self) -> None:

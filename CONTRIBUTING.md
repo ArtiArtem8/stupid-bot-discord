@@ -16,6 +16,10 @@ uv run pre-commit install
 - Add or update tests when behavior changes.
 - Let the installed hooks run before pushing.
 
+`uv run main.py --watch` reloads a loaded extension when its entry file changes.
+It does not track imported shared modules or assets. Use a controlled restart
+for those changes in production; the watcher does not provide system-wide hot reload.
+
 ## Full Check
 
 Run the full pre-push hook set when you need a clean local pass:
