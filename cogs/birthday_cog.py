@@ -23,6 +23,7 @@ from framework.authorization import check_component_access
 from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from resources import BIRTHDAY_WISHES
+from utils.birthday_utils import is_birthday_today
 from utils.embeds import SafeEmbed
 
 logger = logging.getLogger(__name__)
@@ -211,61 +212,61 @@ class BirthdayCog(BaseCog):
         if not config:
             return
 
-        channel = self.bot.get_channel(config.channel_id)
-        if not isinstance(channel, discord.TextChannel):
-            return
-
         role = (
             discord.utils.get(guild.roles, id=config.birthday_role_id)
             if config.birthday_role_id
             else None
         )
+        await self._reconcile_roles(guild, config, today, role)
+        channel = self.bot.get_channel(config.channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            return
         birthday_users = config.get_birthdays_today(today)
-        await self._cleanup_roles(guild, config, today, role)
         for user in birthday_users:
-            await self._handle_birthday(guild, channel, role, user, today)
+            await self._handle_birthday(guild, channel, user, today)
 
-    async def _cleanup_roles(
+    async def _reconcile_roles(
         self,
         guild: discord.Guild,
         config: BirthdayGuildConfig,
         today: date,
         role: discord.Role | None,
     ) -> None:
-        """Remove birthday role from users whose birthday is not today.
-
-        Args:
-            guild: Guild context
-            config: Guild birthday configuration
-            today: Current date
-            role: Birthday role to manage
-
-        """
+        """Reconcile role membership independently of sent congratulations."""
         if not role:
             return
 
-        today_key = today.strftime("%d-%m")
-
         for user_id, user_data in config.users.items():
-            if user_data.birth_day_month() != today_key:
+            try:
                 member = await safe_fetch_member(guild, user_id)
-                if member and role in member.roles:
+                if member is None:
+                    continue
+                birthday_today = is_birthday_today(user_data.birthday, today)
+                if birthday_today and role not in member.roles:
+                    await safe_role_edit(member, role, "add")
+                elif not birthday_today and role in member.roles:
                     await safe_role_edit(member, role, "remove")
+            except discord.HTTPException as error:
+                logger.warning(
+                    "Birthday role update failed for guild %s user %s: HTTP %s",
+                    guild.id,
+                    user_id,
+                    error.status,
+                )
+                logger.debug("Birthday role request traceback", exc_info=True)
 
     async def _handle_birthday(
         self,
         guild: discord.Guild,
         channel: discord.TextChannel,
-        role: discord.Role | None,
         user: BirthdayUser,
         today: date,
     ) -> None:
-        """Handle birthday congratulations and role assignment.
+        """Send and record one pending birthday congratulation.
 
         Args:
             guild: Guild context
             channel: Channel for messages
-            role: Optional birthday role
             user: User with birthday
             today: Current date
 
@@ -275,9 +276,6 @@ class BirthdayCog(BaseCog):
             return
 
         try:
-            if role and role not in member.roles:
-                await safe_role_edit(member, role, "add")
-
             wish = secrets.choice(BIRTHDAY_WISHES or ["С днём рождения!"])
             embed = SafeEmbed(
                 title=f"🎉 ПОЗДРАВЛЕНИЯ {user.name}",
