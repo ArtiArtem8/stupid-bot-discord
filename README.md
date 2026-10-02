@@ -86,7 +86,7 @@ Global configuration is loaded in `config.py`.
 
 ## Development
 
-The project uses Ruff, Basedpyright, ty, pytest, and pre-commit. See [CONTRIBUTING.md](CONTRIBUTING.md) for the normal contributor workflow and the full local check command.
+The project uses Ruff, Basedpyright, ty, pytest, and prek. See [CONTRIBUTING.md](CONTRIBUTING.md) for the normal contributor workflow and the full local check command.
 
 ## License
 

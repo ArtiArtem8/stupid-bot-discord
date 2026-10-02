@@ -6,7 +6,7 @@ Keep the change focused. A small fix does not need to become an architecture rew
 
 ```bash
 uv sync --locked
-uv run pre-commit install
+uv run --locked prek install --force
 ```
 
 ## Normal Workflow
@@ -25,10 +25,12 @@ for those changes in production; the watcher does not provide system-wide hot re
 Run the full pre-push hook set when you need a clean local pass:
 
 ```bash
-uv run pre-commit run --all-files --hook-stage pre-push
+uv run --locked prek run --all-files --stage pre-push
 ```
 
 Individual tools like Ruff, Basedpyright, ty, or pytest may still be run directly when debugging a failed hook.
+
+Set `PREK_CONCURRENT_HOOKS=1` to run hooks sequentially on machines with limited resources.
 
 ## Commit Messages
 

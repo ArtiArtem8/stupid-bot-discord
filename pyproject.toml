@@ -21,7 +21,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "basedpyright>=1.40.1",
-    "pre-commit>=4.6.1",
+    "prek>=0.5.4",
     "pytest>=9.1.1",
     "ruff>=0.16.7",
     "ty>=0.0.80",
