@@ -149,6 +149,7 @@ docstring-code-format = true
 docstring-code-line-length = "dynamic"
 
 [tool.pytest.ini_options]
+addopts = ["--capture=sys"]
 testpaths = ["tests"]
 filterwarnings = ["ignore:.*audioop.*:DeprecationWarning:discord.player"]
 pythonpath = ["."]
