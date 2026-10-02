@@ -81,7 +81,7 @@ priority = "verify"
 [[repos.hooks]]
 id = "pytest"
 name = "pytest"
-entry = "uv run --locked pytest -q"
+entry = "uv run --locked pytest -q -n auto --maxprocesses 4 --dist loadfile"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -92,7 +92,7 @@ priority = "verify"
 [[repos.hooks]]
 id = "uv-audit"
 name = "uv audit (all dependencies)"
-entry = "uv audit --locked --ignore GHSA-mrfv-m5wm-5w6w"
+entry = "uv audit --locked --preview-features audit --ignore GHSA-mrfv-m5wm-5w6w"
 language = "system"
 pass_filenames = false
 always_run = true
