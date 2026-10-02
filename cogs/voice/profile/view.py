@@ -9,6 +9,7 @@ from typing import Self, override
 import discord
 from discord import app_commands
 
+from cogs.voice.profile.attachments import detail_embed, retained_attachments
 from cogs.voice.profile.detail_models import ProfileLook
 from cogs.voice.profile.media import RenderBusyError
 from framework.authorization import check_component_access
@@ -193,7 +194,12 @@ class VoiceProfileView(discord.ui.View):
             self._pending_action = ProfileAction(detail.value)
             # Use our latest successful response, never the click's stale message.
             message = await interaction.edit_original_response(
-                attachments=[*self.message.attachments, attachment], view=self
+                attachments=[*retained_attachments(self.message), attachment],
+                embeds=[
+                    detail_embed(f"voice-{kind.value}.png")
+                    for kind in (*self.revealed_order, detail)
+                ],
+                view=self,
             )
         finally:
             self._pending_action = None

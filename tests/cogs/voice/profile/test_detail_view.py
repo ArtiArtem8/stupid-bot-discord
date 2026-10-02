@@ -18,6 +18,12 @@ from tests.cogs.voice.test_profile_cog import interaction
 def attachment(name: str) -> MagicMock:
     item = MagicMock(spec=discord.Attachment)
     item.filename = name
+    item.id = 100 + (
+        "voice-profile.webp",
+        "voice-xp.png",
+        "voice-activity.png",
+        "voice-people.png",
+    ).index(name)
     return item
 
 
@@ -31,6 +37,8 @@ class TestDetailView(unittest.IsolatedAsyncioTestCase):
         )
         self.message = MagicMock(spec=discord.InteractionMessage)
         self.message.attachments = [attachment("voice-profile.webp")]
+        self.message.embeds = []
+        self.message.channel.id = 42
         self.view.message = self.message
         self.access = patch.object(
             view_module, "check_component_access", AsyncMock(return_value=True)
@@ -50,6 +58,7 @@ class TestDetailView(unittest.IsolatedAsyncioTestCase):
         async def edit(
             *,
             attachments: list[discord.Attachment | discord.File],
+            embeds: list[discord.Embed],
             view: VoiceProfileView,
         ) -> MagicMock:
             self.assertIs(view, self.view)
@@ -65,7 +74,26 @@ class TestDetailView(unittest.IsolatedAsyncioTestCase):
                 view.to_components(), [{"type": 1, "components": expected}]
             )
             result = MagicMock(spec=discord.InteractionMessage)
-            result.attachments = [attachment(file.filename) for file in attachments]
+            result.channel.id = 42
+            files = {file.filename: file for file in attachments}
+            result.embeds = []
+            embedded: set[str] = set()
+            for embed in embeds:
+                name = (embed.image.url or "").removeprefix("attachment://")
+                self.assertIn(name, files)
+                identifier = attachment(name).id
+                reference = files[name]
+                if not isinstance(reference, discord.File):
+                    self.assertEqual(reference.id, identifier)
+                url = f"https://cdn.discordapp.com/attachments/42/{identifier}/{name}"
+                result.embeds.append(discord.Embed().set_image(url=url))
+                embedded.add(name)
+            result.attachments = [
+                file for file in attachments if file.filename not in embedded
+            ]
+            self.assertEqual(
+                sum(isinstance(file, discord.File) for file in attachments), 1
+            )
             return result
 
         item.edit_original_response.side_effect = edit
@@ -87,12 +115,11 @@ class TestDetailView(unittest.IsolatedAsyncioTestCase):
             self.fail("Successful reveals must retain the edited message")
         self.assertEqual(
             [item.filename for item in message.attachments],
-            [
-                "voice-profile.webp",
-                "voice-xp.png",
-                "voice-activity.png",
-                "voice-people.png",
-            ],
+            ["voice-profile.webp"],
+        )
+        self.assertEqual(
+            [(embed.image.url or "").rsplit("/", 1)[-1] for embed in message.embeds],
+            ["voice-xp.png", "voice-activity.png", "voice-people.png"],
         )
         self.assertEqual(
             self.view.revealed_order,

@@ -25,6 +25,7 @@ from api.voice.profile.details import (
 from api.voice.profile.model import VoiceProfile
 from api.voice.timeline import VoiceTimeline, build_timeline
 from cogs.voice.profile.asset_cache import ProfileAssetCache
+from cogs.voice.profile.attachments import detail_embed
 from cogs.voice.profile.cache import MediaKey, ProfileMediaCache, RenderedProfile
 from cogs.voice.profile.design import CardIdentity
 from cogs.voice.profile.detail_models import (
@@ -183,7 +184,9 @@ class VoiceProfileCog(BaseCog):
                     )
                 )
             message = await interaction.edit_original_response(
-                attachments=attachments, view=view
+                attachments=attachments,
+                embeds=[detail_embed(file.filename) for file in attachments[1:]],
+                view=view,
             )
             view.message = message
             view.look = request.look

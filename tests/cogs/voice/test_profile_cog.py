@@ -352,6 +352,9 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                     item.edit_original_response.call_args.kwargs["attachments"],
                     [attachment],
                 )
+                self.assertEqual(
+                    item.edit_original_response.call_args.kwargs["embeds"], []
+                )
                 view = item.edit_original_response.call_args.kwargs["view"]
                 self.assertIsInstance(view, VoiceProfileView)
                 self.assertEqual(len(view.children), 4 if private else 5)
@@ -380,7 +383,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             await view.buttons[ProfileAction.REFRESH].callback(button)
         button.response.defer.assert_awaited_once()
         button.edit_original_response.assert_awaited_once_with(
-            attachments=[updated], view=view
+            attachments=[updated], embeds=[], view=view
         )
         button.followup.send.assert_not_awaited()
         self.assertIs(view.message, button.edit_original_response.return_value)

@@ -182,6 +182,13 @@ class TestDetailDelivery(unittest.IsolatedAsyncioTestCase):
             [file.filename for file in files],
             ["voice-profile.png", "voice-xp.png", "voice-activity.png"],
         )
+        self.assertEqual(
+            [
+                embed.image.url
+                for embed in self.item.edit_original_response.call_args.kwargs["embeds"]
+            ],
+            ["attachment://voice-xp.png", "attachment://voice-activity.png"],
+        )
         self.assertTrue(all(file.fp.closed for file in files))
 
     async def test_failed_refresh_keeps_old_message_and_identity(self) -> None:

@@ -3,17 +3,24 @@
 `/voice-profile` shows your server-local XP, level, voice time and session count.
 The response is private by default. Use `private:false` to publish it in the
 channel with a trash button that deletes only the message, not its history or XP.
-All controls are restricted to the command owner. Activity, People and XP each
-append one static PNG to the same message and disappear after a successful edit.
-Attachments keep the order in which cards were opened; Discord controls their
-on-screen arrangement. A failed render or upload leaves
-the message and button available for retry. After ten minutes of inactivity, the
-controls are removed and the cards stay.
+All controls are restricted to the command owner. The main profile stays a
+standalone image attachment. Activity, People and XP each append one static PNG
+in a separate image embed in the same message, in click order. Each used button
+disappears after a successful edit. A failed render or upload leaves the message
+and button available for retry. After ten minutes of inactivity, the controls are
+removed and the cards stay.
 
 Refresh replaces the main card and every already-open detail in their existing
 order. It reads one timeline snapshot and resolves the profile identity once.
 Every image must finish before one message edit publishes the replacement set.
 New details retain the displayed profile's identity and tier until refresh.
+
+Discord omits embedded uploads from `message.attachments`. Reveal retains their
+IDs from the returned Discord image URLs alongside the main attachment, and
+binds all detail embeds through `attachment://` filenames. Keeping both the IDs
+and these bindings prevents deleted images and duplicate standalone previews.
+Only the new PNG is uploaded on reveal; refresh replaces the full file set.
+The attachment adapter is covered against discord.py's multipart serializer.
 
 ## Detail scopes and coverage
 
