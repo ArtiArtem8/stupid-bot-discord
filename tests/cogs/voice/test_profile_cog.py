@@ -557,7 +557,7 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
             "Это не ваша карточка.", ephemeral=True
         )
 
-    async def test_private_view_has_only_refresh_and_public_view_has_trash(
+    async def test_private_view_hides_delete_and_public_view_has_trash(
         self,
     ) -> None:
         private = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock())
@@ -565,8 +565,11 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(private.children), 4)
         self.assertNotIn(ProfileAction.DELETE, private.buttons)
         self.assertEqual(len(public.children), 5)
-        self.assertIsNone(public.buttons[ProfileAction.DELETE].emoji)
-        self.assertEqual(public.buttons[ProfileAction.DELETE].label, "Delete")
+        self.assertEqual(
+            str(public.buttons[ProfileAction.DELETE].emoji),
+            "<:trash:1554958233444032653>",
+        )
+        self.assertIsNone(public.buttons[ProfileAction.DELETE].label)
         self.assertEqual(
             public.buttons[ProfileAction.DELETE].style, discord.ButtonStyle.danger
         )

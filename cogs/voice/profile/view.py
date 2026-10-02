@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Self, override
 
@@ -14,6 +14,13 @@ from cogs.voice.profile.media import RenderBusyError
 from framework.authorization import check_component_access
 from framework.error_handler import handle_app_command_error
 from framework.feedback_ui import FeedbackType, FeedbackUI
+from resources import (
+    RESTART_EMOJI,
+    SOCIAL_EMOJI,
+    STATISTIC_EMOJI,
+    TRASH_EMOJI,
+    XP_EMOJI,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +34,7 @@ class ProfileDetail(StrEnum):
 
 
 class ProfileAction(StrEnum):
-    """Concrete dynamic controls; stable values also name application emojis."""
+    """Concrete controls for details and message actions."""
 
     ACTIVITY = "activity"
     PEOPLE = "people"
@@ -36,13 +43,21 @@ class ProfileAction(StrEnum):
     DELETE = "delete"
 
 
+_ACTION_EMOJIS = {
+    ProfileAction.ACTIVITY: STATISTIC_EMOJI,
+    ProfileAction.PEOPLE: SOCIAL_EMOJI,
+    ProfileAction.XP: XP_EMOJI,
+    ProfileAction.REFRESH: RESTART_EMOJI,
+    ProfileAction.DELETE: TRASH_EMOJI,
+}
+
+
 class ProfileActionButton(discord.ui.Button["VoiceProfileView"]):
     """Forward a concrete action to the owning View."""
 
-    def __init__(self, action: ProfileAction, emoji: discord.Emoji | None) -> None:
+    def __init__(self, action: ProfileAction) -> None:
         super().__init__(
-            label=None if emoji is not None else action.value.title(),
-            emoji=emoji,
+            emoji=_ACTION_EMOJIS[action],
             style=(
                 discord.ButtonStyle.danger
                 if action is ProfileAction.DELETE
@@ -76,7 +91,6 @@ class VoiceProfileView(discord.ui.View):
         refresh: Callable[[discord.Interaction], Awaitable[None]],
         *,
         reveal: Callable[[discord.Interaction, ProfileDetail], Awaitable[discord.File]],
-        emojis: Mapping[ProfileAction, discord.Emoji] | None = None,
         private: bool = True,
     ) -> None:
         super().__init__(timeout=600)
@@ -93,7 +107,7 @@ class VoiceProfileView(discord.ui.View):
         for action in ProfileAction:
             if private and action is ProfileAction.DELETE:
                 continue
-            button = ProfileActionButton(action, (emojis or {}).get(action))
+            button = ProfileActionButton(action)
             self.buttons[action] = button
             self.add_item(button)
 

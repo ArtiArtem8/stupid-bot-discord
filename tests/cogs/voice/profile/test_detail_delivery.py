@@ -1,4 +1,4 @@
-"""One-snapshot refresh, focused reveals and application emoji lookup."""
+"""One-snapshot refresh, focused reveals and configured button emojis."""
 
 import unittest
 from io import BytesIO
@@ -166,48 +166,18 @@ class TestDetailDelivery(unittest.IsolatedAsyncioTestCase):
         build.assert_called_once_with(timeline, 2, 1, "UTC")
 
 
-class TestApplicationEmojis(unittest.IsolatedAsyncioTestCase):
-    async def test_name_lookup_is_cached_and_only_missing_buttons_use_text(
-        self,
-    ) -> None:
-        for missing in (None, ProfileAction.PEOPLE):
-            with self.subTest(missing=missing):
-                emojis: list[MagicMock] = []
-                for action in ProfileAction:
-                    if action == missing:
-                        continue
-                    emoji = MagicMock(spec=discord.Emoji)
-                    emoji.name = f"voice_{action.value}"
-                    emojis.append(emoji)
-                bot = MagicMock()
-                bot.fetch_application_emojis = AsyncMock(return_value=emojis)
-                cog = VoiceProfileCog(bot)
-                await cog._load_emojis()
-                for _ in range(2):
-                    view = VoiceProfileView(
-                        10,
-                        AsyncMock(),
-                        reveal=AsyncMock(),
-                        emojis=cog._emojis,
-                        private=False,
-                    )
-                    for action, button in view.buttons.items():
-                        self.assertEqual(
-                            button.label,
-                            action.value.title() if action == missing else None,
-                        )
-                        self.assertEqual(button.emoji is None, action == missing)
-                bot.fetch_application_emojis.assert_awaited_once()
-
-    async def test_lookup_failure_leaves_feature_available_with_one_warning(
-        self,
-    ) -> None:
-        bot = MagicMock()
-        bot.fetch_application_emojis = AsyncMock(
-            side_effect=discord.HTTPException(MagicMock(status=503), "unavailable")
-        )
-        cog = VoiceProfileCog(bot)
-        with self.assertLogs(cog_module.logger, level="WARNING") as logs:
-            await cog._load_emojis()
-        self.assertEqual(len(logs.output), 1)
-        self.assertEqual(cog._emojis, {})
+class TestProfileButtonEmojis(unittest.IsolatedAsyncioTestCase):
+    async def test_buttons_use_supplied_custom_emojis_without_text_labels(self) -> None:
+        view = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock(), private=False)
+        expected = {
+            ProfileAction.ACTIVITY: "<:statistic:1555684012809388173>",
+            ProfileAction.PEOPLE: "<:social:1555684011177672725>",
+            ProfileAction.XP: "<:xp:1555684015057543229>",
+            ProfileAction.REFRESH: "<:restart:1447913966939406366>",
+            ProfileAction.DELETE: "<:trash:1554958233444032653>",
+        }
+        for action, emoji in expected.items():
+            with self.subTest(action=action):
+                button = view.buttons[action]
+                self.assertEqual(str(button.emoji), emoji)
+                self.assertIsNone(button.label)

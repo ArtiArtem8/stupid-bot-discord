@@ -38,7 +38,7 @@ from cogs.voice.profile.media import (
     ProfileMediaRenderer,
     RenderBusyError,
 )
-from cogs.voice.profile.view import ProfileAction, ProfileDetail, VoiceProfileView
+from cogs.voice.profile.view import ProfileDetail, VoiceProfileView
 from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from repositories.voice_journal import VoiceJournal
@@ -85,14 +85,12 @@ class VoiceProfileCog(BaseCog):
         self._media_cache = ProfileMediaCache()
         self._asset_cache = ProfileAssetCache()
         self._revision: str | None = None
-        self._emojis: dict[ProfileAction, discord.Emoji] = {}
         self._close_task: asyncio.Task[None] | None = None
 
     @override
     async def cog_load(self) -> None:
         try:
             self._revision = await self._media_renderer.astart()
-            await self._load_emojis()
         except asyncio.CancelledError:
             await self.cog_unload()
             raise
@@ -103,31 +101,6 @@ class VoiceProfileCog(BaseCog):
                 str(error).splitlines()[0] if str(error) else "",
             )
             logger.debug("Voice profile initialization failed", exc_info=True)
-
-    async def _load_emojis(self) -> None:
-        try:
-            emojis = await self.bot.fetch_application_emojis()
-        except discord.DiscordException:
-            logger.warning(
-                "Voice profile application emojis unavailable; using text controls"
-            )
-            logger.debug("Application emoji lookup failure", exc_info=True)
-            return
-        by_name = {emoji.name: emoji for emoji in emojis}
-        self._emojis = {
-            action: by_name[f"voice_{action.value}"]
-            for action in ProfileAction
-            if f"voice_{action.value}" in by_name
-        }
-        missing = [
-            f"voice_{action.value}"
-            for action in ProfileAction
-            if action not in self._emojis
-        ]
-        if missing:
-            logger.warning(
-                "Missing voice profile application emojis: %s", ", ".join(missing)
-            )
 
     @override
     async def cog_unload(self) -> None:
@@ -169,9 +142,7 @@ class VoiceProfileCog(BaseCog):
                 button_interaction, guild_id, user_id, view, detail
             )
 
-        view = VoiceProfileView(
-            user_id, refresh, reveal=reveal, emojis=self._emojis, private=private
-        )
+        view = VoiceProfileView(user_id, refresh, reveal=reveal, private=private)
         await self._deliver(interaction, guild_id, user_id, view)
 
     async def _deliver(

@@ -73,12 +73,10 @@ and the font cache. Missing Inkscape or fonts disables the profile command;
 the rest of the bot can start. The command returns an unavailable message and
 logs the initialization failure. After fixing setup, restart or reload the Cog.
 
-Upload these application emojis once through the application's emoji management:
-`voice_activity`, `voice_people`, `voice_xp`, `voice_refresh`, `voice_delete`.
-The Cog fetches them once at load and uses icon-only controls where available.
-Missing emojis affect only their own buttons, which retain short text labels;
-startup logs one warning listing missing names. The bot does not upload emojis.
-Guild-specific emojis and Unicode substitutions are not used for these controls.
+Buttons use the custom emoji references in `resources.py`: `statistic` for
+Activity, `social` for People, `xp` for XP, and the shared `restart` and `trash`
+controls for Refresh and Delete. Emoji IDs are bound directly to the buttons;
+startup does not fetch or discover emojis by name.
 
 ## Images and caches
 
