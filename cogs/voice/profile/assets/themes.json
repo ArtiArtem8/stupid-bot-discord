@@ -9,7 +9,9 @@
       "bright": "#d3d9e2",
       "text": "#f4f6fa",
       "track": "#303440",
-      "secondary": "#d3d9e2"
+      "secondary": "#d3d9e2",
+      "positive": "#8fddb3",
+      "negative": "#f49baa"
     },
     "uncommon": {
       "surface": "#101c18",
@@ -19,7 +21,9 @@
       "bright": "#79db9b",
       "text": "#f4f6fa",
       "track": "#303440",
-      "secondary": "#79db9b"
+      "secondary": "#79db9b",
+      "positive": "#8fddb3",
+      "negative": "#f49baa"
     },
     "rare": {
       "surface": "#101a27",
@@ -29,7 +33,9 @@
       "bright": "#6cbaff",
       "text": "#f4f6fa",
       "track": "#303440",
-      "secondary": "#6cbaff"
+      "secondary": "#6cbaff",
+      "positive": "#8fddb3",
+      "negative": "#f49baa"
     },
     "epic": {
       "surface": "#171424",
@@ -39,7 +45,9 @@
       "bright": "#ca94ff",
       "text": "#f4f6fa",
       "track": "#303440",
-      "secondary": "#ca94ff"
+      "secondary": "#ca94ff",
+      "positive": "#8fddb3",
+      "negative": "#f49baa"
     },
     "mythic": {
       "surface": "#1c1422",
@@ -49,7 +57,9 @@
       "bright": "#f285db",
       "text": "#f4f6fa",
       "track": "#303440",
-      "secondary": "#f285db"
+      "secondary": "#f285db",
+      "positive": "#8fddb3",
+      "negative": "#f49baa"
     },
     "legendary": {
       "surface": "#211812",
@@ -59,7 +69,9 @@
       "bright": "#ffbb64",
       "text": "#f4f6fa",
       "track": "#303440",
-      "secondary": "#ffbb64"
+      "secondary": "#ffbb64",
+      "positive": "#8fddb3",
+      "negative": "#f49baa"
     },
     "ascendant": {
       "surface": "#201d10",
@@ -69,7 +81,9 @@
       "bright": "#ffe17c",
       "text": "#f4f6fa",
       "track": "#303440",
-      "secondary": "#ffe17c"
+      "secondary": "#ffe17c",
+      "positive": "#8fddb3",
+      "negative": "#f49baa"
     },
     "transcendent": {
       "surface": "#0d1f24",
@@ -79,7 +93,9 @@
       "bright": "#6af3ee",
       "text": "#f4f6fa",
       "track": "#303440",
-      "secondary": "#9687ff"
+      "secondary": "#9687ff",
+      "positive": "#8fddb3",
+      "negative": "#f49baa"
     }
   }
 }

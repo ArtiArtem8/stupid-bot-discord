@@ -1,0 +1,81 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="960" height="480" viewBox="0 0 960 480" font-family="Inter" font-weight="400">
+  <defs>
+    <clipPath id="avatar-clip">
+      <circle cx="56" cy="48" r="24" />
+    </clipPath>
+    <pattern id="coverage-hatch" width="6" height="6" patternUnits="userSpaceOnUse">
+      <path d="M0 6L6 0" data-stroke="muted" stroke="#a7b3c5" stroke-opacity="0.35" />
+    </pattern>
+  </defs>
+  <g id="shell-placement" inkscape:groupmode="layer" inkscape:label="Card surface">
+    <rect id="card-shell" x="1" y="1" width="958" height="478" data-fill="surface" fill="#232732" rx="28" data-stroke="border" stroke="#59616e" />
+    <rect id="accent-line" x="32" y="91" width="38" height="3" data-fill="accent" fill="#232732" rx="1.5" />
+  </g>
+  <g id="identity-placement" inkscape:groupmode="layer" inkscape:label="Profile identity">
+    <circle cx="56" cy="48" r="24" data-fill="panel" fill="#232732" />
+    <text id="avatar-fallback" x="56" y="56" font-size="20" data-fill="bright" fill="#f4f6fa" text-anchor="middle" font-variant-numeric="tabular-nums">VP</text>
+    <image id="user-avatar" x="32" y="24" width="48" height="48" clip-path="url(#avatar-clip)" />
+    <text id="display-name" x="96" y="45" font-size="24" data-fill="text" fill="#f4f6fa" data-width="590" font-weight="600" font-variant-numeric="tabular-nums">Voice Listener</text>
+    <text id="guild-name" x="96" y="73" font-size="19" data-fill="muted" fill="#f4f6fa" data-width="590" font-variant-numeric="tabular-nums">Voice Guild</text>
+    <text id="tier-name" x="864" y="51" font-size="19" data-fill="bright" fill="#f4f6fa" data-width="180" text-anchor="end" font-variant-numeric="tabular-nums">MYTHIC</text>
+    <g id="emblem-art" transform="translate(884 24) scale(0.48)" data-fill="accent" fill="#da4fbe" />
+    <text id="card-title" x="32" y="124" font-size="30" data-fill="text" fill="#f4f6fa" font-weight="600" font-variant-numeric="tabular-nums">People</text>
+    <text id="period-badge" x="928" y="121" font-size="20" data-fill="muted" fill="#f4f6fa" text-anchor="end" font-variant-numeric="tabular-nums">Lifetime</text>
+    <path d="M32 138H928" data-stroke="border" stroke="#59616e" />
+  </g>
+  <g id="content-placement" inkscape:label="Lifetime companions and recent summary" inkscape:groupmode="layer">
+    <text id="people-title" x="32" y="169" font-size="22" data-fill="text" fill="#f4f6fa" font-weight="600" font-variant-numeric="tabular-nums">Most time together</text>
+    <text id="together-heading" x="427" y="169" font-size="18" data-fill="muted" fill="#f4f6fa" text-anchor="end" font-variant-numeric="tabular-nums">Together</text>
+    <text id="private-heading" x="608" y="169" font-size="18" data-fill="muted" fill="#f4f6fa" text-anchor="end" font-variant-numeric="tabular-nums">One-on-one</text>
+    <path d="M640 154V353" data-stroke="border" stroke="#59616e" />
+    <g id="person-0-placement">
+      <text id="person-0-name" x="32" y="204" font-size="22" data-fill="text" fill="#f4f6fa" data-width="270" font-weight="600" font-variant-numeric="tabular-nums">1. Mira</text>
+      <text id="person-0-shared" x="427" y="204" font-size="22" data-fill="text" fill="#f4f6fa" data-width="125" text-anchor="end" font-weight="600" font-variant-numeric="tabular-nums">14h 22m</text>
+      <text id="person-0-private" x="608" y="204" font-size="22" data-fill="muted" fill="#f4f6fa" data-width="160" text-anchor="end" font-variant-numeric="tabular-nums">6h 11m</text>
+    </g>
+    <g id="person-1-placement">
+      <text id="person-1-name" x="32" y="240" font-size="22" data-fill="text" fill="#f4f6fa" data-width="270" font-weight="600" font-variant-numeric="tabular-nums">2. Mira</text>
+      <text id="person-1-shared" x="427" y="240" font-size="22" data-fill="text" fill="#f4f6fa" data-width="125" text-anchor="end" font-weight="600" font-variant-numeric="tabular-nums">14h 22m</text>
+      <text id="person-1-private" x="608" y="240" font-size="22" data-fill="muted" fill="#f4f6fa" data-width="160" text-anchor="end" font-variant-numeric="tabular-nums">6h 11m</text>
+    </g>
+    <g id="person-2-placement">
+      <text id="person-2-name" x="32" y="276" font-size="22" data-fill="text" fill="#f4f6fa" data-width="270" font-weight="600" font-variant-numeric="tabular-nums">3. Mira</text>
+      <text id="person-2-shared" x="427" y="276" font-size="22" data-fill="text" fill="#f4f6fa" data-width="125" text-anchor="end" font-weight="600" font-variant-numeric="tabular-nums">14h 22m</text>
+      <text id="person-2-private" x="608" y="276" font-size="22" data-fill="muted" fill="#f4f6fa" data-width="160" text-anchor="end" font-variant-numeric="tabular-nums">6h 11m</text>
+    </g>
+    <g id="person-3-placement">
+      <text id="person-3-name" x="32" y="312" font-size="22" data-fill="text" fill="#f4f6fa" data-width="270" font-weight="600" font-variant-numeric="tabular-nums">4. Mira</text>
+      <text id="person-3-shared" x="427" y="312" font-size="22" data-fill="text" fill="#f4f6fa" data-width="125" text-anchor="end" font-weight="600" font-variant-numeric="tabular-nums">14h 22m</text>
+      <text id="person-3-private" x="608" y="312" font-size="22" data-fill="muted" fill="#f4f6fa" data-width="160" text-anchor="end" font-variant-numeric="tabular-nums">6h 11m</text>
+    </g>
+    <g id="person-4-placement">
+      <text id="person-4-name" x="32" y="348" font-size="22" data-fill="text" fill="#f4f6fa" data-width="270" font-weight="600" font-variant-numeric="tabular-nums">5. Mira</text>
+      <text id="person-4-shared" x="427" y="348" font-size="22" data-fill="text" fill="#f4f6fa" data-width="125" text-anchor="end" font-weight="600" font-variant-numeric="tabular-nums">14h 22m</text>
+      <text id="person-4-private" x="608" y="348" font-size="22" data-fill="muted" fill="#f4f6fa" data-width="160" text-anchor="end" font-variant-numeric="tabular-nums">6h 11m</text>
+    </g>
+    <text id="empty-people" x="32" y="238" font-size="24" data-fill="muted" fill="#f4f6fa" data-width="580" font-variant-numeric="tabular-nums">No observed time together</text>
+    <text id="summary-label-0" x="669" y="170" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">People</text>
+    <text id="summary-0" x="928" y="170" font-size="24" data-fill="text" fill="#f4f6fa" data-width="140" text-anchor="end" font-weight="600" font-variant-numeric="tabular-nums">12</text>
+    <text id="summary-label-1" x="669" y="207" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Together</text>
+    <text id="summary-1" x="928" y="207" font-size="24" data-fill="text" fill="#f4f6fa" data-width="140" text-anchor="end" font-weight="600" font-variant-numeric="tabular-nums">41h 08m</text>
+    <text id="summary-label-2" x="669" y="244" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">One-on-one</text>
+    <text id="summary-2" x="928" y="244" font-size="24" data-fill="text" fill="#f4f6fa" data-width="140" text-anchor="end" font-weight="600" font-variant-numeric="tabular-nums">9h 03m</text>
+    <text id="summary-label-3" x="669" y="281" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">With bots</text>
+    <text id="summary-3" x="928" y="281" font-size="24" data-fill="text" fill="#f4f6fa" data-width="140" text-anchor="end" font-weight="600" font-variant-numeric="tabular-nums">17h 04m</text>
+    <text id="top-bot-title" x="669" y="326" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Top bot</text>
+    <text id="top-bot-name" x="669" y="352" font-size="22" data-fill="text" fill="#f4f6fa" data-width="145" font-variant-numeric="tabular-nums">MusicBot</text>
+    <text id="top-bot-time" x="928" y="352" font-size="20" data-fill="muted" fill="#f4f6fa" data-width="108" text-anchor="end" font-variant-numeric="tabular-nums">15h 02m</text>
+    <path d="M32 369H928" data-stroke="border" stroke="#59616e" />
+    <text id="recent-heading" x="32" y="397" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Last 30 days</text>
+    <text id="recent-summary" x="928" y="398" font-size="24" data-fill="text" fill="#f4f6fa" data-width="665" text-anchor="end" font-variant-numeric="tabular-nums">41h 08m together · 12 people</text>
+    <path id="bot-divider" d="M669 303H928" data-stroke="border" stroke="#59616e" />
+  </g>
+  <g id="footer-placement" inkscape:groupmode="layer" inkscape:label="Period and observation coverage">
+    <path d="M32 414H928" data-stroke="border" stroke="#59616e" />
+    <text id="period-label" x="32" y="439" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="650" font-variant-numeric="tabular-nums">Sep 4 – Oct 3 · Europe/Moscow</text>
+    <text id="coverage-label" x="928" y="439" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="210" text-anchor="end" font-variant-numeric="tabular-nums">Coverage 98%</text>
+    <text id="lifetime-label" x="32" y="465" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="650" font-variant-numeric="tabular-nums">History since Sep 1, 2025</text>
+    <text id="lifetime-coverage" x="928" y="465" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="255" text-anchor="end" font-variant-numeric="tabular-nums">Lifetime coverage 98%</text>
+  </g>
+</svg>

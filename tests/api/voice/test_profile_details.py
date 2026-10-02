@@ -1,11 +1,13 @@
 """Calendar, coverage and focused detail projection contracts."""
 
 import unittest
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from fractions import Fraction
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+from api.progression.levels import LevelPolicy
 from api.voice.metrics.xp import VoiceXpPolicy
 from api.voice.model import VoiceStateSnapshot
 from api.voice.profile import details
@@ -85,6 +87,101 @@ class TestActivityDetail(unittest.TestCase):
 
 
 class TestPeopleAndXpDetails(unittest.TestCase):
+    def test_next_level_estimate_uses_voice_hours_and_exact_remaining_xp(self) -> None:
+        timeline = VoiceTimeline(
+            (RoomInterval(1, 10, at(0), at(3600), (human(), human(2))),), (), ()
+        )
+        result = build_xp_detail(timeline, 1, 1, at(3600))
+        estimate = result.estimate
+        if estimate is None:
+            self.fail("Observed earning voice time must produce an estimate")
+        self.assertIsInstance(estimate.expected_hours, Fraction)
+        remaining = LevelPolicy().progress(result.breakdown.total).remaining
+        self.assertEqual(estimate.expected_hours * estimate.pace_xp_per_hour, remaining)
+
+    def test_changed_weekly_pace_uses_pooled_voice_hours_without_extrapolating_trend(
+        self,
+    ) -> None:
+        timeline = VoiceTimeline(
+            (
+                RoomInterval(
+                    1, 10, at(-10 * 86400), at(-10 * 86400 + 7200), (human(),)
+                ),
+                RoomInterval(1, 10, at(0), at(3600), (human(), human(2))),
+            ),
+            (),
+            (),
+        )
+        result = build_xp_detail(timeline, 1, 1, at(3600))
+        estimate = result.estimate
+        if estimate is None:
+            self.fail("Both recent rates are observed")
+        remaining = LevelPolicy().progress(result.breakdown.total).remaining
+        self.assertEqual(estimate.expected_hours * result.recent_xp / 3, remaining)
+
+    def test_no_recent_voice_has_no_estimate(self) -> None:
+        result = build_xp_detail(VoiceTimeline((), (), ()), 1, 1, at(0))
+        self.assertIsNone(result.estimate)
+
+    def test_inactive_week_does_not_forecast_from_an_old_monthly_rate(self) -> None:
+        timeline = VoiceTimeline(
+            (RoomInterval(1, 10, at(-10 * 86400), at(-10 * 86400 + 3600), (human(),)),),
+            (),
+            (),
+        )
+        estimate = build_xp_detail(timeline, 1, 1, at(0)).estimate
+        self.assertIsNone(estimate)
+
+    def test_zero_xp_in_active_week_does_not_forecast_from_old_earning_pace(
+        self,
+    ) -> None:
+        timeline = VoiceTimeline(
+            (
+                RoomInterval(
+                    1, 10, at(-10 * 86400), at(-10 * 86400 + 3600), (human(),)
+                ),
+                RoomInterval(1, 10, at(0), at(3600), (replace(human(), afk=True),)),
+            ),
+            (),
+            (),
+        )
+        result = build_xp_detail(timeline, 1, 1, at(3600))
+        self.assertGreater(result.recent_xp, 0)
+        self.assertIsNone(result.estimate)
+
+    def test_lifetime_people_and_xp_keep_recent_summary_separate(self) -> None:
+        old_start, old_end = at(-40 * 86400), at(-40 * 86400 + 3600)
+        timeline = VoiceTimeline(
+            (
+                RoomInterval(1, 10, old_start, old_end, (human(), human(2))),
+                RoomInterval(1, 10, at(0), at(600), (human(), human(3))),
+            ),
+            (),
+            (
+                ObservationInterval(1, old_start, old_end),
+                ObservationInterval(1, at(0), at(600)),
+            ),
+        )
+        people = build_people_detail(timeline, 1, 1, at(600))
+        self.assertEqual([person.user_id for person in people.companions], [2, 3])
+        self.assertEqual(people.unique_people, 2)
+        self.assertEqual(people.recent_unique_people, 1)
+        self.assertEqual(people.presence.group_seconds, 4200)
+        self.assertEqual(people.recent_presence.group_seconds, 600)
+        self.assertIsNotNone(people.lifetime_period)
+        xp = build_xp_detail(timeline, 1, 1, at(600))
+        self.assertEqual(
+            xp.breakdown, VoiceXpPolicy().explain(timeline, 1, VoiceScope(1))
+        )
+        self.assertEqual(
+            xp.recent_xp,
+            VoiceXpPolicy()
+            .explain(timeline, 1, VoiceScope(1, time_range=xp.period.time_range))
+            .total,
+        )
+        self.assertGreater(xp.breakdown.total, xp.recent_xp)
+        self.assertEqual(xp.lifetime_period, people.lifetime_period)
+
     def test_people_sort_shared_then_private_then_id_and_count_confirmed_humans(
         self,
     ) -> None:
@@ -119,7 +216,6 @@ class TestPeopleAndXpDetails(unittest.TestCase):
         timeline = example()
         with (
             patch.object(details, "companions", side_effect=AssertionError("unneeded")),
-            patch.object(details, "presence", side_effect=AssertionError("unneeded")),
             patch.object(details, "activity", side_effect=AssertionError("unneeded")),
             patch.object(
                 details, "bot_presence", side_effect=AssertionError("unneeded")

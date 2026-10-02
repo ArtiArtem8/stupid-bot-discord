@@ -50,12 +50,19 @@ class SvgProfileRenderer:
 
     version = "profile-card-editable-2"
 
-    def __init__(self, template: Path = ASSETS / "profile.svg") -> None:
+    def __init__(
+        self,
+        template: Path = ASSETS / "profile.svg",
+        *,
+        raster: NativeRasterizer | None = None,
+    ) -> None:
         self.template = template
-        self.raster = NativeRasterizer()
+        self.raster = raster or NativeRasterizer()
+        self._owns_raster = raster is None
 
     def close(self) -> None:
-        self.raster.close()
+        if self._owns_raster:
+            self.raster.close()
 
     def source_revision(self) -> str:
         """Invalidate caches when designer-owned source files change."""

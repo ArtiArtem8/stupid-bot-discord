@@ -1,4 +1,4 @@
-"""Focused, guild-local projections for the last 30 local calendar dates.
+"""Focused guild-local lifetime and recent profile projections.
 
 Builders consume an immutable timeline and perform no I/O. Coverage describes
 observation of the guild, independently of whether the user occupied a room.
@@ -7,15 +7,17 @@ Elapsed arithmetic uses UTC; calendar boundaries use the caller's timezone.
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from fractions import Fraction
 
+from api.progression.levels import LevelPolicy
 from api.voice.metrics.activity import activity
 from api.voice.metrics.bots import bot_presence
 from api.voice.metrics.companions import companions
 from api.voice.metrics.presence import presence
 from api.voice.metrics.xp import VoiceXpPolicy
-from api.voice.model import require_aware
+from api.voice.prediction import VoiceHoursEstimate, estimate_voice_hours
 from api.voice.read_models import BotStat, CompanionStat, PresenceStat, VoiceXpBreakdown
-from api.voice.scope import TimeRange, VoiceScope
+from api.voice.scope import TimeRange, VoiceScope, local_calendar_range
 from api.voice.timeline import VoiceTimeline
 
 
@@ -69,12 +71,15 @@ class ActivityDetail:
 
 @dataclass(frozen=True, slots=True)
 class PeopleDetail:
-    """Confirmed human overlaps, ordered by shared/private time then user ID."""
+    """Lifetime companions with a separate recent presence/people summary."""
 
     period: DetailPeriod
     presence: PresenceStat
     companions: tuple[CompanionStat, ...]
     bots: BotStat
+    lifetime_period: DetailPeriod | None
+    recent_presence: PresenceStat
+    recent_unique_people: int
 
     @property
     def unique_people(self) -> int:
@@ -87,25 +92,23 @@ class PeopleDetail:
 
 @dataclass(frozen=True, slots=True)
 class XpDetail:
-    """Exact policy explanation; reductions remain positive subtraction terms."""
+    """Exact lifetime explanation and a separate recent total."""
 
     period: DetailPeriod
     breakdown: VoiceXpBreakdown
+    lifetime_period: DetailPeriod | None
+    recent_xp: Fraction
+    estimate: VoiceHoursEstimate | None
 
 
 def _period(
     timeline: VoiceTimeline, guild_id: int, as_of: datetime, timezone: tzinfo
 ) -> DetailPeriod:
-    require_aware(as_of)
+    window = local_calendar_range(as_of, timezone, 30)
     today = as_of.astimezone(timezone).date()
-    first = today - timedelta(days=29)
-    window = TimeRange(
-        datetime.combine(first, time.min, timezone).astimezone(UTC),
-        as_of.astimezone(UTC),
-    )
     return DetailPeriod(
         window,
-        first,
+        window.start.astimezone(timezone).date(),
         today,
         str(timezone),
         _observed_seconds(timeline, guild_id, window.start, window.end),
@@ -132,6 +135,28 @@ def _observed_seconds(
             seconds += (upper - uncovered_start).total_seconds()
             cursor = upper
     return seconds
+
+
+def _lifetime_period(
+    timeline: VoiceTimeline, guild_id: int, as_of: datetime, timezone: tzinfo
+) -> DetailPeriod | None:
+    # Lifetime coverage starts at the earliest retained evidence, never an
+    # invented account creation date. A wholly absent history has no denominator.
+    starts = [
+        item.started_at.astimezone(UTC)
+        for item in (*timeline.rooms, *timeline.coverage, *timeline.gaps)
+        if item.guild_id in (None, guild_id) and item.started_at < as_of
+    ]
+    if not starts:
+        return None
+    window = TimeRange(min(starts), as_of.astimezone(UTC))
+    return DetailPeriod(
+        window,
+        window.start.astimezone(timezone).date(),
+        as_of.astimezone(timezone).date(),
+        str(timezone),
+        _observed_seconds(timeline, guild_id, window.start, window.end),
+    )
 
 
 def build_activity_detail(
@@ -186,7 +211,9 @@ def build_people_detail(
 ) -> PeopleDetail:
     """Build human and bot co-presence without computing activity or XP."""
     period = _period(timeline, guild_id, as_of, timezone)
-    scope = VoiceScope(guild_id=guild_id, time_range=period.time_range)
+    lifetime = _lifetime_period(timeline, guild_id, as_of, timezone)
+    recent_scope = VoiceScope(guild_id=guild_id, time_range=period.time_range)
+    scope = VoiceScope(guild_id=guild_id, time_range=(lifetime or period).time_range)
     people = sorted(
         companions(timeline, user_id, scope),
         key=lambda person: (
@@ -200,6 +227,9 @@ def build_people_detail(
         presence(timeline, user_id, scope),
         tuple(people),
         bot_presence(timeline, user_id, scope),
+        lifetime,
+        presence(timeline, user_id, recent_scope),
+        len(companions(timeline, user_id, recent_scope)),
     )
 
 
@@ -212,5 +242,26 @@ def build_xp_detail(
 ) -> XpDetail:
     """Explain only XP, preserving Fraction components through presentation."""
     period = _period(timeline, guild_id, as_of, timezone)
+    lifetime = _lifetime_period(timeline, guild_id, as_of, timezone)
     scope = VoiceScope(guild_id=guild_id, time_range=period.time_range)
-    return XpDetail(period, VoiceXpPolicy().explain(timeline, user_id, scope))
+    lifetime_scope = VoiceScope(
+        guild_id=guild_id, time_range=(lifetime or period).time_range
+    )
+    policy = VoiceXpPolicy()
+    breakdown = policy.explain(timeline, user_id, lifetime_scope)
+    recent_xp = policy.explain(timeline, user_id, scope).total
+    return XpDetail(
+        period,
+        breakdown,
+        lifetime,
+        recent_xp,
+        estimate_voice_hours(
+            timeline,
+            user_id,
+            scope,
+            timezone,
+            remaining_xp=LevelPolicy().progress(breakdown.total).remaining,
+            recent_xp=recent_xp,
+            xp_policy=policy,
+        ),
+    )

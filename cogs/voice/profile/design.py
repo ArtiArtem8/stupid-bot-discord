@@ -20,7 +20,7 @@ import regex
 from defusedxml.ElementTree import fromstring
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from api.progression.appearance import TIER_ORDER, LevelTier
+from api.progression.appearance import TIER_ORDER, LevelAppearance, LevelTier
 from api.voice.profile.model import VoiceProfile
 from cogs.voice.profile.raster import Box, NativeRasterizer
 from cogs.voice.profile.theme import TIER_EMBLEM
@@ -188,7 +188,10 @@ def normalized_png(data: bytes | None, *, size: int = 256) -> bytes | None:
     return output.getvalue()
 
 
-def _check_template(data: bytes) -> tuple[Element, dict[str, Element]]:
+def check_template(
+    data: bytes, required: frozenset[str] = REQUIRED
+) -> tuple[Element, dict[str, Element]]:
+    """Validate trusted editable templates before native rendering."""
     if len(data) > 2_000_000:
         raise ValueError("SVG template exceeds 2 MiB")
     root = fromstring(data, forbid_dtd=True)
@@ -214,7 +217,7 @@ def _check_template(data: bytes) -> tuple[Element, dict[str, Element]]:
                 raise ValueError(f"Duplicate SVG id: {identifier}")
             nodes[identifier] = element
         _check_resources(element)
-    missing = REQUIRED - nodes.keys()
+    missing = required - nodes.keys()
     if missing:
         raise ValueError("Missing SVG IDs: " + ", ".join(sorted(missing)))
     return root, nodes
@@ -244,11 +247,12 @@ def _pixels(value: str) -> int:
     return int(number)
 
 
-def _tokens(path: Path, profile: VoiceProfile) -> dict[str, str]:
-    raw = json_object(get_json(path.parent / "themes.json"))
+def theme_tokens(path: Path, appearance: LevelAppearance) -> dict[str, str]:
+    """Load shared semantic colors, including the exact level-band accent."""
+    raw = json_object(get_json(path))
     tiers = json_object(json_object(raw)["tiers"])
-    values = json_object(tiers[profile.appearance.tier.value])
-    result: dict[str, str] = {"accent": f"#{profile.appearance.color:06x}"}
+    values = json_object(tiers[appearance.tier.value])
+    result: dict[str, str] = {"accent": f"#{appearance.color:06x}"}
     for key, value in values.items():
         if not isinstance(value, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
             raise ValueError(f"Invalid color token: {key}")
@@ -256,9 +260,10 @@ def _tokens(path: Path, profile: VoiceProfile) -> dict[str, str]:
     return result
 
 
-def _fit_texts(
+def fit_texts(
     root: Element, nodes: dict[str, Element], raster: NativeRasterizer
 ) -> dict[str, Box]:
+    """Fit authored text budgets without crossing their minimum font size."""
     targets = [node for node in nodes.values() if node.get("data-width") is not None]
     for _ in range(6):
         boxes = raster.query(document_bytes(root))
@@ -299,7 +304,7 @@ def bind_design(
 ) -> BoundDesign:
     """Bind and measure approved artwork without changing domain policy."""
     original = template.read_bytes()
-    root, nodes = _check_template(original)
+    root, nodes = check_template(original)
     for index, node in enumerate(root.iter()):
         if node.tag == f"{{{SVG}}}text" and not node.get("id"):
             node.set("id", f"fixed-label-{index}")
@@ -309,8 +314,8 @@ def bind_design(
         raise ValueError(
             "viewBox must use the same pixel coordinate space as the canvas"
         )
-    tokens = _tokens(template, profile)
-    _apply_tokens(root, tokens)
+    tokens = theme_tokens(template.parent / "themes.json", profile.appearance)
+    apply_tokens(root, tokens)
     _bind_metrics(nodes, profile, identity)
     notes = _bind_images(nodes, identity)
     # Bind only the fill length; preserve the designer's placement transform.
@@ -322,9 +327,9 @@ def bind_design(
     fill.set("transform", track.get("transform", ""))
     if profile.progress_ratio == 0:
         style(fill, "display", "none")
-    _bind_emblem(nodes, profile, tokens)
+    bind_emblem(nodes, profile.appearance, tokens)
     active_stars = _activate_stars(nodes, profile)
-    boxes = _fit_texts(root, nodes, raster)
+    boxes = fit_texts(root, nodes, raster)
     stars = tuple(
         Star(
             node.attrib["id"],
@@ -364,7 +369,6 @@ def _bind_metrics(
         or profile.session_count < 0
     ):
         raise ValueError("Negative profile metrics are not valid")
-    minutes = int(profile.total_voice_seconds // 60)
     values = {
         "display-name": safe_label(identity.display_name),
         "guild-name": safe_label(identity.guild_name),
@@ -374,7 +378,7 @@ def _bind_metrics(
         "progress-label": (
             f"{profile.level_earned_xp:,} / {profile.level_required_xp:,} XP"
         ),
-        "voice-value": f"{minutes // 60:,}h {minutes % 60:02}m",
+        "voice-value": format_duration(profile.total_voice_seconds),
         "sessions-value": f"{profile.session_count:,}",
         "timezone-label": safe_label(profile.timezone_label, limit=64),
     }
@@ -406,12 +410,12 @@ def _bind_images(nodes: dict[str, Element], identity: CardIdentity) -> tuple[str
     return tuple(notes)
 
 
-def _bind_emblem(
-    nodes: dict[str, Element], profile: VoiceProfile, tokens: dict[str, str]
+def bind_emblem(
+    nodes: dict[str, Element], appearance: LevelAppearance, tokens: dict[str, str]
 ) -> None:
-    # Emblem source is reusable artwork, not a separate card template.
+    """Place shared tier artwork inside the authored emblem transform."""
     emblem = fromstring(
-        (ASSETS / f"emblem-{TIER_EMBLEM[profile.appearance.tier]}.svg").read_bytes(),
+        (ASSETS / f"emblem-{TIER_EMBLEM[appearance.tier]}.svg").read_bytes(),
         forbid_dtd=True,
     )
     group = nodes["emblem-art"]
@@ -445,7 +449,8 @@ def _activate_stars(nodes: dict[str, Element], profile: VoiceProfile) -> list[El
     return active_stars
 
 
-def _apply_tokens(root: Element, tokens: dict[str, str]) -> None:
+def apply_tokens(root: Element, tokens: dict[str, str]) -> None:
+    """Bind semantic fills and strokes without modifying placement."""
     for node in root.iter():
         for attribute in ("fill", "stroke"):
             token = node.get(f"data-{attribute}")
@@ -463,3 +468,14 @@ def _split_layers(root: Element) -> tuple[bytes, bytes]:
         if item.get("id") == "static-layer":
             style(item, "display", "none")
     return document_bytes(static_root), document_bytes(star_root)
+
+
+def format_duration(seconds: float, *, compact: bool = False) -> str:
+    """Format elapsed time; optionally abbreviate very large hour totals."""
+    minutes = int(seconds // 60)
+    if compact and minutes >= 600_000:
+        hours = minutes / 60
+        if hours >= 1_000_000:
+            return f"{hours / 1_000_000:.1f}M h"
+        return f"{hours / 1000:.1f}k h"
+    return f"{minutes // 60:,}h {minutes % 60:02}m"

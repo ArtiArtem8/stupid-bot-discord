@@ -24,12 +24,12 @@ from cogs.voice.profile import view as view_module
 from cogs.voice.profile.avatar import load_avatar
 from cogs.voice.profile.media import ProfileMedia, RenderBusyError
 from cogs.voice.profile.raster import Box
-from cogs.voice.profile.view import VoiceProfileView
+from cogs.voice.profile.view import ProfileAction, VoiceProfileView
 from cogs.voice.profile_cog import ProfileSnapshot, VoiceProfileCog
 from framework.feedback_ui import FeedbackUI
 from repositories.voice_journal import VoiceJournal
-from resources import TRASH_EMOJI
 from tests.api.voice.examples import human, record
+from tests.cogs.voice.profile.test_details_support import profile_request
 from tests.cogs.voice.profile.test_media import profile_at
 
 
@@ -112,7 +112,12 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 cog_module,
                 "build_profile",
-                side_effect=[profile_at(20), profile_at(5), profile_at(20)],
+                side_effect=[
+                    profile_at(20),
+                    profile_at(20),
+                    profile_at(5),
+                    profile_at(20),
+                ],
             ),
             patch.object(
                 cog._media_renderer,
@@ -120,10 +125,18 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=[media, ProfileMedia(b"png", "png"), media]),
             ) as render,
         ):
-            first = await cog._attachment(item.guild, item.user, item.filesize_limit)
-            second = await cog._attachment(item.guild, item.user, item.filesize_limit)
-            third = await cog._attachment(item.guild, item.user, item.filesize_limit)
-            fourth = await cog._attachment(item.guild, item.user, item.filesize_limit)
+            first = await cog._attachment(
+                await cog._prepare(item.guild, item.user), item.filesize_limit
+            )
+            second = await cog._attachment(
+                await cog._prepare(item.guild, item.user), item.filesize_limit
+            )
+            third = await cog._attachment(
+                await cog._prepare(item.guild, item.user), item.filesize_limit
+            )
+            fourth = await cog._attachment(
+                await cog._prepare(item.guild, item.user), item.filesize_limit
+            )
         self.assertEqual(first.filename, "voice-profile.webp")
         self.assertEqual(second.filename, "voice-profile.webp")
         self.assertEqual(third.filename, "voice-profile.png")
@@ -178,7 +191,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         ):
             for item in (first, second):
                 attachment = await cog._attachment(
-                    first.guild, item.user, item.filesize_limit
+                    await cog._prepare(first.guild, item.user), item.filesize_limit
                 )
                 attachment.close()
         self.assertEqual(render.await_count, 2)
@@ -318,16 +331,23 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 bot.get_guild.return_value = item.guild
                 item.guild.get_member.return_value = item.user
                 attachment = discord.File(BytesIO(b"png"), filename="profile.png")
-                with patch.object(
-                    cog, "_attachment", AsyncMock(return_value=attachment)
-                ) as build:
+                with (
+                    patch.object(
+                        cog, "_attachment", AsyncMock(return_value=attachment)
+                    ) as build,
+                    patch.object(
+                        cog, "_prepare", AsyncMock(side_effect=profile_request)
+                    ) as prepare,
+                ):
                     await invoke(cog, item, private)
                 item.response.defer.assert_awaited_once_with(
                     thinking=True, ephemeral=private
                 )
-                build.assert_awaited_once_with(
-                    item.guild, item.user, item.filesize_limit
-                )
+                prepare.assert_awaited_once_with(item.guild, item.user)
+                call = build.await_args
+                if call is None:
+                    self.fail("The command must build its profile attachment")
+                self.assertEqual(call.args[1], item.filesize_limit)
                 item.edit_original_response.assert_awaited_once()
                 self.assertEqual(
                     item.edit_original_response.call_args.kwargs["attachments"],
@@ -335,7 +355,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 )
                 view = item.edit_original_response.call_args.kwargs["view"]
                 self.assertIsInstance(view, VoiceProfileView)
-                self.assertEqual(len(view.children), 1 if private else 2)
+                self.assertEqual(len(view.children), 4 if private else 5)
                 self.assertIs(view.message, item.edit_original_response.return_value)
                 await view.on_timeout()
                 view.message.edit.assert_awaited_once_with(view=None)
@@ -352,12 +372,13 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         first.guild.get_member.side_effect = [first.user, button.user]
         initial = discord.File(BytesIO(b"first"), filename="first.png")
         updated = discord.File(BytesIO(b"second"), filename="second.png")
-        with patch.object(
-            cog, "_attachment", AsyncMock(side_effect=[initial, updated])
+        with (
+            patch.object(cog, "_attachment", AsyncMock(side_effect=[initial, updated])),
+            patch.object(cog, "_prepare", AsyncMock(side_effect=profile_request)),
         ):
             await invoke(cog, first)
             view = first.edit_original_response.call_args.kwargs["view"]
-            await view.refresh_button.callback(button)
+            await view.buttons[ProfileAction.REFRESH].callback(button)
         button.response.defer.assert_awaited_once()
         button.edit_original_response.assert_awaited_once_with(
             attachments=[updated], view=view
@@ -419,12 +440,17 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         bot.get_guild.return_value = first.guild
         first.guild.get_member.side_effect = [first.user, second.user]
         files = [discord.File(BytesIO(b"png"), filename="card.png") for _ in range(2)]
-        with patch.object(cog, "_attachment", AsyncMock(side_effect=files)) as build:
+        with (
+            patch.object(cog, "_attachment", AsyncMock(side_effect=files)) as build,
+            patch.object(
+                cog, "_prepare", AsyncMock(side_effect=profile_request)
+            ) as prepare,
+        ):
             await invoke(cog, first)
             view = first.edit_original_response.call_args.kwargs["view"]
-            await view.refresh_button.callback(second)
-        self.assertIs(build.await_args_list[1].args[1], second.user)
-        self.assertEqual(build.await_args_list[1].args[2], 3)
+            await view.buttons[ProfileAction.REFRESH].callback(second)
+        self.assertIs(prepare.await_args_list[1].args[1], second.user)
+        self.assertEqual(build.await_args_list[1].args[1], 3)
         second.edit_original_response.assert_awaited_once()
 
     async def test_full_queue_uses_safe_busy_feedback(self) -> None:
@@ -436,6 +462,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         item.guild.get_member.return_value = item.user
         with (
             patch.object(cog, "_attachment", AsyncMock(side_effect=RenderBusyError())),
+            patch.object(cog, "_prepare", AsyncMock(side_effect=profile_request)),
             patch.object(FeedbackUI, "send", AsyncMock()) as send,
         ):
             await invoke(cog, item)
@@ -457,8 +484,10 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(return_value=ProfileMedia(b"animated", "webp", b"png")),
             ) as render,
         ):
-            first = await cog._attachment(item.guild, item.user, 3)
-            second = await cog._attachment(item.guild, item.user, 10)
+            first = await cog._attachment(await cog._prepare(item.guild, item.user), 3)
+            second = await cog._attachment(
+                await cog._prepare(item.guild, item.user), 10
+            )
         self.assertEqual(first.filename, "voice-profile.png")
         self.assertEqual(second.filename, "voice-profile.webp")
         self.assertIsNot(first, second)
@@ -519,7 +548,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
 class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
     async def test_other_user_cannot_use_public_controls(self) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(10, refresh, private=False)
+        view = VoiceProfileView(10, refresh, reveal=AsyncMock(), private=False)
         item = interaction(user_id=11)
         self.assertFalse(await view.interaction_check(item))
         refresh.assert_not_awaited()
@@ -531,37 +560,43 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
     async def test_private_view_has_only_refresh_and_public_view_has_trash(
         self,
     ) -> None:
-        private = VoiceProfileView(10, AsyncMock())
-        public = VoiceProfileView(10, AsyncMock(), private=False)
-        self.assertEqual(private.children, [private.refresh_button])
-        self.assertEqual(public.children, [public.refresh_button, public.delete_button])
-        self.assertEqual(str(public.delete_button.emoji), TRASH_EMOJI)
-        self.assertEqual(public.delete_button.style, discord.ButtonStyle.danger)
+        private = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock())
+        public = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock(), private=False)
+        self.assertEqual(len(private.children), 4)
+        self.assertNotIn(ProfileAction.DELETE, private.buttons)
+        self.assertEqual(len(public.children), 5)
+        self.assertIsNone(public.buttons[ProfileAction.DELETE].emoji)
+        self.assertEqual(public.buttons[ProfileAction.DELETE].label, "Delete")
+        self.assertEqual(
+            public.buttons[ProfileAction.DELETE].style, discord.ButtonStyle.danger
+        )
 
     async def test_owner_can_delete_public_card_and_stop_controls(self) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(10, refresh, private=False)
+        view = VoiceProfileView(10, refresh, reveal=AsyncMock(), private=False)
         item = interaction()
         self.assertTrue(await view.interaction_check(item))
-        await view.delete_button.callback(item)
+        await view.buttons[ProfileAction.DELETE].callback(item)
         item.response.defer.assert_awaited_once_with()
         item.delete_original_response.assert_awaited_once_with()
         self.assertTrue(view.is_finished())
         refresh.assert_not_awaited()
 
     async def test_delete_already_missing_card_stops_controls(self) -> None:
-        view = VoiceProfileView(10, AsyncMock(), private=False)
+        view = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock(), private=False)
         item = interaction()
         item.delete_original_response.side_effect = discord.NotFound(
             MagicMock(status=404), "Unknown message"
         )
-        await view.delete_button.callback(item)
+        await view.buttons[ProfileAction.DELETE].callback(item)
         self.assertTrue(view.is_finished())
 
     async def test_timeout_removes_controls_without_deleting_card(self) -> None:
         for private in (False, True):
             with self.subTest(private=private):
-                view = VoiceProfileView(10, AsyncMock(), private=private)
+                view = VoiceProfileView(
+                    10, AsyncMock(), reveal=AsyncMock(), private=private
+                )
                 message = MagicMock(spec=discord.InteractionMessage)
                 message.edit = AsyncMock()
                 message.delete = AsyncMock()
@@ -574,7 +609,7 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
     async def test_timeout_before_delivery_and_after_external_delete_is_safe(
         self,
     ) -> None:
-        view = VoiceProfileView(10, AsyncMock())
+        view = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock())
         await view.on_timeout()
         self.assertTrue(view.is_finished())
         message = MagicMock(spec=discord.InteractionMessage)
@@ -586,7 +621,7 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(view.is_finished())
 
     async def test_timeout_logs_http_failure_and_keeps_controls_stopped(self) -> None:
-        view = VoiceProfileView(10, AsyncMock())
+        view = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock())
         message = MagicMock(spec=discord.InteractionMessage)
         message.edit = AsyncMock(
             side_effect=discord.HTTPException(MagicMock(status=503), "Unavailable")
@@ -598,13 +633,13 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(view.is_finished())
 
     async def test_control_errors_use_global_feedback_with_original_cause(self) -> None:
-        view = VoiceProfileView(10, AsyncMock(), private=False)
+        view = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock(), private=False)
         item = interaction()
         error = discord.HTTPException(MagicMock(status=503), "Unavailable")
         with patch.object(
             view_module, "handle_app_command_error", AsyncMock()
         ) as handle:
-            await view.on_error(item, error, view.delete_button)
+            await view.on_error(item, error, view.buttons[ProfileAction.DELETE])
         handle.assert_awaited_once()
         self.assertIs(handle.call_args.args[0], item)
         self.assertIs(handle.call_args.args[1].__cause__, error)
@@ -626,13 +661,17 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
             nonlocal message_exists
             message_exists = False
 
-        view = VoiceProfileView(10, refresh, private=False)
+        view = VoiceProfileView(10, refresh, reveal=AsyncMock(), private=False)
         first, second = interaction(), interaction()
         second.response.defer.side_effect = deletion_deferred.set
         second.delete_original_response.side_effect = delete
-        rendering = asyncio.create_task(view.refresh_button.callback(first))
+        rendering = asyncio.create_task(
+            view.buttons[ProfileAction.REFRESH].callback(first)
+        )
         await started.wait()
-        deleting = asyncio.create_task(view.delete_button.callback(second))
+        deleting = asyncio.create_task(
+            view.buttons[ProfileAction.DELETE].callback(second)
+        )
         await deletion_deferred.wait()
         second.delete_original_response.assert_not_awaited()
         release.set()
@@ -651,8 +690,10 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
             message.edit.assert_not_awaited()
             view.message = message
 
-        view = VoiceProfileView(10, refresh)
-        rendering = asyncio.create_task(view.refresh_button.callback(interaction()))
+        view = VoiceProfileView(10, refresh, reveal=AsyncMock())
+        rendering = asyncio.create_task(
+            view.buttons[ProfileAction.REFRESH].callback(interaction())
+        )
         await started.wait()
         timing_out = asyncio.create_task(view.on_timeout())
         await view.wait()
@@ -664,11 +705,11 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
 
     async def test_queued_clicks_cannot_refresh_after_delete(self) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(10, refresh, private=False)
+        view = VoiceProfileView(10, refresh, reveal=AsyncMock(), private=False)
         item = interaction()
-        await view.delete_button.callback(item)
-        await view.refresh_button.callback(interaction())
-        await view.delete_button.callback(interaction())
+        await view.buttons[ProfileAction.DELETE].callback(item)
+        await view.buttons[ProfileAction.REFRESH].callback(interaction())
+        await view.buttons[ProfileAction.DELETE].callback(interaction())
         refresh.assert_not_awaited()
         item.delete_original_response.assert_awaited_once()
 
@@ -682,13 +723,15 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
             await release.wait()
             await item.edit_original_response(attachments=[updated])
 
-        view = VoiceProfileView(10, refresh)
+        view = VoiceProfileView(10, refresh, reveal=AsyncMock())
         updated = discord.File(BytesIO(b"image"), filename="updated.png")
         first = interaction()
         second = interaction()
-        running = asyncio.create_task(view.refresh_button.callback(first))
+        running = asyncio.create_task(
+            view.buttons[ProfileAction.REFRESH].callback(first)
+        )
         await started.wait()
-        await view.refresh_button.callback(second)
+        await view.buttons[ProfileAction.REFRESH].callback(second)
         second.response.send_message.assert_awaited_once()
         self.assertIn("уже обновляется", second.response.send_message.call_args.args[0])
         release.set()

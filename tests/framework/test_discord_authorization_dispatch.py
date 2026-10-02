@@ -9,7 +9,7 @@ import discord
 
 from api.blocking import block_manager
 from cogs.guild_monitor_cog import ServerMonitorCog
-from cogs.voice.profile.view import VoiceProfileView
+from cogs.voice.profile.view import ProfileAction, VoiceProfileView
 from cogs.voice.profile_cog import VoiceProfileCog
 from cogs.wolfram_cog import WolframCog
 from framework.bot import StupidBot
@@ -129,19 +129,19 @@ class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
 
     async def test_view_dispatch_enforces_owner_and_current_block(self) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(9001, refresh)
+        view = VoiceProfileView(9001, refresh, reveal=AsyncMock())
         self.item.data = {
-            "custom_id": view.refresh_button.custom_id,
+            "custom_id": view.buttons[ProfileAction.REFRESH].custom_id,
             "component_type": 2,
         }
-        await view._scheduled_task(view.refresh_button, self.item)
+        await view._scheduled_task(view.buttons[ProfileAction.REFRESH], self.item)
         refresh.assert_not_awaited()
         self._assert_denied_once()
         self.assertFalse(view.is_finished())
         self.item.user.id = 9002
         self.blocked.reset_mock()
         self.item.response.send_message.reset_mock()
-        await view._scheduled_task(view.refresh_button, self.item)
+        await view._scheduled_task(view.buttons[ProfileAction.REFRESH], self.item)
         self.blocked.assert_not_awaited()
         self.item.response.send_message.assert_awaited_once_with(
             "Это не ваша карточка.", ephemeral=True

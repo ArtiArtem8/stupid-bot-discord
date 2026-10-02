@@ -1,0 +1,59 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="960" height="480" viewBox="0 0 960 480" font-family="Inter" font-weight="400">
+  <defs>
+    <clipPath id="avatar-clip">
+      <circle cx="56" cy="48" r="24" />
+    </clipPath>
+    <pattern id="coverage-hatch" width="6" height="6" patternUnits="userSpaceOnUse">
+      <path d="M0 6L6 0" data-stroke="muted" stroke="#a7b3c5" stroke-opacity="0.35" />
+    </pattern>
+  </defs>
+  <g id="shell-placement" inkscape:groupmode="layer" inkscape:label="Card surface">
+    <rect id="card-shell" x="1" y="1" width="958" height="478" data-fill="surface" fill="#232732" rx="28" data-stroke="border" stroke="#59616e" />
+    <rect id="accent-line" x="32" y="91" width="38" height="3" data-fill="accent" fill="#232732" rx="1.5" />
+  </g>
+  <g id="identity-placement" inkscape:groupmode="layer" inkscape:label="Profile identity">
+    <circle cx="56" cy="48" r="24" data-fill="panel" fill="#232732" />
+    <text id="avatar-fallback" x="56" y="56" font-size="20" data-fill="bright" fill="#f4f6fa" text-anchor="middle" font-variant-numeric="tabular-nums">VP</text>
+    <image id="user-avatar" x="32" y="24" width="48" height="48" clip-path="url(#avatar-clip)" />
+    <text id="display-name" x="96" y="45" font-size="24" data-fill="text" fill="#f4f6fa" data-width="590" font-weight="600" font-variant-numeric="tabular-nums">Voice Listener</text>
+    <text id="guild-name" x="96" y="73" font-size="19" data-fill="muted" fill="#f4f6fa" data-width="590" font-variant-numeric="tabular-nums">Voice Guild</text>
+    <text id="tier-name" x="864" y="51" font-size="19" data-fill="bright" fill="#f4f6fa" data-width="180" text-anchor="end" font-variant-numeric="tabular-nums">MYTHIC</text>
+    <g id="emblem-art" transform="translate(884 24) scale(0.48)" data-fill="accent" fill="#da4fbe" />
+    <text id="card-title" x="32" y="124" font-size="30" data-fill="text" fill="#f4f6fa" font-weight="600" font-variant-numeric="tabular-nums">Voice XP</text>
+    <text id="period-badge" x="928" y="121" font-size="20" data-fill="muted" fill="#f4f6fa" text-anchor="end" font-variant-numeric="tabular-nums">Lifetime</text>
+    <path d="M32 138H928" data-stroke="border" stroke="#59616e" />
+  </g>
+  <g id="content-placement" inkscape:label="Lifetime XP accounting and recent total" inkscape:groupmode="layer">
+    <text id="xp-total" x="32" y="202" font-size="48" data-fill="text" fill="#f4f6fa" data-width="530" font-weight="600" font-variant-numeric="tabular-nums">52,840 XP</text>
+    <rect id="recent-panel" x="603" y="152" width="325" height="100" data-fill="panel" fill="#232732" rx="12" />
+    <text id="recent-heading" x="624" y="181" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Last 30 days</text>
+    <text id="recent-xp" x="907" y="227" font-size="32" data-fill="positive" fill="#f4f6fa" data-width="282" text-anchor="end" font-weight="600" font-variant-numeric="tabular-nums">+8,240 XP</text>
+    <path d="M32 262H928M331 278V398M629 278V398" data-stroke="border" stroke="#59616e" />
+    <text id="xp-heading-0" x="32" y="291" font-size="22" data-fill="text" fill="#f4f6fa" font-variant-numeric="tabular-nums">Base</text>
+    <text id="xp-heading-1" x="347" y="291" font-size="22" data-fill="text" fill="#f4f6fa" font-variant-numeric="tabular-nums">Bonuses</text>
+    <text id="xp-heading-2" x="645" y="291" font-size="22" data-fill="text" fill="#f4f6fa" font-variant-numeric="tabular-nums">Reductions</text>
+    <text id="xp-label-solo" x="32" y="326" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Solo</text>
+    <text id="xp-solo" x="315" y="326" font-size="22" data-fill="positive" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">+2,410</text>
+    <text id="xp-label-social" x="32" y="354" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Social</text>
+    <text id="xp-social" x="315" y="354" font-size="22" data-fill="positive" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">+48,700</text>
+    <text id="xp-label-group" x="347" y="326" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">5+ people</text>
+    <text id="xp-group" x="613" y="326" font-size="22" data-fill="positive" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">+860</text>
+    <text id="xp-label-stream" x="347" y="354" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Stream</text>
+    <text id="xp-stream" x="613" y="354" font-size="22" data-fill="positive" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">+1,920</text>
+    <text id="xp-label-video" x="347" y="382" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Video</text>
+    <text id="xp-video" x="613" y="382" font-size="22" data-fill="positive" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">+470</text>
+    <text id="xp-label-audio" x="645" y="326" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Audio</text>
+    <text id="xp-audio" x="928" y="326" font-size="22" data-fill="negative" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">−1,240</text>
+    <text id="xp-label-cap" x="645" y="354" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Bonus cap</text>
+    <text id="xp-cap" x="928" y="354" font-size="22" data-fill="negative" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">−280</text>
+    <text id="xp-estimate" x="32" y="235" font-size="20" data-fill="muted" fill="#a7b3c5" data-width="530">~5.8 h to next level</text>
+  </g>
+  <g id="footer-placement" inkscape:groupmode="layer" inkscape:label="Period and observation coverage">
+    <path d="M32 414H928" data-stroke="border" stroke="#59616e" />
+    <text id="period-label" x="32" y="439" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="650" font-variant-numeric="tabular-nums">Sep 4 – Oct 3 · Europe/Moscow</text>
+    <text id="coverage-label" x="928" y="439" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="210" text-anchor="end" font-variant-numeric="tabular-nums">Coverage 98%</text>
+    <text id="lifetime-label" x="32" y="465" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="650" font-variant-numeric="tabular-nums">History since Sep 1, 2025</text>
+    <text id="lifetime-coverage" x="928" y="465" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="255" text-anchor="end" font-variant-numeric="tabular-nums">Lifetime coverage 98%</text>
+  </g>
+</svg>

@@ -16,7 +16,7 @@ from cogs.birthday_cog import ConfirmDeleteView
 from cogs.music.views.controller import TrackControllerView
 from cogs.music.views.queue import QueuePaginationAdapter, QueuePaginator, QueueUndoView
 from cogs.music.views.session import SessionSummaryView
-from cogs.voice.profile.view import VoiceProfileView
+from cogs.voice.profile.view import ProfileAction, VoiceProfileView
 from cogs.voice.profile_cog import VoiceProfileCog
 from cogs.wolfram_cog import WolframCog
 from framework.authorization import check_command_access
@@ -74,14 +74,14 @@ class TestAuthorization(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(10, refresh, private=False)
+        view = VoiceProfileView(10, refresh, reveal=AsyncMock(), private=False)
         self.assertTrue(await view.interaction_check(self.item))
-        await view.refresh_button.callback(self.item)
+        await view.buttons[ProfileAction.REFRESH].callback(self.item)
         refresh.assert_not_awaited()
         self.item.response.defer.assert_not_awaited()
         self.feedback.assert_awaited_once()
         self.assertFalse(view.is_finished())
-        await view.delete_button.callback(self.item)
+        await view.buttons[ProfileAction.DELETE].callback(self.item)
         self.item.delete_original_response.assert_awaited_once()
 
     async def test_controller_denial_keeps_view_and_player_intact(self) -> None:
