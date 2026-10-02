@@ -21,7 +21,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Check Linux launcher
         run: |
@@ -31,6 +33,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
+          version: "0.12.22"
           enable-cache: true
 
       - name: Install Python
@@ -42,23 +45,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --dev
 
-      - name: Dependency audit
-        run: uv audit --no-dev --preview-features audit --ignore GHSA-mrfv-m5wm-5w6w
+      - name: File checks
+        run: uv run --no-sync prek run --all-files --group files
 
       - name: Ruff format
-        run: uv run ruff format --check .
+        run: uv run --no-sync ruff format --check .
 
       - name: Ruff lint
-        run: uv run ruff check --output-format=github .
+        run: uv run --no-sync ruff check --output-format=github .
 
-      - name: Basedpyright
-        run: uv run basedpyright
-
-      - name: ty
-        run: uv run ty check
-
-      - name: Tests
-        run: uv run pytest -q
+      - name: Project checks
+        run: uv run --no-sync prek run --all-files --stage pre-push --group verify
 
   profile-native:
     name: profile native smoke
@@ -66,10 +63,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.22"
 
       - name: Install native renderer
         run: |
@@ -83,4 +84,4 @@ jobs:
       - name: Native profile smoke
         env:
           VOICE_PROFILE_NATIVE: '1'
-        run: uv run --locked pytest -q tests/cogs/voice/profile/test_native.py
+        run: uv run --no-sync pytest -q tests/cogs/voice/profile/test_native.py

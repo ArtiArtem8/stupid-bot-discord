@@ -19,8 +19,8 @@ installed without breaking the supported dependency graph.
 The exception is temporarily accepted because this bot uses PyNaCl through the
 Discord voice encryption path and does not call the affected custom Ed25519 point
 validation API or pass application-controlled data to it. The suppression is
-limited to this advisory in `.github/workflows/ci.yml` and
-`.pre-commit-config.yaml`; new advisories remain failures.
+limited to this advisory in `prek.toml`. Local checks and CI audit both runtime
+and development dependencies; new advisories remain failures.
 
 Review this exception by 2026-12-15, or sooner when the discord.py voice
 dependency changes. Remove the suppression as soon as the supported dependency

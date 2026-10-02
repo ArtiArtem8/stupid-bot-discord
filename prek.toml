@@ -1,0 +1,101 @@
+minimum_prek_version = "0.5.4"
+default_install_hook_types = ["pre-commit", "pre-push"]
+
+[priorities]
+lock = 0
+files = 10
+lint = 20
+format = 30
+verify = 40
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "check-added-large-files", args = ["--maxkb=1024", "--enforce-all"], groups = ["files"], priority = "files" },
+  { id = "check-case-conflict", groups = ["files"], priority = "files" },
+  { id = "check-illegal-windows-names", groups = ["files"], priority = "files" },
+  { id = "check-merge-conflict", groups = ["files"], priority = "files" },
+  { id = "check-symlinks", groups = ["files"], priority = "files" },
+  { id = "destroyed-symlinks", groups = ["files"], priority = "files" },
+  { id = "forbid-new-submodules", groups = ["files"], priority = "files" },
+  # VS Code accepts JSON with comments and trailing commas.
+  { id = "check-json", exclude = '^\.vscode/', groups = ["files"], priority = "files" },
+  { id = "check-toml", groups = ["files"], priority = "files" },
+  { id = "check-yaml", groups = ["files"], priority = "files" },
+  { id = "detect-private-key", groups = ["files"], priority = "files" },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "uv-lock"
+name = "uv lock"
+entry = "uv lock"
+language = "system"
+files = '^(uv\.lock|pyproject\.toml|uv\.toml)$'
+pass_filenames = false
+priority = "lock"
+
+# One batch per Ruff hook avoids repeated uv startup.
+[[repos.hooks]]
+id = "ruff-check"
+name = "ruff check --fix"
+entry = "uv run --locked ruff check --fix"
+language = "system"
+types_or = ["python", "pyi"]
+require_serial = true
+priority = "lint"
+
+[[repos.hooks]]
+id = "ruff-format"
+name = "ruff format"
+entry = "uv run --locked ruff format"
+language = "system"
+types_or = ["python", "pyi"]
+require_serial = true
+priority = "format"
+
+[[repos.hooks]]
+id = "basedpyright"
+name = "basedpyright"
+entry = "uv run --locked basedpyright"
+language = "system"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
+groups = ["verify"]
+priority = "verify"
+
+[[repos.hooks]]
+id = "ty"
+name = "ty"
+entry = "uv run --locked ty check"
+language = "system"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
+groups = ["verify"]
+priority = "verify"
+
+[[repos.hooks]]
+id = "pytest"
+name = "pytest"
+entry = "uv run --locked pytest -q -n auto --maxprocesses 6 --dist worksteal"
+language = "system"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
+groups = ["verify"]
+priority = "verify"
+
+[[repos.hooks]]
+id = "uv-audit"
+name = "uv audit (all dependencies)"
+entry = "uv audit --locked --preview-features audit --ignore GHSA-mrfv-m5wm-5w6w"
+language = "system"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
+groups = ["verify"]
+priority = "verify"
