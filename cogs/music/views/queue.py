@@ -11,6 +11,7 @@ from discord import Interaction
 
 import config
 from api.music.models import MusicResult, QueueEntry, QueueSnapshot, RepeatMode
+from framework.authorization import check_component_access
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from framework.interaction_flow import ack_component
 from framework.pagination import (
@@ -74,6 +75,8 @@ class QueueUndoView(discord.ui.View):
         return False
 
     async def remove(self, interaction: Interaction) -> None:
+        if not await check_component_access(interaction):
+            return
         await ack_component(interaction)
         message = interaction.message
         if message is None:
@@ -227,6 +230,8 @@ class QueuePaginator(BasePaginator):
         self.add_item(self.refresh_btn)
 
     async def refresh(self, interaction: Interaction) -> None:
+        if not await check_component_access(interaction):
+            return
         new_data = await self.refresh_callback()
         if new_data:
             self.adapter.update_snapshot(new_data)

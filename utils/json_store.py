@@ -2,10 +2,12 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from functools import partial
 from os import PathLike
 from pathlib import Path
 
 from config import ENCODING
+from utils.asyncio_utils import run_in_thread
 from utils.json_types import JsonEncodableObject, JsonObject, freeze_json_object
 from utils.json_utils import get_json, save_json
 
@@ -20,6 +22,7 @@ class AsyncJsonFileStore:
     Each instance owns its synchronization lock. A process must therefore share
     one authoritative store instance for a path; concurrent instances for the
     same file are not serialized. Physical file operations run in worker threads.
+    Cancellation during a write waits for its worker before releasing the lock.
     """
 
     path: str | PathLike[str]
@@ -45,13 +48,15 @@ class AsyncJsonFileStore:
             await self._write_unlocked(data)
 
     async def _write_unlocked(self, data: JsonEncodableObject) -> None:
-        await asyncio.to_thread(
-            save_json,
-            self.path,
-            data,
-            self.backup_amount,
-            backup_dir=self.backup_dir,
-            encoding=self.encoding,
+        await run_in_thread(
+            partial(
+                save_json,
+                self.path,
+                data,
+                self.backup_amount,
+                backup_dir=self.backup_dir,
+                encoding=self.encoding,
+            )
         )
 
     async def update(self, updater: Updater) -> JsonObject:

@@ -278,34 +278,74 @@ class ServerMonitoringManager:
     async def restore_snapshot(
         self, member: discord.Member
     ) -> tuple[list[discord.Role], list[int]]:
-        snapshot = await self.get_snapshot(member.guild.id, member.id)
+        """Restore a valid snapshot, returning successful grants and skipped IDs.
+
+        Manual and automatic restoration both honor TTL. Missing roles are
+        terminal; existing unassignable roles and failed requests retain the
+        snapshot for retry. Already-held roles need no request. An exact snapshot
+        is deleted only after all remaining work is terminal or complete.
+        """
+        guild_data = await self._load_guild_data(member.guild.id)
+        snapshot = _decode_snapshot(
+            str(member.id), guild_data.members.get(str(member.id))
+        )
         if snapshot is None:
+            if str(member.id) in guild_data.members:
+                logger.warning(_MALFORMED_SNAPSHOT_LOG, member.guild.id, str(member.id))
+            return ([], [])
+        if guild_data.ttl_days is not None and snapshot.left_at < (
+            utcnow() - timedelta(days=guild_data.ttl_days)
+        ):
+            await self.delete_snapshot(
+                member.guild.id, member.id, expected_left_at=snapshot.left_at
+            )
             return ([], [])
 
+        restored_roles, skipped_role_ids, retry_needed = await self._restore_roles(
+            member, snapshot.roles
+        )
+        if not retry_needed:
+            await self.delete_snapshot(
+                member.guild.id,
+                member.id,
+                expected_left_at=snapshot.left_at,
+            )
+        return (restored_roles, skipped_role_ids)
+
+    async def _restore_roles(
+        self, member: discord.Member, role_ids: list[int]
+    ) -> tuple[list[discord.Role], list[int], bool]:
         restored_roles: list[discord.Role] = []
         skipped_role_ids: list[int] = []
-        for role_id in snapshot.roles:
-            role = await self._validate_role(member.guild, role_id)
-            if role:
-                restored_roles.append(role)
-            else:
+        retry_needed = False
+        for role_id in role_ids:
+            role = member.guild.get_role(role_id)
+            if role is None:
                 skipped_role_ids.append(role_id)
-
-        if restored_roles:
+                continue
+            if role in member.roles:
+                continue
+            if not self._can_assign_role(member.guild, role):
+                skipped_role_ids.append(role_id)
+                retry_needed = True
+                continue
             try:
-                await member.add_roles(
-                    *restored_roles,
-                    reason="Автовосстановление ролей",
+                await member.add_roles(role, reason="Автовосстановление ролей")
+            except discord.HTTPException as error:
+                skipped_role_ids.append(role_id)
+                retry_needed = True
+                logger.warning(
+                    "Role restore failed in guild %s for user %s role %s: HTTP %s",
+                    member.guild.id,
+                    member.id,
+                    role_id,
+                    error.status,
                 )
-            except (discord.Forbidden, discord.HTTPException):
-                return ([], snapshot.roles)
+                logger.debug("Role restore request traceback", exc_info=True)
+            else:
+                restored_roles.append(role)
 
-        await self.delete_snapshot(
-            member.guild.id,
-            member.id,
-            expected_left_at=snapshot.left_at,
-        )
-        return (restored_roles, skipped_role_ids)
+        return (restored_roles, skipped_role_ids, retry_needed)
 
     def _filter_saveable_roles(self, member: discord.Member) -> list[int]:
         return [
@@ -316,15 +356,12 @@ class ServerMonitoringManager:
             and not role.is_premium_subscriber()
         ]
 
-    async def _validate_role(
-        self, guild: discord.Guild, role_id: int
-    ) -> discord.Role | None:
-        role = guild.get_role(role_id)
-        if role is None or role.managed:
-            return None
-        if guild.get_member(guild.me.id) is None:
-            return None
-        return role
+    def _can_assign_role(self, guild: discord.Guild, role: discord.Role) -> bool:
+        return bool(
+            guild.me
+            and guild.me.guild_permissions.manage_roles
+            and role.is_assignable()
+        )
 
 
 monitor_manager = ServerMonitoringManager(config.DATA_DIR / "guild_monitor")

@@ -57,6 +57,10 @@ Start the bot with `uv`:
 uv run --locked --no-dev main.py
 ```
 
+Allocation tracing is disabled by default. For memory diagnostics, start with
+`uv run --locked --no-dev main.py --tracemalloc`. Tracing adds CPU and memory
+overhead and is intended for diagnostic runs.
+
 Platform launcher scripts are also included:
 
 ```bash

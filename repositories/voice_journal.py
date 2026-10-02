@@ -24,6 +24,7 @@ from pathlib import Path
 
 from api.voice.model import GapReason, ObservationGap, VoiceJournalRecord
 from repositories._voice_codec import decode_record, encode_record
+from utils.asyncio_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -337,12 +338,7 @@ class VoiceJournal:
         # Cancellation must not release the file lock while its worker thread
         # still accesses a day file (notably during collector unload).
         async with self._files:
-            work = asyncio.create_task(asyncio.to_thread(operation))
-            try:
-                return await asyncio.shield(work)
-            except asyncio.CancelledError:
-                await work
-                raise
+            return await run_in_thread(operation)
 
     def _prune(self, cutoff: date) -> int:
         count = 0

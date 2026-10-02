@@ -10,6 +10,7 @@ from discord.utils import format_dt
 
 import config
 from api.music.models import MusicSession
+from framework.authorization import check_component_access
 from framework.pagination import BasePaginator, PaginationData
 from utils.text_utils import TextPaginator, truncate_text
 
@@ -85,6 +86,8 @@ class SessionSummaryView(ui.View):
     async def view_full_button(
         self, interaction: Interaction, _: ui.Button[Self]
     ) -> None:
+        if not await check_component_access(interaction):
+            return
         total_tracks = len(self.session.tracks)
         if total_tracks == 0:
             await send_warning(interaction, "В этой сессии нет треков.", ephemeral=True)

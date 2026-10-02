@@ -27,6 +27,7 @@ from cogs.voice.profile.media import (
     RenderBusyError,
 )
 from cogs.voice.profile.view import VoiceProfileView
+from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from repositories.voice_journal import VoiceJournal
 
@@ -45,11 +46,11 @@ class ProfileSnapshot:
     generation: int
 
 
-class VoiceProfileCog(commands.Cog):
+class VoiceProfileCog(BaseCog):
     """Own one media runtime/cache; collector replacement advances the epoch."""
 
     def __init__(self, bot: commands.Bot) -> None:
-        self.bot = bot
+        super().__init__(bot)
         self._timeline_cache: OrderedDict[int, tuple[int, VoiceTimeline]] = (
             OrderedDict()
         )

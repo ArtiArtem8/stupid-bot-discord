@@ -8,8 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 from discord.utils import maybe_coroutine
 
-from api.blocking import block_manager
-from framework.exceptions import BlockedUserError
+from framework.authorization import check_command_access
 
 logger = logging.getLogger(__name__)
 
@@ -40,18 +39,7 @@ class GenericBaseCog[BotT: commands.Bot](commands.Cog):
 
         if await maybe_coroutine(self.should_bypass_block, interaction):
             return True
-        if interaction.guild and await block_manager.is_user_blocked(
-            interaction.guild.id, interaction.user.id
-        ):
-            logger.debug(
-                "[%s] Blocked user %s attempted command in guild %s (%s)",
-                self._cog,
-                interaction.user.id,
-                interaction.guild.id,
-                interaction.command.name if interaction.command else None,
-            )
-            raise BlockedUserError()
-        return True
+        return await check_command_access(interaction)
 
     async def _require_guild(self, interaction: discord.Interaction) -> discord.Guild:
         """Return the interaction guild or reject direct-message use.

@@ -13,6 +13,7 @@ from discord import Message, app_commands
 from discord.ext import commands
 from discord.utils import format_dt, utcnow
 
+from api.blocking import block_manager
 from cogs.command.prefix_suggestions import (
     Command,
     Suggestion,
@@ -111,6 +112,11 @@ class PrefixBlockerCog(commands.Cog):
 
         raw_content = await self._extract_prefix_query(message)
         if raw_content is None:
+            return
+
+        if message.guild and await block_manager.is_user_blocked(
+            message.guild.id, message.author.id
+        ):
             return
 
         suggestions = find_prefix_suggestions(

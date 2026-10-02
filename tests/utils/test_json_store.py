@@ -7,13 +7,15 @@ import json
 import random
 import threading
 import unittest
+from os import PathLike
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import override
 from unittest.mock import patch
 
 from utils.json_store import AsyncJsonFileStore, JsonDict, Updater
-from utils.json_types import JsonObject, JsonValue, is_json_object
+from utils.json_types import JsonEncodableObject, JsonObject, JsonValue, is_json_object
+from utils.json_utils import save_json
 
 
 def _as_json_object(value: JsonValue) -> JsonObject:
@@ -235,6 +237,94 @@ class TestAsyncJsonFileStore(unittest.IsolatedAsyncioTestCase):
         await store.write({"updated": "data"})
 
         self.assertFalse(self.backup_dir.exists())
+
+    async def test_cancelled_update_retains_worker_ownership_until_write_finishes(
+        self,
+    ) -> None:
+        store = AsyncJsonFileStore(self.test_file, backup_dir=self.backup_dir)
+        started = asyncio.Event()
+        attempted = asyncio.Event()
+        release = threading.Event()
+        loop = asyncio.get_running_loop()
+
+        def blocked_save(
+            path: str | PathLike[str],
+            data: JsonEncodableObject,
+            backup_amount: int,
+            *,
+            backup_dir: Path | None,
+            encoding: str,
+        ) -> None:
+            if "a" in data and "b" not in data:
+                loop.call_soon_threadsafe(started.set)
+                if not release.wait(5):
+                    raise TimeoutError("test did not release writer")
+            save_json(
+                path, data, backup_amount, backup_dir=backup_dir, encoding=encoding
+            )
+
+        async def next_update() -> JsonObject:
+            attempted.set()
+            return await store.update(lambda data: data.update(b=True))
+
+        with patch("utils.json_store.save_json", side_effect=blocked_save):
+            first = asyncio.create_task(store.update(lambda data: data.update(a=True)))
+            second: asyncio.Task[JsonObject] | None = None
+            try:
+                await asyncio.wait_for(started.wait(), 5)
+                first.cancel()
+                second = asyncio.create_task(next_update())
+                await attempted.wait()
+                first.cancel()
+                checkpoint = asyncio.Event()
+                loop.call_soon(checkpoint.set)
+                await checkpoint.wait()
+                self.assertFalse(first.done())
+                self.assertFalse(second.done())
+            finally:
+                release.set()
+                await asyncio.gather(first, return_exceptions=True)
+                if second is not None:
+                    await second
+
+        self.assertTrue(first.cancelled())
+        self.assertEqual(await store.read(), {"a": True, "b": True})
+
+    async def test_cancelled_write_reports_worker_failure_and_releases_lock(
+        self,
+    ) -> None:
+        store = AsyncJsonFileStore(self.test_file, backup_dir=self.backup_dir)
+        started = asyncio.Event()
+        release = threading.Event()
+        loop = asyncio.get_running_loop()
+
+        def failing_save(*_args: object, **_kwargs: object) -> None:
+            loop.call_soon_threadsafe(started.set)
+            if not release.wait(5):
+                raise TimeoutError("test did not release writer")
+            raise OSError("disk failure")
+
+        with (
+            patch("utils.json_store.save_json", side_effect=failing_save),
+            self.assertLogs("utils.asyncio_utils", level="ERROR") as logs,
+        ):
+            task = asyncio.create_task(store.write({"a": True}))
+            try:
+                await asyncio.wait_for(started.wait(), 5)
+                task.cancel()
+            finally:
+                release.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+        self.assertIn("disk failure", "\n".join(logs.output))
+        await store.write({"b": True})
+        self.assertEqual(await store.read(), {"b": True})
+
+    async def test_write_failure_without_cancellation_propagates(self) -> None:
+        store = AsyncJsonFileStore(self.test_file)
+        with patch("utils.json_store.save_json", side_effect=OSError("disk failure")):
+            with self.assertRaises(OSError):
+                await store.write({"a": True})
 
     async def test_update_with_sync_updater(self) -> None:
         store = AsyncJsonFileStore(

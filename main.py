@@ -7,12 +7,12 @@ import config
 from framework.bot import StupidBot
 from utils.logging_setup import setup_logging
 
-tracemalloc.start()
 logger = logging.getLogger("StupidBot")
 
 
 class Arguments(argparse.Namespace):
     watch: bool = False
+    tracemalloc: bool = False
 
 
 async def main() -> None:
@@ -24,7 +24,14 @@ async def main() -> None:
         action="store_true",
         help="Enables watcher that will reload cogs on code changes.",
     )
+    parser.add_argument(
+        "--tracemalloc",
+        action="store_true",
+        help="Enable allocation tracing for memory diagnostics (adds overhead).",
+    )
     args = parser.parse_args(namespace=Arguments())
+    if args.tracemalloc:
+        tracemalloc.start()
 
     for directory in [
         config.DATA_DIR,
