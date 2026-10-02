@@ -3,9 +3,68 @@
 `/voice-profile` shows your server-local XP, level, voice time and session count.
 The response is private by default. Use `private:false` to publish it in the
 channel with a trash button that deletes only the message, not its history or XP.
-Refresh and trash are restricted to the command owner. Refresh replaces the
-attachment on the same message. After ten minutes of inactivity, the controls
-are removed and the card stays.
+All controls are restricted to the command owner. The main profile stays a
+standalone image attachment. Activity, People and XP each append one static PNG
+in a separate image embed in the same message, in click order. Each used button
+disappears after a successful edit. A failed render or upload leaves the message
+and button available for retry. After ten minutes of inactivity, the controls are
+removed and the cards stay.
+
+Refresh replaces the main card and every already-open detail in their existing
+order. It reads one timeline snapshot and resolves the profile identity once.
+Every image must finish before one message edit publishes the replacement set.
+New details retain the displayed profile's identity and tier until refresh.
+
+Discord omits embedded uploads from `message.attachments`. Reveal retains their
+IDs from the returned Discord image URLs alongside the main attachment, and
+binds all detail embeds through `attachment://` filenames. Keeping both the IDs
+and these bindings prevents deleted images and duplicate standalone previews.
+Only the new PNG is uploaded on reveal; refresh replaces the full file set.
+The attachment adapter is covered against discord.py's multipart serializer.
+
+## Detail scopes and coverage
+
+Activity shows the current guild's last 30 local calendar dates, including today,
+using `VOICE_PROFILE_TIMEZONE`. Its first boundary is local midnight 29 dates
+before today; its last boundary is the snapshot request time. DST days therefore
+contain 23 or 25 elapsed hours where applicable. The chart always has 30 columns.
+Bar heights encode voice duration; hatching marks partial observation and a cross
+marks an unobserved date. A fully observed empty date has a zero marker.
+
+People lists lifetime human co-presence, ordered by shared time, one-on-one time
+and user ID, and includes a small 30-day summary. One-on-one is a subset of shared
+time. Unknown participants prevent one-on-one credit; bots are not companions.
+With-bots time counts each interval once even when several bots were present and
+does not imply playback. Names use member/user caches and fall back to
+`Unknown user`. Their colors use each person's guild-local lifetime profile tier;
+no member fetches or companion avatar downloads are needed.
+
+XP explains lifetime awards using the canonical policy and separately displays
+the last 30 days' XP. Components remain exact `Fraction` values until formatting.
+Green positive terms and red reductions retain explicit signs. Components round
+independently, so their displayed sum can differ from the displayed total. The
+lifetime total truncates fractional XP exactly as the main profile does, so it
+cannot display an unearned level threshold. Large detail durations use compact
+hours from 1,000 hours onward; the main card's duration format is unchanged.
+
+The next-level estimate divides exact remaining XP by pooled XP per voice hour
+over the same 30 local dates. Longer observations contribute proportionally more
+than short ones; inactive dates contribute neither XP nor voice hours. The pure
+`api.voice.prediction` module uses the existing XP and level projections, without
+copying award rates. Main profiles and other details do not invoke it.
+
+The small neutral caption below lifetime XP explicitly says "in voice" and shows
+approximate hours, or minutes below one hour. It is omitted with less than one
+observed voice hour, or without
+earning voice in the last seven local dates. These are availability guards, not
+calibrated accuracy thresholds. Coverage describes completeness separately and
+does not multiply the measured pace. There is no confidence range, extrapolated
+trend, calendar completion date or automatic fallback to a stale lifetime pace.
+
+Every card labels recent coverage. People and XP also label lifetime coverage,
+measured from the earliest retained guild evidence to the request time. Missing
+history has no lifetime coverage denominator; it is not reported as known empty
+time. Lifetime values are limited to retained, observed history.
 
 ## Setup
 
@@ -19,12 +78,17 @@ outside Inter, including CJK and emoji. FFmpeg and gifsicle are not required.
 | `INKSCAPE_BIN` | Optional executable path; otherwise PATH and conventional Windows installation directories are checked. |
 | `PROFILE_FONT_DIR` | Font directory, default `resources/fonts/` relative to the repository. |
 | `PROFILE_CACHE_DIR` | Optional cache root. Its `fontconfig/` directory holds the font cache; the default is the service user's application cache. |
-| `VOICE_PROFILE_TIMEZONE` | Visible timezone label, default `UTC`; invalid names fall back to UTC. It does not change XP or elapsed voice time. |
+| `VOICE_PROFILE_TIMEZONE` | Calendar timezone for recent details and visible label, default `UTC`; invalid names fall back to UTC. It does not change lifetime XP or elapsed voice time. |
 
 The service account needs permission to launch Inkscape and write temporary files
 and the font cache. Missing Inkscape or fonts disables the profile command;
 the rest of the bot can start. The command returns an unavailable message and
 logs the initialization failure. After fixing setup, restart or reload the Cog.
+
+Buttons use the custom emoji references in `resources.py`: `statistic` for
+Activity, `social` for People, `xp` for XP, and the shared `restart` and `trash`
+controls for Refresh and Delete. Emoji IDs are bound directly to the buttons;
+startup does not fetch or discover emojis by name.
 
 ## Images and caches
 
@@ -32,6 +96,13 @@ Cards are 960×480. Starter through Rare use PNG; Epic and higher use a looping,
 four-second lossless WebP at 20 FPS. An encoding failure or oversized WebP falls
 back to the prepared PNG. Delivery respects both the internal 5 MiB limit and
 Discord's upload limit.
+
+Detail cards are always static transparent PNGs at 960×480. Their three editable
+templates live in `assets/details/`, use the same semantic palette and emblems,
+and share the same native shell and owned worker as the main card. They bypass
+WebP encoding and have no rendered-detail cache. The View retains attachment
+references through its message, reveal order and identity metadata, not media
+bytes or timeline data.
 
 Avatars request 256 pixels, as GIF when animated and PNG otherwise. Guild icons
 request 64 pixels as PNG. Their original compressed bytes stay in memory only:
@@ -41,9 +112,14 @@ Failed downloads are retried; missing or corrupt images use placeholders.
 Animated avatars retain their frames and timing, but lower tiers still use PNG.
 
 Rendered media has a separate memory cache: 32 entries, 64 MiB and a five-minute
-TTL. Matching requests share one job; at most four distinct jobs are admitted
-and one runs at a time. One persistent `Inkscape --shell` process prepares the
-layers, then Pillow composes the animation. The 80 RGBA frames alone need about
+TTL. Each cached main card includes the immutable progression and identity that
+produced it; retained identity image bytes count toward the same byte limit.
+Matching main requests share preparation, asset retrieval and rendering. Main
+and detail jobs share a four-job admission limit and one worker, starting before
+profile/detail calculations and asset reads. Details are not cached. Cancellation
+does not release a slot until its work finishes. One persistent `Inkscape --shell`
+process prepares the layers, then Pillow composes the animation. The 80 RGBA
+frames alone need about
 140.6 MiB, before encoder overhead.
 
 Timelines are cached for at most four guilds. A miss reads all retained guild and

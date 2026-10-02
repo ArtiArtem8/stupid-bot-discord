@@ -3,12 +3,23 @@
 import asyncio
 import os
 import unittest
+from dataclasses import replace
+from datetime import UTC, datetime
+from fractions import Fraction
 from io import BytesIO
 
 import pytest
 from PIL import Image
 
+from api.voice.profile.details import (
+    build_activity_detail,
+    build_people_detail,
+    build_xp_detail,
+)
+from api.voice.read_models import VoiceXpBreakdown
+from api.voice.timeline import VoiceTimeline
 from cogs.voice.profile.design import CardIdentity
+from cogs.voice.profile.detail_models import DetailIdentity, PeoplePresentation
 from cogs.voice.profile.media import ProfileMediaRenderer
 from tests.cogs.voice.profile.test_media import profile_at
 
@@ -19,6 +30,50 @@ from tests.cogs.voice.profile.test_media import profile_at
     "Set VOICE_PROFILE_NATIVE=1 with Inkscape installed to run native integration",
 )
 class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
+    async def test_static_details_share_native_shell_and_handle_empty_and_large_labels(
+        self,
+    ) -> None:
+        renderer = ProfileMediaRenderer()
+        try:
+            await renderer.astart()
+            if renderer.svg is None:
+                self.fail("Native renderer did not initialize")
+            raster = renderer.svg.raster
+            pid = raster.process_id
+            timeline = VoiceTimeline((), (), ())
+            as_of = datetime(2026, 10, 3, 12, tzinfo=UTC)
+            identity = DetailIdentity(
+                CardIdentity(
+                    "Александр Оченьдлиннаяфамилия " * 4,
+                    "Очень длинное название сервера " * 4,
+                ),
+                profile_at(35).appearance,
+            )
+            activity = build_activity_detail(timeline, 1, 1, as_of)
+            people = PeoplePresentation(
+                build_people_detail(timeline, 1, 1, as_of), {}, {}
+            )
+            xp = replace(
+                build_xp_detail(timeline, 1, 1, as_of),
+                breakdown=VoiceXpBreakdown(social_base=Fraction(10**12, 7)),
+            )
+            cards = [
+                await renderer.render_activity(activity, identity),
+                await renderer.render_people(people, identity),
+                await renderer.render_xp(xp, identity),
+            ]
+            for card in cards:
+                with self.subTest(bytes=len(card.data)):
+                    self.assertEqual(card.extension, "png")
+                    with Image.open(BytesIO(card.data)) as image:
+                        self.assertEqual(image.size, (960, 480))
+                        self.assertEqual(image.mode, "RGBA")
+                        self.assertFalse(getattr(image, "is_animated", False))
+                        self.assertEqual(image.getchannel("A").getpixel((0, 0)), 0)
+            self.assertEqual(raster.process_id, pid)
+        finally:
+            await renderer.aclose()
+
     async def test_real_fonts_media_shell_reuse_and_shutdown(self) -> None:
         renderer = ProfileMediaRenderer()
         try:

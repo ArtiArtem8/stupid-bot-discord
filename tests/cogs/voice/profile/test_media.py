@@ -3,6 +3,7 @@
 import asyncio
 import unittest
 from dataclasses import replace
+from datetime import UTC, datetime
 from io import BytesIO
 from threading import Event
 from unittest.mock import MagicMock, patch
@@ -11,12 +12,20 @@ from PIL import Image
 
 from api.progression.appearance import LevelAppearancePolicy
 from api.voice.profile.build import build_profile
+from api.voice.profile.details import XpDetail, build_xp_detail
 from api.voice.profile.model import VoiceProfile
 from api.voice.timeline import VoiceTimeline
 from cogs.voice.profile import media as media_module
 from cogs.voice.profile.avatar import load_avatar
 from cogs.voice.profile.design import CardIdentity, normalized_png
-from cogs.voice.profile.media import ProfileMedia, ProfileMediaRenderer, encode_webp
+from cogs.voice.profile.detail_models import DetailIdentity
+from cogs.voice.profile.detail_renderer import DetailCardRenderer
+from cogs.voice.profile.media import (
+    ProfileMedia,
+    ProfileMediaRenderer,
+    RenderBusyError,
+    encode_webp,
+)
 from cogs.voice.profile.raster import Box
 from cogs.voice.profile.svg_renderer import PreparedCard, SvgProfileRenderer
 
@@ -34,6 +43,41 @@ def profile_at(level: int = 1) -> VoiceProfile:
 
 
 class TestMedia(unittest.IsolatedAsyncioTestCase):
+    async def test_cancelled_detail_waiter_keeps_worker_owned_until_shutdown(
+        self,
+    ) -> None:
+        svg = MagicMock(spec=SvgProfileRenderer)
+        details = MagicMock(spec=DetailCardRenderer)
+        started, release = asyncio.Event(), Event()
+        loop = asyncio.get_running_loop()
+        renderer = ProfileMediaRenderer(svg=svg)
+        renderer.details = details
+        detail = build_xp_detail(
+            VoiceTimeline((), (), ()), 1, 1, datetime(2026, 10, 3, tzinfo=UTC)
+        )
+        identity = DetailIdentity(CardIdentity("N", "G"), profile_at().appearance)
+
+        def render(_detail: XpDetail, _identity: DetailIdentity) -> bytes:
+            loop.call_soon_threadsafe(started.set)
+            if not release.wait(5):
+                raise TimeoutError("Test did not release detail worker")
+            return b"png"
+
+        details.render_xp.side_effect = render
+        waiter = asyncio.create_task(renderer.render_xp(detail, identity))
+        await started.wait()
+        try:
+            waiter.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await waiter
+            with self.assertRaises(RenderBusyError):
+                await renderer.render(profile_at(), identity.card)
+            svg.close.assert_not_called()
+        finally:
+            release.set()
+            await renderer.aclose()
+        svg.close.assert_called_once()
+
     async def test_tier_policy_and_prepared_png_fallback(self) -> None:
         svg = MagicMock(spec=SvgProfileRenderer)
         prepared = MagicMock(spec=PreparedCard)

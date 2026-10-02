@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
 from time import perf_counter
@@ -12,7 +13,11 @@ from typing import Literal
 from PIL import features
 
 from api.progression.appearance import LevelTier
+from api.voice.profile.details import ActivityDetail, XpDetail
 from api.voice.profile.model import VoiceProfile
+from cogs.voice.profile.detail_models import DetailIdentity, PeoplePresentation
+from cogs.voice.profile.detail_renderer import DetailCardRenderer
+from cogs.voice.profile.raster import NativeRasterizer
 from cogs.voice.profile.svg_renderer import (
     CardIdentity,
     PreparedCard,
@@ -86,6 +91,8 @@ class ProfileMediaRenderer:
 
     def __init__(self, *, svg: SvgProfileRenderer | None = None) -> None:
         self.svg = svg
+        self.details: DetailCardRenderer | None = None
+        self._raster: NativeRasterizer | None = None
         self._tasks: set[asyncio.Task[ProfileMedia]] = set()
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
@@ -123,12 +130,16 @@ class ProfileMediaRenderer:
         if self._closed:
             raise RuntimeError("Profile renderer is closed")
         if self.svg is None:
-            self.svg = SvgProfileRenderer()
+            self._raster = NativeRasterizer()
+            self.svg = SvgProfileRenderer(raster=self._raster)
         try:
             self.svg.raster.start()
+            self.details = DetailCardRenderer(self.svg.raster)
             return self.svg.source_revision()
         except Exception:
             self.svg.close()
+            if self._raster is not None:
+                self._raster.close()
             raise
 
     async def astart(self) -> str:
@@ -142,13 +153,49 @@ class ProfileMediaRenderer:
     async def render(
         self, profile: VoiceProfile, identity: CardIdentity
     ) -> ProfileMedia:
+        return await self._run(lambda: self._render_sync(profile, identity))
+
+    async def render_activity(
+        self, detail: ActivityDetail, identity: DetailIdentity
+    ) -> ProfileMedia:
+        """Render one static activity PNG through the shared worker."""
+        if self.details is None:
+            raise RuntimeError("Detail renderer is unavailable")
+        renderer = self.details
+        return await self._run(
+            lambda: ProfileMedia(renderer.render_activity(detail, identity), "png")
+        )
+
+    async def render_people(
+        self, detail: PeoplePresentation, identity: DetailIdentity
+    ) -> ProfileMedia:
+        """Render one static people PNG through the shared worker."""
+        if self.details is None:
+            raise RuntimeError("Detail renderer is unavailable")
+        renderer = self.details
+        return await self._run(
+            lambda: ProfileMedia(renderer.render_people(detail, identity), "png")
+        )
+
+    async def render_xp(
+        self, detail: XpDetail, identity: DetailIdentity
+    ) -> ProfileMedia:
+        """Render one static XP PNG, without invoking the WebP encoder."""
+        if self.details is None:
+            raise RuntimeError("Detail renderer is unavailable")
+        renderer = self.details
+        return await self._run(
+            lambda: ProfileMedia(renderer.render_xp(detail, identity), "png")
+        )
+
+    async def _run(self, render: Callable[[], ProfileMedia]) -> ProfileMedia:
         if self._closed:
             raise RuntimeError("Profile renderer is closed")
         if self._tasks:
             raise RenderBusyError("The profile renderer is busy; retry shortly")
 
         async def work() -> ProfileMedia:
-            return await asyncio.to_thread(self._render_sync, profile, identity)
+            return await asyncio.to_thread(render)
 
         task = asyncio.create_task(work(), name="voice-profile-render")
         self._tasks.add(task)
@@ -178,3 +225,5 @@ class ProfileMediaRenderer:
 
         if self.svg is not None:
             await asyncio.to_thread(self.svg.close)
+        if self._raster is not None:
+            await asyncio.to_thread(self._raster.close)

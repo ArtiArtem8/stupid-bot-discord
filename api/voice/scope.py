@@ -1,7 +1,7 @@
 """Shared spatial and half-open time filtering for every voice metric."""
 
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime, time, timedelta, tzinfo
 
 from api.voice.model import require_aware
 from api.voice.timeline import RoomInterval, VoiceTimeline
@@ -44,6 +44,18 @@ class VoiceScope:
 
 GLOBAL_SCOPE = VoiceScope()
 """Immutable default spatial/time scope."""
+
+
+def local_calendar_range(as_of: datetime, timezone: tzinfo, dates: int) -> TimeRange:
+    """Include today and preceding local dates, ending at the aware request time."""
+    require_aware(as_of)
+    if dates < 1:
+        raise ValueError("Calendar windows require a positive date count")
+    first = as_of.astimezone(timezone).date() - timedelta(days=dates - 1)
+    return TimeRange(
+        datetime.combine(first, time.min, timezone).astimezone(UTC),
+        as_of.astimezone(UTC),
+    )
 
 
 def observed_rooms(
