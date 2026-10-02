@@ -12,6 +12,26 @@ from cogs.command.no_prefix_cog import PrefixBlockerCog
 
 
 class TestPrefixAuthorization(unittest.IsolatedAsyncioTestCase):
+    async def test_ordinary_messages_and_empty_queries_do_not_load_block_state(
+        self,
+    ) -> None:
+        for content in ("hello", "", "!", "! \t", "hello !play"):
+            with self.subTest(content=content):
+                bot = MagicMock(spec=commands.Bot)
+                bot.get_prefix = AsyncMock(return_value="!")
+                message = MagicMock(spec=discord.Message, content=content)
+                message.author = MagicMock(spec=discord.Member, id=10, bot=False)
+                message.guild = MagicMock(spec=discord.Guild, id=42)
+                cog = PrefixBlockerCog(bot)
+                with patch.object(
+                    block_manager, "is_user_blocked", new=AsyncMock(return_value=True)
+                ) as blocked:
+                    await cog.on_message(message)
+                blocked.assert_not_awaited()
+                bot.tree.get_commands.assert_not_called()
+                bot.tree.fetch_commands.assert_not_called()
+                message.reply.assert_not_awaited()
+
     async def test_blocked_user_does_not_trigger_prefix_hint_or_command_fetch(
         self,
     ) -> None:
@@ -26,7 +46,8 @@ class TestPrefixAuthorization(unittest.IsolatedAsyncioTestCase):
         ) as blocked:
             await cog.on_message(message)
         blocked.assert_awaited_once_with(42, 10)
-        bot.get_prefix.assert_not_awaited()
+        bot.get_prefix.assert_awaited_once_with(message)
+        bot.tree.get_commands.assert_not_called()
         bot.tree.fetch_commands.assert_not_called()
         message.reply.assert_not_awaited()
 

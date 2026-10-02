@@ -109,13 +109,14 @@ class PrefixBlockerCog(commands.Cog):
     async def on_message(self, message: Message) -> None:
         if message.author.bot:
             return
-        if message.guild and await block_manager.is_user_blocked(
-            message.guild.id, message.author.id
-        ):
-            return
 
         raw_content = await self._extract_prefix_query(message)
         if raw_content is None:
+            return
+
+        if message.guild and await block_manager.is_user_blocked(
+            message.guild.id, message.author.id
+        ):
             return
 
         suggestions = find_prefix_suggestions(
