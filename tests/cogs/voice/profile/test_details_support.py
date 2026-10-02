@@ -3,9 +3,9 @@
 import discord
 
 from api.voice.timeline import VoiceTimeline
-from cogs.voice.profile.cache import MediaKey
 from cogs.voice.profile.design import CardIdentity
 from cogs.voice.profile.detail_models import ProfileLook
+from cogs.voice.profile.media import ProfileMedia
 from cogs.voice.profile_cog import ProfileRequest, ProfileSnapshot
 from tests.api.voice.examples import at
 from tests.cogs.voice.profile.test_media import profile_at
@@ -25,16 +25,5 @@ def profile_request(guild: discord.Guild, user: discord.Member) -> ProfileReques
             user.display_avatar,
             "UTC",
         ),
-        MediaKey(
-            guild.id,
-            user.id,
-            0,
-            0,
-            "UTC",
-            user.display_name,
-            guild.name,
-            "avatar",
-            None,
-            "test",
-        ),
+        ProfileMedia(b"png", "png"),
     )

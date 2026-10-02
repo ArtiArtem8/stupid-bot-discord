@@ -473,7 +473,7 @@ def _split_layers(root: Element) -> tuple[bytes, bytes]:
 def format_duration(seconds: float, *, compact: bool = False) -> str:
     """Format elapsed time; optionally abbreviate very large hour totals."""
     minutes = int(seconds // 60)
-    if compact and minutes >= 600_000:
+    if compact and minutes >= 60_000:
         hours = minutes / 60
         if hours >= 1_000_000:
             return f"{hours / 1_000_000:.1f}M h"

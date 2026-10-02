@@ -1,5 +1,6 @@
 """One-snapshot refresh, focused reveals and configured button emojis."""
 
+import asyncio
 import unittest
 from io import BytesIO
 from typing import override
@@ -7,9 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
+from api.voice.profile.build import build_profile
 from cogs.voice import profile_cog as cog_module
 from cogs.voice.profile.detail_models import ProfileLook
-from cogs.voice.profile.media import ProfileMedia
+from cogs.voice.profile.media import ProfileMedia, RenderBusyError
 from cogs.voice.profile.view import ProfileAction, ProfileDetail, VoiceProfileView
 from cogs.voice.profile_cog import VoiceProfileCog
 from framework.feedback_ui import FeedbackUI
@@ -40,6 +42,101 @@ class TestDetailDelivery(unittest.IsolatedAsyncioTestCase):
 
     async def _refresh(self, item: discord.Interaction) -> None:
         await self.cog._deliver(item, 42, 10, self.view)
+
+    async def test_matching_requests_share_preparation_and_reuse_cached_identity(
+        self,
+    ) -> None:
+        started, release = asyncio.Event(), asyncio.Event()
+
+        async def asset(_asset: discord.Asset | None, _label: str) -> bytes:
+            started.set()
+            await release.wait()
+            return b"asset"
+
+        with (
+            patch.object(
+                self.cog, "_timeline", AsyncMock(return_value=self.request.snapshot)
+            ),
+            patch.object(self.cog, "_asset_bytes", side_effect=asset) as assets,
+            patch.object(cog_module, "build_profile", wraps=build_profile) as build,
+            patch.object(
+                self.cog._media_renderer,
+                "render",
+                AsyncMock(return_value=ProfileMedia(b"main", "png")),
+            ) as render,
+        ):
+            first = asyncio.create_task(
+                self.cog._prepare(self.item.guild, self.item.user)
+            )
+            await started.wait()
+            followers = [
+                asyncio.create_task(self.cog._prepare(self.item.guild, self.item.user))
+                for _ in range(2)
+            ]
+            release.set()
+            requests = await asyncio.gather(first, *followers)
+            cached = await self.cog._prepare(self.item.guild, self.item.user)
+        build.assert_called_once()
+        self.assertEqual(assets.await_count, 2)
+        render.assert_awaited_once()
+        for request in requests:
+            self.assertIs(request.identity, cached.identity)
+            self.assertIs(request.profile, cached.profile)
+            self.assertIs(request.media, cached.media)
+        self.assertEqual(cached.look.appearance, cached.profile.appearance)
+
+    async def test_six_requests_admit_four_and_reject_two_before_preparation(
+        self,
+    ) -> None:
+        started, release, rejected = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        rejected_count = 0
+
+        async def asset(_asset: discord.Asset | None, _label: str) -> None:
+            started.set()
+            await release.wait()
+
+        async def request(user_id: int) -> None:
+            nonlocal rejected_count
+            item = interaction(user_id=user_id)
+            try:
+                await self.cog._prepare(self.item.guild, item.user)
+            except RenderBusyError:
+                rejected_count += 1
+                if rejected_count == 2:
+                    rejected.set()
+
+        with (
+            patch.object(
+                self.cog, "_timeline", AsyncMock(return_value=self.request.snapshot)
+            ),
+            patch.object(self.cog, "_asset_bytes", side_effect=asset) as assets,
+            patch.object(cog_module, "build_profile", wraps=build_profile) as build,
+            patch.object(
+                self.cog._media_renderer,
+                "render",
+                AsyncMock(return_value=ProfileMedia(b"main", "png")),
+            ) as render,
+        ):
+            tasks = [asyncio.create_task(request(user_id)) for user_id in range(1, 7)]
+            try:
+                await asyncio.wait_for(rejected.wait(), 5)
+                await started.wait()
+                self.assertEqual(build.call_count, 1)
+                self.assertEqual(assets.await_count, 2)
+                render.assert_not_awaited()
+                with patch.object(cog_module, "build_xp_detail") as detail:
+                    with self.assertRaises(RenderBusyError):
+                        await self.cog._reveal(
+                            self.item, 42, 10, self.view, ProfileDetail.XP
+                        )
+                    detail.assert_not_called()
+                self.assertEqual(assets.await_count, 2)
+            finally:
+                release.set()
+                await asyncio.gather(*tasks)
+        self.assertEqual(rejected_count, 2)
+        self.assertEqual(build.call_count, 4)
+        self.assertEqual(render.await_count, 4)
 
     async def test_refresh_uses_one_snapshot_and_identity_and_only_open_details(
         self,
@@ -92,7 +189,7 @@ class TestDetailDelivery(unittest.IsolatedAsyncioTestCase):
         file = discord.File(BytesIO(b"main"), filename="voice-profile.png")
         with (
             patch.object(self.cog, "_prepare", AsyncMock(return_value=self.request)),
-            patch.object(self.cog, "_attachment", AsyncMock(return_value=file)),
+            patch.object(self.cog, "_attachment", MagicMock(return_value=file)),
             patch.object(
                 self.cog,
                 "_detail_attachment",

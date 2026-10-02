@@ -5,7 +5,8 @@ The response is private by default. Use `private:false` to publish it in the
 channel with a trash button that deletes only the message, not its history or XP.
 All controls are restricted to the command owner. Activity, People and XP each
 append one static PNG to the same message and disappear after a successful edit.
-Cards keep the order in which they were opened. A failed render or upload leaves
+Attachments keep the order in which cards were opened; Discord controls their
+on-screen arrangement. A failed render or upload leaves
 the message and button available for retry. After ten minutes of inactivity, the
 controls are removed and the cards stay.
 
@@ -33,8 +34,11 @@ no member fetches or companion avatar downloads are needed.
 
 XP explains lifetime awards using the canonical policy and separately displays
 the last 30 days' XP. Components remain exact `Fraction` values until formatting.
-Green positive terms and red reductions retain explicit signs. Independently
-rounded component labels can differ slightly from the exact rounded total.
+Green positive terms and red reductions retain explicit signs. Components round
+independently, so their displayed sum can differ from the displayed total. The
+lifetime total truncates fractional XP exactly as the main profile does, so it
+cannot display an unearned level threshold. Large detail durations use compact
+hours from 1,000 hours onward; the main card's duration format is unchanged.
 
 The next-level estimate divides exact remaining XP by pooled XP per voice hour
 over the same 30 local dates. Longer observations contribute proportionally more
@@ -42,8 +46,9 @@ than short ones; inactive dates contribute neither XP nor voice hours. The pure
 `api.voice.prediction` module uses the existing XP and level projections, without
 copying award rates. Main profiles and other details do not invoke it.
 
-The small neutral caption below lifetime XP shows approximate hours, or minutes
-below one hour. It is omitted with less than one observed voice hour, or without
+The small neutral caption below lifetime XP explicitly says "in voice" and shows
+approximate hours, or minutes below one hour. It is omitted with less than one
+observed voice hour, or without
 earning voice in the last seven local dates. These are availability guards, not
 calibrated accuracy thresholds. Coverage describes completeness separately and
 does not multiply the measured pace. There is no confidence range, extrapolated
@@ -100,9 +105,14 @@ Failed downloads are retried; missing or corrupt images use placeholders.
 Animated avatars retain their frames and timing, but lower tiers still use PNG.
 
 Rendered media has a separate memory cache: 32 entries, 64 MiB and a five-minute
-TTL. Matching requests share one job; at most four distinct jobs are admitted
-and one runs at a time. One persistent `Inkscape --shell` process prepares the
-layers, then Pillow composes the animation. The 80 RGBA frames alone need about
+TTL. Each cached main card includes the immutable progression and identity that
+produced it; retained identity image bytes count toward the same byte limit.
+Matching main requests share preparation, asset retrieval and rendering. Main
+and detail jobs share a four-job admission limit and one worker, starting before
+profile/detail calculations and asset reads. Details are not cached. Cancellation
+does not release a slot until its work finishes. One persistent `Inkscape --shell`
+process prepares the layers, then Pillow composes the animation. The 80 RGBA
+frames alone need about
 140.6 MiB, before encoder overhead.
 
 Timelines are cached for at most four guilds. A miss reads all retained guild and

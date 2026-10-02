@@ -25,7 +25,7 @@ from api.voice.profile.details import (
 from api.voice.profile.model import VoiceProfile
 from api.voice.timeline import VoiceTimeline, build_timeline
 from cogs.voice.profile.asset_cache import ProfileAssetCache
-from cogs.voice.profile.cache import MediaKey, ProfileMediaCache
+from cogs.voice.profile.cache import MediaKey, ProfileMediaCache, RenderedProfile
 from cogs.voice.profile.design import CardIdentity
 from cogs.voice.profile.detail_models import (
     DetailIdentity,
@@ -67,7 +67,7 @@ class ProfileRequest:
     profile: VoiceProfile
     identity: CardIdentity
     look: ProfileLook
-    key: MediaKey
+    media: ProfileMedia
 
 
 class VoiceProfileCog(BaseCog):
@@ -167,9 +167,7 @@ class VoiceProfileCog(BaseCog):
         attachments: list[discord.File] = []
         try:
             request = await self._prepare(guild, user)
-            attachments.append(
-                await self._attachment(request, interaction.filesize_limit)
-            )
+            attachments.append(self._attachment(request, interaction.filesize_limit))
             identity = DetailIdentity(request.identity, request.profile.appearance)
             for detail in view.revealed_order:
                 attachments.append(
@@ -215,16 +213,12 @@ class VoiceProfileCog(BaseCog):
             raise RuntimeError("Profile detail context is unavailable")
         snapshot = await self._timeline(guild_id)
         as_of = datetime.now(UTC)
-        avatar = await self._asset_bytes(look.avatar, "avatar")
-        identity = DetailIdentity(
-            CardIdentity(look.display_name, look.guild_name, avatar), look.appearance
-        )
         return await self._detail_attachment(
             guild,
             snapshot,
             as_of,
             user_id,
-            identity,
+            look,
             look.timezone_label,
             detail,
             interaction.filesize_limit,
@@ -236,11 +230,37 @@ class VoiceProfileCog(BaseCog):
         snapshot: ProfileSnapshot,
         as_of: datetime,
         user_id: int,
-        identity: DetailIdentity,
+        identity: DetailIdentity | ProfileLook,
         timezone_label: str,
         detail: ProfileDetail,
         byte_limit: int,
     ) -> discord.File:
+        async def build() -> ProfileMedia:
+            resolved = identity
+            if isinstance(resolved, ProfileLook):
+                avatar = await self._asset_bytes(resolved.avatar, "avatar")
+                resolved = DetailIdentity(
+                    CardIdentity(resolved.display_name, resolved.guild_name, avatar),
+                    resolved.appearance,
+                )
+            return await self._detail_media(
+                guild, snapshot, as_of, user_id, resolved, timezone_label, detail
+            )
+
+        media = await self._media_cache.render_detail(build)
+        media = media.within(min(MEDIA_LIMIT, byte_limit))
+        return discord.File(BytesIO(media.data), filename=f"voice-{detail.value}.png")
+
+    async def _detail_media(
+        self,
+        guild: discord.Guild,
+        snapshot: ProfileSnapshot,
+        as_of: datetime,
+        user_id: int,
+        identity: DetailIdentity,
+        timezone_label: str,
+        detail: ProfileDetail,
+    ) -> ProfileMedia:
         timezone = ZoneInfo(timezone_label)
         match detail:
             case ProfileDetail.ACTIVITY:
@@ -286,8 +306,7 @@ class VoiceProfileCog(BaseCog):
                     timezone,
                 )
                 media = await self._media_renderer.render_xp(xp, identity)
-        media = media.within(min(MEDIA_LIMIT, byte_limit))
-        return discord.File(BytesIO(media.data), filename=f"voice-{detail.value}.png")
+        return media
 
     def _display_name(self, guild: discord.Guild, user_id: int) -> str:
         user = guild.get_member(user_id) or self.bot.get_user(user_id)
@@ -339,9 +358,6 @@ class VoiceProfileCog(BaseCog):
             timezone_name = "UTC"
         snapshot = await asyncio.wait_for(self._timeline(guild.id), _DATA_TIMEOUT)
         as_of = datetime.now(UTC)
-        profile = await asyncio.to_thread(
-            build_profile, snapshot.timeline, user.id, guild.id, timezone_name
-        )
         avatar_asset = user.display_avatar.with_format(
             "gif" if user.display_avatar.is_animated() else "png"
         ).with_size(256)
@@ -349,11 +365,6 @@ class VoiceProfileCog(BaseCog):
             guild.icon.with_format("png").with_size(64) if guild.icon else None
         )
         display_name, guild_name = user.display_name, guild.name
-        avatar, guild_icon = await asyncio.gather(
-            self._asset_bytes(avatar_asset, "avatar"),
-            self._asset_bytes(guild_asset, "guild icon"),
-        )
-        identity = CardIdentity(display_name, guild_name, avatar, guild_icon)
         key = MediaKey(
             guild.id,
             user.id,
@@ -366,20 +377,40 @@ class VoiceProfileCog(BaseCog):
             str(guild_asset) if guild_asset else None,
             self._revision,
         )
+
+        async def build() -> RenderedProfile:
+            profile = await asyncio.to_thread(
+                build_profile,
+                snapshot.timeline,
+                key.user_id,
+                key.guild_id,
+                key.timezone,
+            )
+            avatar, guild_icon = await asyncio.gather(
+                self._asset_bytes(avatar_asset, "avatar"),
+                self._asset_bytes(guild_asset, "guild icon"),
+            )
+            identity = CardIdentity(
+                key.display_name, key.guild_name, avatar, guild_icon
+            )
+            media = await self._media_renderer.render(profile, identity)
+            return RenderedProfile(media, profile, identity)
+
+        card = await self._media_cache.get(key, build)
         look = ProfileLook(
-            display_name, guild_name, profile.appearance, avatar_asset, timezone_name
+            display_name,
+            guild_name,
+            card.profile.appearance,
+            avatar_asset,
+            timezone_name,
         )
-        return ProfileRequest(snapshot, as_of, profile, identity, look, key)
-
-    async def _attachment(
-        self, request: ProfileRequest, byte_limit: int
-    ) -> discord.File:
-        async def build_media() -> ProfileMedia:
-            return await self._media_renderer.render(request.profile, request.identity)
-
-        media = (await self._media_cache.get(request.key, build_media)).within(
-            min(MEDIA_LIMIT, byte_limit)
+        return ProfileRequest(
+            snapshot, as_of, card.profile, card.identity, look, card.media
         )
+
+    @staticmethod
+    def _attachment(request: ProfileRequest, byte_limit: int) -> discord.File:
+        media = request.media.within(min(MEDIA_LIMIT, byte_limit))
         return discord.File(
             BytesIO(media.data),
             filename=f"voice-profile.{media.extension}",

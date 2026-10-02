@@ -114,7 +114,6 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 "build_profile",
                 side_effect=[
                     profile_at(20),
-                    profile_at(20),
                     profile_at(5),
                     profile_at(20),
                 ],
@@ -125,16 +124,16 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=[media, ProfileMedia(b"png", "png"), media]),
             ) as render,
         ):
-            first = await cog._attachment(
+            first = cog._attachment(
                 await cog._prepare(item.guild, item.user), item.filesize_limit
             )
-            second = await cog._attachment(
+            second = cog._attachment(
                 await cog._prepare(item.guild, item.user), item.filesize_limit
             )
-            third = await cog._attachment(
+            third = cog._attachment(
                 await cog._prepare(item.guild, item.user), item.filesize_limit
             )
-            fourth = await cog._attachment(
+            fourth = cog._attachment(
                 await cog._prepare(item.guild, item.user), item.filesize_limit
             )
         self.assertEqual(first.filename, "voice-profile.webp")
@@ -190,7 +189,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             ) as render,
         ):
             for item in (first, second):
-                attachment = await cog._attachment(
+                attachment = cog._attachment(
                     await cog._prepare(first.guild, item.user), item.filesize_limit
                 )
                 attachment.close()
@@ -333,7 +332,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 attachment = discord.File(BytesIO(b"png"), filename="profile.png")
                 with (
                     patch.object(
-                        cog, "_attachment", AsyncMock(return_value=attachment)
+                        cog, "_attachment", MagicMock(return_value=attachment)
                     ) as build,
                     patch.object(
                         cog, "_prepare", AsyncMock(side_effect=profile_request)
@@ -344,7 +343,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                     thinking=True, ephemeral=private
                 )
                 prepare.assert_awaited_once_with(item.guild, item.user)
-                call = build.await_args
+                call = build.call_args
                 if call is None:
                     self.fail("The command must build its profile attachment")
                 self.assertEqual(call.args[1], item.filesize_limit)
@@ -373,7 +372,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         initial = discord.File(BytesIO(b"first"), filename="first.png")
         updated = discord.File(BytesIO(b"second"), filename="second.png")
         with (
-            patch.object(cog, "_attachment", AsyncMock(side_effect=[initial, updated])),
+            patch.object(cog, "_attachment", MagicMock(side_effect=[initial, updated])),
             patch.object(cog, "_prepare", AsyncMock(side_effect=profile_request)),
         ):
             await invoke(cog, first)
@@ -441,7 +440,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         first.guild.get_member.side_effect = [first.user, second.user]
         files = [discord.File(BytesIO(b"png"), filename="card.png") for _ in range(2)]
         with (
-            patch.object(cog, "_attachment", AsyncMock(side_effect=files)) as build,
+            patch.object(cog, "_attachment", MagicMock(side_effect=files)) as build,
             patch.object(
                 cog, "_prepare", AsyncMock(side_effect=profile_request)
             ) as prepare,
@@ -450,7 +449,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             view = first.edit_original_response.call_args.kwargs["view"]
             await view.buttons[ProfileAction.REFRESH].callback(second)
         self.assertIs(prepare.await_args_list[1].args[1], second.user)
-        self.assertEqual(build.await_args_list[1].args[1], 3)
+        self.assertEqual(build.call_args_list[1].args[1], 3)
         second.edit_original_response.assert_awaited_once()
 
     async def test_full_queue_uses_safe_busy_feedback(self) -> None:
@@ -461,8 +460,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         bot.get_guild.return_value = item.guild
         item.guild.get_member.return_value = item.user
         with (
-            patch.object(cog, "_attachment", AsyncMock(side_effect=RenderBusyError())),
-            patch.object(cog, "_prepare", AsyncMock(side_effect=profile_request)),
+            patch.object(cog, "_prepare", AsyncMock(side_effect=RenderBusyError())),
             patch.object(FeedbackUI, "send", AsyncMock()) as send,
         ):
             await invoke(cog, item)
@@ -484,10 +482,8 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(return_value=ProfileMedia(b"animated", "webp", b"png")),
             ) as render,
         ):
-            first = await cog._attachment(await cog._prepare(item.guild, item.user), 3)
-            second = await cog._attachment(
-                await cog._prepare(item.guild, item.user), 10
-            )
+            first = cog._attachment(await cog._prepare(item.guild, item.user), 3)
+            second = cog._attachment(await cog._prepare(item.guild, item.user), 10)
         self.assertEqual(first.filename, "voice-profile.png")
         self.assertEqual(second.filename, "voice-profile.webp")
         self.assertIsNot(first, second)

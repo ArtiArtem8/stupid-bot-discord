@@ -47,7 +47,7 @@
     <text id="xp-audio" x="928" y="326" font-size="22" data-fill="negative" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">−1,240</text>
     <text id="xp-label-cap" x="645" y="354" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Bonus cap</text>
     <text id="xp-cap" x="928" y="354" font-size="22" data-fill="negative" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">−280</text>
-    <text id="xp-estimate" x="32" y="235" font-size="20" data-fill="muted" fill="#a7b3c5" data-width="530">~5.8 h to next level</text>
+    <text id="xp-estimate" x="32" y="235" font-size="20" data-fill="muted" fill="#a7b3c5" data-width="530">~5.8 h in voice to next level</text>
   </g>
   <g id="footer-placement" inkscape:groupmode="layer" inkscape:label="Period and observation coverage">
     <path d="M32 414H928" data-stroke="border" stroke="#59616e" />

@@ -196,7 +196,7 @@ class DetailCardRenderer:
         values.update(
             {f"xp-{key}": f"−{_xp(value)}" for key, value in negative.items()}
         )
-        values["xp-total"] = f"{_xp(xp.total)} XP"
+        values["xp-total"] = f"{int(xp.total):,} XP"
         values["recent-xp"] = f"+{_xp(detail.recent_xp)} XP"
         values["xp-estimate"] = _estimate_label(detail.estimate)
         _labels(nodes, values)
@@ -216,12 +216,12 @@ def _estimate_label(estimate: VoiceHoursEstimate | None) -> str:
         return ""
     hours = estimate.expected_hours
     if hours < Fraction(1, 60):
-        return "<1 min to next level"
+        return "<1 min in voice to next level"
     if hours < 1:
-        return f"~{round(hours * 60)} min to next level"
+        return f"~{round(hours * 60)} min in voice to next level"
     if hours < 10:
-        return f"~{float(hours):.1f} h to next level"
-    return f"~{round(hours):,} h to next level"
+        return f"~{float(hours):.1f} h in voice to next level"
+    return f"~{round(hours):,} h in voice to next level"
 
 
 def _lifetime_labels(nodes: dict[str, Element], period: DetailPeriod | None) -> None:

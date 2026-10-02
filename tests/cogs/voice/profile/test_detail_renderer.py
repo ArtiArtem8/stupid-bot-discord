@@ -10,19 +10,21 @@ from unittest.mock import MagicMock
 from defusedxml.ElementTree import fromstring
 from PIL import Image
 
+from api.voice.model import VoiceCheckpoint, VoiceSnapshot
 from api.voice.prediction import VoiceHoursEstimate
+from api.voice.profile.build import build_profile
 from api.voice.profile.details import (
     build_activity_detail,
     build_people_detail,
     build_xp_detail,
 )
 from api.voice.read_models import VoiceXpBreakdown
-from api.voice.timeline import VoiceTimeline
+from api.voice.timeline import VoiceTimeline, build_timeline
 from cogs.voice.profile.design import ASSETS, CardIdentity, property_value, theme_tokens
 from cogs.voice.profile.detail_models import DetailIdentity, PeoplePresentation
 from cogs.voice.profile.detail_renderer import DetailCardRenderer
 from cogs.voice.profile.raster import NativeRasterizer
-from tests.api.voice.examples import example
+from tests.api.voice.examples import at, example, human, record
 from tests.cogs.voice.profile.test_media import profile_at
 
 
@@ -120,7 +122,37 @@ class TestDetailBindings(unittest.TestCase):
         self.renderer.render_xp(large, self.identity)
         root = fromstring(self.raster.layers.call_args.args[0][0])
         nodes = {node.get("id"): node for node in root.iter()}
-        self.assertEqual(nodes["xp-total"].text, "142.9B XP")
+        self.assertEqual(nodes["xp-total"].text, "142,857,142,857 XP")
+
+    def test_lifetime_total_matches_main_before_and_at_level_threshold(self) -> None:
+        for seconds, level, label in ((6749, 1, "2,249 XP"), (6750, 2, "2,250 XP")):
+            with self.subTest(seconds=seconds):
+                timeline = build_timeline(
+                    [
+                        record(0, VoiceSnapshot((human(1), human(2)))),
+                        record(seconds, VoiceCheckpoint()),
+                    ]
+                )
+                profile = build_profile(timeline, 1, 1, "UTC")
+                detail = build_xp_detail(timeline, 1, 1, at(seconds))
+                self.renderer.render_xp(detail, self.identity)
+                root = fromstring(self.raster.layers.call_args.args[0][0])
+                nodes = {node.get("id"): node for node in root.iter()}
+                self.assertEqual(profile.level, level)
+                self.assertEqual(nodes["xp-total"].text, label)
+                self.assertEqual(nodes["xp-total"].text, f"{profile.total_xp:,} XP")
+                self.assertEqual(detail.breakdown.total, Fraction(seconds, 3))
+
+    def test_long_lifetime_durations_use_compact_hours(self) -> None:
+        detail = build_people_detail(example(), 1, 1, self.as_of)
+        detail = replace(
+            detail,
+            companions=(replace(detail.companions[0], shared_seconds=5000 * 3600),),
+        )
+        self.renderer.render_people(PeoplePresentation(detail, {}, {}), self.identity)
+        root = fromstring(self.raster.layers.call_args.args[0][0])
+        nodes = {node.get("id"): node for node in root.iter()}
+        self.assertEqual(nodes["person-0-shared"].text, "5.0k h")
 
     def test_next_level_estimate_uses_voice_hours_and_missing_data_is_omitted(
         self,
@@ -130,19 +162,19 @@ class TestDetailBindings(unittest.TestCase):
             (None, ""),
             (
                 VoiceHoursEstimate(Fraction(29, 5), Fraction(1200), Fraction(8), 3),
-                "~5.8 h to next level",
+                "~5.8 h in voice to next level",
             ),
             (
                 VoiceHoursEstimate(Fraction(7, 12), Fraction(1200), Fraction(8), 3),
-                "~35 min to next level",
+                "~35 min in voice to next level",
             ),
             (
                 VoiceHoursEstimate(Fraction(122, 10), Fraction(1200), Fraction(8), 3),
-                "~12 h to next level",
+                "~12 h in voice to next level",
             ),
             (
                 VoiceHoursEstimate(Fraction(1, 100), Fraction(1200), Fraction(8), 3),
-                "<1 min to next level",
+                "<1 min in voice to next level",
             ),
         )
         for estimate, label in cases:
