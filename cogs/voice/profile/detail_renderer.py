@@ -205,10 +205,12 @@ class DetailCardRenderer:
 
 
 def _xp(value: Fraction) -> str:
+    whole = int(value)
     for scale, suffix in ((10**12, "T"), (10**9, "B"), (10**6, "M")):
-        if value >= max(scale, 10**7):
-            return f"{float(value / scale):.1f}{suffix}"
-    return f"{round(value):,}"
+        if whole >= max(scale, 10**7):
+            tenths = whole * 10 // scale
+            return f"{tenths // 10}.{tenths % 10}{suffix}"
+    return f"{whole:,}"
 
 
 def _estimate_label(estimate: VoiceHoursEstimate | None) -> str:

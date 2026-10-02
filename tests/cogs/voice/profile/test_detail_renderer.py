@@ -101,7 +101,7 @@ class TestDetailBindings(unittest.TestCase):
         self.assertEqual(nodes["stat-2"].text, "—")
         self.assertEqual(nodes["stat-3"].text, "—")
 
-    def test_xp_rounding_does_not_balance_components_and_large_values_stay_readable(
+    def test_xp_truncation_does_not_balance_components_and_large_values_stay_readable(
         self,
     ) -> None:
         detail = replace(
@@ -113,8 +113,8 @@ class TestDetailBindings(unittest.TestCase):
         self.renderer.render_xp(detail, self.identity)
         root = fromstring(self.raster.layers.call_args.args[0][0])
         nodes = {node.get("id"): node for node in root.iter()}
-        self.assertEqual(nodes["xp-solo"].text, "+1")
-        self.assertEqual(nodes["xp-social"].text, "+1")
+        self.assertEqual(nodes["xp-solo"].text, "+0")
+        self.assertEqual(nodes["xp-social"].text, "+0")
         self.assertEqual(nodes["xp-total"].text, "1 XP")
         large = replace(
             detail, breakdown=VoiceXpBreakdown(social_base=Fraction(10**12, 7))
@@ -123,6 +123,28 @@ class TestDetailBindings(unittest.TestCase):
         root = fromstring(self.raster.layers.call_args.args[0][0])
         nodes = {node.get("id"): node for node in root.iter()}
         self.assertEqual(nodes["xp-total"].text, "142,857,142,857 XP")
+        self.assertEqual(nodes["xp-social"].text, "+142.8B")
+
+    def test_recent_solo_xp_matches_lifetime_total_without_rounding_up(self) -> None:
+        for seconds, label in ((167, "13"), (168, "14")):
+            with self.subTest(seconds=seconds):
+                timeline = build_timeline(
+                    [
+                        record(0, VoiceSnapshot((human(1),))),
+                        record(seconds, VoiceCheckpoint()),
+                    ]
+                )
+                profile = build_profile(timeline, 1, 1, "UTC")
+                detail = build_xp_detail(timeline, 1, 1, at(seconds))
+                self.renderer.render_xp(detail, self.identity)
+                root = fromstring(self.raster.layers.call_args.args[0][0])
+                nodes = {node.get("id"): node for node in root.iter()}
+                self.assertEqual(profile.total_xp, int(label))
+                self.assertEqual(nodes["xp-total"].text, f"{label} XP")
+                self.assertEqual(nodes["recent-xp"].text, f"+{label} XP")
+                self.assertEqual(nodes["xp-solo"].text, f"+{label}")
+                self.assertEqual(detail.breakdown.solo_base, Fraction(seconds, 12))
+                self.assertEqual(detail.recent_xp, detail.breakdown.total)
 
     def test_lifetime_total_matches_main_before_and_at_level_threshold(self) -> None:
         for seconds, level, label in ((6749, 1, "2,249 XP"), (6750, 2, "2,250 XP")):

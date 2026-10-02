@@ -41,11 +41,12 @@ no member fetches or companion avatar downloads are needed.
 
 XP explains lifetime awards using the canonical policy and separately displays
 the last 30 days' XP. Components remain exact `Fraction` values until formatting.
-Green positive terms and red reductions retain explicit signs. Components round
-independently, so their displayed sum can differ from the displayed total. The
-lifetime total truncates fractional XP exactly as the main profile does, so it
-cannot display an unearned level threshold. Large detail durations use compact
-hours from 1,000 hours onward; the main card's duration format is unchanged.
+Green positive terms and red reductions retain explicit signs. All XP labels
+truncate fractional XP, matching the main profile. Compact component labels also
+truncate at their displayed precision. Components are formatted independently,
+so their displayed sum can differ from the displayed total; exact awards remain
+unchanged. Large detail durations use compact hours from 1,000 hours onward;
+the main card's duration format is unchanged.
 
 The next-level estimate divides exact remaining XP by pooled XP per voice hour
 over the same 30 local dates. Longer observations contribute proportionally more
