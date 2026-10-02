@@ -81,7 +81,7 @@ priority = "verify"
 [[repos.hooks]]
 id = "pytest"
 name = "pytest"
-entry = "uv run --locked pytest -q -n auto --maxprocesses 4 --dist loadfile"
+entry = "uv run --locked pytest -q -n auto --maxprocesses 6 --dist worksteal"
 language = "system"
 pass_filenames = false
 always_run = true

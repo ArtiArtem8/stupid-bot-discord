@@ -30,8 +30,8 @@ uv run --locked prek run --all-files --stage pre-push
 
 Individual tools like Ruff, Basedpyright, ty, or pytest may still be run directly when debugging a failed hook.
 
-The full check runs pytest in up to four processes, keeping tests from the same
-file together. `uv run --locked pytest -q` runs tests sequentially.
+The full check runs pytest in up to six processes with `--dist worksteal`.
+`uv run --locked pytest -q` runs tests sequentially.
 
 Set `PREK_CONCURRENT_HOOKS=1` and `PYTEST_XDIST_AUTO_NUM_WORKERS=1` on machines
 with limited resources.
