@@ -35,7 +35,7 @@ class TestActivityDetail(unittest.TestCase):
                 self.assertEqual(result.days[-1].date, as_of.date())
                 self.assertEqual(result.days[0].date, as_of.date() - timedelta(days=29))
                 self.assertIsNone(result.peak_hour)
-                self.assertIsNone(result.peak_weekday)
+                self.assertEqual(result.peak_weekdays, ())
 
     def test_known_empty_partial_and_unknown_days_are_distinct(self) -> None:
         start = datetime(2026, 10, 1, tzinfo=UTC)
@@ -72,7 +72,7 @@ class TestActivityDetail(unittest.TestCase):
         self.assertEqual(result.presence.session_count, 1)
         self.assertEqual(result.presence.average_session_seconds, 1200)
         self.assertEqual(result.presence.median_session_seconds, 1200)
-        self.assertEqual((result.peak_hour, result.peak_weekday), (0, 0))
+        self.assertEqual((result.peak_hour, result.peak_weekdays), (0, (0,)))
         self.assertEqual(result.days[-1].voice_seconds, 1200)
         self.assertEqual(result.days[-1].date, date(2026, 9, 21))
 
@@ -84,6 +84,37 @@ class TestActivityDetail(unittest.TestCase):
         )
         self.assertEqual(result.presence.total_seconds, 0)
         self.assertIsNone(result.peak_hour)
+
+    def test_close_peak_days_use_total_voice_time_and_monday_first_order(self) -> None:
+        rooms = (
+            RoomInterval(1, 10, at(0), at(96), (human(),)),
+            RoomInterval(1, 10, at(3 * 86400), at(3 * 86400 + 100), (human(),)),
+            RoomInterval(1, 10, at(5 * 86400), at(5 * 86400 + 94), (human(),)),
+        )
+        result = build_activity_detail(
+            VoiceTimeline(rooms, (), ()), 1, 1, at(7 * 86400)
+        )
+        self.assertEqual(result.peak_weekdays, (0, 3))
+
+    def test_close_peak_boundary_and_balanced_week(self) -> None:
+        for other, expected in ((94.99, (0,)), (95, (0, 1)), (100, (0, 1))):
+            with self.subTest(other=other):
+                rooms = (
+                    RoomInterval(1, 10, at(0), at(100), (human(),)),
+                    RoomInterval(1, 10, at(86400), at(86400 + other), (human(),)),
+                )
+                result = build_activity_detail(
+                    VoiceTimeline(rooms, (), ()), 1, 1, at(2 * 86400)
+                )
+                self.assertEqual(result.peak_weekdays, expected)
+        rooms = tuple(
+            RoomInterval(1, 10, at(day * 86400), at(day * 86400 + 100), (human(),))
+            for day in range(7)
+        )
+        result = build_activity_detail(
+            VoiceTimeline(rooms, (), ()), 1, 1, at(7 * 86400)
+        )
+        self.assertEqual(result.peak_weekdays, tuple(range(7)))
 
 
 class TestPeopleAndXpDetails(unittest.TestCase):

@@ -43,7 +43,7 @@
     <text id="stat-1" x="700" y="321" font-size="26" data-fill="text" fill="#f4f6fa" data-width="226" font-weight="600" font-variant-numeric="tabular-nums">1h 08m</text>
     <text id="stat-label-2" x="700" y="343" font-size="19" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Peak hour</text>
     <text id="stat-2" x="700" y="368" font-size="26" data-fill="text" fill="#f4f6fa" data-width="226" font-weight="600" font-variant-numeric="tabular-nums">21:00</text>
-    <text id="stat-label-3" x="700" y="390" font-size="19" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Top weekday</text>
+    <text id="stat-label-3" x="700" y="390" font-size="19" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Top days</text>
     <text id="stat-3" x="700" y="415" font-size="26" data-fill="text" fill="#f4f6fa" data-width="226" font-weight="600" font-variant-numeric="tabular-nums">Saturday</text>
     <text id="chart-title" x="32" y="245" font-size="20" data-fill="text" fill="#a7b3c5" font-weight="600">Daily activity</text>
     <text id="clock-note" x="282" y="245" font-size="17" data-fill="muted" fill="#a7b3c5">* DST</text>

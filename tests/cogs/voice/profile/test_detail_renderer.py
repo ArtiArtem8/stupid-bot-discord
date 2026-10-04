@@ -251,6 +251,25 @@ class TestDetailBindings(unittest.TestCase):
         self.assertEqual(nodes["metric-1"].text, "0h 00m")
         self.assertEqual(nodes["stat-0"].text, "<1m")
 
+    def test_peak_day_labels_show_close_days_without_confidence_claims(self) -> None:
+        detail = build_activity_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of)
+        cases = (
+            ((0,), "Monday"),
+            ((0, 3), "Mon, Thu"),
+            ((0, 2, 4), "Mon, Wed, Fri"),
+            ((0, 1, 2, 3, 4), "Mon–Fri"),
+            ((0, 2, 4, 6), "Mo We Fr Su"),
+            (tuple(range(7)), "All days"),
+        )
+        for days, label in cases:
+            with self.subTest(days=days):
+                self.renderer.render_activity(
+                    replace(detail, peak_weekdays=days), self.identity
+                )
+                root = fromstring(self.raster.layers.call_args.args[0][0])
+                nodes = {node.get("id"): node for node in root.iter()}
+                self.assertEqual(nodes["stat-3"].text, label)
+
     def test_recent_solo_xp_matches_lifetime_total_without_rounding_up(self) -> None:
         for seconds, label in ((167, "13"), (168, "14")):
             with self.subTest(seconds=seconds):

@@ -7,7 +7,7 @@ chart lengths within authored tracks; it never calculates voice or XP policy.
 from __future__ import annotations
 
 import base64
-from calendar import day_name
+from calendar import day_abbr, day_name
 from collections.abc import Mapping
 from fractions import Fraction
 from io import BytesIO
@@ -134,7 +134,7 @@ class DetailCardRenderer:
             format_duration(presence.average_session_seconds, compact=True),
             format_duration(presence.median_session_seconds, compact=True),
             f"{detail.peak_hour:02}:00" if detail.peak_hour is not None else "—",
-            day_name[detail.peak_weekday] if detail.peak_weekday is not None else "—",
+            _weekday_label(detail.peak_weekdays),
         )
         _labels(nodes, {f"metric-{i}": value for i, value in enumerate(values)})
         _labels(nodes, {f"stat-{i}": value for i, value in enumerate(stats)})
@@ -213,6 +213,20 @@ class DetailCardRenderer:
         )
         _lifetime_labels(nodes, detail.lifetime_period)
         return self._png(root, nodes)
+
+
+def _weekday_label(days: tuple[int, ...]) -> str:
+    if not days:
+        return "—"
+    if len(days) == 1:
+        return day_name[days[0]]
+    if len(days) == 7:
+        return "All days"
+    if len(days) >= 3 and days[-1] - days[0] + 1 == len(days):
+        return f"{day_abbr[days[0]]}–{day_abbr[days[-1]]}"
+    if len(days) >= 4:
+        return " ".join(day_abbr[day][:2] for day in days)
+    return ", ".join(day_abbr[day] for day in days)
 
 
 def _bind_xp(

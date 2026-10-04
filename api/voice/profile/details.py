@@ -26,6 +26,8 @@ from api.voice.scope import (
 )
 from api.voice.timeline import VoiceTimeline
 
+_CLOSE_WEEKDAY_RATIO = 0.95
+
 
 @dataclass(frozen=True, slots=True)
 class DetailPeriod:
@@ -47,13 +49,13 @@ class DetailPeriod:
 
 @dataclass(frozen=True, slots=True)
 class ActivityDetail:
-    """Presence and daily activity, with absent peaks represented explicitly."""
+    """Presence and daily activity; close peak weekdays are Monday-first."""
 
     period: DetailPeriod
     presence: PresenceStat
     days: tuple[DailyVoiceActivity, ...]
     peak_hour: int | None
-    peak_weekday: int | None
+    peak_weekdays: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,12 +151,21 @@ def build_activity_detail(
         presence(timeline, user_id, scope),
         daily_voice_activity(timeline, user_id, guild_id, period.time_range, timezone),
         _peak(measured.hourly_seconds),
-        _peak(measured.weekday_seconds),
+        _peak_weekdays(measured.weekday_seconds),
     )
 
 
 def _peak(values: tuple[float, ...]) -> int | None:
     return max(range(len(values)), key=values.__getitem__) if any(values) else None
+
+
+def _peak_weekdays(seconds: tuple[float, ...]) -> tuple[int, ...]:
+    peak = max(seconds, default=0)
+    if peak == 0:
+        return ()
+    return tuple(
+        day for day, value in enumerate(seconds) if value >= peak * _CLOSE_WEEKDAY_RATIO
+    )
 
 
 def build_people_detail(

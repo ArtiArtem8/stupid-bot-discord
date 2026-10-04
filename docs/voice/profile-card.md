@@ -43,6 +43,13 @@ times. Repeated local times share one position, while totals keep their true
 elapsed duration. Calendar projection lives in `api.voice.profile.calendar`;
 pixel geometry stays in the SVG and renderer.
 
+`Top days` uses total observed voice time per weekday in the same 30-date window.
+It includes every weekday with at least 95% of the largest weekday total and
+lists them Monday first. This is a display grouping threshold, not statistical
+confidence or visit frequency. All seven close totals display `All days`, which
+does not claim presence on every calendar date. Multiple names are abbreviated
+or represented as a consecutive weekday range to fit the existing field.
+
 People lists lifetime human co-presence, ordered by shared time, one-on-one time
 and user ID, and includes a small 30-day summary. One-on-one is a subset of shared
 time. Unknown participants prevent one-on-one credit; bots are not companions.
