@@ -75,3 +75,20 @@ def observed_rooms(
             selected = replace(room, started_at=start, ended_at=end)
         result.append(selected)
     return tuple(result)
+
+
+def observation_ranges(timeline: VoiceTimeline, guild_id: int) -> tuple[TimeRange, ...]:
+    """Union guild coverage in UTC, including confirmed empty rooms."""
+    merged: list[TimeRange] = []
+    for start, end in sorted(
+        (item.started_at.astimezone(UTC), item.ended_at.astimezone(UTC))
+        for item in timeline.coverage
+        if item.guild_id == guild_id
+    ):
+        if end <= start:
+            continue
+        if merged and start <= merged[-1].end:
+            merged[-1] = TimeRange(merged[-1].start, max(end, merged[-1].end))
+        else:
+            merged.append(TimeRange(start, end))
+    return tuple(merged)

@@ -75,10 +75,13 @@ not rewrite them.
 
 ## Sessions and companions
 
-A presence session is a continuous observed visit within one guild. Channel moves
-and flag changes do not split it. Leaving, an observation gap or a bot restart
-does. It is not a count of Discord transport session IDs or necessarily a count
-of physical joins. A time-limited query can truncate a visit.
+A presence session groups observed visits within one guild. Channel moves,
+midnight and flag changes do not split it. A return after less than five minutes
+continues the session only if guild observation covered the whole absence.
+Exactly five minutes, an observation gap or a bot restart splits it. Absent time
+never contributes to voice time, XP, average or median session duration. This is
+not a count of Discord transport session IDs or physical joins. A time-limited
+query can truncate a visit.
 
 Companion time counts overlap between known humans in the same guild and channel.
 Every pair receives the interval once, regardless of room size. Exactly two

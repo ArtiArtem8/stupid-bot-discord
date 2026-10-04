@@ -7,7 +7,7 @@ chart lengths within authored tracks; it never calculates voice or XP policy.
 from __future__ import annotations
 
 import base64
-from calendar import day_name
+from calendar import day_abbr, day_name
 from collections.abc import Mapping
 from fractions import Fraction
 from io import BytesIO
@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from api.voice.prediction import VoiceHoursEstimate
+from api.voice.profile.calendar import ClockSpan
 from api.voice.profile.details import (
     ActivityDetail,
     DetailPeriod,
@@ -30,6 +31,7 @@ from cogs.voice.profile.design import (
     fit_texts,
     format_duration,
     normalized_png,
+    property_value,
     replace_text,
     safe_label,
     style,
@@ -89,7 +91,7 @@ class DetailCardRenderer:
                     f"{period.first_date:%b %d} – {period.last_date:%b %d}"
                     f" · {period.timezone_label}"
                 ),
-                "coverage-label": f"Coverage {period.coverage_ratio:.0%}",
+                "coverage-label": f"Coverage {_coverage(period)}",
             },
         )
         try:
@@ -119,7 +121,7 @@ class DetailCardRenderer:
     def render_activity(
         self, detail: ActivityDetail, identity: DetailIdentity
     ) -> bytes:
-        """Render activity heights independently from observation coverage."""
+        """Render local clock spans separately from observation gaps and future."""
         root, nodes = self._document("activity", identity, detail.period)
         presence = detail.presence
         values = (
@@ -129,15 +131,32 @@ class DetailCardRenderer:
             f"{presence.session_count:,}",
         )
         stats = (
-            format_duration(presence.average_session_seconds, compact=True),
-            format_duration(presence.median_session_seconds, compact=True),
-            f"{detail.peak_hour:02}:00" if detail.peak_hour is not None else "—",
-            day_name[detail.peak_weekday] if detail.peak_weekday is not None else "—",
+            format_duration(presence.average_session_seconds, compact=True)
+            if presence.session_count
+            else "-",
+            format_duration(presence.median_session_seconds, compact=True)
+            if presence.session_count
+            else "-",
+            _hour_label(detail.peak_hours),
         )
+        if not detail.period.observed_seconds and not presence.total_seconds:
+            values = ("-",) * 4
         _labels(nodes, {f"metric-{i}": value for i, value in enumerate(values)})
         _labels(nodes, {f"stat-{i}": value for i, value in enumerate(stats)})
         _activity_chart(nodes, detail)
+        self._bind_weekdays(root, nodes["stat-3"], detail.peak_weekdays)
         return self._png(root, nodes)
+
+    def _bind_weekdays(
+        self, root: Element, node: Element, days: tuple[int, ...]
+    ) -> None:
+        labels = _weekday_labels(days)
+        for label in labels[:-1]:
+            replace_text(node, label)
+            box = self.raster.query(document_bytes(root)).get(node.attrib["id"])
+            if box is not None and box.width <= float(node.attrib["data-width"]):
+                return
+        replace_text(node, labels[-1])
 
     def render_people(
         self, presentation: PeoplePresentation, identity: DetailIdentity
@@ -156,6 +175,10 @@ class DetailCardRenderer:
             format_duration(detail.bots.any_bot_seconds, compact=True),
         )
         _labels(nodes, {f"summary-{i}": value for i, value in enumerate(summary)})
+        if not detail.presence.total_seconds and not (
+            detail.lifetime_period and detail.lifetime_period.observed_seconds
+        ):
+            _labels(nodes, {f"summary-{i}": "-" for i in range(4)})
         top = min(
             detail.bots.by_bot, key=lambda item: (-item[1], item[0]), default=None
         )
@@ -166,7 +189,7 @@ class DetailCardRenderer:
                     presentation.names.get(top[0], "Unknown user")
                 )
                 if top
-                else "—",
+                else "-",
                 "top-bot-time": format_duration(top[1], compact=True) if top else "",
             },
         )
@@ -175,7 +198,9 @@ class DetailCardRenderer:
         )
         replace_text(
             nodes["recent-summary"],
-            (f"{recent_voice} together · {detail.recent_unique_people:,} people"),
+            f"{recent_voice} together · {detail.recent_unique_people:,} people"
+            if detail.period.observed_seconds or detail.recent_presence.total_seconds
+            else "No observations",
         )
         _lifetime_labels(nodes, detail.lifetime_period)
         return self._png(root, nodes)
@@ -191,24 +216,110 @@ class DetailCardRenderer:
             "stream": xp.stream_bonus,
             "video": xp.video_bonus,
         }
-        negative = {"audio": xp.audio_reduction, "cap": xp.bonus_cap_reduction}
-        values = {f"xp-{key}": f"+{_xp(value)}" for key, value in positive.items()}
-        values.update(
-            {f"xp-{key}": f"−{_xp(value)}" for key, value in negative.items()}
+        negative = {
+            "mute": xp.mute_reduction,
+            "deaf": xp.deaf_reduction,
+            "cap": xp.bonus_cap_reduction,
+        }
+        muted = property_value(nodes["xp-label-solo"], "fill", "")
+        for key, value in positive.items():
+            _bind_xp(nodes[f"xp-{key}"], value, muted)
+        for key, value in negative.items():
+            _bind_xp(nodes[f"xp-{key}"], value, muted, negative=True)
+        _bind_xp(nodes["recent-xp"], detail.recent_xp, muted, suffix=" XP")
+        _labels(
+            nodes,
+            {
+                "xp-total": f"{int(xp.total):,} XP",
+                "xp-estimate": _estimate_label(detail.estimate),
+            },
         )
-        values["xp-total"] = f"{int(xp.total):,} XP"
-        values["recent-xp"] = f"+{_xp(detail.recent_xp)} XP"
-        values["xp-estimate"] = _estimate_label(detail.estimate)
-        _labels(nodes, values)
+        if not xp.total and not (
+            detail.lifetime_period and detail.lifetime_period.observed_seconds
+        ):
+            for key in (*positive, *negative):
+                replace_text(nodes[f"xp-{key}"], "-")
+            replace_text(nodes["xp-total"], "-")
+        if not detail.period.observed_seconds and not detail.recent_xp:
+            replace_text(nodes["recent-xp"], "-")
         _lifetime_labels(nodes, detail.lifetime_period)
         return self._png(root, nodes)
 
 
+def _hour_label(hours: tuple[int, ...]) -> str:
+    if not hours:
+        return "-"
+    if len(hours) == 24:
+        return "All day"
+    ranges: list[tuple[int, int]] = []
+    for hour in hours:
+        if ranges and ranges[-1][1] == hour:
+            ranges[-1] = (ranges[-1][0], hour + 1)
+        else:
+            ranges.append((hour, hour + 1))
+    if len(ranges) == 1:
+        start, end = ranges[0]
+        return f"{start:02}:00-{end:02}:00"
+    if len(ranges) == 2:
+        return ", ".join(f"{start:02}-{end:02}" for start, end in ranges)
+    return "Multiple peaks"
+
+
+def _weekday_labels(days: tuple[int, ...]) -> tuple[str, ...]:
+    if not days:
+        return ("-",)
+    if len(days) == 1:
+        return (day_name[days[0]],)
+    if len(days) == 7:
+        return ("All days",)
+    labels = [", ".join(day_name[day] for day in days)]
+    if len(days) >= 3 and days[-1] - days[0] + 1 == len(days):
+        labels.extend(
+            (
+                f"{day_name[days[0]]}-{day_name[days[-1]]}",
+                f"{day_abbr[days[0]]}-{day_abbr[days[-1]]}",
+            )
+        )
+    else:
+        labels.append(", ".join(day_abbr[day] for day in days))
+        if len(days) >= 4:
+            labels.append(" ".join(day_abbr[day][:2] for day in days))
+    return tuple(labels)
+
+
+def _bind_xp(
+    node: Element,
+    value: Fraction,
+    muted: str,
+    *,
+    negative: bool = False,
+    suffix: str = "",
+) -> None:
+    label = _xp(value)
+    if value >= 1:
+        label = ("−" if negative else "+") + label
+    replace_text(node, label + suffix)
+    if value == 0:
+        style(node, "fill", muted)
+
+
 def _xp(value: Fraction) -> str:
+    if 0 < value < 1:
+        return "<1"
+    whole = int(value)
     for scale, suffix in ((10**12, "T"), (10**9, "B"), (10**6, "M")):
-        if value >= max(scale, 10**7):
-            return f"{float(value / scale):.1f}{suffix}"
-    return f"{round(value):,}"
+        if whole >= max(scale, 10**7):
+            tenths = whole * 10 // scale
+            return f"{tenths // 10}.{tenths % 10}{suffix}"
+    return f"{whole:,}"
+
+
+def _coverage(period: DetailPeriod) -> str:
+    possible = (period.time_range.end - period.time_range.start).total_seconds()
+    hundredths = (
+        Fraction(str(period.observed_seconds)) * 10_000 // Fraction(str(possible))
+    )
+    return f"{hundredths // 100}.{hundredths % 100:02}%"
 
 
 def _estimate_label(estimate: VoiceHoursEstimate | None) -> str:
@@ -231,7 +342,7 @@ def _lifetime_labels(nodes: dict[str, Element], period: DetailPeriod | None) -> 
             "lifetime-label": f"History since {period.first_date:%b %d, %Y}"
             if period
             else "No observed history",
-            "lifetime-coverage": f"Lifetime coverage {period.coverage_ratio:.0%}"
+            "lifetime-coverage": f"Lifetime coverage {_coverage(period)}"
             if period
             else "Lifetime coverage —",
         },
@@ -246,27 +357,51 @@ def _labels(nodes: dict[str, Element], values: Mapping[str, str]) -> None:
 
 
 def _activity_chart(nodes: dict[str, Element], detail: ActivityDetail) -> None:
-    maximum = max((day.voice_seconds for day in detail.days), default=0) or 3600
-    replace_text(nodes["chart-max"], format_duration(maximum, compact=True))
+    if not any(day.clock_change_spans for day in detail.days):
+        style(nodes["clock-note"], "display", "none")
     for i, day in enumerate(detail.days):
         prefix = f"day-{i}"
-        track, bar = nodes[f"{prefix}-track"], nodes[f"{prefix}-bar"]
-        height = float(track.attrib["height"]) * day.voice_seconds / maximum
-        bar.set("height", str(height))
-        bar.set(
-            "y", str(float(track.attrib["y"]) + float(track.attrib["height"]) - height)
-        )
-        states = {
-            "partial": 0 < day.coverage_ratio < 1,
-            "gap": day.observed_seconds == 0,
-            "zero": day.voice_seconds == 0 and day.coverage_ratio == 1,
+        track = nodes[f"{prefix}-track"]
+        spans = {
+            "future": day.future_spans,
+            "missing": day.missing_spans,
+            "voice": day.voice_spans,
+            "clock": day.clock_change_spans,
         }
-        for suffix, visible in states.items():
-            if not visible:
-                style(nodes[f"{prefix}-{suffix}"], "display", "none")
+        for name, intervals in spans.items():
+            path = nodes[f"{prefix}-{name}"]
+            path.set(
+                "d",
+                _span_path(track, intervals, float(path.get("data-min-height", "0"))),
+            )
+        if not day.clock_change_spans:
+            style(nodes[f"{prefix}-dst"], "display", "none")
         label = nodes.get(f"date-{i}")
         if label is not None:
             replace_text(label, "Today" if i == 29 else f"{day.date:%d}")
+
+
+def _span_path(track: Element, spans: tuple[ClockSpan, ...], minimum: float) -> str:
+    """Union display footprints within one authored column; never add opacity."""
+    height = float(track.attrib["height"])
+    x, y = float(track.attrib["x"]), float(track.attrib["y"])
+    width = float(track.attrib["width"])
+    bands: list[tuple[float, float]] = []
+    for span in spans:
+        start, end = (
+            minute / 1440 * height for minute in (span.start_minute, span.end_minute)
+        )
+        length = min(height, max(end - start, minimum))
+        top = min(height - length, max(0, (start + end - length) / 2))
+        bottom = top + length
+        if bands and top <= bands[-1][1]:
+            top, previous_end = bands.pop()
+            bottom = max(bottom, previous_end)
+        bands.append((top, bottom))
+    return " ".join(
+        f"M{x:g} {y + top:g}h{width:g}v{bottom - top:g}h{-width:g}Z"
+        for top, bottom in bands
+    )
 
 
 def _person_row(

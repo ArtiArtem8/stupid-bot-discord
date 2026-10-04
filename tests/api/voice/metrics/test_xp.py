@@ -75,6 +75,66 @@ class TestXpRates(unittest.TestCase):
         result = VoiceXpPolicy().rate(room(state=state), 1)
         self.assertEqual(result.audio_reduction, 900)
         self.assertEqual(result.total, 300)
+        self.assertEqual(result.deaf_reduction, 900)
+        self.assertEqual(result.mute_reduction, 0)
+
+    def test_audio_categories_follow_active_policy_factors_without_stacking(
+        self,
+    ) -> None:
+        policies = (
+            VoiceXpPolicy(),
+            VoiceXpPolicy(
+                version="tuned",
+                mute_factor=Fraction(1, 10),
+                deaf_factor=Fraction(9, 10),
+            ),
+            VoiceXpPolicy(
+                version="equal",
+                mute_factor=Fraction(1, 2),
+                suppress_factor=Fraction(1, 2),
+                deaf_factor=Fraction(1, 2),
+            ),
+        )
+        for policy in policies:
+            for muted, deafened, suppressed in product((False, True), repeat=3):
+                with self.subTest(
+                    policy=policy.version, mute=muted, deaf=deafened, stage=suppressed
+                ):
+                    state = replace(
+                        human(),
+                        self_mute=muted,
+                        self_deaf=deafened,
+                        suppress=suppressed,
+                    )
+                    result = policy.rate(room(state=state), 1)
+                    factors = (
+                        policy.mute_factor if muted else Fraction(1),
+                        policy.deaf_factor if deafened else Fraction(1),
+                        policy.suppress_factor if suppressed else Fraction(1),
+                    )
+                    parts = (result.mute_reduction, result.deaf_reduction)
+                    self.assertEqual(result.audio_reduction, 1200 * (1 - min(factors)))
+                    self.assertEqual(result.total, 1200 * min(factors))
+                    self.assertLessEqual(sum(value > 0 for value in parts), 1)
+                    for enabled, value in zip(
+                        (muted or suppressed, deafened), parts, strict=True
+                    ):
+                        if not enabled:
+                            self.assertEqual(value, 0)
+
+    def test_audio_reasons_integrate_only_winning_room_intervals(self) -> None:
+        samples = (
+            room(end=1800, state=replace(human(), self_mute=True)),
+            room(start=1800, end=3600, state=replace(human(), self_deaf=True)),
+            room(start=3600, end=5400, state=replace(human(), suppress=True)),
+            room(end=5400, guild=2, humans=1, state=replace(human(), self_deaf=True)),
+        )
+        result = VoiceXpPolicy().explain(timeline(*samples), 1)
+        self.assertEqual(result.mute_reduction, 210)
+        self.assertEqual(result.deaf_reduction, 450)
+        self.assertEqual(result.audio_reduction, 660)
+        self.assertEqual(result.total, 1140)
+        self.assertIsInstance(result.mute_reduction, Fraction)
 
     def test_mute_and_suppress_choose_suppress(self) -> None:
         sample = room(state=replace(human(), self_mute=True, suppress=True))

@@ -68,6 +68,11 @@ solo_base + social_base + large_group_bonus - audio_reduction
     + stream_bonus + video_bonus - bonus_cap_reduction = total
 ```
 
+`audio_reduction` is the sum of `mute_reduction` and `deaf_reduction`. The mute
+category includes Stage suppression. Each interval attributes its entire
+reduction to the active restriction with the smallest factor; equal factors
+prefer deaf. Splitting this explanation does not change awards or stack penalties.
+
 ## Levels
 
 For level `L`, the cumulative threshold is:

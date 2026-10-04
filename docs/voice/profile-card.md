@@ -28,8 +28,41 @@ Activity shows the current guild's last 30 local calendar dates, including today
 using `VOICE_PROFILE_TIMEZONE`. Its first boundary is local midnight 29 dates
 before today; its last boundary is the snapshot request time. DST days therefore
 contain 23 or 25 elapsed hours where applicable. The chart always has 30 columns.
-Bar heights encode voice duration; hatching marks partial observation and a cross
-marks an unobserved date. A fully observed empty date has a zero marker.
+The `Daily activity` chart places dates left to right and local time from 00:00
+at the top to 24:00 at the bottom. Filled spans show actual presence, including
+separate pieces of a session that crosses midnight. Hatching marks the specific
+unobserved times; observed absence stays empty. Future time today uses a separate
+background. The legend sits beside the chart title.
+
+Short visits have a minimum visible footprint authored in SVG. Footprints merge
+when they overlap at display resolution, and every column clips its contents;
+this never merges underlying intervals or adds time or XP. A short break within
+a grouped session remains empty whenever the display resolution allows it.
+On DST dates an asterisk and outlined clock-change span mark skipped or repeated
+times. Repeated local times share one position, while totals keep their true
+elapsed duration. Calendar projection lives in `api.voice.profile.calendar`;
+pixel geometry stays in the SVG and renderer.
+
+`Top days` uses total observed voice time per weekday across completed Monday-to-
+Sunday weeks fully contained in the 30-date window. Partial weeks at either edge
+are excluded, giving each weekday the same number of calendar dates. Boundaries
+use the profile timezone; observation gaps remain unknown and are not filled.
+It includes every weekday with at least 95% of the largest weekday total and
+lists them Monday first. This is a display grouping threshold, not statistical
+confidence or visit frequency. All seven close totals display `All days`, which
+does not claim presence on every calendar date. Multiple names are abbreviated
+or represented as a consecutive weekday range only when native text measurement
+shows the full names exceed the SVG field width. The font size stays unchanged.
+
+`Peak hours` uses the full 30-date window and shows local hourly intervals.
+Equal maximum hours are retained: adjacent hours form one interval, two separate
+intervals use compact hour labels, and more scattered ties show `Multiple peaks`.
+Equal nonzero activity in all 24 buckets shows `All day`.
+
+Detail metrics show `-` when their period has neither observations nor credited
+user activity. Observed empty periods still show zero. Average and median session
+lengths show `-` when there are no sessions. People and XP apply this distinction
+independently to lifetime and recent values; coverage remains visible.
 
 People lists lifetime human co-presence, ordered by shared time, one-on-one time
 and user ID, and includes a small 30-day summary. One-on-one is a subset of shared
@@ -41,11 +74,17 @@ no member fetches or companion avatar downloads are needed.
 
 XP explains lifetime awards using the canonical policy and separately displays
 the last 30 days' XP. Components remain exact `Fraction` values until formatting.
-Green positive terms and red reductions retain explicit signs. Components round
-independently, so their displayed sum can differ from the displayed total. The
-lifetime total truncates fractional XP exactly as the main profile does, so it
-cannot display an unearned level threshold. Large detail durations use compact
-hours from 1,000 hours onward; the main card's duration format is unchanged.
+Green positive terms and red reductions retain signs for amounts of at least one
+XP. Zero values are unsigned and muted; `<1` values are unsigned and retain their
+category color. Audio reductions show Muted (including Stage suppression) and
+Deafened separately, attributing each interval only to its strongest restriction.
+The Bonus limit row shows the combined stream/camera bonus above the existing cap.
+All XP labels truncate fractional XP, matching the main profile. Compact labels also
+truncate at their displayed precision. Components are formatted independently,
+so their displayed sum can differ from the displayed total; exact awards remain
+unchanged. Nonzero components below one XP display `<1`; nonzero durations below
+one minute display `<1m`. Large detail durations use compact hours from 1,000
+hours onward.
 
 The next-level estimate divides exact remaining XP by pooled XP per voice hour
 over the same 30 local dates. Longer observations contribute proportionally more
@@ -64,7 +103,13 @@ trend, calendar completion date or automatic fallback to a stale lifetime pace.
 Every card labels recent coverage. People and XP also label lifetime coverage,
 measured from the earliest retained guild evidence to the request time. Missing
 history has no lifetime coverage denominator; it is not reported as known empty
-time. Lifetime values are limited to retained, observed history.
+time. Percentages truncate to two decimal places so incomplete observation never
+rounds up to 100%. Lifetime values are limited to retained, observed history.
+
+Sessions merge returns after less than five minutes of continuously observed
+absence within the same guild. The absence earns no time or XP. Average and
+median session lengths sum actual presence within each session, excluding breaks.
+Midnight does not split sessions; observation gaps still do.
 
 ## Setup
 
