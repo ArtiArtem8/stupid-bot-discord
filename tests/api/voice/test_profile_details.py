@@ -11,6 +11,7 @@ from api.progression.levels import LevelPolicy
 from api.voice.metrics.xp import VoiceXpPolicy
 from api.voice.model import VoiceStateSnapshot
 from api.voice.profile import details
+from api.voice.profile.calendar import ClockSpan
 from api.voice.profile.details import (
     build_activity_detail,
     build_people_detail,
@@ -22,6 +23,17 @@ from tests.api.voice.examples import at, example, human
 
 
 class TestActivityDetail(unittest.TestCase):
+    def test_moscow_clock_and_weekday_use_local_date_from_utc_history(self) -> None:
+        start = datetime(2026, 9, 20, 22, tzinfo=UTC)
+        end = start + timedelta(minutes=30)
+        timeline = VoiceTimeline((RoomInterval(1, 10, start, end, (human(),)),), (), ())
+        result = build_activity_detail(timeline, 1, 1, at(0), ZoneInfo("Europe/Moscow"))
+        self.assertEqual(result.peak_weekdays, (0,))
+        self.assertEqual(result.peak_hour, 1)
+        self.assertEqual(result.days[-1].date, date(2026, 9, 21))
+        self.assertEqual(result.days[-1].voice_spans, (ClockSpan(60, 90),))
+        self.assertEqual(result.presence.total_seconds, 1800)
+
     def test_calendar_window_dst_and_current_partial_day(self) -> None:
         zone = ZoneInfo("America/New_York")
         for month, day, hours in ((3, 8, 23), (11, 1, 25)):

@@ -134,12 +134,23 @@ class DetailCardRenderer:
             format_duration(presence.average_session_seconds, compact=True),
             format_duration(presence.median_session_seconds, compact=True),
             f"{detail.peak_hour:02}:00" if detail.peak_hour is not None else "—",
-            _weekday_label(detail.peak_weekdays),
         )
         _labels(nodes, {f"metric-{i}": value for i, value in enumerate(values)})
         _labels(nodes, {f"stat-{i}": value for i, value in enumerate(stats)})
         _activity_chart(nodes, detail)
+        self._bind_weekdays(root, nodes["stat-3"], detail.peak_weekdays)
         return self._png(root, nodes)
+
+    def _bind_weekdays(
+        self, root: Element, node: Element, days: tuple[int, ...]
+    ) -> None:
+        labels = _weekday_labels(days)
+        for label in labels[:-1]:
+            replace_text(node, label)
+            box = self.raster.query(document_bytes(root)).get(node.attrib["id"])
+            if box is not None and box.width <= float(node.attrib["data-width"]):
+                return
+        replace_text(node, labels[-1])
 
     def render_people(
         self, presentation: PeoplePresentation, identity: DetailIdentity
@@ -215,18 +226,26 @@ class DetailCardRenderer:
         return self._png(root, nodes)
 
 
-def _weekday_label(days: tuple[int, ...]) -> str:
+def _weekday_labels(days: tuple[int, ...]) -> tuple[str, ...]:
     if not days:
-        return "—"
+        return ("—",)
     if len(days) == 1:
-        return day_name[days[0]]
+        return (day_name[days[0]],)
     if len(days) == 7:
-        return "All days"
+        return ("All days",)
+    labels = [", ".join(day_name[day] for day in days)]
     if len(days) >= 3 and days[-1] - days[0] + 1 == len(days):
-        return f"{day_abbr[days[0]]}–{day_abbr[days[-1]]}"
-    if len(days) >= 4:
-        return " ".join(day_abbr[day][:2] for day in days)
-    return ", ".join(day_abbr[day] for day in days)
+        labels.extend(
+            (
+                f"{day_name[days[0]]}–{day_name[days[-1]]}",
+                f"{day_abbr[days[0]]}–{day_abbr[days[-1]]}",
+            )
+        )
+    else:
+        labels.append(", ".join(day_abbr[day] for day in days))
+        if len(days) >= 4:
+            labels.append(" ".join(day_abbr[day][:2] for day in days))
+    return tuple(labels)
 
 
 def _bind_xp(

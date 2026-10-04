@@ -26,7 +26,7 @@ from api.voice.timeline import VoiceTimeline, build_timeline
 from cogs.voice.profile.design import ASSETS, CardIdentity, property_value, theme_tokens
 from cogs.voice.profile.detail_models import DetailIdentity, PeoplePresentation
 from cogs.voice.profile.detail_renderer import DetailCardRenderer
-from cogs.voice.profile.raster import NativeRasterizer
+from cogs.voice.profile.raster import Box, NativeRasterizer
 from tests.api.voice.examples import at, example, human, record
 from tests.cogs.voice.profile.test_media import profile_at
 
@@ -269,6 +269,18 @@ class TestDetailBindings(unittest.TestCase):
                 root = fromstring(self.raster.layers.call_args.args[0][0])
                 nodes = {node.get("id"): node for node in root.iter()}
                 self.assertEqual(nodes["stat-3"].text, label)
+
+    def test_weekdays_abbreviate_only_when_full_names_exceed_svg_budget(self) -> None:
+        detail = build_activity_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of)
+        for width, expected in ((225, "Monday, Friday"), (227, "Mon, Fri")):
+            with self.subTest(width=width):
+                self.raster.query.side_effect = [{"stat-3": Box(0, 0, width, 26)}, {}]
+                self.renderer.render_activity(
+                    replace(detail, peak_weekdays=(0, 4)), self.identity
+                )
+                root = fromstring(self.raster.layers.call_args.args[0][0])
+                nodes = {node.get("id"): node for node in root.iter()}
+                self.assertEqual(nodes["stat-3"].text, expected)
 
     def test_recent_solo_xp_matches_lifetime_total_without_rounding_up(self) -> None:
         for seconds, label in ((167, "13"), (168, "14")):
