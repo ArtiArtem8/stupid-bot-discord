@@ -237,8 +237,8 @@ def _weekday_labels(days: tuple[int, ...]) -> tuple[str, ...]:
     if len(days) >= 3 and days[-1] - days[0] + 1 == len(days):
         labels.extend(
             (
-                f"{day_name[days[0]]}–{day_name[days[-1]]}",
-                f"{day_abbr[days[0]]}–{day_abbr[days[-1]]}",
+                f"{day_name[days[0]]}-{day_name[days[-1]]}",
+                f"{day_abbr[days[0]]}-{day_abbr[days[-1]]}",
             )
         )
     else:

@@ -257,7 +257,7 @@ class TestDetailBindings(unittest.TestCase):
             ((0,), "Monday"),
             ((0, 3), "Mon, Thu"),
             ((0, 2, 4), "Mon, Wed, Fri"),
-            ((0, 1, 2, 3, 4), "Mon–Fri"),
+            ((0, 1, 2, 3, 4), "Mon-Fri"),
             ((0, 2, 4, 6), "Mo We Fr Su"),
             (tuple(range(7)), "All days"),
         )
