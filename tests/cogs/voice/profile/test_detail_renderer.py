@@ -101,7 +101,7 @@ class TestDetailBindings(unittest.TestCase):
         self.assertEqual(nodes["stat-2"].text, "-")
         self.assertEqual(nodes["stat-3"].text, "-")
 
-    def test_absent_observation_differs_from_observed_zero_on_all_cards(self) -> None:
+    def test_activity_distinguishes_absent_observation_from_zero(self) -> None:
         for observed in (False, True):
             with self.subTest(observed=observed):
                 coverage = (
@@ -121,6 +121,14 @@ class TestDetailBindings(unittest.TestCase):
                 self.assertEqual(nodes["metric-3"].text, "0" if observed else "-")
                 self.assertEqual(nodes["stat-0"].text, "-")
                 self.assertEqual(nodes["stat-1"].text, "-")
+
+    def test_people_distinguishes_absent_observation_from_zero(self) -> None:
+        for observed in (False, True):
+            with self.subTest(observed=observed):
+                coverage = (
+                    (ObservationInterval(1, at(0), self.as_of),) if observed else ()
+                )
+                timeline = VoiceTimeline((), (), coverage)
                 self.renderer.render_people(
                     PeoplePresentation(
                         build_people_detail(timeline, 1, 1, self.as_of), {}, {}
@@ -138,6 +146,14 @@ class TestDetailBindings(unittest.TestCase):
                     nodes["recent-summary"].text,
                     "0h 00m together · 0 people" if observed else "No observations",
                 )
+
+    def test_xp_distinguishes_absent_observation_from_zero(self) -> None:
+        for observed in (False, True):
+            with self.subTest(observed=observed):
+                coverage = (
+                    (ObservationInterval(1, at(0), self.as_of),) if observed else ()
+                )
+                timeline = VoiceTimeline((), (), coverage)
                 self.renderer.render_xp(
                     build_xp_detail(timeline, 1, 1, self.as_of), self.identity
                 )
