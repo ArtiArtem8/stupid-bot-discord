@@ -357,11 +357,9 @@
         </g>
         <text id="day-29-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
       </g>
-      <path id="hour-0-line" d="M102 262H641" data-stroke="muted" stroke="#59616e" stroke-opacity=".5" stroke-width="1.25" />
-      <path id="hour-6-line" d="M102 299H641" data-stroke="muted" stroke="#59616e" stroke-opacity=".5" stroke-width="1.25" />
-      <path id="hour-12-line" d="M102 336H641" data-stroke="muted" stroke="#59616e" stroke-opacity=".5" stroke-width="1.25" />
-      <path id="hour-18-line" d="M102 373H641" data-stroke="muted" stroke="#59616e" stroke-opacity=".5" stroke-width="1.25" />
-      <path id="hour-24-line" d="M102 410H641" data-stroke="muted" stroke="#59616e" stroke-opacity=".5" stroke-width="1.25" />
+      <path id="hour-6-line" d="M102 299H641" data-stroke="border" stroke="#59616e" stroke-opacity=".85" stroke-width="1" />
+      <path id="hour-12-line" d="M102 336H641" data-stroke="border" stroke="#59616e" stroke-opacity=".85" stroke-width="1" />
+      <path id="hour-18-line" d="M102 373H641" data-stroke="border" stroke="#59616e" stroke-opacity=".85" stroke-width="1" />
     </g>
     <text id="date-0" x="111" y="430" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="middle">04</text>
     <text id="date-7" x="237" y="430" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="middle">04</text>
