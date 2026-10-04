@@ -22,7 +22,7 @@ from api.voice.profile.details import (
 )
 from api.voice.read_models import VoiceXpBreakdown
 from api.voice.scope import TimeRange
-from api.voice.timeline import VoiceTimeline, build_timeline
+from api.voice.timeline import ObservationInterval, VoiceTimeline, build_timeline
 from cogs.voice.profile.design import ASSETS, CardIdentity, property_value, theme_tokens
 from cogs.voice.profile.detail_models import DetailIdentity, PeoplePresentation
 from cogs.voice.profile.detail_renderer import DetailCardRenderer
@@ -98,8 +98,101 @@ class TestDetailBindings(unittest.TestCase):
             self.assertTrue(nodes[f"day-{i}-missing"].get("d"))
             self.assertEqual(nodes[f"day-{i}-voice"].get("d"), "")
             self.assertEqual(bool(nodes[f"day-{i}-future"].get("d")), i == 29)
-        self.assertEqual(nodes["stat-2"].text, "—")
-        self.assertEqual(nodes["stat-3"].text, "—")
+        self.assertEqual(nodes["stat-2"].text, "-")
+        self.assertEqual(nodes["stat-3"].text, "-")
+
+    def test_absent_observation_differs_from_observed_zero_on_all_cards(self) -> None:
+        for observed in (False, True):
+            with self.subTest(observed=observed):
+                coverage = (
+                    (ObservationInterval(1, at(0), self.as_of),) if observed else ()
+                )
+                timeline = VoiceTimeline((), (), coverage)
+                self.renderer.render_activity(
+                    build_activity_detail(timeline, 1, 1, self.as_of), self.identity
+                )
+                nodes = {
+                    node.get("id"): node
+                    for node in fromstring(
+                        self.raster.layers.call_args.args[0][0]
+                    ).iter()
+                }
+                self.assertEqual(nodes["metric-0"].text, "0h 00m" if observed else "-")
+                self.assertEqual(nodes["metric-3"].text, "0" if observed else "-")
+                self.assertEqual(nodes["stat-0"].text, "-")
+                self.assertEqual(nodes["stat-1"].text, "-")
+                self.renderer.render_people(
+                    PeoplePresentation(
+                        build_people_detail(timeline, 1, 1, self.as_of), {}, {}
+                    ),
+                    self.identity,
+                )
+                nodes = {
+                    node.get("id"): node
+                    for node in fromstring(
+                        self.raster.layers.call_args.args[0][0]
+                    ).iter()
+                }
+                self.assertEqual(nodes["summary-0"].text, "0" if observed else "-")
+                self.assertEqual(
+                    nodes["recent-summary"].text,
+                    "0h 00m together · 0 people" if observed else "No observations",
+                )
+                self.renderer.render_xp(
+                    build_xp_detail(timeline, 1, 1, self.as_of), self.identity
+                )
+                nodes = {
+                    node.get("id"): node
+                    for node in fromstring(
+                        self.raster.layers.call_args.args[0][0]
+                    ).iter()
+                }
+                self.assertEqual(nodes["xp-total"].text, "0 XP" if observed else "-")
+                self.assertEqual(nodes["recent-xp"].text, "0 XP" if observed else "-")
+                self.assertEqual(nodes["xp-solo"].text, "0" if observed else "-")
+
+    def test_peak_hours_are_intervals_without_arbitrary_tie_winner(self) -> None:
+        detail = build_activity_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of)
+        for hours, label in (
+            ((19,), "19:00-20:00"),
+            ((10, 11), "10:00-12:00"),
+            ((23,), "23:00-24:00"),
+            ((10, 19), "10-11, 19-20"),
+            ((1, 8, 16), "Multiple peaks"),
+            (tuple(range(24)), "All day"),
+        ):
+            with self.subTest(hours=hours):
+                self.renderer.render_activity(
+                    replace(detail, peak_hours=hours), self.identity
+                )
+                nodes = {
+                    node.get("id"): node
+                    for node in fromstring(
+                        self.raster.layers.call_args.args[0][0]
+                    ).iter()
+                }
+                self.assertEqual(nodes["stat-2"].text, label)
+
+    def test_missing_recent_observation_keeps_known_lifetime_values(self) -> None:
+        as_of = self.as_of + timedelta(days=40)
+        timeline = example()
+        self.renderer.render_xp(build_xp_detail(timeline, 1, 1, as_of), self.identity)
+        nodes = {
+            node.get("id"): node
+            for node in fromstring(self.raster.layers.call_args.args[0][0]).iter()
+        }
+        self.assertNotEqual(nodes["xp-total"].text, "-")
+        self.assertEqual(nodes["recent-xp"].text, "-")
+        self.renderer.render_people(
+            PeoplePresentation(build_people_detail(timeline, 1, 1, as_of), {}, {}),
+            self.identity,
+        )
+        nodes = {
+            node.get("id"): node
+            for node in fromstring(self.raster.layers.call_args.args[0][0]).iter()
+        }
+        self.assertEqual(nodes["summary-0"].text, "2")
+        self.assertEqual(nodes["recent-summary"].text, "No observations")
 
     def test_short_markers_are_visible_union_overlaps_and_stay_in_column(self) -> None:
         detail = build_activity_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of)
@@ -168,8 +261,9 @@ class TestDetailBindings(unittest.TestCase):
         self.assertEqual(nodes["xp-social"].text, "+142.8B")
 
     def test_xp_zero_is_neutral_and_subunit_signs_are_omitted(self) -> None:
+        timeline = VoiceTimeline((), (), (ObservationInterval(1, at(0), self.as_of),))
         detail = replace(
-            build_xp_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of),
+            build_xp_detail(timeline, 1, 1, self.as_of),
             breakdown=VoiceXpBreakdown(
                 social_base=Fraction(10), mute_reduction=Fraction(1, 2)
             ),

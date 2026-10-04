@@ -43,13 +43,26 @@ times. Repeated local times share one position, while totals keep their true
 elapsed duration. Calendar projection lives in `api.voice.profile.calendar`;
 pixel geometry stays in the SVG and renderer.
 
-`Top days` uses total observed voice time per weekday in the same 30-date window.
+`Top days` uses total observed voice time per weekday across completed Monday-to-
+Sunday weeks fully contained in the 30-date window. Partial weeks at either edge
+are excluded, giving each weekday the same number of calendar dates. Boundaries
+use the profile timezone; observation gaps remain unknown and are not filled.
 It includes every weekday with at least 95% of the largest weekday total and
 lists them Monday first. This is a display grouping threshold, not statistical
 confidence or visit frequency. All seven close totals display `All days`, which
 does not claim presence on every calendar date. Multiple names are abbreviated
 or represented as a consecutive weekday range only when native text measurement
 shows the full names exceed the SVG field width. The font size stays unchanged.
+
+`Peak hours` uses the full 30-date window and shows local hourly intervals.
+Equal maximum hours are retained: adjacent hours form one interval, two separate
+intervals use compact hour labels, and more scattered ties show `Multiple peaks`.
+Equal nonzero activity in all 24 buckets shows `All day`.
+
+Detail metrics show `-` when their period has neither observations nor credited
+user activity. Observed empty periods still show zero. Average and median session
+lengths show `-` when there are no sessions. People and XP apply this distinction
+independently to lifetime and recent values; coverage remains visible.
 
 People lists lifetime human co-presence, ordered by shared time, one-on-one time
 and user ID, and includes a small 30-day summary. One-on-one is a subset of shared

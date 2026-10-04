@@ -131,10 +131,16 @@ class DetailCardRenderer:
             f"{presence.session_count:,}",
         )
         stats = (
-            format_duration(presence.average_session_seconds, compact=True),
-            format_duration(presence.median_session_seconds, compact=True),
-            f"{detail.peak_hour:02}:00" if detail.peak_hour is not None else "—",
+            format_duration(presence.average_session_seconds, compact=True)
+            if presence.session_count
+            else "-",
+            format_duration(presence.median_session_seconds, compact=True)
+            if presence.session_count
+            else "-",
+            _hour_label(detail.peak_hours),
         )
+        if not detail.period.observed_seconds and not presence.total_seconds:
+            values = ("-",) * 4
         _labels(nodes, {f"metric-{i}": value for i, value in enumerate(values)})
         _labels(nodes, {f"stat-{i}": value for i, value in enumerate(stats)})
         _activity_chart(nodes, detail)
@@ -169,6 +175,10 @@ class DetailCardRenderer:
             format_duration(detail.bots.any_bot_seconds, compact=True),
         )
         _labels(nodes, {f"summary-{i}": value for i, value in enumerate(summary)})
+        if not detail.presence.total_seconds and not (
+            detail.lifetime_period and detail.lifetime_period.observed_seconds
+        ):
+            _labels(nodes, {f"summary-{i}": "-" for i in range(4)})
         top = min(
             detail.bots.by_bot, key=lambda item: (-item[1], item[0]), default=None
         )
@@ -188,7 +198,9 @@ class DetailCardRenderer:
         )
         replace_text(
             nodes["recent-summary"],
-            (f"{recent_voice} together · {detail.recent_unique_people:,} people"),
+            f"{recent_voice} together · {detail.recent_unique_people:,} people"
+            if detail.period.observed_seconds or detail.recent_presence.total_seconds
+            else "No observations",
         )
         _lifetime_labels(nodes, detail.lifetime_period)
         return self._png(root, nodes)
@@ -222,13 +234,40 @@ class DetailCardRenderer:
                 "xp-estimate": _estimate_label(detail.estimate),
             },
         )
+        if not xp.total and not (
+            detail.lifetime_period and detail.lifetime_period.observed_seconds
+        ):
+            for key in (*positive, *negative):
+                replace_text(nodes[f"xp-{key}"], "-")
+            replace_text(nodes["xp-total"], "-")
+        if not detail.period.observed_seconds and not detail.recent_xp:
+            replace_text(nodes["recent-xp"], "-")
         _lifetime_labels(nodes, detail.lifetime_period)
         return self._png(root, nodes)
 
 
+def _hour_label(hours: tuple[int, ...]) -> str:
+    if not hours:
+        return "-"
+    if len(hours) == 24:
+        return "All day"
+    ranges: list[tuple[int, int]] = []
+    for hour in hours:
+        if ranges and ranges[-1][1] == hour:
+            ranges[-1] = (ranges[-1][0], hour + 1)
+        else:
+            ranges.append((hour, hour + 1))
+    if len(ranges) == 1:
+        start, end = ranges[0]
+        return f"{start:02}:00-{end:02}:00"
+    if len(ranges) == 2:
+        return ", ".join(f"{start:02}-{end:02}" for start, end in ranges)
+    return "Multiple peaks"
+
+
 def _weekday_labels(days: tuple[int, ...]) -> tuple[str, ...]:
     if not days:
-        return ("—",)
+        return ("-",)
     if len(days) == 1:
         return (day_name[days[0]],)
     if len(days) == 7:

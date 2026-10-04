@@ -6,7 +6,7 @@ Elapsed arithmetic uses UTC; calendar boundaries use the caller's timezone.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from fractions import Fraction
 
 from api.progression.levels import LevelPolicy
@@ -54,7 +54,7 @@ class ActivityDetail:
     period: DetailPeriod
     presence: PresenceStat
     days: tuple[DailyVoiceActivity, ...]
-    peak_hour: int | None
+    peak_hours: tuple[int, ...]
     peak_weekdays: tuple[int, ...]
 
 
@@ -146,20 +146,32 @@ def build_activity_detail(
     period = _period(timeline, guild_id, as_of, timezone)
     scope = VoiceScope(guild_id=guild_id, time_range=period.time_range)
     measured = activity(timeline, user_id, scope, timezone=timezone)
+    days = daily_voice_activity(
+        timeline, user_id, guild_id, period.time_range, timezone
+    )
     return ActivityDetail(
         period,
         presence(timeline, user_id, scope),
-        daily_voice_activity(timeline, user_id, guild_id, period.time_range, timezone),
-        _peak(measured.hourly_seconds),
-        _peak_weekdays(measured.weekday_seconds),
+        days,
+        _peak_hours(measured.hourly_seconds),
+        _peak_weekdays(days),
     )
 
 
-def _peak(values: tuple[float, ...]) -> int | None:
-    return max(range(len(values)), key=values.__getitem__) if any(values) else None
+def _peak_hours(seconds: tuple[float, ...]) -> tuple[int, ...]:
+    peak = max(seconds, default=0)
+    return tuple(
+        hour for hour, value in enumerate(seconds) if value == peak and peak > 0
+    )
 
 
-def _peak_weekdays(seconds: tuple[float, ...]) -> tuple[int, ...]:
+def _peak_weekdays(days: tuple[DailyVoiceActivity, ...]) -> tuple[int, ...]:
+    first = days[0].date + timedelta(days=(-days[0].date.weekday()) % 7)
+    end = days[-1].date - timedelta(days=days[-1].date.weekday())
+    seconds = [0.0] * 7
+    for day in days:
+        if first <= day.date < end:
+            seconds[day.date.weekday()] += day.voice_seconds
     peak = max(seconds, default=0)
     if peak == 0:
         return ()
