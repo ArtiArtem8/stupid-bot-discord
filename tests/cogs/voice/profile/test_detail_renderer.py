@@ -2,7 +2,7 @@
 
 import unittest
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from fractions import Fraction
 from typing import override
 from unittest.mock import MagicMock
@@ -19,6 +19,7 @@ from api.voice.profile.details import (
     build_xp_detail,
 )
 from api.voice.read_models import VoiceXpBreakdown
+from api.voice.scope import TimeRange
 from api.voice.timeline import VoiceTimeline, build_timeline
 from cogs.voice.profile.design import ASSETS, CardIdentity, property_value, theme_tokens
 from cogs.voice.profile.detail_models import DetailIdentity, PeoplePresentation
@@ -113,8 +114,8 @@ class TestDetailBindings(unittest.TestCase):
         self.renderer.render_xp(detail, self.identity)
         root = fromstring(self.raster.layers.call_args.args[0][0])
         nodes = {node.get("id"): node for node in root.iter()}
-        self.assertEqual(nodes["xp-solo"].text, "+0")
-        self.assertEqual(nodes["xp-social"].text, "+0")
+        self.assertEqual(nodes["xp-solo"].text, "+<1")
+        self.assertEqual(nodes["xp-social"].text, "+<1")
         self.assertEqual(nodes["xp-total"].text, "1 XP")
         large = replace(
             detail, breakdown=VoiceXpBreakdown(social_base=Fraction(10**12, 7))
@@ -124,6 +125,45 @@ class TestDetailBindings(unittest.TestCase):
         nodes = {node.get("id"): node for node in root.iter()}
         self.assertEqual(nodes["xp-total"].text, "142,857,142,857 XP")
         self.assertEqual(nodes["xp-social"].text, "+142.8B")
+
+    def test_coverage_has_two_decimals_without_rounding_up_to_complete(self) -> None:
+        detail = build_xp_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of)
+        window = TimeRange(self.as_of - timedelta(seconds=1000), self.as_of)
+        for observed, label in (
+            (0, "0.00%"),
+            (996, "99.60%"),
+            (999.999, "99.99%"),
+            (1000, "100.00%"),
+        ):
+            with self.subTest(observed=observed):
+                period = replace(
+                    detail.period, time_range=window, observed_seconds=observed
+                )
+                self.renderer.render_xp(
+                    replace(detail, period=period, lifetime_period=period),
+                    self.identity,
+                )
+                root = fromstring(self.raster.layers.call_args.args[0][0])
+                nodes = {node.get("id"): node for node in root.iter()}
+                self.assertEqual(
+                    nodes["coverage-label"].text, f"30-day coverage {label}"
+                )
+                self.assertEqual(
+                    nodes["lifetime-coverage"].text, f"Lifetime coverage {label}"
+                )
+
+    def test_subminute_presence_is_not_formatted_as_zero(self) -> None:
+        timeline = build_timeline(
+            [record(0, VoiceSnapshot((human(),))), record(30, VoiceCheckpoint())]
+        )
+        self.renderer.render_activity(
+            build_activity_detail(timeline, 1, 1, at(30)), self.identity
+        )
+        root = fromstring(self.raster.layers.call_args.args[0][0])
+        nodes = {node.get("id"): node for node in root.iter()}
+        self.assertEqual(nodes["metric-0"].text, "<1m")
+        self.assertEqual(nodes["metric-1"].text, "0h 00m")
+        self.assertEqual(nodes["stat-0"].text, "<1m")
 
     def test_recent_solo_xp_matches_lifetime_total_without_rounding_up(self) -> None:
         for seconds, label in ((167, "13"), (168, "14")):

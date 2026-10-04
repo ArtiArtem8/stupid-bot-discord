@@ -45,8 +45,9 @@ Green positive terms and red reductions retain explicit signs. All XP labels
 truncate fractional XP, matching the main profile. Compact component labels also
 truncate at their displayed precision. Components are formatted independently,
 so their displayed sum can differ from the displayed total; exact awards remain
-unchanged. Large detail durations use compact hours from 1,000 hours onward;
-the main card's duration format is unchanged.
+unchanged. Nonzero components below one XP display `<1`; nonzero durations below
+one minute display `<1m`. Large detail durations use compact hours from 1,000
+hours onward.
 
 The next-level estimate divides exact remaining XP by pooled XP per voice hour
 over the same 30 local dates. Longer observations contribute proportionally more
@@ -65,7 +66,13 @@ trend, calendar completion date or automatic fallback to a stale lifetime pace.
 Every card labels recent coverage. People and XP also label lifetime coverage,
 measured from the earliest retained guild evidence to the request time. Missing
 history has no lifetime coverage denominator; it is not reported as known empty
-time. Lifetime values are limited to retained, observed history.
+time. Percentages truncate to two decimal places so incomplete observation never
+rounds up to 100%. Lifetime values are limited to retained, observed history.
+
+Sessions merge returns after less than five minutes of continuously observed
+absence within the same guild. The absence earns no time or XP. Average and
+median session lengths sum actual presence within each session, excluding breaks.
+Midnight does not split sessions; observation gaps still do.
 
 ## Setup
 

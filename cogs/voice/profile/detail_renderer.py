@@ -89,7 +89,7 @@ class DetailCardRenderer:
                     f"{period.first_date:%b %d} – {period.last_date:%b %d}"
                     f" · {period.timezone_label}"
                 ),
-                "coverage-label": f"Coverage {period.coverage_ratio:.0%}",
+                "coverage-label": f"Coverage {_coverage(period)}",
             },
         )
         try:
@@ -205,12 +205,22 @@ class DetailCardRenderer:
 
 
 def _xp(value: Fraction) -> str:
+    if 0 < value < 1:
+        return "<1"
     whole = int(value)
     for scale, suffix in ((10**12, "T"), (10**9, "B"), (10**6, "M")):
         if whole >= max(scale, 10**7):
             tenths = whole * 10 // scale
             return f"{tenths // 10}.{tenths % 10}{suffix}"
     return f"{whole:,}"
+
+
+def _coverage(period: DetailPeriod) -> str:
+    possible = (period.time_range.end - period.time_range.start).total_seconds()
+    hundredths = (
+        Fraction(str(period.observed_seconds)) * 10_000 // Fraction(str(possible))
+    )
+    return f"{hundredths // 100}.{hundredths % 100:02}%"
 
 
 def _estimate_label(estimate: VoiceHoursEstimate | None) -> str:
@@ -233,7 +243,7 @@ def _lifetime_labels(nodes: dict[str, Element], period: DetailPeriod | None) -> 
             "lifetime-label": f"History since {period.first_date:%b %d, %Y}"
             if period
             else "No observed history",
-            "lifetime-coverage": f"Lifetime coverage {period.coverage_ratio:.0%}"
+            "lifetime-coverage": f"Lifetime coverage {_coverage(period)}"
             if period
             else "Lifetime coverage —",
         },
