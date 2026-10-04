@@ -28,8 +28,20 @@ Activity shows the current guild's last 30 local calendar dates, including today
 using `VOICE_PROFILE_TIMEZONE`. Its first boundary is local midnight 29 dates
 before today; its last boundary is the snapshot request time. DST days therefore
 contain 23 or 25 elapsed hours where applicable. The chart always has 30 columns.
-Bar heights encode voice duration; hatching marks partial observation and a cross
-marks an unobserved date. A fully observed empty date has a zero marker.
+The `Daily activity` chart places dates left to right and local time from 00:00
+at the top to 24:00 at the bottom. Filled spans show actual presence, including
+separate pieces of a session that crosses midnight. Hatching marks the specific
+unobserved times; observed absence stays empty. Future time today uses a separate
+background. The legend sits beside the chart title.
+
+Short visits have a minimum visible footprint authored in SVG. Footprints merge
+when they overlap at display resolution, and every column clips its contents;
+this never merges underlying intervals or adds time or XP. A short break within
+a grouped session remains empty whenever the display resolution allows it.
+On DST dates an asterisk and outlined clock-change span mark skipped or repeated
+times. Repeated local times share one position, while totals keep their true
+elapsed duration. Calendar projection lives in `api.voice.profile.calendar`;
+pixel geometry stays in the SVG and renderer.
 
 People lists lifetime human co-presence, ordered by shared time, one-on-one time
 and user ID, and includes a small 30-day summary. One-on-one is a subset of shared

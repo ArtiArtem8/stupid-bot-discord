@@ -1,5 +1,6 @@
 """Binding contracts at the native renderer boundary, without subprocesses."""
 
+import re
 import unittest
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -13,6 +14,7 @@ from PIL import Image
 from api.voice.model import VoiceCheckpoint, VoiceSnapshot
 from api.voice.prediction import VoiceHoursEstimate
 from api.voice.profile.build import build_profile
+from api.voice.profile.calendar import ClockSpan
 from api.voice.profile.details import (
     build_activity_detail,
     build_people_detail,
@@ -87,20 +89,59 @@ class TestDetailBindings(unittest.TestCase):
         self.assertEqual(nodes["person-0-shared"].text, "0h 10m")
         self.assertEqual(nodes["person-0-private"].text, "0h 05m")
 
-    def test_unknown_activity_uses_gap_markers_without_zero_markers(self) -> None:
+    def test_unknown_activity_hatches_only_elapsed_time(self) -> None:
         detail = build_activity_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of)
         self.renderer.render_activity(detail, self.identity)
         root = fromstring(self.raster.layers.call_args.args[0][0])
         nodes = {node.get("id"): node for node in root.iter()}
         for i in range(30):
-            self.assertNotEqual(
-                property_value(nodes[f"day-{i}-gap"], "display", ""), "none"
-            )
-            self.assertEqual(
-                property_value(nodes[f"day-{i}-zero"], "display", ""), "none"
-            )
+            self.assertTrue(nodes[f"day-{i}-missing"].get("d"))
+            self.assertEqual(nodes[f"day-{i}-voice"].get("d"), "")
+            self.assertEqual(bool(nodes[f"day-{i}-future"].get("d")), i == 29)
         self.assertEqual(nodes["stat-2"].text, "—")
         self.assertEqual(nodes["stat-3"].text, "—")
+
+    def test_short_markers_are_visible_union_overlaps_and_stay_in_column(self) -> None:
+        detail = build_activity_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of)
+        day = replace(
+            detail.days[0],
+            voice_spans=(
+                ClockSpan(0, 0.01),
+                ClockSpan(0.02, 0.03),
+                ClockSpan(720, 720.01),
+                ClockSpan(1439.99, 1440),
+            ),
+        )
+        self.renderer.render_activity(
+            replace(detail, days=(day, *detail.days[1:])), self.identity
+        )
+        root = fromstring(self.raster.layers.call_args.args[0][0])
+        nodes = {node.get("id"): node for node in root.iter()}
+        track = nodes["day-0-track"]
+        path = nodes["day-0-voice"]
+        shapes = re.findall(
+            r"M([\d.]+) ([\d.]+)h([\d.]+)v([\d.]+)h-([\d.]+)Z", path.get("d", "")
+        )
+        self.assertEqual(len(shapes), 3)
+        previous_bottom = float(track.attrib["y"])
+        for x, y, width, height, back in shapes:
+            self.assertEqual(float(x), float(track.attrib["x"]))
+            self.assertEqual(float(width), float(track.attrib["width"]))
+            self.assertEqual(width, back)
+            self.assertGreaterEqual(
+                float(height), float(path.attrib["data-min-height"])
+            )
+            self.assertGreaterEqual(float(y), previous_bottom)
+            previous_bottom = float(y) + float(height)
+            self.assertLessEqual(
+                previous_bottom,
+                float(track.attrib["y"]) + float(track.attrib["height"]),
+            )
+        self.assertEqual(nodes["day-1-voice"].get("d"), "")
+        self.assertEqual(
+            nodes["day-0-bands"].get("clip-path"), "url(#clock-column-clip)"
+        )
+        self.assertEqual(nodes["chart-title"].text, "Daily activity")
 
     def test_xp_truncation_does_not_balance_components_and_large_values_stay_readable(
         self,

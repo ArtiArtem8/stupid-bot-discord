@@ -51,9 +51,9 @@
   </g>
   <g id="footer-placement" inkscape:groupmode="layer" inkscape:label="Period and observation coverage">
     <path d="M32 414H928" data-stroke="border" stroke="#59616e" />
-    <text id="period-label" x="32" y="439" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="650" font-variant-numeric="tabular-nums">Sep 4 – Oct 3 · Europe/Moscow</text>
-    <text id="coverage-label" x="928" y="439" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="210" text-anchor="end" font-variant-numeric="tabular-nums">Coverage 98%</text>
-    <text id="lifetime-label" x="32" y="465" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="650" font-variant-numeric="tabular-nums">History since Sep 1, 2025</text>
-    <text id="lifetime-coverage" x="928" y="465" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="255" text-anchor="end" font-variant-numeric="tabular-nums">Lifetime coverage 98%</text>
+    <text id="period-label" x="32" y="439" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="590" font-variant-numeric="tabular-nums">Sep 4 – Oct 3 · Europe/Moscow</text>
+    <text id="coverage-label" x="928" y="439" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="290" text-anchor="end" font-variant-numeric="tabular-nums">Coverage 98%</text>
+    <text id="lifetime-label" x="32" y="465" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="590" font-variant-numeric="tabular-nums">History since Sep 1, 2025</text>
+    <text id="lifetime-coverage" x="928" y="465" font-size="18" data-fill="muted" fill="#f4f6fa" data-width="290" text-anchor="end" font-variant-numeric="tabular-nums">Lifetime coverage 98%</text>
   </g>
 </svg>

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from api.voice.prediction import VoiceHoursEstimate
+from api.voice.profile.calendar import ClockSpan
 from api.voice.profile.details import (
     ActivityDetail,
     DetailPeriod,
@@ -119,7 +120,7 @@ class DetailCardRenderer:
     def render_activity(
         self, detail: ActivityDetail, identity: DetailIdentity
     ) -> bytes:
-        """Render activity heights independently from observation coverage."""
+        """Render local clock spans separately from observation gaps and future."""
         root, nodes = self._document("activity", identity, detail.period)
         presence = detail.presence
         values = (
@@ -258,27 +259,51 @@ def _labels(nodes: dict[str, Element], values: Mapping[str, str]) -> None:
 
 
 def _activity_chart(nodes: dict[str, Element], detail: ActivityDetail) -> None:
-    maximum = max((day.voice_seconds for day in detail.days), default=0) or 3600
-    replace_text(nodes["chart-max"], format_duration(maximum, compact=True))
+    if not any(day.clock_change_spans for day in detail.days):
+        style(nodes["clock-note"], "display", "none")
     for i, day in enumerate(detail.days):
         prefix = f"day-{i}"
-        track, bar = nodes[f"{prefix}-track"], nodes[f"{prefix}-bar"]
-        height = float(track.attrib["height"]) * day.voice_seconds / maximum
-        bar.set("height", str(height))
-        bar.set(
-            "y", str(float(track.attrib["y"]) + float(track.attrib["height"]) - height)
-        )
-        states = {
-            "partial": 0 < day.coverage_ratio < 1,
-            "gap": day.observed_seconds == 0,
-            "zero": day.voice_seconds == 0 and day.coverage_ratio == 1,
+        track = nodes[f"{prefix}-track"]
+        spans = {
+            "future": day.future_spans,
+            "missing": day.missing_spans,
+            "voice": day.voice_spans,
+            "clock": day.clock_change_spans,
         }
-        for suffix, visible in states.items():
-            if not visible:
-                style(nodes[f"{prefix}-{suffix}"], "display", "none")
+        for name, intervals in spans.items():
+            path = nodes[f"{prefix}-{name}"]
+            path.set(
+                "d",
+                _span_path(track, intervals, float(path.get("data-min-height", "0"))),
+            )
+        if not day.clock_change_spans:
+            style(nodes[f"{prefix}-dst"], "display", "none")
         label = nodes.get(f"date-{i}")
         if label is not None:
             replace_text(label, "Today" if i == 29 else f"{day.date:%d}")
+
+
+def _span_path(track: Element, spans: tuple[ClockSpan, ...], minimum: float) -> str:
+    """Union display footprints within one authored column; never add opacity."""
+    height = float(track.attrib["height"])
+    x, y = float(track.attrib["x"]), float(track.attrib["y"])
+    width = float(track.attrib["width"])
+    bands: list[tuple[float, float]] = []
+    for span in spans:
+        start, end = (
+            minute / 1440 * height for minute in (span.start_minute, span.end_minute)
+        )
+        length = min(height, max(end - start, minimum))
+        top = min(height - length, max(0, (start + end - length) / 2))
+        bottom = top + length
+        if bands and top <= bands[-1][1]:
+            top, previous_end = bands.pop()
+            bottom = max(bottom, previous_end)
+        bands.append((top, bottom))
+    return " ".join(
+        f"M{x:g} {y + top:g}h{width:g}v{bottom - top:g}h{-width:g}Z"
+        for top, bottom in bands
+    )
 
 
 def _person_row(

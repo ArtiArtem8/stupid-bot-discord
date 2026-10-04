@@ -6,7 +6,7 @@ Elapsed arithmetic uses UTC; calendar boundaries use the caller's timezone.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from datetime import UTC, date, datetime, tzinfo
 from fractions import Fraction
 
 from api.progression.levels import LevelPolicy
@@ -16,28 +16,15 @@ from api.voice.metrics.companions import companions
 from api.voice.metrics.presence import presence
 from api.voice.metrics.xp import VoiceXpPolicy
 from api.voice.prediction import VoiceHoursEstimate, estimate_voice_hours
+from api.voice.profile.calendar import DailyVoiceActivity, daily_voice_activity
 from api.voice.read_models import BotStat, CompanionStat, PresenceStat, VoiceXpBreakdown
-from api.voice.scope import TimeRange, VoiceScope, local_calendar_range
+from api.voice.scope import (
+    TimeRange,
+    VoiceScope,
+    local_calendar_range,
+    observation_ranges,
+)
 from api.voice.timeline import VoiceTimeline
-
-
-@dataclass(frozen=True, slots=True)
-class DailyVoiceActivity:
-    """A local date; zero voice is only known where observation exists."""
-
-    date: date
-    voice_seconds: float
-    observed_seconds: float
-    possible_seconds: float
-
-    @property
-    def coverage_ratio(self) -> float:
-        """Return observed/requested elapsed time, or zero for an empty window."""
-        return (
-            self.observed_seconds / self.possible_seconds
-            if self.possible_seconds
-            else 0
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,23 +105,10 @@ def _period(
 def _observed_seconds(
     timeline: VoiceTimeline, guild_id: int, start: datetime, end: datetime
 ) -> float:
-    # Merge clipped intervals so overlapping replay coverage cannot exceed 100%.
-    intervals = sorted(
-        (
-            max(start, item.started_at.astimezone(UTC)),
-            min(end, item.ended_at.astimezone(UTC)),
-        )
-        for item in timeline.coverage
-        if item.guild_id == guild_id
+    return sum(
+        max(0.0, (min(end, item.end) - max(start, item.start)).total_seconds())
+        for item in observation_ranges(timeline, guild_id)
     )
-    cursor = start
-    seconds = 0.0
-    for lower, upper in intervals:
-        uncovered_start = max(lower, cursor)
-        if upper > uncovered_start:
-            seconds += (upper - uncovered_start).total_seconds()
-            cursor = upper
-    return seconds
 
 
 def _lifetime_period(
@@ -170,29 +144,10 @@ def build_activity_detail(
     period = _period(timeline, guild_id, as_of, timezone)
     scope = VoiceScope(guild_id=guild_id, time_range=period.time_range)
     measured = activity(timeline, user_id, scope, timezone=timezone)
-    daily = dict(measured.daily_seconds)
-    days: list[DailyVoiceActivity] = []
-    for offset in range(30):
-        day = period.first_date + timedelta(days=offset)
-        start = datetime.combine(day, time.min, timezone).astimezone(UTC)
-        end = min(
-            datetime.combine(day + timedelta(days=1), time.min, timezone).astimezone(
-                UTC
-            ),
-            period.time_range.end,
-        )
-        days.append(
-            DailyVoiceActivity(
-                day,
-                daily.get(day, 0.0),
-                _observed_seconds(timeline, guild_id, start, end),
-                (end - start).total_seconds(),
-            )
-        )
     return ActivityDetail(
         period,
         presence(timeline, user_id, scope),
-        tuple(days),
+        daily_voice_activity(timeline, user_id, guild_id, period.time_range, timezone),
         _peak(measured.hourly_seconds),
         _peak(measured.weekday_seconds),
     )

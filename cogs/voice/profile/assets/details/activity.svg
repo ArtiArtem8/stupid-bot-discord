@@ -7,6 +7,9 @@
     <pattern id="coverage-hatch" width="6" height="6" patternUnits="userSpaceOnUse">
       <path d="M0 6L6 0" data-stroke="muted" stroke="#a7b3c5" stroke-opacity="0.35" />
     </pattern>
+    <clipPath id="clock-column-clip">
+      <rect id="clock-column-bounds" x="0" y="262" width="14" height="148" />
+    </clipPath>
   </defs>
   <g id="shell-placement" inkscape:groupmode="layer" inkscape:label="Card surface">
     <rect id="card-shell" x="1" y="1" width="958" height="478" data-fill="surface" fill="#232732" rx="28" data-stroke="border" stroke="#59616e" />
@@ -34,224 +37,6 @@
     <text id="metric-label-3" x="728" y="205" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Sessions</text>
     <text id="metric-3" x="728" y="178" font-size="36" data-fill="text" fill="#f4f6fa" data-width="215" font-weight="600" font-variant-numeric="tabular-nums">31</text>
     <path d="M32 220H928M671 239V417" data-stroke="border" stroke="#59616e" />
-    <text id="chart-title" x="32" y="248" font-size="20" data-fill="text" fill="#f4f6fa" font-weight="600" font-variant-numeric="tabular-nums">Daily voice time</text>
-    <text id="chart-max" x="644" y="248" font-size="18" data-fill="muted" fill="#f4f6fa" text-anchor="end" font-variant-numeric="tabular-nums">8h</text>
-    <g id="day-0-placement" transform="translate(34 0)">
-      <rect id="day-0-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-0-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-0-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-0-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-0-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-1-placement" transform="translate(54.4 0)">
-      <rect id="day-1-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-1-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-1-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-1-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-1-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-2-placement" transform="translate(74.8 0)">
-      <rect id="day-2-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-2-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-2-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-2-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-2-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-3-placement" transform="translate(95.2 0)">
-      <rect id="day-3-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-3-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-3-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-3-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-3-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-4-placement" transform="translate(115.6 0)">
-      <rect id="day-4-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-4-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-4-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-4-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-4-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-5-placement" transform="translate(136 0)">
-      <rect id="day-5-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-5-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-5-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-5-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-5-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-6-placement" transform="translate(156.4 0)">
-      <rect id="day-6-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-6-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-6-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-6-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-6-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-7-placement" transform="translate(176.8 0)">
-      <rect id="day-7-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-7-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-7-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-7-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-7-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-8-placement" transform="translate(197.2 0)">
-      <rect id="day-8-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-8-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-8-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-8-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-8-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-9-placement" transform="translate(217.6 0)">
-      <rect id="day-9-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-9-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-9-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-9-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-9-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-10-placement" transform="translate(238 0)">
-      <rect id="day-10-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-10-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-10-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-10-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-10-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-11-placement" transform="translate(258.4 0)">
-      <rect id="day-11-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-11-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-11-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-11-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-11-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-12-placement" transform="translate(278.8 0)">
-      <rect id="day-12-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-12-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-12-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-12-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-12-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-13-placement" transform="translate(299.2 0)">
-      <rect id="day-13-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-13-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-13-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-13-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-13-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-14-placement" transform="translate(319.6 0)">
-      <rect id="day-14-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-14-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-14-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-14-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-14-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-15-placement" transform="translate(340 0)">
-      <rect id="day-15-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-15-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-15-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-15-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-15-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-16-placement" transform="translate(360.4 0)">
-      <rect id="day-16-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-16-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-16-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-16-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-16-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-17-placement" transform="translate(380.8 0)">
-      <rect id="day-17-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-17-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-17-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-17-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-17-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-18-placement" transform="translate(401.2 0)">
-      <rect id="day-18-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-18-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-18-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-18-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-18-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-19-placement" transform="translate(421.6 0)">
-      <rect id="day-19-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-19-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-19-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-19-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-19-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-20-placement" transform="translate(442 0)">
-      <rect id="day-20-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-20-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-20-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-20-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-20-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-21-placement" transform="translate(462.4 0)">
-      <rect id="day-21-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-21-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-21-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-21-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-21-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-22-placement" transform="translate(482.8 0)">
-      <rect id="day-22-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-22-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-22-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-22-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-22-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-23-placement" transform="translate(503.2 0)">
-      <rect id="day-23-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-23-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-23-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-23-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-23-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-24-placement" transform="translate(523.6 0)">
-      <rect id="day-24-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-24-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-24-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-24-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-24-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-25-placement" transform="translate(544 0)">
-      <rect id="day-25-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-25-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-25-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-25-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-25-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-26-placement" transform="translate(564.4 0)">
-      <rect id="day-26-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-26-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-26-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-26-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-26-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-27-placement" transform="translate(584.8 0)">
-      <rect id="day-27-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-27-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-27-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-27-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-27-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-28-placement" transform="translate(605.2 0)">
-      <rect id="day-28-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-28-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-28-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-28-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-28-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <g id="day-29-placement" transform="translate(625.6 0)">
-      <rect id="day-29-track" x="0" y="266" width="12" height="120" data-fill="panel" fill="#232732" />
-      <rect id="day-29-partial" x="0" y="266" width="12" height="120" fill="url(#coverage-hatch)" />
-      <rect id="day-29-bar" x="0" y="266" width="12" height="120" data-fill="accent" fill="#232732" />
-      <path id="day-29-gap" d="M1 377L11 367M1 367L11 377" data-stroke="muted" stroke="#a7b3c5" stroke-width="2" />
-      <rect id="day-29-zero" x="0" y="384" width="12" height="2" data-fill="bright" fill="#232732" />
-    </g>
-    <text id="date-0" x="40.0" y="410" font-size="18" data-fill="muted" fill="#f4f6fa" text-anchor="middle" font-variant-numeric="tabular-nums">04</text>
-    <text id="date-7" x="182.79999999999998" y="410" font-size="18" data-fill="muted" fill="#f4f6fa" text-anchor="middle" font-variant-numeric="tabular-nums">04</text>
-    <text id="date-14" x="325.59999999999997" y="410" font-size="18" data-fill="muted" fill="#f4f6fa" text-anchor="middle" font-variant-numeric="tabular-nums">04</text>
-    <text id="date-21" x="468.4" y="410" font-size="18" data-fill="muted" fill="#f4f6fa" text-anchor="middle" font-variant-numeric="tabular-nums">04</text>
-    <text id="date-29" x="631.5999999999999" y="410" font-size="18" data-fill="muted" fill="#f4f6fa" text-anchor="middle" font-variant-numeric="tabular-nums">04</text>
-    <text id="coverage-legend" x="644" y="430" font-size="18" data-fill="muted" fill="#f4f6fa" text-anchor="end" font-variant-numeric="tabular-nums">Hatched: partial · ×: unknown</text>
     <text id="stat-label-0" x="700" y="249" font-size="19" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Average session</text>
     <text id="stat-0" x="700" y="274" font-size="26" data-fill="text" fill="#f4f6fa" data-width="226" font-weight="600" font-variant-numeric="tabular-nums">1h 33m</text>
     <text id="stat-label-1" x="700" y="296" font-size="19" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Median session</text>
@@ -260,10 +45,333 @@
     <text id="stat-2" x="700" y="368" font-size="26" data-fill="text" fill="#f4f6fa" data-width="226" font-weight="600" font-variant-numeric="tabular-nums">21:00</text>
     <text id="stat-label-3" x="700" y="390" font-size="19" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Top weekday</text>
     <text id="stat-3" x="700" y="415" font-size="26" data-fill="text" fill="#f4f6fa" data-width="226" font-weight="600" font-variant-numeric="tabular-nums">Saturday</text>
+    <text id="chart-title" x="32" y="245" font-size="20" data-fill="text" fill="#a7b3c5" font-weight="600">Daily activity</text>
+    <text id="clock-note" x="282" y="245" font-size="17" data-fill="muted" fill="#a7b3c5">* DST</text>
+    <rect id="voice-legend-swatch" x="435" y="234" width="12" height="10" data-fill="accent" fill="#da4fbe" />
+    <text id="voice-legend" x="454" y="245" font-size="18" data-fill="muted" fill="#a7b3c5">Voice</text>
+    <rect id="missing-legend-swatch" x="548" y="231" width="13" height="14" fill="url(#coverage-hatch)" />
+    <text id="missing-legend" x="568" y="245" font-size="18" data-fill="muted" fill="#a7b3c5">No data</text>
+    <g id="clock-chart-placement" inkscape:label="Local clock activity">
+      <text id="hour-0" x="88" y="268.0" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="end">00:00</text>
+      <text id="hour-6" x="88" y="305.0" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="end">06:00</text>
+      <text id="hour-12" x="88" y="342.0" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="end">12:00</text>
+      <text id="hour-18" x="88" y="379.0" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="end">18:00</text>
+      <text id="hour-24" x="88" y="416.0" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="end">24:00</text>
+      <g id="day-0-placement" transform="translate(104 0)" inkscape:label="Day 1">
+        <g id="day-0-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-0-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-0-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-0-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-0-voice" d="" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-0-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-0-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-1-placement" transform="translate(122 0)" inkscape:label="Day 2">
+        <g id="day-1-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-1-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-1-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-1-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-1-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-1-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-1-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-2-placement" transform="translate(140 0)" inkscape:label="Day 3">
+        <g id="day-2-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-2-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-2-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-2-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-2-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-2-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-2-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-3-placement" transform="translate(158 0)" inkscape:label="Day 4">
+        <g id="day-3-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-3-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-3-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-3-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-3-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-3-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-3-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-4-placement" transform="translate(176 0)" inkscape:label="Day 5">
+        <g id="day-4-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-4-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-4-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-4-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-4-voice" d="" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-4-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-4-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-5-placement" transform="translate(194 0)" inkscape:label="Day 6">
+        <g id="day-5-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-5-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-5-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-5-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-5-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-5-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-5-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-6-placement" transform="translate(212 0)" inkscape:label="Day 7">
+        <g id="day-6-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-6-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-6-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-6-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-6-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-6-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-6-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-7-placement" transform="translate(230 0)" inkscape:label="Day 8">
+        <g id="day-7-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-7-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-7-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-7-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-7-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-7-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-7-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-8-placement" transform="translate(248 0)" inkscape:label="Day 9">
+        <g id="day-8-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-8-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-8-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-8-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-8-voice" d="" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-8-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-8-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-9-placement" transform="translate(266 0)" inkscape:label="Day 10">
+        <g id="day-9-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-9-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-9-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-9-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-9-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-9-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-9-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-10-placement" transform="translate(284 0)" inkscape:label="Day 11">
+        <g id="day-10-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-10-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-10-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-10-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-10-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-10-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-10-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-11-placement" transform="translate(302 0)" inkscape:label="Day 12">
+        <g id="day-11-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-11-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-11-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-11-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-11-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-11-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-11-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-12-placement" transform="translate(320 0)" inkscape:label="Day 13">
+        <g id="day-12-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-12-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-12-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-12-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-12-voice" d="" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-12-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-12-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-13-placement" transform="translate(338 0)" inkscape:label="Day 14">
+        <g id="day-13-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-13-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-13-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-13-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-13-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-13-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-13-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-14-placement" transform="translate(356 0)" inkscape:label="Day 15">
+        <g id="day-14-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-14-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-14-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-14-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-14-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-14-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-14-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-15-placement" transform="translate(374 0)" inkscape:label="Day 16">
+        <g id="day-15-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-15-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-15-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-15-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-15-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-15-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-15-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-16-placement" transform="translate(392 0)" inkscape:label="Day 17">
+        <g id="day-16-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-16-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-16-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-16-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-16-voice" d="" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-16-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-16-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-17-placement" transform="translate(410 0)" inkscape:label="Day 18">
+        <g id="day-17-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-17-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-17-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-17-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-17-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-17-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-17-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-18-placement" transform="translate(428 0)" inkscape:label="Day 19">
+        <g id="day-18-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-18-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-18-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-18-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-18-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-18-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-18-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-19-placement" transform="translate(446 0)" inkscape:label="Day 20">
+        <g id="day-19-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-19-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-19-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-19-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-19-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-19-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-19-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-20-placement" transform="translate(464 0)" inkscape:label="Day 21">
+        <g id="day-20-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-20-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-20-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-20-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-20-voice" d="" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-20-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-20-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-21-placement" transform="translate(482 0)" inkscape:label="Day 22">
+        <g id="day-21-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-21-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-21-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-21-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-21-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-21-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-21-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-22-placement" transform="translate(500 0)" inkscape:label="Day 23">
+        <g id="day-22-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-22-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-22-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-22-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-22-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-22-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-22-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-23-placement" transform="translate(518 0)" inkscape:label="Day 24">
+        <g id="day-23-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-23-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-23-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-23-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-23-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-23-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-23-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-24-placement" transform="translate(536 0)" inkscape:label="Day 25">
+        <g id="day-24-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-24-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-24-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-24-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-24-voice" d="" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-24-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-24-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-25-placement" transform="translate(554 0)" inkscape:label="Day 26">
+        <g id="day-25-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-25-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-25-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-25-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-25-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-25-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-25-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-26-placement" transform="translate(572 0)" inkscape:label="Day 27">
+        <g id="day-26-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-26-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-26-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-26-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-26-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-26-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-26-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-27-placement" transform="translate(590 0)" inkscape:label="Day 28">
+        <g id="day-27-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-27-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-27-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-27-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-27-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-27-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-27-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-28-placement" transform="translate(608 0)" inkscape:label="Day 29">
+        <g id="day-28-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-28-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-28-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-28-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-28-voice" d="" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-28-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-28-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <g id="day-29-placement" transform="translate(626 0)" inkscape:label="Day 30">
+        <g id="day-29-bands" clip-path="url(#clock-column-clip)">
+          <rect id="day-29-track" x="0" y="262" width="14" height="148" data-fill="panel" fill="#2b303b" />
+          <path id="day-29-future" d="" data-fill="surface" fill="#232732" />
+          <path id="day-29-missing" d="" fill="url(#coverage-hatch)" />
+          <path id="day-29-voice" d="M0 365h14v20h-14Z" data-fill="accent" fill="#da4fbe" data-min-height="3" />
+          <path id="day-29-clock" d="" fill="none" data-stroke="bright" stroke="#f4c2eb" stroke-dasharray="2 2" stroke-width="1" />
+        </g>
+        <text id="day-29-dst" x="7" y="259" font-size="17" data-fill="muted" fill="#a7b3c5" text-anchor="middle">*</text>
+      </g>
+      <path id="hour-0-line" d="M102 262H641" data-stroke="muted" stroke="#59616e" stroke-opacity=".5" stroke-width="1.25" />
+      <path id="hour-6-line" d="M102 299H641" data-stroke="muted" stroke="#59616e" stroke-opacity=".5" stroke-width="1.25" />
+      <path id="hour-12-line" d="M102 336H641" data-stroke="muted" stroke="#59616e" stroke-opacity=".5" stroke-width="1.25" />
+      <path id="hour-18-line" d="M102 373H641" data-stroke="muted" stroke="#59616e" stroke-opacity=".5" stroke-width="1.25" />
+      <path id="hour-24-line" d="M102 410H641" data-stroke="muted" stroke="#59616e" stroke-opacity=".5" stroke-width="1.25" />
+    </g>
+    <text id="date-0" x="111" y="430" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="middle">04</text>
+    <text id="date-7" x="237" y="430" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="middle">04</text>
+    <text id="date-14" x="363" y="430" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="middle">04</text>
+    <text id="date-21" x="489" y="430" font-size="18" data-fill="muted" fill="#a7b3c5" text-anchor="middle">04</text>
+    <text id="date-29" x="641" y="430" font-size="18" data-fill="bright" fill="#a7b3c5" text-anchor="end" font-weight="600">Today</text>
   </g>
   <g id="footer-placement" inkscape:groupmode="layer" inkscape:label="Period and observation coverage">
     <path d="M32 437H928" data-stroke="border" stroke="#59616e" />
-    <text id="period-label" x="32" y="463" font-size="20" data-fill="muted" fill="#f4f6fa" data-width="675" font-variant-numeric="tabular-nums">Sep 4 – Oct 3 · Europe/Moscow</text>
-    <text id="coverage-label" x="928" y="463" font-size="20" data-fill="muted" fill="#f4f6fa" data-width="210" text-anchor="end" font-variant-numeric="tabular-nums">Coverage 98%</text>
+    <text id="period-label" x="32" y="463" font-size="20" data-fill="muted" fill="#f4f6fa" data-width="620" font-variant-numeric="tabular-nums">Sep 4 – Oct 3 · Europe/Moscow</text>
+    <text id="coverage-label" x="928" y="463" font-size="20" data-fill="muted" fill="#f4f6fa" data-width="250" text-anchor="end" font-variant-numeric="tabular-nums">Coverage 98%</text>
   </g>
 </svg>
