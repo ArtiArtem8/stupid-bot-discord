@@ -31,6 +31,7 @@ from cogs.voice.profile.design import (
     fit_texts,
     format_duration,
     normalized_png,
+    property_value,
     replace_text,
     safe_label,
     style,
@@ -192,17 +193,42 @@ class DetailCardRenderer:
             "stream": xp.stream_bonus,
             "video": xp.video_bonus,
         }
-        negative = {"audio": xp.audio_reduction, "cap": xp.bonus_cap_reduction}
-        values = {f"xp-{key}": f"+{_xp(value)}" for key, value in positive.items()}
-        values.update(
-            {f"xp-{key}": f"−{_xp(value)}" for key, value in negative.items()}
+        negative = {
+            "mute": xp.mute_reduction,
+            "deaf": xp.deaf_reduction,
+            "cap": xp.bonus_cap_reduction,
+        }
+        muted = property_value(nodes["xp-label-solo"], "fill", "")
+        for key, value in positive.items():
+            _bind_xp(nodes[f"xp-{key}"], value, muted)
+        for key, value in negative.items():
+            _bind_xp(nodes[f"xp-{key}"], value, muted, negative=True)
+        _bind_xp(nodes["recent-xp"], detail.recent_xp, muted, suffix=" XP")
+        _labels(
+            nodes,
+            {
+                "xp-total": f"{int(xp.total):,} XP",
+                "xp-estimate": _estimate_label(detail.estimate),
+            },
         )
-        values["xp-total"] = f"{int(xp.total):,} XP"
-        values["recent-xp"] = f"+{_xp(detail.recent_xp)} XP"
-        values["xp-estimate"] = _estimate_label(detail.estimate)
-        _labels(nodes, values)
         _lifetime_labels(nodes, detail.lifetime_period)
         return self._png(root, nodes)
+
+
+def _bind_xp(
+    node: Element,
+    value: Fraction,
+    muted: str,
+    *,
+    negative: bool = False,
+    suffix: str = "",
+) -> None:
+    label = _xp(value)
+    if value >= 1:
+        label = ("−" if negative else "+") + label
+    replace_text(node, label + suffix)
+    if value == 0:
+        style(node, "fill", muted)
 
 
 def _xp(value: Fraction) -> str:

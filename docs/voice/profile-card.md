@@ -53,8 +53,12 @@ no member fetches or companion avatar downloads are needed.
 
 XP explains lifetime awards using the canonical policy and separately displays
 the last 30 days' XP. Components remain exact `Fraction` values until formatting.
-Green positive terms and red reductions retain explicit signs. All XP labels
-truncate fractional XP, matching the main profile. Compact component labels also
+Green positive terms and red reductions retain signs for amounts of at least one
+XP. Zero values are unsigned and muted; `<1` values are unsigned and retain their
+category color. Audio reductions show Muted (including Stage suppression) and
+Deafened separately, attributing each interval only to its strongest restriction.
+The Bonus limit row shows the combined stream/camera bonus above the existing cap.
+All XP labels truncate fractional XP, matching the main profile. Compact labels also
 truncate at their displayed precision. Components are formatted independently,
 so their displayed sum can differ from the displayed total; exact awards remain
 unchanged. Nonzero components below one XP display `<1`; nonzero durations below

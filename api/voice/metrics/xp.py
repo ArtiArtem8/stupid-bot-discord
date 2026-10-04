@@ -118,27 +118,38 @@ class VoiceXpPolicy:
             self.stream_bonus if social and state.self_stream is True else Fraction()
         )
         video = self.video_bonus if social and state.self_video is True else Fraction()
+        mute, deaf = self._audio_reductions(state, base + large)
         return VoiceXpBreakdown(
             solo_base=Fraction() if social else base,
             social_base=base if social else Fraction(),
             large_group_bonus=large,
-            audio_reduction=(base + large) * (1 - self._audio_factor(state)),
+            mute_reduction=mute,
+            deaf_reduction=deaf,
             stream_bonus=stream,
             video_bonus=video,
             bonus_cap_reduction=max(Fraction(), stream + video - self.contribution_cap),
         )
 
-    def _audio_factor(self, state: VoiceStateSnapshot) -> Fraction:
-        # One strongest restriction, never stacked mute/deaf penalties.
-        return min(
+    def _audio_reductions(
+        self, state: VoiceStateSnapshot, base: Fraction
+    ) -> tuple[Fraction, Fraction]:
+        mute = (
             self.mute_factor
             if state.self_mute is True or state.server_mute is True
-            else Fraction(1),
-            self.suppress_factor if state.suppress is True else Fraction(1),
+            else Fraction(1)
+        )
+        stage = self.suppress_factor if state.suppress is True else Fraction(1)
+        deaf = (
             self.deaf_factor
             if state.self_deaf is True or state.server_deaf is True
-            else Fraction(1),
+            else Fraction(1)
         )
+        factor = min(mute, stage, deaf)
+        reduction = base * (1 - factor)
+        # Stage suppression belongs to mute; equal factors attribute to deaf.
+        if factor == deaf:
+            return Fraction(), reduction
+        return reduction, Fraction()
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,17 +200,28 @@ def _winning_intervals(
 def _sum_awards(
     intervals: Iterator[tuple[timedelta, VoiceXpBreakdown]],
 ) -> VoiceXpBreakdown:
-    solo = social = large = audio = stream = video = cap = Fraction()
+    solo = social = large = stream = video = cap = Fraction()
+    mute = deaf = Fraction()
     for duration, rate in intervals:
         hours = Fraction(duration // _MICROSECOND, _MICROSECONDS_PER_HOUR)
         solo += rate.solo_base * hours
         social += rate.social_base * hours
         large += rate.large_group_bonus * hours
-        audio += rate.audio_reduction * hours
+        mute += rate.mute_reduction * hours
+        deaf += rate.deaf_reduction * hours
         stream += rate.stream_bonus * hours
         video += rate.video_bonus * hours
         cap += rate.bonus_cap_reduction * hours
-    return VoiceXpBreakdown(solo, social, large, audio, stream, video, cap)
+    return VoiceXpBreakdown(
+        solo_base=solo,
+        social_base=social,
+        large_group_bonus=large,
+        stream_bonus=stream,
+        video_bonus=video,
+        bonus_cap_reduction=cap,
+        mute_reduction=mute,
+        deaf_reduction=deaf,
+    )
 
 
 def _require_group_threshold(value: object) -> None:

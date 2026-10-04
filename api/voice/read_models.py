@@ -50,16 +50,24 @@ class VoiceXpBreakdown:
     A policy rate returns this award for one hour. An integrated explanation
     returns the same components accumulated over the requested period. Neither
     value is persisted or rounded. Bonuses remain visible before the cap, with
-    the excess shown explicitly as bonus_cap_reduction.
+    the excess shown explicitly as bonus_cap_reduction. Audio reductions are
+    attributed to the strongest active restriction, never stacked per interval.
+    The mute category includes Stage suppression; deaf is tracked separately.
     """
 
     solo_base: Fraction = Fraction()
     social_base: Fraction = Fraction()
     large_group_bonus: Fraction = Fraction()
-    audio_reduction: Fraction = Fraction()
     stream_bonus: Fraction = Fraction()
     video_bonus: Fraction = Fraction()
     bonus_cap_reduction: Fraction = Fraction()
+    mute_reduction: Fraction = Fraction()
+    deaf_reduction: Fraction = Fraction()
+
+    @property
+    def audio_reduction(self) -> Fraction:
+        """Return the exact total of mute/Stage and deaf reductions."""
+        return self.mute_reduction + self.deaf_reduction
 
     @property
     def total(self) -> Fraction:

@@ -155,8 +155,8 @@ class TestDetailBindings(unittest.TestCase):
         self.renderer.render_xp(detail, self.identity)
         root = fromstring(self.raster.layers.call_args.args[0][0])
         nodes = {node.get("id"): node for node in root.iter()}
-        self.assertEqual(nodes["xp-solo"].text, "+<1")
-        self.assertEqual(nodes["xp-social"].text, "+<1")
+        self.assertEqual(nodes["xp-solo"].text, "<1")
+        self.assertEqual(nodes["xp-social"].text, "<1")
         self.assertEqual(nodes["xp-total"].text, "1 XP")
         large = replace(
             detail, breakdown=VoiceXpBreakdown(social_base=Fraction(10**12, 7))
@@ -166,6 +166,51 @@ class TestDetailBindings(unittest.TestCase):
         nodes = {node.get("id"): node for node in root.iter()}
         self.assertEqual(nodes["xp-total"].text, "142,857,142,857 XP")
         self.assertEqual(nodes["xp-social"].text, "+142.8B")
+
+    def test_xp_zero_is_neutral_and_subunit_signs_are_omitted(self) -> None:
+        detail = replace(
+            build_xp_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of),
+            breakdown=VoiceXpBreakdown(
+                social_base=Fraction(10), mute_reduction=Fraction(1, 2)
+            ),
+        )
+        self.renderer.render_xp(detail, self.identity)
+        root = fromstring(self.raster.layers.call_args.args[0][0])
+        nodes = {node.get("id"): node for node in root.iter()}
+        tokens = theme_tokens(ASSETS / "themes.json", self.identity.appearance)
+        for key in ("solo", "group", "stream", "video", "deaf", "cap"):
+            self.assertEqual(nodes[f"xp-{key}"].text, "0")
+            self.assertEqual(
+                property_value(nodes[f"xp-{key}"], "fill", ""), tokens["muted"]
+            )
+        self.assertEqual(nodes["recent-xp"].text, "0 XP")
+        self.assertEqual(
+            property_value(nodes["recent-xp"], "fill", ""), tokens["muted"]
+        )
+        self.assertEqual(nodes["xp-mute"].text, "<1")
+        self.assertEqual(
+            property_value(nodes["xp-mute"], "fill", ""), tokens["negative"]
+        )
+        self.assertEqual(nodes["xp-social"].text, "+10")
+        self.assertEqual(
+            property_value(nodes["xp-social"], "fill", ""), tokens["positive"]
+        )
+
+    def test_audio_categories_are_shown_as_separate_reductions(self) -> None:
+        detail = replace(
+            build_xp_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of),
+            breakdown=VoiceXpBreakdown(
+                social_base=Fraction(2000),
+                mute_reduction=Fraction(210),
+                deaf_reduction=Fraction(450),
+            ),
+        )
+        self.renderer.render_xp(detail, self.identity)
+        root = fromstring(self.raster.layers.call_args.args[0][0])
+        nodes = {node.get("id"): node for node in root.iter()}
+        for key, value in (("mute", "210"), ("deaf", "450")):
+            self.assertEqual(nodes[f"xp-{key}"].text, f"−{value}")
+        self.assertEqual(nodes["xp-total"].text, "1,340 XP")
 
     def test_coverage_has_two_decimals_without_rounding_up_to_complete(self) -> None:
         detail = build_xp_detail(VoiceTimeline((), (), ()), 1, 1, self.as_of)

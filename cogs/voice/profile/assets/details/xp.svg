@@ -35,18 +35,20 @@
     <text id="xp-heading-2" x="645" y="291" font-size="22" data-fill="text" fill="#f4f6fa" font-variant-numeric="tabular-nums">Reductions</text>
     <text id="xp-label-solo" x="32" y="326" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Solo</text>
     <text id="xp-solo" x="315" y="326" font-size="22" data-fill="positive" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">+2,410</text>
-    <text id="xp-label-social" x="32" y="354" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Social</text>
+    <text id="xp-label-social" x="32" y="354" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">With people</text>
     <text id="xp-social" x="315" y="354" font-size="22" data-fill="positive" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">+48,700</text>
     <text id="xp-label-group" x="347" y="326" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">5+ people</text>
     <text id="xp-group" x="613" y="326" font-size="22" data-fill="positive" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">+860</text>
-    <text id="xp-label-stream" x="347" y="354" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Stream</text>
+    <text id="xp-label-stream" x="347" y="354" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Streaming</text>
     <text id="xp-stream" x="613" y="354" font-size="22" data-fill="positive" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">+1,920</text>
-    <text id="xp-label-video" x="347" y="382" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Video</text>
+    <text id="xp-label-video" x="347" y="382" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Camera</text>
     <text id="xp-video" x="613" y="382" font-size="22" data-fill="positive" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">+470</text>
-    <text id="xp-label-audio" x="645" y="326" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Audio</text>
-    <text id="xp-audio" x="928" y="326" font-size="22" data-fill="negative" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">−1,240</text>
-    <text id="xp-label-cap" x="645" y="354" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Bonus cap</text>
-    <text id="xp-cap" x="928" y="354" font-size="22" data-fill="negative" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">−280</text>
+    <text id="xp-label-mute" x="645" y="326" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Muted</text>
+    <text id="xp-mute" x="928" y="326" font-size="22" data-fill="negative" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">−340</text>
+    <text id="xp-label-deaf" x="645" y="354" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Deafened</text>
+    <text id="xp-deaf" x="928" y="354" font-size="22" data-fill="negative" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">−900</text>
+    <text id="xp-label-cap" x="645" y="382" font-size="20" data-fill="muted" fill="#f4f6fa" font-variant-numeric="tabular-nums">Bonus limit</text>
+    <text id="xp-cap" x="928" y="382" font-size="22" data-fill="negative" fill="#f4f6fa" data-width="142" text-anchor="end" font-variant-numeric="tabular-nums">−280</text>
     <text id="xp-estimate" x="32" y="235" font-size="20" data-fill="muted" fill="#a7b3c5" data-width="530">~5.8 h in voice to next level</text>
   </g>
   <g id="footer-placement" inkscape:groupmode="layer" inkscape:label="Period and observation coverage">
