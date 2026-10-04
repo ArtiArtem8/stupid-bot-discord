@@ -189,7 +189,7 @@ class DetailCardRenderer:
                     presentation.names.get(top[0], "Unknown user")
                 )
                 if top
-                else "—",
+                else "-",
                 "top-bot-time": format_duration(top[1], compact=True) if top else "",
             },
         )
