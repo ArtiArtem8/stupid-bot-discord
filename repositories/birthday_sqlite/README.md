@@ -1,39 +1,49 @@
-# Birthday SQLite pilot
+# Birthday SQLite storage
 
-This opt-in pilot implements the birthday repository's domain operations with
-SQLite, SQLAlchemy Core, aiosqlite and Alembic. The bot still constructs the JSON
-repository. Nothing imports this package from runtime startup or cogs. Pilot
-dependencies belong to the development group; exact versions are in `uv.lock`.
+The ordinary application can select SQLite for birthdays with the explicit
+`--birthday-sqlite DATABASE` switch. Without it, the existing JSON owner remains
+active. SQLAlchemy Core, aiosqlite and Alembic are runtime dependencies, pinned by
+`uv.lock`. No migration or import runs during application startup.
 
-## Scope and decision
+## Scope and ownership
 
-The current JSON store owns whole-document updates, file replacement, backup
-rotation and physical-worker lifetime. The pilot evaluates replacing those
-obligations with database transactions while preserving birthday models, method
-results, delivery settings, member order and congratulation history. It does not
-change scheduling, message delivery, Music, voice history, XP, or deployment.
+`StupidBot` owns one engine and passes its selected `BirthdayManager` to the
+birthday extension. Commands, the timer and deletion confirmations all use that
+manager. Shutdown joins startup and background tasks, unloads cogs, then disposes
+the pool. Startup rejects missing files and unsupported Alembic revisions before
+loading cogs; errors propagate, with no fallback to JSON or an empty database.
 
-The concrete correctness risk is concurrent operations overwriting each other,
-or one task committing another task's transaction on a shared connection. Each
-operation here checks out one connection for its entire transaction. There is
-no application lock or custom transaction scheduler.
+SQLite replaces whole-document JSON updates, replacement and backup rotation
+for opted-in birthday operations. Domain models, delivery settings, member order
+and congratulation markers retain their existing semantics. The JSON repository
+remains for the default path. Maintaining both paths adds code; this integration
+does not claim an overall reduction in complexity. Music, voice and other stores
+are unchanged. There is no generic backend registry or transaction scheduler.
 
-The implementation is deliberately isolated, not a runtime backend switch.
-It adds code while both implementations coexist. No overall LOC reduction,
-voice throughput improvement, or production readiness is claimed from this pilot.
+## Windows maintenance and local selection
 
-## Reproduce
+Run from the repository root. Use a separate local directory; keep the source JSON
+as a read-only import input. These commands do not connect to Discord:
 
-Run from the repository root after `uv sync --locked`. Use a dedicated directory
-under ignored `data/`; do not point maintenance commands at production files.
-Create `data/sqlite-pilot` first (`mkdir -p data/sqlite-pilot` on Linux).
-
-```bash
-uv run --locked python -m experiments.birthday_sqlite --database data/sqlite-pilot/birthdays.sqlite migrate
-uv run --locked python -m experiments.birthday_sqlite --database data/sqlite-pilot/birthdays.sqlite import-json data/user_birthdays.json
-uv run --locked python -m experiments.birthday_sqlite --database data/sqlite-pilot/birthdays.sqlite backup data/sqlite-pilot/backup.sqlite
-uv run --locked python -m experiments.birthday_sqlite --database data/sqlite-pilot/restored.sqlite restore data/sqlite-pilot/backup.sqlite
+```powershell
+New-Item -ItemType Directory -Path "$env:TEMP/stupid-birthday-local" -Force
+uv run --locked python -m repositories.birthday_sqlite --database "$env:TEMP/stupid-birthday-local/birthdays.sqlite" migrate
+uv run --locked python -m repositories.birthday_sqlite --database "$env:TEMP/stupid-birthday-local/birthdays.sqlite" import-json data/user_birthdays.json
+uv run --locked python -m repositories.birthday_sqlite --database "$env:TEMP/stupid-birthday-local/birthdays.sqlite" backup "$env:TEMP/stupid-birthday-local/backup.sqlite"
+uv run --locked python -m repositories.birthday_sqlite --database "$env:TEMP/stupid-birthday-local/restored.sqlite" restore "$env:TEMP/stupid-birthday-local/backup.sqlite"
 ```
+
+To select that prepared file on a future explicitly authorized bot launch, append
+`--birthday-sqlite "$env:TEMP/stupid-birthday-local/birthdays.sqlite"` to the normal
+`main.py` command. This selects birthdays only; it does not isolate other bot data.
+The integration tests exercise startup and Cog registration offline, without
+starting a Discord connection or changing live configuration.
+
+Only one application may own this database. Stop its owner before migration or
+import. Backup can read a live source. Removing the switch selects the unchanged
+JSON again; SQLite changes are not automatically exported back. Retain a database
+backup before switching; the old JSON is a historical snapshot, not a synchronized
+rollback copy.
 
 All paths are explicit. Migration is an operator action, not an application
 startup side effect. Alembic creates an empty database through the checked-in
@@ -66,9 +76,9 @@ validate application semantics or replace retaining backups on another medium.
   `max_overflow=0`, and a 10-second checkout timeout. SQLite's busy timeout is
   5 seconds. This bounds active connections, not the number of awaiting requests.
 - Reads and writes both use `async with engine.begin()`. Never pass that
-  connection to independent concurrent tasks. All pilot operations, including
+  connection to independent concurrent tasks. All repository operations, including
   readers, serialize through this pool. Multiple independent application owners
-  are not the supported pilot configuration; lock conflicts propagate as errors.
+  are not the supported configuration; lock conflicts propagate as errors.
 - Driver-managed implicit transactions are disabled with `isolation_level=None`.
   SQLAlchemy's `begin` event emits `BEGIN`, covering reads and DDL as well as DML.
   This documented approach avoids relying on an `autocommit` attribute exposed
@@ -94,8 +104,8 @@ boundary. Regular repository operations use the library's async API.
 
 ```bash
 uv run --locked pytest -q tests/repositories/test_sqlite_birthday.py
-uv run --locked basedpyright experiments/birthday_sqlite
-uv run --locked ty check experiments/birthday_sqlite
+uv run --locked basedpyright repositories/birthday_sqlite
+uv run --locked ty check repositories/birthday_sqlite
 ```
 
 The tests compare semantic operations with the JSON repository, exercise
@@ -113,11 +123,9 @@ Alembic revision and repository readability before choosing a restored file.
 The diagnostic backup operation deliberately does not reject a source merely
 because it contains application-level inconsistencies.
 
-Before any runtime adoption, integrate repository lifecycle with the application
-and run the same tests on the target Linux host. A separate voice experiment must
-measure batch persistence, profile reads, cancellation, connection wait and
-cold/warm replay with real voice records. Birthday tests do not determine a suitable
-voice pool size, cache revision policy, event schema, or XP semantics.
+Validation covers this Windows copy. No Linux execution, deployment, or live
+Discord birthday delivery is part of this integration. Birthday tests do not
+determine a suitable voice pool size, event schema, cache policy, or XP semantics.
 
 References: [SQLAlchemy SQLite transaction control](https://docs.sqlalchemy.org/en/21/dialects/sqlite.html),
 [typed Core tables](https://docs.sqlalchemy.org/en/21/core/metadata.html),

@@ -1,4 +1,4 @@
-"""Validate the existing birthday JSON format before touching the pilot database."""
+"""Validate the existing birthday JSON format before touching the birthday database."""
 
 import json
 from pathlib import Path

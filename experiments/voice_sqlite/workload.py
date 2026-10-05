@@ -11,10 +11,10 @@ from time import perf_counter
 
 from api.voice.model import VoiceJournalRecord
 from api.voice.timeline import build_timeline
-from experiments.birthday_sqlite.database import copy_database, migrate, open_engine
-from experiments.birthday_sqlite.repository import SQLiteBirthdayRepository
 from experiments.voice_sqlite.models import contexts, project, verify_models
 from experiments.voice_sqlite.store import TrialVoiceStore, open_reader
+from repositories.birthday_sqlite.database import copy_database, migrate, open_engine
+from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
 from utils.asyncio_utils import run_in_thread
 from utils.json_types import JsonObject
 

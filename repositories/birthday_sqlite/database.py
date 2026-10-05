@@ -1,4 +1,4 @@
-"""Own pilot connections, explicit migrations and consistent SQLite copies."""
+"""Own birthday connections, explicit migrations and consistent SQLite copies."""
 
 import sqlite3
 from contextlib import closing
@@ -6,7 +6,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import URL, Connection, create_engine, event
+from sqlalchemy import URL, Connection, String, create_engine, event, text
 from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, ConnectionPoolEntry
@@ -30,7 +30,7 @@ def _begin(connection: Connection) -> None:
 
 
 def open_engine(path: Path) -> AsyncEngine:
-    """Create the pilot's single-owner, bounded connection pool.
+    """Open an existing database with a single-owner, bounded connection pool.
 
     The caller owns disposal and must migrate the file before use. One checkout
     spans a complete transaction; concurrent operations wait in SQLAlchemy's
@@ -38,7 +38,11 @@ def open_engine(path: Path) -> AsyncEngine:
     Do not share a checked-out connection with independently scheduled tasks.
     """
     engine = create_async_engine(
-        URL.create("sqlite+aiosqlite", database=str(path)),
+        URL.create(
+            "sqlite+aiosqlite",
+            database=path.absolute().as_uri(),
+            query={"mode": "rw", "uri": "true"},
+        ),
         connect_args={"isolation_level": None, "timeout": 5.0},
         poolclass=AsyncAdaptedQueuePool,
         pool_size=1,
@@ -50,8 +54,22 @@ def open_engine(path: Path) -> AsyncEngine:
     return engine
 
 
+async def validate_schema(engine: AsyncEngine) -> None:
+    """Reject unprepared or incompatible databases without running migrations.
+
+    Connection and schema errors propagate to startup. No empty database or JSON
+    fallback is allowed. Revision admission is separate from backup integrity.
+    """
+    async with engine.connect() as connection:
+        versions = await connection.scalars(
+            text("SELECT version_num FROM alembic_version").columns(version_num=String)
+        )
+        if list(versions) != ["0001_birthdays"]:
+            raise RuntimeError("Unsupported birthday schema; run explicit maintenance")
+
+
 def migrate(path: Path) -> None:
-    """Upgrade a pilot database through Alembic; call outside the event loop.
+    """Upgrade a birthday database through Alembic; call outside the event loop.
 
     This explicit maintenance operation requires exclusive application ownership.
     No migration runs during ordinary repository construction or bot startup.

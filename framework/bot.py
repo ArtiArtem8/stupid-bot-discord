@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from pathlib import Path
 from typing import override
 
 import discord
@@ -8,11 +9,14 @@ from discord import Intents
 from discord.ext import commands, tasks
 
 import config
+from api.birthday import BirthdayManager, birthday_manager
 from api.reporting import handle_report_button
 from framework.cog_loader import CogLoader
 from framework.error_handler import handle_app_command_error
 from framework.feedback_ui import FeedbackUI
 from framework.uptime_manager import UptimeManager
+from repositories.birthday_sqlite.database import open_engine, validate_schema
+from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
 from utils.russian_time_utils import format_duration_ru
 
 logger = logging.getLogger(__name__)
@@ -23,13 +27,20 @@ class DevServer:
 
 
 class StupidBot(commands.Bot):
-    """Discord runtime owner for cogs, background tasks, and uptime state."""
+    """Own cogs, background tasks, uptime and the optional birthday database.
+
+    Birthday storage defaults to the existing process-owned JSON manager. An
+    explicit database path selects one application-owned SQLite engine; setup
+    checks its revision and close disposes it after cog shutdown. Migrations and
+    import belong to maintenance, never startup. Do not use managers after close.
+    """
 
     def __init__(
         self,
         watch_cogs: bool = False,
         uptime_manager: UptimeManager | None = None,
         cog_loader: CogLoader | None = None,
+        birthday_database: Path | None = None,
     ) -> None:
         intents = Intents.default()
         intents.presences = True
@@ -48,6 +59,14 @@ class StupidBot(commands.Bot):
 
         self.uptime_manager = uptime_manager or UptimeManager()
         self.cog_loader = cog_loader or CogLoader(self, watch=watch_cogs)
+        self._birthday_engine = (
+            open_engine(birthday_database) if birthday_database is not None else None
+        )
+        self.birthday_manager = (
+            BirthdayManager(SQLiteBirthdayRepository(self._birthday_engine))
+            if self._birthday_engine is not None
+            else birthday_manager
+        )
         self._startup_task: asyncio.Task[None] | None = None
         self._shutdown_task: asyncio.Task[None] | None = None
 
@@ -93,7 +112,12 @@ class StupidBot(commands.Bot):
                 await asyncio.gather(self._startup_task, return_exceptions=True)
             await self._stop_background_loops()
         finally:
-            await super().close()
+            try:
+                await super().close()
+            finally:
+                # Cog unload joins the birthday timer before its pool is disposed.
+                if self._birthday_engine is not None:
+                    await self._birthday_engine.dispose()
 
     async def _stop_background_loops(self) -> None:
         pending: list[tuple[str, asyncio.Task[None]]] = []
@@ -127,6 +151,8 @@ class StupidBot(commands.Bot):
         if self._shutdown_task is not None:
             return
         FeedbackUI.configure(handle_report_button)
+        if self._birthday_engine is not None:
+            await validate_schema(self._birthday_engine)
         await self.cog_loader.load_cogs()
         if self._shutdown_task is not None:
             return

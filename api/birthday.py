@@ -13,6 +13,7 @@ from api.birthday_models import (
     BirthdayListEntry,
 )
 from repositories.birthday_repository import BirthdayRepository
+from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
 from utils.text_utils import TextPaginator, truncate_text
 
 logger = logging.getLogger(__name__)
@@ -145,7 +146,9 @@ def create_birthday_list_embed(
 
 
 class BirthdayManager:
-    def __init__(self, repository: BirthdayRepository) -> None:
+    def __init__(
+        self, repository: BirthdayRepository | SQLiteBirthdayRepository
+    ) -> None:
         self.repo = repository
 
     async def get_guild_config(self, guild_id: int) -> BirthdayGuildConfig | None:

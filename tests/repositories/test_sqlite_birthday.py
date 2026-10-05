@@ -14,11 +14,11 @@ from sqlalchemy import Connection, select
 from sqlalchemy.exc import IntegrityError
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
-from experiments.birthday_sqlite.database import copy_database, migrate, open_engine
-from experiments.birthday_sqlite.import_json import load_birthdays
-from experiments.birthday_sqlite.repository import SQLiteBirthdayRepository
-from experiments.birthday_sqlite.schema import congratulations, guilds, metadata, users
 from repositories.birthday_repository import BirthdayRepository
+from repositories.birthday_sqlite.database import copy_database, migrate, open_engine
+from repositories.birthday_sqlite.import_json import load_birthdays
+from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
+from repositories.birthday_sqlite.schema import congratulations, guilds, metadata, users
 from tests.repositories.fakes import InMemoryJsonStore
 from utils.asyncio_utils import run_in_thread
 from utils.json_types import JsonObject

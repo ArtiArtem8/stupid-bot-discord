@@ -8,7 +8,7 @@
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/b094540d4d7b4bbea618b775ce0597e7)](https://app.codacy.com/gh/ArtiArtem8/stupid-bot-discord/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/badges/quality-score.png?b=main)](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/?branch=main)
 
-**StupidBot** is a Discord bot built with Python 3.12 and [discord.py](https://github.com/Rapptz/discord.py). It uses cogs for music, utilities, and server administration tools. Runtime data lives in `data/` as JSON for now, and user-facing text is mostly Russian.
+**StupidBot** is a Discord bot built with Python 3.12 and [discord.py](https://github.com/Rapptz/discord.py). It uses cogs for music, utilities, and server administration tools. Runtime data defaults to JSON under `data/`; birthdays also support explicitly selected SQLite, and user-facing text is mostly Russian.
 
 ## Features
 
@@ -60,6 +60,11 @@ uv run --locked --no-dev main.py
 Allocation tracing is disabled by default. For memory diagnostics, start with
 `uv run --locked --no-dev main.py --tracemalloc`. Tracing adds CPU and memory
 overhead and is intended for diagnostic runs.
+
+Birthdays can opt into a prepared local SQLite file with `--birthday-sqlite DATABASE`.
+Migrations and import are explicit maintenance commands; see
+[Windows SQLite setup and limitations](repositories/birthday_sqlite/README.md).
+Without the switch, birthdays continue using JSON.
 
 Platform launcher scripts are also included:
 

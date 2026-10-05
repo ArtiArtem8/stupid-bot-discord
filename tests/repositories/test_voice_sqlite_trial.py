@@ -13,10 +13,10 @@ from sqlalchemy import Connection, event, select
 from sqlalchemy.exc import OperationalError
 
 from api.voice.model import GapReason, ObservationGap, VoiceCheckpoint, VoiceSnapshot
-from experiments.birthday_sqlite.database import migrate, open_engine
 from experiments.voice_sqlite.models import verify_models
 from experiments.voice_sqlite.store import TrialVoiceStore, facts, open_reader
 from experiments.voice_sqlite.workload import verify_backup
+from repositories.birthday_sqlite.database import migrate, open_engine
 from tests.api.voice.examples import at, human, record
 from utils.asyncio_utils import run_in_thread
 
@@ -142,7 +142,7 @@ class TestVoiceSQLiteTrial(unittest.IsolatedAsyncioTestCase):
         script = """
 import asyncio, sys
 from pathlib import Path
-from experiments.birthday_sqlite.database import open_engine
+from repositories.birthday_sqlite.database import open_engine
 from experiments.voice_sqlite.store import TrialVoiceStore
 async def check():
     engine = open_engine(Path(sys.argv[1]))

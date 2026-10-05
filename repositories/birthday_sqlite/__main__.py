@@ -1,13 +1,13 @@
-"""Run explicit pilot maintenance without importing the bot's lifecycle owners."""
+"""Run explicit birthday maintenance without importing the bot's lifecycle owners."""
 
 import argparse
 import asyncio
 import sys
 from pathlib import Path
 
-from experiments.birthday_sqlite.database import copy_database, migrate, open_engine
-from experiments.birthday_sqlite.import_json import load_birthdays
-from experiments.birthday_sqlite.repository import SQLiteBirthdayRepository
+from repositories.birthday_sqlite.database import copy_database, migrate, open_engine
+from repositories.birthday_sqlite.import_json import load_birthdays
+from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
 from utils.asyncio_utils import run_in_thread
 
 
@@ -38,7 +38,7 @@ async def _run(args: Arguments) -> None:
             finally:
                 await engine.dispose()
         case _:
-            raise ValueError("Unknown pilot operation")
+            raise ValueError("Unknown maintenance operation")
 
 
 def main() -> None:

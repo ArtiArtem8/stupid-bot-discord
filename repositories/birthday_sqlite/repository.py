@@ -9,8 +9,8 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
-from experiments.birthday_sqlite.schema import congratulations, guilds, users
 from repositories.base_repository import BaseRepository
+from repositories.birthday_sqlite.schema import congratulations, guilds, users
 
 
 async def _read(
@@ -99,7 +99,7 @@ async def _save(
 
 
 class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
-    """Implement birthday operations on one caller-owned pilot engine.
+    """Implement birthday operations on one caller-owned birthday engine.
 
     Use database.open_engine: its queued checkout owns each whole operation.
     Results are detached domain objects. Reads never create schema; errors and

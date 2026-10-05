@@ -18,9 +18,12 @@ class TestMainTracing(unittest.IsolatedAsyncioTestCase):
             importlib.reload(entry)
         start.assert_not_called()
 
-    async def test_tracing_is_opt_in_and_starts_before_bot_construction(self) -> None:
-        for enabled in (False, True):
-            with self.subTest(enabled=enabled), TemporaryDirectory() as directory:
+    async def test_runtime_switches_reach_bot_and_tracing_starts_first(self) -> None:
+        for enabled, sqlite in ((False, False), (True, False), (False, True)):
+            with (
+                self.subTest(tracing=enabled, sqlite=sqlite),
+                TemporaryDirectory() as directory,
+            ):
                 bot = MagicMock()
                 bot.restore_state = AsyncMock()
                 bot.start = AsyncMock()
@@ -29,6 +32,9 @@ class TestMainTracing(unittest.IsolatedAsyncioTestCase):
                 bot.__aexit__ = AsyncMock(return_value=False)
                 args = ["main.py", "--tracemalloc"] if enabled else ["main.py"]
                 root = Path(directory)
+                selected = root / "birthdays.sqlite" if sqlite else None
+                if selected is not None:
+                    args.extend(("--birthday-sqlite", str(selected)))
                 credential = "test"
                 with (
                     patch.object(sys, "argv", args),
@@ -43,11 +49,14 @@ class TestMainTracing(unittest.IsolatedAsyncioTestCase):
                     def create(
                         *,
                         watch_cogs: bool,
+                        birthday_database: Path | None,
                         runtime: MagicMock = bot,
                         tracing_enabled: bool = enabled,
+                        expected_database: Path | None = selected,
                     ) -> MagicMock:
                         self.assertEqual(trace.call_count, int(tracing_enabled))
                         self.assertFalse(watch_cogs)
+                        self.assertEqual(birthday_database, expected_database)
                         return runtime
 
                     with patch.object(entry, "StupidBot", side_effect=create):
