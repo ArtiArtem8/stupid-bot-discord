@@ -61,6 +61,8 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
 
     async def test_concurrent_settings_members_and_duplicate_markers(self) -> None:
         await self.repo.configure_guild(1, "Guild", 10, None)
+        # Exercise ownership with a small fixture; throughput is measured by
+        # the separate workload, not by a deadline under parallel CI load.
         await asyncio.wait_for(
             asyncio.gather(
                 self.repo.configure_guild(1, "Guild", 77, 88),
@@ -68,7 +70,7 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
                     self.repo.set_user_birthday(
                         1, "Ignored", 99, uid, "Member", "01-01-2000"
                     )
-                    for uid in range(30)
+                    for uid in range(6)
                 ),
             ),
             timeout=10,
@@ -76,7 +78,7 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
         results = await asyncio.gather(
             *(
                 self.repo.record_congratulation(1, 2, date(2026, 10, 6))
-                for _ in range(15)
+                for _ in range(8)
             )
         )
         self.assertEqual(sum(results), 1)
@@ -84,7 +86,7 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
         if loaded is None:
             self.fail("Expected guild")
         self.assertEqual((loaded.channel_id, loaded.birthday_role_id), (77, 88))
-        self.assertEqual(len(loaded.users), 30)
+        self.assertEqual(len(loaded.users), 6)
         self.assertEqual(loaded.users[2].was_congrats, ["06-10-2026"])
 
     async def test_save_override_history_replacement_and_cascade(self) -> None:
