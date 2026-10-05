@@ -22,6 +22,7 @@ from repositories.birthday_repository import BirthdayRepository
 from tests.repositories.fakes import InMemoryJsonStore
 from utils.asyncio_utils import run_in_thread
 from utils.json_types import JsonObject
+from utils.json_utils import save_json
 
 
 class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
@@ -284,3 +285,60 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(ValueError):
                     await run_in_thread(lambda: load_birthdays(source))
         self.assertEqual(await self.repo.get_all(), [])
+
+    async def test_literal_duplicate_keys_are_rejected_at_every_object_level(
+        self,
+    ) -> None:
+        source = self.path.with_suffix(".json")
+        member = '{"name":"N","birthday":"","was_congrats":["old","old"]}'
+        guild = '{"Server_name":"G","Channel_id":"2","Users":{}}'
+        cases = (
+            '{"1":' + guild + ',"1":' + guild + "}",
+            '{"1":{"Server_name":"G","Channel_id":"2","Users":{"3":'
+            + member
+            + ',"3":'
+            + member
+            + "}}}",
+            '{"1":{"Server_name":"G","Server_name":"H","Channel_id":"2","Users":{}}}',
+            '{"1":{"Server_name":"G","Channel_id":"2","Users":{"3":{"name":"A","name":"B","birthday":""}}}}',
+        )
+        for payload in cases:
+            with self.subTest(payload=payload):
+                await run_in_thread(
+                    lambda payload=payload: source.write_text(payload, encoding="utf-8")
+                )
+                with self.assertRaisesRegex(ValueError, "Duplicate JSON object key"):
+                    await run_in_thread(lambda: load_birthdays(source))
+        self.assertEqual(await self.repo.get_all(), [])
+
+    async def test_file_backed_import_preserves_decoded_order_and_history(self) -> None:
+        source = self.path.with_suffix(".json")
+        payload: JsonObject = {
+            "1": {
+                "Server_name": "G",
+                "Channel_id": "2",
+                "Users": {
+                    "2": {
+                        "name": "Two",
+                        "birthday": "",
+                        "was_congrats": ["old", "old"],
+                    },
+                    "10": {"name": "Ten", "birthday": ""},
+                },
+            }
+        }
+        await run_in_thread(lambda: save_json(source, payload))
+        imported = await run_in_thread(lambda: load_birthdays(source))
+        self.assertEqual(list(imported[0].users), [10, 2])
+        self.assertEqual(await self.repo.import_guilds(imported), 1)
+        loaded = (await self.repo.get_all())[0]
+        self.assertEqual(list(loaded.users), [10, 2])
+        self.assertEqual(loaded.users[2].was_congrats, ["old", "old"])
+        self.assertEqual(await self.repo.import_guilds(imported), 0)
+        imported[0].users = dict(reversed(list(imported[0].users.items())))
+        with self.assertRaisesRegex(ValueError, "conflicts"):
+            await self.repo.import_guilds(
+                [BirthdayGuildConfig(9, "Rollback", 2), *imported]
+            )
+        self.assertIsNone(await self.repo.get(9))
+        self.assertEqual(list((await self.repo.get_all())[0].users), [10, 2])

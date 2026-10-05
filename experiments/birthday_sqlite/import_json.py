@@ -1,10 +1,20 @@
 """Validate the existing birthday JSON format before touching the pilot database."""
 
+import json
 from pathlib import Path
+from typing import cast
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
-from utils.json_types import JsonObject, JsonValue
-from utils.json_utils import get_json
+from utils.json_types import JsonObject, JsonValue, is_json_object
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON object key in birthday import")
+        result[key] = value
+    return result
 
 
 def _identifier(value: JsonValue) -> int:
@@ -67,9 +77,13 @@ def load_birthdays(path: Path) -> list[BirthdayGuildConfig]:
     Date interpretation remains the domain model's responsibility. No source
     bytes are changed. Call outside the event loop.
     """
-    raw = get_json(path)
-    if raw is None:
-        raise FileNotFoundError(path)
+    # JSON's untyped result is narrowed to object before validating its shape.
+    raw = cast(
+        object,
+        json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object),
+    )
+    if not is_json_object(raw):
+        raise ValueError("Birthday JSON must be an object")
     configs: dict[int, BirthdayGuildConfig] = {}
     for gid, value in raw.items():
         guild = _guild(gid, value)

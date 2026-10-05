@@ -41,10 +41,15 @@ revision, never `metadata.create_all()`. Future revisions must keep their own
 schema definitions and be reviewed before use.
 
 Import validates the complete JSON before writing, then imports all guilds in a
-single transaction. Identical repeated imports insert nothing. A differing
+single transaction. Identical repeated imports insert nothing. Identity includes
+member insertion order as well as values; dataclass equality alone is insufficient.
+The order means the order actually decoded from the source file (the existing
+JSON writer sorts object keys lexicographically), not an earlier in-memory order.
+A differing
 existing guild aborts the whole import, including earlier inserts in that attempt.
 The input JSON is never changed. Invalid records are rejected instead of skipped;
-legacy date strings and history duplicates are retained. IDs must fit SQLite's
+literal duplicate keys at every object level are rejected before dictionary
+construction. Legacy date strings and history duplicates are retained. IDs must fit SQLite's
 signed 64-bit integer range. Unknown JSON fields are outside the birthday model.
 
 Backup uses SQLite's online backup API, including committed WAL content, followed
@@ -100,7 +105,13 @@ and temporary files. `typing_contract.py` checks exact query, row and unpacked
 result types, including `int | None`, using `assert_type` in both analyzers.
 Concrete `Column` declarations avoid the descriptor typing differences encountered
 with `Named` in the project's analyzer versions. No type suppressions or casts are
-needed in the pilot.
+needed in the repository. The migration decoder uses one `cast(object, ...)` to
+contain the standard library JSON decoder's `Any` return before shape validation.
+
+Production restore admission remains separate: check foreign keys, the expected
+Alembic revision and repository readability before choosing a restored file.
+The diagnostic backup operation deliberately does not reject a source merely
+because it contains application-level inconsistencies.
 
 Before any runtime adoption, integrate repository lifecycle with the application
 and run the same tests on the target Linux host. A separate voice experiment must

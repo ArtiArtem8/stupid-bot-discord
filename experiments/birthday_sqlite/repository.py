@@ -248,7 +248,8 @@ class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
     async def import_guilds(self, configs: Sequence[BirthdayGuildConfig]) -> int:
         """Import atomically, accepting identical repeats and rejecting conflicts.
 
-        Existing differing aggregates abort the entire import rather than
+        Member insertion order is part of import identity. Differing aggregates abort
+        the entire import rather than
         overwriting changes made since a previous import. Return inserted guilds.
         """
         inserted = 0
@@ -256,7 +257,9 @@ class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
             for config in configs:
                 existing = await _read(connection, config.guild_id)
                 if existing:
-                    if existing[0] != config:
+                    if existing[0] != config or list(existing[0].users) != list(
+                        config.users
+                    ):
                         raise ValueError(
                             f"Birthday import conflicts with guild {config.guild_id}"
                         )
