@@ -217,25 +217,22 @@ class FeedbackUI:
         disable_report_btn: bool,
         error_info: str | None,
     ) -> ViewDirective | View | None:
-        if (
-            feedback_type is FeedbackType.ERROR
-            and not disable_report_btn
-            and view is MISSING
-        ):
-            if FeedbackUI._default_report_callback is None:
-                raise RuntimeError(
-                    "FeedbackUI not configured. Call FeedbackUI.configure() at startup."
-                )
-            return ReportButtonView(
-                interaction.user.id,
-                FeedbackUI._default_report_callback,
-                error_info=error_info,
-            )
-        if view is MISSING:
-            return ViewDirective.OMIT
         if view is None or isinstance(view, View):
             return view
-        raise TypeError("view must be a discord.ui.View, None, or omitted")
+        if view is not MISSING:
+            raise TypeError("view must be a discord.ui.View, None, or omitted")
+        if feedback_type is not FeedbackType.ERROR or disable_report_btn:
+            return ViewDirective.OMIT
+        report_callback = FeedbackUI._default_report_callback
+        if report_callback is None:
+            raise RuntimeError(
+                "FeedbackUI not configured. Call FeedbackUI.configure() at startup."
+            )
+        return ReportButtonView(
+            interaction.user.id,
+            report_callback,
+            error_info=error_info,
+        )
 
     @staticmethod
     def _add_delete_timer(embed: discord.Embed, delete_after: float | None) -> None:

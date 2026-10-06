@@ -1,1 +1,1 @@
-"""Discord voice observation collection; no statistics or UI commands."""
+"""Discord voice observation collection and profile commands."""

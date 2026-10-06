@@ -13,7 +13,6 @@
     "python.analysis.exclude": [
         "**/.venv/**",
         "**/venv/**",
-        "./utils/async_json_utils.py",
         "**/Lib/**",
         "**/site-packages/**"
     ],

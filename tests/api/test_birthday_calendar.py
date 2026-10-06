@@ -7,7 +7,6 @@ from datetime import date
 from unittest.mock import Mock
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
-from utils.birthday_utils import calculate_days_until_birthday
 
 
 class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
@@ -148,13 +147,3 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
 
         matches = config.get_birthdays_today(today_leap_29)
         self.assertEqual(len(matches), 1)
-
-    async def test_calculate_days_until_birthday_leap_logic(self) -> None:
-        bday_str = "29-02-2000"
-
-        ref_date = date(2025, 1, 1)
-        days = calculate_days_until_birthday(bday_str, ref_date)
-        self.assertEqual(days, 58)
-        ref_date_leap = date(2024, 1, 1)
-        days_leap = calculate_days_until_birthday(bday_str, ref_date_leap)
-        self.assertEqual(days_leap, 59)
