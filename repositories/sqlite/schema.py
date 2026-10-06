@@ -1,4 +1,4 @@
-"""Typed Core tables for birthday aggregates, independent of Discord lifecycle."""
+"""Typed Core tables for the two stores sharing the application database."""
 
 from sqlalchemy import (
     Column,
@@ -12,6 +12,14 @@ from sqlalchemy import (
 )
 
 metadata = MetaData()
+
+
+class VolumeColumns(TypedColumns):
+    guild_id = Column(Integer, primary_key=True, autoincrement=False)
+    volume = Column(Integer, nullable=False)
+
+
+volumes = Table("music_volumes", metadata, VolumeColumns)
 
 
 class GuildColumns(TypedColumns):

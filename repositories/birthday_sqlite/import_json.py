@@ -1,29 +1,10 @@
 """Validate the existing birthday JSON format before touching the birthday database."""
 
-import json
 from pathlib import Path
-from typing import cast
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
-from utils.json_types import JsonObject, JsonValue, is_json_object
-
-
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Duplicate JSON object key in birthday import")
-        result[key] = value
-    return result
-
-
-def _identifier(value: JsonValue) -> int:
-    if not isinstance(value, str) or not value.isascii() or not value.isdecimal():
-        raise ValueError("Birthday IDs must be decimal strings")
-    result = int(value)
-    if result > 2**63 - 1:
-        raise ValueError("Birthday ID exceeds SQLite's signed integer range")
-    return result
+from repositories.sqlite.import_json import identifier, load_object
+from utils.json_types import JsonObject, JsonValue
 
 
 def _string(data: JsonObject, field: str) -> str:
@@ -45,7 +26,7 @@ def _user(uid: str, raw: JsonValue) -> BirthdayUser:
             raise ValueError("Congratulation history must contain strings")
         dates.append(value)
     return BirthdayUser(
-        _identifier(uid), _string(raw, "name"), _string(raw, "birthday"), dates
+        identifier(uid), _string(raw, "name"), _string(raw, "birthday"), dates
     )
 
 
@@ -54,10 +35,10 @@ def _guild(gid: str, raw: JsonValue) -> BirthdayGuildConfig:
         raise ValueError("Birthday guild must have a Users object")
     role = raw.get("Birthday_role")
     result = BirthdayGuildConfig(
-        _identifier(gid),
+        identifier(gid),
         _string(raw, "Server_name"),
-        _identifier(raw.get("Channel_id")),
-        birthday_role_id=None if role in (None, "") else _identifier(role),
+        identifier(raw.get("Channel_id")),
+        birthday_role_id=None if role in (None, "") else identifier(role),
     )
     members = raw["Users"]
     if not isinstance(members, dict):
@@ -77,13 +58,7 @@ def load_birthdays(path: Path) -> list[BirthdayGuildConfig]:
     Date interpretation remains the domain model's responsibility. No source
     bytes are changed. Call outside the event loop.
     """
-    # JSON's untyped result is narrowed to object before validating its shape.
-    raw = cast(
-        object,
-        json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object),
-    )
-    if not is_json_object(raw):
-        raise ValueError("Birthday JSON must be an object")
+    raw = load_object(path)
     configs: dict[int, BirthdayGuildConfig] = {}
     for gid, value in raw.items():
         guild = _guild(gid, value)

@@ -42,7 +42,7 @@ from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 from api.music.session_events import dispatch_music_session_end
-from repositories.volume_repository import VolumeRepository
+from repositories.volume_repository import VolumeStore
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class CoreMusicService:
         bot: commands.Bot,
         connection_manager: ConnectionManager,
         state_manager: StateManager,
-        volume_repository: VolumeRepository,
+        volume_repository: VolumeStore,
         playback_events: PlaybackEventHandlers,
         voice_lifecycle: VoiceLifecycleHandlers,
         ui_orchestrator: UIOrchestrator,

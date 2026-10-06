@@ -3,7 +3,8 @@
 import asyncio
 import sqlite3
 import unittest
-from contextlib import closing
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager, closing
 from datetime import date
 from functools import partial
 from pathlib import Path
@@ -13,16 +14,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy import event
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from api.birthday import birthday_manager
 from cogs import birthday_cog
 from cogs.birthday_cog import BirthdayCog, ConfirmDeleteView, setup
+from cogs.music.music_cog import MusicCog
+from cogs.music.music_cog import setup as setup_music
 from framework.bot import StupidBot
 from framework.cog_loader import CogLoader
 from framework.feedback_ui import FeedbackUI
-from repositories.birthday_sqlite.__main__ import Arguments, _run
-from repositories.birthday_sqlite.database import migrate
 from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
+from repositories.sqlite.__main__ import Arguments, _run
+from repositories.sqlite.database import migrate
+from repositories.volume_repository import VolumeData, VolumeRepository
 from utils.asyncio_utils import run_in_thread
 
 
@@ -36,10 +41,11 @@ class TestBirthdayStorage(unittest.IsolatedAsyncioTestCase):
 
     def make_bot(self, database: Path | None) -> StupidBot:
         loader = MagicMock(spec=CogLoader)
-        bot = StupidBot(cog_loader=loader, birthday_database=database)
+        bot = StupidBot(cog_loader=loader, database_path=database)
 
         async def load() -> None:
             await setup(bot)
+            await setup_music(bot)
 
         loader.load_cogs.side_effect = load
         self.enterContext(patch.object(bot.tree, "sync", new=AsyncMock()))
@@ -59,7 +65,68 @@ class TestBirthdayStorage(unittest.IsolatedAsyncioTestCase):
         if isinstance(cog, BirthdayCog):
             self.assertIs(cog.manager, birthday_manager)
         self.assertIs(bot.birthday_manager, birthday_manager)
-        self.assertIsNone(bot._birthday_engine)
+        self.assertIsNone(bot._database)
+        self.assertIsInstance(bot.volume_repository, VolumeRepository)
+
+    async def test_shutdown_drains_volume_commit_and_rejects_new_birthday_work(
+        self,
+    ) -> None:
+        await run_in_thread(lambda: migrate(self.database))
+        bot = self.make_bot(self.database)
+        await bot.setup_hook()
+        music = bot.get_cog("MusicCog")
+        if not isinstance(music, MusicCog):
+            self.fail("Music extension was not registered")
+        database = bot._database
+        if database is None:
+            self.fail("Missing shared database")
+        self.assertIs(music.components.volumes, bot.volume_repository)
+        self.assertIs(music.components.healer.volume_repo, bot.volume_repository)
+        await bot.birthday_manager.configure_guild(1, "Guild", 2, None)
+        original_transaction = database.transaction
+        original_close = database.close
+        before_commit = asyncio.Event()
+        release = asyncio.Event()
+        draining = asyncio.Event()
+        disposed = asyncio.Event()
+        event.listen(database.engine.sync_engine, "close", lambda *_: disposed.set())
+
+        @asynccontextmanager
+        async def delayed_commit() -> AsyncGenerator[AsyncConnection]:
+            async with original_transaction() as connection:
+                yield connection
+                before_commit.set()
+                await release.wait()
+
+        async def close() -> None:
+            draining.set()
+            await original_close()
+
+        with patch.object(database, "transaction", new=delayed_commit):
+            writing = asyncio.create_task(music.service.set_volume(1, 73))
+            await before_commit.wait()
+        with patch.object(database, "close", new=close):
+            closing = asyncio.create_task(bot.close())
+            try:
+                await draining.wait()
+                self.assertFalse(closing.done())
+                self.assertFalse(disposed.is_set())
+                with self.assertRaisesRegex(RuntimeError, "closing"):
+                    await bot.birthday_manager.get_all_guild_ids()
+                closing.cancel()
+            finally:
+                release.set()
+                await writing
+                with self.assertRaises(asyncio.CancelledError):
+                    await closing
+        self.assertTrue(disposed.is_set())
+        await bot.close()
+        with self.assertRaisesRegex(RuntimeError, "closing"):
+            await bot.volume_repository.save(VolumeData(1, 99))
+        reopened = self.make_bot(self.database)
+        await reopened.setup_hook()
+        self.assertEqual(await reopened.volume_repository.get_volume(1), 73)
+        self.assertEqual(await reopened.birthday_manager.get_all_guild_ids(), [1])
 
     async def test_import_app_mutations_close_and_reopen_leave_json_unchanged(
         self,
@@ -71,7 +138,7 @@ class TestBirthdayStorage(unittest.IsolatedAsyncioTestCase):
         args.database = self.database
         args.command = "migrate"
         await _run(args)
-        args.command = "import-json"
+        args.command = "import-birthdays"
         args.source = source
         await _run(args)
         await _run(args)
@@ -108,11 +175,11 @@ class TestBirthdayStorage(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await _run(args)
 
-        engine = bot._birthday_engine
+        engine = bot._database
         if engine is None:
             self.fail("SQLite engine was not owned by the application")
         closed = asyncio.Event()
-        event.listen(engine.sync_engine, "close", lambda *_: closed.set())
+        event.listen(engine.engine.sync_engine, "close", lambda *_: closed.set())
         original_unload = cog.cog_unload
 
         async def unload() -> None:
@@ -164,11 +231,11 @@ class TestBirthdayStorage(unittest.IsolatedAsyncioTestCase):
     async def test_partial_startup_failure_disposes_sqlite_connection(self) -> None:
         await run_in_thread(lambda: migrate(self.database))
         bot = self.make_bot(self.database)
-        engine = bot._birthday_engine
+        engine = bot._database
         if engine is None:
             self.fail("Missing engine")
         closed = asyncio.Event()
-        event.listen(engine.sync_engine, "close", lambda *_: closed.set())
+        event.listen(engine.engine.sync_engine, "close", lambda *_: closed.set())
         with patch.object(
             bot.tree, "sync", side_effect=RuntimeError("offline failure")
         ):

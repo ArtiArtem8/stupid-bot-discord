@@ -15,10 +15,10 @@ from sqlalchemy.exc import IntegrityError
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
 from repositories.birthday_repository import BirthdayRepository
-from repositories.birthday_sqlite.database import copy_database, migrate, open_engine
 from repositories.birthday_sqlite.import_json import load_birthdays
 from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
-from repositories.birthday_sqlite.schema import congratulations, guilds, metadata, users
+from repositories.sqlite.database import Database, copy_database, migrate, open_engine
+from repositories.sqlite.schema import congratulations, guilds, metadata, users
 from tests.repositories.fakes import InMemoryJsonStore
 from utils.asyncio_utils import run_in_thread
 from utils.json_types import JsonObject
@@ -34,7 +34,7 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
         await run_in_thread(lambda: migrate(self.path))
         self.engine = open_engine(self.path)
         self.addAsyncCleanup(self.engine.dispose)
-        self.repo = SQLiteBirthdayRepository(self.engine)
+        self.repo = SQLiteBirthdayRepository(Database(self.engine))
 
     async def test_matches_json_repository_operations(self) -> None:
         reference = BirthdayRepository(InMemoryJsonStore())
@@ -194,7 +194,8 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
         restored_engine = open_engine(restored)
         try:
             self.assertEqual(
-                await SQLiteBirthdayRepository(restored_engine).get_all(), configs
+                await SQLiteBirthdayRepository(Database(restored_engine)).get_all(),
+                configs,
             )
         finally:
             await restored_engine.dispose()
@@ -260,7 +261,8 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
         reopened = open_engine(self.path)
         try:
             self.assertEqual(
-                await SQLiteBirthdayRepository(reopened).get_all_guild_ids(), [1]
+                await SQLiteBirthdayRepository(Database(reopened)).get_all_guild_ids(),
+                [1],
             )
         finally:
             await reopened.dispose()

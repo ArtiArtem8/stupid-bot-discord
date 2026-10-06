@@ -6,7 +6,7 @@ from sqlalchemy import Row, Select, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from api.birthday_models import BirthdayGuildConfig
-from repositories.birthday_sqlite.schema import guilds
+from repositories.sqlite.schema import guilds
 
 
 async def read_config(connection: AsyncConnection) -> BirthdayGuildConfig:

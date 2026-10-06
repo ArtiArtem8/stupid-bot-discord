@@ -1,7 +1,7 @@
 """Music Cog Controller."""
 
 import logging
-from typing import override
+from typing import TYPE_CHECKING, override
 
 import discord
 from discord import Interaction, Member, app_commands
@@ -24,6 +24,7 @@ from api.music.models import (
 from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackUI
 from framework.interaction_flow import run_with_defer
+from repositories.volume_repository import VolumeStore
 
 from .composition import create_music_components
 from .feedback import (
@@ -48,6 +49,9 @@ from .views import (
     QueueUndoView,
     SessionSummaryView,
 )
+
+if TYPE_CHECKING:
+    from framework.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +83,10 @@ def _format_voice_result_message(
 class MusicCog(BaseCog):
     """Music playback controller."""
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: commands.Bot, volumes: VolumeStore) -> None:
         super().__init__(bot)
 
-        self.components = create_music_components(bot)
+        self.components = create_music_components(bot, volumes)
         self.service = self.components.service
 
     @override
@@ -613,6 +617,6 @@ class MusicCog(BaseCog):
         )
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: "StupidBot") -> None:
     """Register the music cog."""
-    await bot.add_cog(MusicCog(bot))
+    await bot.add_cog(MusicCog(bot, bot.volume_repository))

@@ -34,7 +34,7 @@ class TestMainTracing(unittest.IsolatedAsyncioTestCase):
                 root = Path(directory)
                 selected = root / "birthdays.sqlite" if sqlite else None
                 if selected is not None:
-                    args.extend(("--birthday-sqlite", str(selected)))
+                    args.extend(("--sqlite", str(selected)))
                 credential = "test"
                 with (
                     patch.object(sys, "argv", args),
@@ -49,14 +49,14 @@ class TestMainTracing(unittest.IsolatedAsyncioTestCase):
                     def create(
                         *,
                         watch_cogs: bool,
-                        birthday_database: Path | None,
+                        database_path: Path | None,
                         runtime: MagicMock = bot,
                         tracing_enabled: bool = enabled,
                         expected_database: Path | None = selected,
                     ) -> MagicMock:
                         self.assertEqual(trace.call_count, int(tracing_enabled))
                         self.assertFalse(watch_cogs)
-                        self.assertEqual(birthday_database, expected_database)
+                        self.assertEqual(database_path, expected_database)
                         return runtime
 
                     with patch.object(entry, "StupidBot", side_effect=create):

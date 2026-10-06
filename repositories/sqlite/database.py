@@ -1,15 +1,70 @@
-"""Own birthday connections, explicit migrations and consistent SQLite copies."""
+"""Own shared SQLite connections, migrations and transaction shutdown."""
 
+import asyncio
 import sqlite3
-from contextlib import closing
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager, closing
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import URL, Connection, String, create_engine, event, text
 from sqlalchemy.engine.interfaces import DBAPIConnection
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, ConnectionPoolEntry
+
+SCHEMA_REVISION = "0002_music_volume"
+
+
+class Database:
+    """Own one engine and drain admitted transactions before disposing it.
+
+    Both repositories share this owner. Admission counts include pool waiters;
+    closing rejects later operations and waits for transaction exit, including
+    rollback, before disposal. SQLAlchemy alone schedules connection checkouts.
+    Raw engine access is for maintenance and diagnostics, outside runtime work.
+    """
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self.engine = engine
+        self._active = 0
+        self._drained = asyncio.Event()
+        self._drained.set()
+        self._closing: asyncio.Task[None] | None = None
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncGenerator[AsyncConnection]:
+        """Admit one operation until its connection and transaction are released."""
+        if self._closing is not None:
+            raise RuntimeError("Database is closing")
+        # No await separates admission from increment; all access uses one loop.
+        self._active += 1
+        self._drained.clear()
+        try:
+            async with self.engine.begin() as connection:
+                yield connection
+        finally:
+            self._active -= 1
+            if self._active == 0:
+                self._drained.set()
+
+    async def close(self) -> None:
+        """Reject new work and finish draining even when a close caller cancels."""
+        if self._closing is None:
+            self._closing = asyncio.create_task(self._dispose_when_drained())
+        cancellation: asyncio.CancelledError | None = None
+        while not self._closing.done():
+            try:
+                await asyncio.shield(self._closing)
+            except asyncio.CancelledError as error:
+                cancellation = error
+        self._closing.result()
+        if cancellation is not None:
+            raise cancellation
+
+    async def _dispose_when_drained(self) -> None:
+        await self._drained.wait()
+        await self.engine.dispose()
 
 
 def _configure_connection(
@@ -64,12 +119,12 @@ async def validate_schema(engine: AsyncEngine) -> None:
         versions = await connection.scalars(
             text("SELECT version_num FROM alembic_version").columns(version_num=String)
         )
-        if list(versions) != ["0001_birthdays"]:
-            raise RuntimeError("Unsupported birthday schema; run explicit maintenance")
+        if list(versions) != [SCHEMA_REVISION]:
+            raise RuntimeError("Unsupported SQLite schema; run explicit maintenance")
 
 
-def migrate(path: Path) -> None:
-    """Upgrade a birthday database through Alembic; call outside the event loop.
+def migrate(path: Path, revision: str = "head") -> None:
+    """Upgrade the shared database through Alembic; call outside the event loop.
 
     This explicit maintenance operation requires exclusive application ownership.
     No migration runs during ordinary repository construction or bot startup.
@@ -90,7 +145,7 @@ def migrate(path: Path) -> None:
         )
         with engine.begin() as connection:
             settings.attributes["connection"] = connection
-            command.upgrade(settings, "head")
+            command.upgrade(settings, revision)
     finally:
         engine.dispose()
 

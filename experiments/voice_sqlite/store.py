@@ -26,7 +26,7 @@ from sqlalchemy.pool import ConnectionPoolEntry
 
 from api.voice.model import VoiceJournalRecord
 from repositories._voice_codec import decode_record, encode_record
-from repositories.birthday_sqlite.database import open_engine
+from repositories.sqlite.database import open_engine
 
 metadata = MetaData()
 

@@ -23,7 +23,7 @@ from api.music.protocols import HealerProtocol
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
-from repositories.volume_repository import VolumeRepository
+from repositories.volume_repository import VolumeStore
 
 from .models import (
     PLAYBACK_USER_DATA_KEY,
@@ -60,7 +60,7 @@ class SessionHealer(HealerProtocol):
         bot: commands.Bot,
         connection_manager: ConnectionManager,
         state_manager: StateManager,
-        volume_repository: VolumeRepository,
+        volume_repository: VolumeStore,
         ui_orchestrator: UIOrchestrator,
     ) -> None:
         self.bot = bot

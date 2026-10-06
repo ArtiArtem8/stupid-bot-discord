@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import override
+from typing import Protocol, override
 
 import config
 from repositories.base_repository import BaseRepository
@@ -16,6 +16,18 @@ class VolumeData:
 
     guild_id: int
     volume: int
+
+
+class VolumeStore(Protocol):
+    """Music's persisted volume capability, shared by service and healer."""
+
+    async def get_volume(self, guild_id: int) -> int:
+        """Return the persisted volume or the configured default."""
+        ...
+
+    async def save(self, entity: VolumeData, key: int | None = None) -> None:
+        """Persist the entity's guild volume before returning."""
+        ...
 
 
 class VolumeRepository(BaseRepository[VolumeData, int]):

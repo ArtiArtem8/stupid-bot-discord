@@ -6,11 +6,12 @@ from typing import override
 
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
 from repositories.base_repository import BaseRepository
-from repositories.birthday_sqlite.schema import congratulations, guilds, users
+from repositories.sqlite.database import Database
+from repositories.sqlite.schema import congratulations, guilds, users
 
 
 async def _read(
@@ -99,41 +100,41 @@ async def _save(
 
 
 class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
-    """Implement birthday operations on one caller-owned birthday engine.
+    """Implement birthday operations through the shared database owner.
 
-    Use database.open_engine: its queued checkout owns each whole operation.
+    Use the shared Database owner: its queued checkout spans each operation.
     Results are detached domain objects. Reads never create schema; errors and
     cancellation propagate after the SQLAlchemy transaction context unwinds.
     This repository does not send Discord messages or promise exactly-once sends.
     """
 
-    def __init__(self, engine: AsyncEngine) -> None:
-        self._engine = engine
+    def __init__(self, database: Database) -> None:
+        self._database = database
 
     @override
     async def get(self, key: int) -> BirthdayGuildConfig | None:
-        async with self._engine.begin() as connection:
+        async with self._database.transaction() as connection:
             configs = await _read(connection, key)
             return configs[0] if configs else None
 
     @override
     async def get_all(self) -> list[BirthdayGuildConfig]:
-        async with self._engine.begin() as connection:
+        async with self._database.transaction() as connection:
             return await _read(connection)
 
     @override
     async def save(self, entity: BirthdayGuildConfig, key: int | None = None) -> None:
         """Replace an aggregate atomically, matching the existing explicit save API."""
-        async with self._engine.begin() as connection:
+        async with self._database.transaction() as connection:
             await _save(connection, entity, entity.guild_id if key is None else key)
 
     @override
     async def delete(self, key: int) -> None:
-        async with self._engine.begin() as connection:
+        async with self._database.transaction() as connection:
             await connection.execute(guilds.delete().where(guilds.c.guild_id == key))
 
     async def get_all_guild_ids(self) -> list[int]:
-        async with self._engine.begin() as connection:
+        async with self._database.transaction() as connection:
             return list(
                 (
                     await connection.scalars(
@@ -152,7 +153,7 @@ class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
         birthday: str,
     ) -> BirthdayGuildConfig:
         """Update one member, preserving existing delivery settings and history."""
-        async with self._engine.begin() as connection:
+        async with self._database.transaction() as connection:
             await connection.execute(
                 insert(guilds)
                 .values(
@@ -187,7 +188,7 @@ class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
         birthday_role_id: int | None,
     ) -> BirthdayGuildConfig:
         """Change delivery settings, preserving an existing guild name and members."""
-        async with self._engine.begin() as connection:
+        async with self._database.transaction() as connection:
             statement = insert(guilds).values(
                 guild_id=guild_id,
                 server_name=server_name,
@@ -209,7 +210,7 @@ class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
         self, guild_id: int, user_id: int
     ) -> tuple[bool, bool]:
         """Return (guild exists, birthday was present), retaining member history."""
-        async with self._engine.begin() as connection:
+        async with self._database.transaction() as connection:
             configs = await _read(connection, guild_id)
             if not configs:
                 return False, False
@@ -227,7 +228,7 @@ class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
         self, guild_id: int, user_id: int, congratulation_date: date
     ) -> bool:
         """Append a sent marker once; the queued transaction owns read and update."""
-        async with self._engine.begin() as connection:
+        async with self._database.transaction() as connection:
             configs = await _read(connection, guild_id)
             if not configs:
                 return False
@@ -253,7 +254,7 @@ class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
         overwriting changes made since a previous import. Return inserted guilds.
         """
         inserted = 0
-        async with self._engine.begin() as connection:
+        async with self._database.transaction() as connection:
             for config in configs:
                 existing = await _read(connection, config.guild_id)
                 if existing:

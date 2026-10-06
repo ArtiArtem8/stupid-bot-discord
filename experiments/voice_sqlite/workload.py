@@ -13,8 +13,14 @@ from api.voice.model import VoiceJournalRecord
 from api.voice.timeline import build_timeline
 from experiments.voice_sqlite.models import contexts, project, verify_models
 from experiments.voice_sqlite.store import TrialVoiceStore, open_reader
-from repositories.birthday_sqlite.database import copy_database, migrate, open_engine
 from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
+from repositories.sqlite.database import (
+    SCHEMA_REVISION,
+    Database,
+    copy_database,
+    migrate,
+    open_engine,
+)
 from utils.asyncio_utils import run_in_thread
 from utils.json_types import JsonObject
 
@@ -40,7 +46,7 @@ def _wal_bytes(path: Path) -> int:
 
 
 def verify_backup(path: Path) -> None:
-    """Require structural integrity, foreign keys and the expected birthday schema."""
+    """Require structural integrity, foreign keys and the shared schema revision."""
     with closing(
         sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
     ) as connection:
@@ -49,7 +55,7 @@ def verify_backup(path: Path) -> None:
         if connection.execute("PRAGMA foreign_key_check").fetchall():
             raise ValueError("Backup foreign key mismatch")
         if connection.execute("SELECT version_num FROM alembic_version").fetchall() != [
-            ("0001_birthdays",)
+            (SCHEMA_REVISION,)
         ]:
             raise ValueError("Backup schema revision mismatch")
 
@@ -109,7 +115,7 @@ class MixedWorkload:
 
     async def birthdays(self) -> None:
         """Mix twenty synthetic setting changes through the same engine pool."""
-        repository = SQLiteBirthdayRepository(self.store.engine)
+        repository = SQLiteBirthdayRepository(Database(self.store.engine))
         for channel in range(20):
             started = perf_counter()
             await repository.configure_guild(1, "Synthetic workload", channel, None)
@@ -212,7 +218,7 @@ async def run_once(
                     or copied != records[: len(copied)]
                 ):
                     raise ValueError("Backup is not a complete committed batch prefix")
-                await SQLiteBirthdayRepository(backup_engine).get_all()
+                await SQLiteBirthdayRepository(Database(backup_engine)).get_all()
             finally:
                 await backup_engine.dispose()
         report = workload.report()
