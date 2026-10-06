@@ -32,7 +32,7 @@ class QuestionCog(BaseCog):
         )
         self._answer_lock = asyncio.Lock()
         self._repository = repository
-        logger.info("Initialized /ask answer queue size=%s", len(self.answers))
+        logger.info("Initial /ask answers: %s", self.answers)
 
     @app_commands.command(
         name="ask",

@@ -122,7 +122,6 @@ class WolframCog(BaseCog):
             self.wolfram_client = WolframClient(
                 config.WOLFRAM_APP_ID, session=self.client_session
             )
-        logger.info("WolframCog loaded.")
 
     @override
     async def cog_unload(self) -> None:
