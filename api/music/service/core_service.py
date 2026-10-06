@@ -463,10 +463,7 @@ class CoreMusicService:
     ) -> MusicResult[None]:
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="shuffle")
-        try:
-            player.queue.shuffle()
-        except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            return await self._handle_player_io_failure(player, exc)
+        await player.shuffle_queue()
 
         self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
 

@@ -60,6 +60,16 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             self.ui,
         )
 
+    async def test_shuffle_awaits_player_owned_queue_operation(self) -> None:
+        player = MagicMock(spec=MusicPlayer)
+        player.shuffle_queue = AsyncMock()
+        self.connection.get_player.return_value = player
+
+        result = await self.service.shuffle(123)
+
+        self.assertEqual(result.status, MusicResultStatus.SUCCESS)
+        player.shuffle_queue.assert_awaited_once_with()
+
     async def _assert_apply_volume_error_is_soft_failure(
         self,
         error: Exception,

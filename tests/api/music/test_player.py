@@ -66,6 +66,60 @@ def _require_requester(entry: QueueEntry) -> TrackRequester:
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
+    async def test_shuffle_waits_for_skip_commit_or_rollback(self) -> None:
+        for cancel_skip in (False, True):
+            with self.subTest(cancel_skip=cancel_skip):
+                await self._assert_shuffle_after_skip(cancel_skip=cancel_skip)
+
+    async def _assert_shuffle_after_skip(self, *, cancel_skip: bool) -> None:
+        player = _make_player(current=make_entry("A"))
+        for entry_id, name in enumerate(("B", "C", "D"), 2):
+            player.queue.append(make_entry(name, entry_id=entry_id))
+        playing = asyncio.Event()
+        finish_play = asyncio.Event()
+        shuffling = asyncio.Event()
+
+        async def play(*_args: object, **_kwargs: object) -> None:
+            playing.set()
+            await finish_play.wait()
+
+        async def shuffle() -> None:
+            shuffling.set()
+            await player.shuffle_queue()
+
+        def reverse(entries: list[QueueEntry]) -> None:
+            entries.reverse()
+
+        with (
+            patch.object(player, "play", new=AsyncMock(side_effect=play)),
+            patch("api.music.queue.random.shuffle", side_effect=reverse),
+        ):
+            skip_task = asyncio.create_task(player.skip())
+            shuffle_task: asyncio.Task[None] | None = None
+            try:
+                await playing.wait()
+                shuffle_task = asyncio.create_task(shuffle())
+                await shuffling.wait()
+                self.assertFalse(shuffle_task.done())
+                if cancel_skip:
+                    skip_task.cancel()
+                    with self.assertRaises(asyncio.CancelledError):
+                        await skip_task
+                else:
+                    finish_play.set()
+                    await skip_task
+                await shuffle_task
+            finally:
+                skip_task.cancel()
+                if shuffle_task is not None:
+                    shuffle_task.cancel()
+                    await asyncio.gather(shuffle_task, return_exceptions=True)
+                await asyncio.gather(skip_task, return_exceptions=True)
+        self.assertEqual(
+            [entry.track.identifier for entry in player.queue],
+            ["D", "C", "B"] if cancel_skip else ["D", "C"],
+        )
+
     def test_new_player_starts_not_stale_and_can_be_marked_stale(self) -> None:
         with patch.object(mafic.Player, "__init__", return_value=None):
             player = MusicPlayer(MagicMock(), MagicMock())
