@@ -321,6 +321,10 @@ def _read_operational(
                 _seconds(raw.get("accumulated_uptime")),
             )
         result.sources[path] = (int(bool(raw)), "uptime-json")
+    _read_voice(source, result, allow_voice_prefix=allow_voice_prefix)
+
+
+def _read_voice(source: Path, result: LegacyData, *, allow_voice_prefix: bool) -> None:
     for path in _voice_files(source, result, allow_prefix=allow_voice_prefix):
         payload = (
             gzip.decompress(path.read_bytes())

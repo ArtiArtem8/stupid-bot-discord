@@ -107,7 +107,7 @@ def _birthdays(connection: Connection) -> None:
         connection.execute(
             text(
                 "INSERT OR IGNORE INTO guild_members(guild_id,user_id) "
-                + "VALUES (:guild,:user)"
+                "VALUES (:guild,:user)"
             ),
             {"guild": guild_id, "user": user_id},
         )
