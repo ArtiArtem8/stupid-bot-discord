@@ -35,7 +35,7 @@ from cogs.voice.profile.detail_models import (
     ProfileLook,
 )
 from cogs.voice.profile.media import (
-    MEDIA_LIMIT,
+    MEDIA_BYTE_LIMIT,
     ProfileMedia,
     ProfileMediaRenderer,
     RenderBusyError,
@@ -48,6 +48,7 @@ from utils.asyncio_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 _TIMELINE_CACHE_ENTRIES = 4
+_TIMELINE_REQUEST_LIMIT = 4
 _DATA_TIMEOUT = 10
 _ASSET_TIMEOUT = 5
 
@@ -254,7 +255,7 @@ class VoiceProfileCog(BaseCog):
             )
 
         media = await self._media_cache.render_detail(build)
-        media = media.within(min(MEDIA_LIMIT, byte_limit))
+        media = media.within(min(MEDIA_BYTE_LIMIT, byte_limit))
         return discord.File(BytesIO(media.data), filename=f"voice-{detail.value}.png")
 
     async def _detail_media(
@@ -319,7 +320,10 @@ class VoiceProfileCog(BaseCog):
         return user.display_name if user is not None else "Unknown user"
 
     async def _timeline(self, guild_id: int) -> ProfileSnapshot:
-        if self._timeline_admitted >= MEDIA_LIMIT or self._close_task is not None:
+        if (
+            self._timeline_admitted >= _TIMELINE_REQUEST_LIMIT
+            or self._close_task is not None
+        ):
             raise RenderBusyError("Voice history is busy")
         self._timeline_admitted += 1
         try:
@@ -424,7 +428,7 @@ class VoiceProfileCog(BaseCog):
 
     @staticmethod
     def _attachment(request: ProfileRequest, byte_limit: int) -> discord.File:
-        media = request.media.within(min(MEDIA_LIMIT, byte_limit))
+        media = request.media.within(min(MEDIA_BYTE_LIMIT, byte_limit))
         return discord.File(
             BytesIO(media.data),
             filename=f"voice-profile.{media.extension}",

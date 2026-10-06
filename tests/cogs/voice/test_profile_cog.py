@@ -745,6 +745,36 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
 
 
 class TestColdReadBudget(unittest.IsolatedAsyncioTestCase):
+    async def test_default_budget_rejects_fifth_request_and_recovers_capacity(
+        self,
+    ) -> None:
+        bot = MagicMock()
+        bot.get_cog.return_value.journal = MagicMock(spec=VoiceJournal)
+        cog = VoiceProfileCog(bot)
+        self.addAsyncCleanup(cog.cog_unload)
+        release = asyncio.Event()
+        started = [asyncio.Event() for _ in range(4)]
+        snapshot = ProfileSnapshot(VoiceTimeline((), (), ()), 1, 1)
+
+        async def read(_journal: VoiceJournal, _guild_id: int) -> ProfileSnapshot:
+            await release.wait()
+            return snapshot
+
+        async def request(index: int) -> ProfileSnapshot:
+            started[index].set()
+            return await cog._timeline(index + 1)
+
+        with patch.object(cog, "_read_snapshot", side_effect=read):
+            readers = [asyncio.create_task(request(index)) for index in range(4)]
+            try:
+                await asyncio.gather(*(event.wait() for event in started))
+                with self.assertRaises(RenderBusyError):
+                    await asyncio.wait_for(cog._timeline(5), timeout=1)
+            finally:
+                release.set()
+                await asyncio.gather(*readers)
+            self.assertIs(await cog._timeline(5), snapshot)
+
     async def test_cancelled_replay_retains_admission_until_worker_finishes(
         self,
     ) -> None:
@@ -762,7 +792,7 @@ class TestColdReadBudget(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(cog_module, "build_timeline", side_effect=replay),
-            patch.object(cog_module, "MEDIA_LIMIT", 1),
+            patch.object(cog_module, "_TIMELINE_REQUEST_LIMIT", 1),
         ):
             reader = asyncio.create_task(cog._timeline(1))
             try:
