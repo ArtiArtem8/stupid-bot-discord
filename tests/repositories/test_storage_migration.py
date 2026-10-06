@@ -13,18 +13,16 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 
 from api.voice.model import VoiceCheckpoint, VoiceSnapshot
-from repositories.sqlite.database import Database, migrate, open_engine, validate_schema
+from repositories.sqlite.database import Database, open_engine, validate_schema
 from repositories.sqlite.schema import reports, uptime_periods, users
 from repositories.voice_repository import VoiceRepository
-from repositories.volume_repository import VolumeRepository
 from tests.api.voice.examples import human, record
+from tests.repositories.legacy_voice import encode_record
 from tools import migrate_storage_once
 from tools.migrate_storage_once import Arguments, migrate_snapshot
 from tools.storage_legacy.import_features import report_time
 from tools.storage_legacy.sources import LegacyData, read_sources
 from tools.storage_legacy.verify import verify_import
-from tools.storage_legacy.voice_codec import encode_record
-from utils.asyncio_utils import run_in_thread
 from utils.json_types import JsonObject
 
 
@@ -191,36 +189,6 @@ class TestStorageMigration(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(report_time("08.03.2026 02:30:00", timezone)[0], None)
         self.assertIsNotNone(report_time("06.10.2026 12:00:00", timezone)[0])
-
-    async def test_partial_source_requires_explicit_policy_and_never_changes_source(
-        self,
-    ) -> None:
-        self.write("music_volumes.json", {"1": 20})
-        partial = self.root / "partial.sqlite"
-        await run_in_thread(lambda: migrate(partial, "0002_music_volume"))
-        database = Database(open_engine(partial))
-        try:
-            async with database.transaction() as connection:
-                await connection.exec_driver_sql(
-                    "INSERT INTO music_volumes VALUES (1, 80)"
-                )
-        finally:
-            await database.close()
-        before = sha256(partial.read_bytes()).hexdigest()
-        self.args.source_database = partial
-        with self.assertRaisesRegex(ValueError, "source-policy"):
-            await migrate_snapshot(self.args)
-        self.assertFalse(self.args.destination.exists())
-        policy = self.root / "policy.json"
-        policy.write_text('{"birthdays":"json","volume":"sqlite"}', encoding="utf-8")
-        self.args.source_policy = policy
-        await migrate_snapshot(self.args)
-        self.assertEqual(sha256(partial.read_bytes()).hexdigest(), before)
-        database = Database(open_engine(self.args.destination))
-        try:
-            self.assertEqual(await VolumeRepository(database).get_volume(1), 80)
-        finally:
-            await database.close()
 
     async def test_failed_verification_leaves_unpublished_unusable_building_file(
         self,

@@ -2,6 +2,7 @@
 
 import asyncio
 import unittest
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import override
@@ -13,7 +14,14 @@ from api.guild_monitoring import ServerMonitoringManager
 from api.monitor_models import MemberSnapshot
 from repositories.monitor_repository import MonitorRepository
 from tests.storage import temporary_database
-from tools.storage_legacy.sources import LegacyRoleSnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotInput:
+    user_id: int
+    username: str
+    roles: list[int]
+    left_at: datetime
 
 
 def make_role(
@@ -42,7 +50,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         self.manager = ServerMonitoringManager(self.repository)
 
     async def _store_snapshot(
-        self, snapshot: LegacyRoleSnapshot, ttl: int | None = None
+        self, snapshot: SnapshotInput, ttl: int | None = None
     ) -> MemberSnapshot:
         await self.repository.set_enabled(10, True, ttl)
         await self.repository.save(
@@ -73,7 +81,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         member = self._restore_member()
-        snapshot = LegacyRoleSnapshot(
+        snapshot = SnapshotInput(
             user_id=5,
             username="u",
             roles=[10, 20],
@@ -111,7 +119,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
                 role = make_role(7)
                 member.guild.get_role.return_value = role
                 await self._store_snapshot(
-                    LegacyRoleSnapshot(5, "u", [7], now - timedelta(days=age)), ttl
+                    SnapshotInput(5, "u", [7], now - timedelta(days=age)), ttl
                 )
                 with patch("api.guild_monitoring.utcnow", return_value=now):
                     restored, skipped = await self.manager.restore_snapshot(member)
@@ -126,7 +134,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         member = self._restore_member()
         roles = {7: make_role(7), 9: make_role(9)}
         member.guild.get_role.side_effect = roles.get
-        snapshot = LegacyRoleSnapshot(5, "u", [7, 9], datetime.now(UTC))
+        snapshot = SnapshotInput(5, "u", [7, 9], datetime.now(UTC))
         snapshot = await self._store_snapshot(snapshot)
         error = discord.HTTPException(
             MagicMock(status=503, reason="unavailable"), "retry"
@@ -161,7 +169,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
                 member.guild.get_role.return_value = make_role(7, assignable=assignable)
                 member.guild.me.guild_permissions.manage_roles = permission
                 await self._store_snapshot(
-                    LegacyRoleSnapshot(5, "u", [7], datetime.now(UTC))
+                    SnapshotInput(5, "u", [7], datetime.now(UTC))
                 )
                 self.assertEqual(await self.manager.restore_snapshot(member), ([], [7]))
                 member.add_roles.assert_not_awaited()
@@ -171,7 +179,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         moment = datetime.now(UTC)
-        old = await self._store_snapshot(LegacyRoleSnapshot(5, "u", [7], moment))
+        old = await self._store_snapshot(SnapshotInput(5, "u", [7], moment))
         member = self._restore_member()
         member.guild.get_role.return_value = make_role(7)
         entered, release = asyncio.Event(), asyncio.Event()
@@ -196,7 +204,7 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
     async def test_cleanup_uses_current_ttl_and_keeps_recent_snapshot(self) -> None:
         now = datetime.now(UTC)
         await self._store_snapshot(
-            LegacyRoleSnapshot(5, "old", [7], now - timedelta(days=10)), 3
+            SnapshotInput(5, "old", [7], now - timedelta(days=10)), 3
         )
         await self.repository.save(10, 6, "new", [8], now - timedelta(days=1))
         self.assertEqual(await self.repository.cleanup_expired(10, now), 1)

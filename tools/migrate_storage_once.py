@@ -28,8 +28,6 @@ from tools.storage_legacy.import_features import (
     import_features,
     report_time,
 )
-from tools.storage_legacy.json_input import load_object
-from tools.storage_legacy.partial_database import read_partial
 from tools.storage_legacy.sources import LegacyData, read_sources
 from tools.storage_legacy.verify import verify_import
 from utils.asyncio_utils import run_in_thread
@@ -39,13 +37,11 @@ from utils.json_types import JsonObject
 class Arguments(argparse.Namespace):
     source: Path = Path()
     destination: Path = Path()
-    source_database: Path | None = None
-    source_policy: Path | None = None
     legacy_timezone: str | None = None
     allow_voice_prefix: bool = False
 
 
-def _hashes(source: Path, partial: Path | None, policy: Path | None) -> dict[Path, str]:
+def _hashes(source: Path) -> dict[Path, str]:
     paths = [
         source / name
         for name in (
@@ -62,44 +58,11 @@ def _hashes(source: Path, partial: Path | None, policy: Path | None) -> dict[Pat
         for scope in [root / "session", *root.glob("guild_*")]:
             paths.extend(scope.glob("events_*.jsonl"))
             paths.extend(scope.glob("events_*.jsonl.gz"))
-    if partial is not None:
-        if Path(f"{partial}-wal").exists():
-            raise ValueError(
-                "Use a closed, checkpointed backup of the partial source database"
-            )
-        paths.append(partial)
-    if policy is not None:
-        paths.append(policy)
     return {
         path.resolve(): sha256(path.read_bytes()).hexdigest()
         for path in paths
         if path.is_file()
     }
-
-
-def _choose_partial(
-    data: LegacyData, database: Path | None, policy_path: Path | None
-) -> None:
-    if database is None:
-        if policy_path is not None:
-            raise ValueError("A source policy requires --source-database")
-        return
-    if policy_path is None:
-        raise ValueError("Choose birthdays and volume explicitly with --source-policy")
-    policy = load_object(policy_path)
-    if set(policy) != {"birthdays", "volume"} or any(
-        value not in ("json", "sqlite") for value in policy.values()
-    ):
-        raise ValueError(
-            'Source policy must name birthdays and volume as "json" or "sqlite"'
-        )
-    birthdays, volumes, revision = read_partial(database)
-    if policy["birthdays"] == "sqlite":
-        data.birthdays = birthdays
-    if policy["volume"] == "sqlite":
-        data.volumes = volumes
-    data.sources[database] = (len(birthdays) + len(volumes), revision)
-    data.sources[policy_path] = (2, "explicit-source-policy")
 
 
 def _validate(data: LegacyData, timezone: ZoneInfo | None) -> None:
@@ -202,14 +165,9 @@ async def migrate_snapshot(args: Arguments) -> JsonObject:
             "Destination or its unfinished building file already exists"
         )
     timezone = ZoneInfo(args.legacy_timezone) if args.legacy_timezone else None
-    original = await run_in_thread(
-        lambda: _hashes(source, args.source_database, args.source_policy)
-    )
+    original = await run_in_thread(lambda: _hashes(source))
     data = await run_in_thread(
         lambda: read_sources(source, allow_voice_prefix=args.allow_voice_prefix)
-    )
-    await run_in_thread(
-        lambda: _choose_partial(data, args.source_database, args.source_policy)
     )
     _validate(data, timezone)
     manifest, digest = _manifest(data, original, source, timezone)
@@ -280,9 +238,7 @@ async def migrate_snapshot(args: Arguments) -> JsonObject:
 
 
 async def _unchanged(args: Arguments, original: dict[Path, str]) -> None:
-    current = await run_in_thread(
-        lambda: _hashes(args.source.resolve(), args.source_database, args.source_policy)
-    )
+    current = await run_in_thread(lambda: _hashes(args.source.resolve()))
     if original != current:
         raise ValueError(
             "Source snapshot changed during migration; destination remains unpublished"
@@ -310,8 +266,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--destination", type=Path, required=True)
-    parser.add_argument("--source-database", type=Path)
-    parser.add_argument("--source-policy", type=Path)
     parser.add_argument("--legacy-timezone")
     parser.add_argument(
         "--allow-voice-prefix",

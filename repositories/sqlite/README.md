@@ -51,20 +51,10 @@ The manifest records both hashes/counts, the selection rule and selected path;
 `migration_sources` retains the same source provenance. Every source hash is
 checked again before COMPLETE publication. This option does not change runtime.
 
-If an earlier 0001/0002 SQLite file contains independent birthday or volume edits,
-pass a closed, checkpointed copy with `--source-database PATH` and
-`--source-policy POLICY.json`. The policy must explicitly contain both keys:
-
-```json
-{"birthdays": "sqlite", "volume": "json"}
-```
-
-Each feature chooses its entire source. There is no silent merge or newest-file
-heuristic. Both provided source formats are validated even when one loses the
-selection. The partial source database is read-only and never upgraded in place
-by the importer. A separate explicit `migrate` can upgrade a standalone 0001/0002
-copy in place; those frozen revisions are unchanged and 0003 preserves their
-saved birthday/member/history/volume rows before replacing the old tables.
+The importer accepts legacy JSON/JSONL/gzip sources only. To upgrade an existing
+SQLite database, use the separate explicit `migrate` command on a copy.
+Frozen revisions 0001/0002 are unchanged; 0003 preserves their saved birthday,
+member, history and volume rows before replacing the old tables.
 
 Old naive report timestamps retain their original text with unknown UTC time.
 `--legacy-timezone Europe/Berlin` optionally interprets unambiguous local times;

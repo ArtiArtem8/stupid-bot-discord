@@ -12,7 +12,8 @@ from api.voice.model import (
 )
 from api.voice.timeline import build_timeline
 from tests.api.voice.examples import START, at, human, record
-from tools.storage_legacy.voice_codec import decode_record, encode_record
+from tests.repositories.legacy_voice import encode_record
+from tools.storage_legacy.voice_codec import decode_record
 
 
 class TestVoiceCodec(unittest.TestCase):

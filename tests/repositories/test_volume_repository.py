@@ -5,7 +5,7 @@ import unittest
 from functools import partial
 from typing import override
 
-from sqlalchemy import insert, select
+from sqlalchemy import select
 
 import config
 from repositories.birthday_repository import BirthdayRepository
@@ -19,7 +19,6 @@ from repositories.sqlite.database import (
 from repositories.sqlite.schema import music_settings
 from repositories.volume_repository import VolumeData, VolumeRepository
 from tests.storage import temporary_database
-from tools.storage_legacy.partial_schema import congratulations, guilds, users, volumes
 from utils.asyncio_utils import run_in_thread
 
 
@@ -61,32 +60,29 @@ class TestVolumeRepository(unittest.IsolatedAsyncioTestCase):
                 await run_in_thread(partial(migrate, old_path, revision))
                 old = Database(open_engine(old_path))
                 async with old.transaction() as connection:
-                    await connection.execute(
-                        insert(guilds).values(
-                            guild_id=1,
-                            server_name="Guild",
-                            channel_id=10,
-                            birthday_role_id=None,
-                        )
+                    await connection.exec_driver_sql(
+                        "INSERT INTO birthday_guilds "
+                        "(guild_id, server_name, channel_id, birthday_role_id) "
+                        "VALUES (?, ?, ?, ?)",
+                        (1, "Guild", 10, None),
                     )
-                    await connection.execute(
-                        insert(users).values(
-                            guild_id=1,
-                            user_id=2,
-                            name="Member",
-                            birthday="01-01-2000",
-                            position=0,
-                        )
+                    await connection.exec_driver_sql(
+                        "INSERT INTO birthday_users "
+                        "(guild_id, user_id, name, birthday, position) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (1, 2, "Member", "01-01-2000", 0),
                     )
                     for position in (0, 1):
-                        await connection.execute(
-                            insert(congratulations).values(
-                                guild_id=1, user_id=2, position=position, value="old"
-                            )
+                        await connection.exec_driver_sql(
+                            "INSERT INTO birthday_congratulations "
+                            "(guild_id, user_id, position, value) VALUES (?, ?, ?, ?)",
+                            (1, 2, position, "old"),
                         )
                     if revision == "0002_music_volume":
-                        await connection.execute(
-                            insert(volumes).values(guild_id=1, volume=33)
+                        await connection.exec_driver_sql(
+                            "INSERT INTO music_volumes (guild_id, volume) "
+                            "VALUES (?, ?)",
+                            (1, 33),
                         )
                 await old.close()
                 await run_in_thread(partial(migrate, old_path))
