@@ -2,9 +2,16 @@
 
 import unittest
 
-from api.music.models import MusicSession, PlaylistResponseData, PlayPlacement
+import config
+from api.music.models import (
+    MusicSession,
+    PlaylistResponseData,
+    PlayPlacement,
+    RepeatMode,
+)
 from cogs.music.presentation import (
     build_playlist_added_embed,
+    build_repeat_embed,
     build_session_summary_embed,
     format_track_link,
 )
@@ -12,6 +19,23 @@ from tests.api.music.helpers import make_playlist, make_track
 
 
 class TestTrackLinkFormatting(unittest.TestCase):
+    def test_long_label_keeps_complete_link(self) -> None:
+        uri = "https://example.com/track"
+        value = format_track_link("[long]" * 1000, uri)
+        self.assertLessEqual(len(value), 1024)
+        self.assertTrue(value.endswith(f"]({uri})"))
+
+    def test_oversized_uri_falls_back_to_bounded_label(self) -> None:
+        value = format_track_link("Track", "https://example.com/" + "x" * 2000)
+        self.assertEqual(value, "Track")
+
+    def test_repeat_modes_use_informational_color(self) -> None:
+        for mode in RepeatMode:
+            with self.subTest(mode=mode):
+                colour = build_repeat_embed(mode).colour
+                self.assertIsNotNone(colour)
+                self.assertEqual(colour.value if colour else None, config.Color.INFO)
+
     def test_formats_safe_and_hostile_titles_with_uri(self) -> None:
         uri = "https://good.invalid"
         cases = (
@@ -64,6 +88,19 @@ class TestTrackLinkFormatting(unittest.TestCase):
 
 
 class TestPlaylistPresentation(unittest.TestCase):
+    def test_long_playlist_name_fits_title_with_closed_emphasis(self) -> None:
+        data: PlaylistResponseData = {
+            "type": "playlist",
+            "playlist": make_playlist("x" * 500, []),
+            "undo_entries": (),
+            "placement": "end",
+        }
+        embed = build_playlist_added_embed(
+            data, requester_name="User", requester_avatar_url=""
+        )
+        self.assertLessEqual(len(embed.title or ""), 256)
+        self.assertTrue((embed.title or "").endswith("**"))
+
     def test_escapes_and_normalizes_playlist_name(self) -> None:
         playlist = make_playlist(
             "**Mix** [text](https://evil.invalid)\nSecond line",

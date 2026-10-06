@@ -415,6 +415,17 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         )
         return button
 
+    def test_embed_bounds_title_and_identifies_requester(self) -> None:
+        attempt = PlaybackAttempt(1, make_entry("x" * 500))
+        view, player, _ = self._make_view(attempt)
+        player.guild.get_member.return_value = MagicMock(display_name="Listener")
+        embed = view.make_embed()
+        self.assertLessEqual(len(embed.title or ""), 256)
+        self.assertEqual(embed.footer.text, "Запросил: Listener")
+        player.guild.get_member.return_value = None
+        self.assertEqual(view.make_embed().footer.text, "Запросил: 10")
+        view.stop()
+
     def test_view_stores_exact_playback_attempt(self) -> None:
         attempt = PlaybackAttempt(1, make_entry("track"))
         view, _, _ = self._make_view(attempt)

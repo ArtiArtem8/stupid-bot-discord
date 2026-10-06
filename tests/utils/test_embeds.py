@@ -15,6 +15,27 @@ from utils.text_utils import truncate_text
 
 
 class TestSafeEmbed(unittest.TestCase):
+    def test_setters_share_total_budget_and_reuse_replaced_text(self) -> None:
+        embed = SafeEmbed(description="x" * 4096)
+        embed.set_footer(text="f" * 2048)
+        self.assertEqual(len(embed), 6000)
+        embed.set_footer(text="replacement")
+        embed.set_author(name="a" * 256)
+        self.assertEqual(embed.footer.text, "replacement")
+        self.assertEqual(embed.author.name, "a" * 256)
+        self.assertLessEqual(len(embed), 6000)
+
+    def test_constructor_respects_custom_total_budget(self) -> None:
+        embed = SafeEmbed(
+            limits=EmbedLimits(max_total=10), title="t" * 8, description="d" * 8
+        )
+        self.assertLessEqual(len(embed), 10)
+
+    def test_non_strict_field_name_also_fits_remaining_budget(self) -> None:
+        embed = SafeEmbed(limits=EmbedLimits(max_total=10), description="d" * 8)
+        embed.safe_add_field(name="n" * 10, value="v", strict=False)
+        self.assertLessEqual(len(embed), 10)
+
     def test_init_truncates_title_and_description(self) -> None:
         limits = EmbedLimits(title=5, description=7)
         e = SafeEmbed(limits=limits, title="123456789", description="abcdefghi")

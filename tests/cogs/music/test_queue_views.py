@@ -57,6 +57,13 @@ def _make_snapshot(
 
 
 class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
+    def test_long_current_and_queued_tracks_fit_fields(self) -> None:
+        snapshot = _make_snapshot("x" * 2000, current_identifier="y" * 2000)
+        embed = QueuePaginationAdapter(snapshot).make_embed(0)
+        self.assertEqual(len(embed.fields), 2)
+        for field in embed.fields:
+            self.assertLessEqual(len(field.value or ""), 1024)
+
     async def test_first_page_shows_current_and_initial_queue_tracks(self) -> None:
         snapshot = _make_snapshot("one", "two", current_identifier="current")
         adapter = QueuePaginationAdapter(snapshot, page_size=1)

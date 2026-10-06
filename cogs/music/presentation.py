@@ -20,6 +20,7 @@ from api.music.models import (
     TrackInfo,
     TrackResponseData,
 )
+from utils.embeds import DEFAULT_LIMITS, SafeEmbed
 from utils.text_utils import truncate_sequence, truncate_text
 
 MAX_TIMEDELTA_DAYS = 999_999_999
@@ -78,12 +79,13 @@ def _escape_markdown_link_label(text: str) -> str:
     )
 
 
-def format_track_link(title: str, uri: str | None) -> str:
-    """Format a safe track title, linking it only when a URI is available."""
+def format_track_link(title: str, uri: str | None, *, max_length: int = 1024) -> str:
+    """Bound a track label while keeping its link intact when it fits."""
     escaped_title = _escape_markdown_link_label(title)
-    if not uri:
-        return escaped_title
-    return f"[{escaped_title}]({uri})"
+    if not uri or len(uri) + 5 >= max_length:
+        return truncate_text(escaped_title, max_length)
+    label = truncate_text(escaped_title, max_length - len(uri) - 4)
+    return f"[{label}]({uri})"
 
 
 def _format_session_stats(session: MusicSession) -> str:
@@ -138,12 +140,12 @@ def _format_recent_tracks(tracks: Sequence[TrackInfo]) -> tuple[str, int]:
 
 def build_session_summary_embed(session: MusicSession) -> discord.Embed:
     """Build the summary shown when a music session ends."""
-    embed = discord.Embed(
+    embed = SafeEmbed(
         title="Сессия закончена",
         color=config.Color.INFO,
         timestamp=session.start_time,
     )
-    embed.add_field(
+    embed.safe_add_field(
         name="В общем:",
         value=_format_session_stats(session),
         inline=True,
@@ -152,9 +154,9 @@ def build_session_summary_embed(session: MusicSession) -> discord.Embed:
     tracks_text, text_lines = _format_recent_tracks(session.tracks)
     if text_lines == 1:
         embed.set_thumbnail(url=session.tracks[-1].thumbnail_url)
-        embed.add_field(name="Трек:", value=tracks_text, inline=False)
+        embed.safe_add_field(name="Трек:", value=tracks_text, inline=False)
     else:
-        embed.add_field(name="Недавние треки:", value=tracks_text, inline=False)
+        embed.safe_add_field(name="Недавние треки:", value=tracks_text, inline=False)
     return embed
 
 
@@ -171,14 +173,14 @@ def build_track_added_embed(
         "next": "Добавлено в начало очереди",
         "end": "Добавлено в очередь",
     }
-    embed = discord.Embed(
+    embed = SafeEmbed(
         title=title_by_placement[data["placement"]],
         description=format_track_link(track.title, track.uri),
         color=config.Color.INFO,
     )
     if track.artwork_url:
         embed.set_thumbnail(url=track.artwork_url)
-    embed.add_field(name="Длительность", value=format_duration(track.length))
+    embed.safe_add_field(name="Длительность", value=format_duration(track.length))
     embed.set_footer(
         text=f"Запросил: {requester_name}",
         icon_url=requester_avatar_url,
@@ -194,7 +196,10 @@ def build_playlist_added_embed(
 ) -> discord.Embed:
     """Build feedback for an added or immediately started playlist."""
     playlist = data["playlist"]
-    playlist_name = _escape_markdown_text(playlist.name)
+    playlist_name = truncate_text(
+        _escape_markdown_text(playlist.name),
+        DEFAULT_LIMITS.title - len("Добавлен плейлист ****"),
+    )
     title_by_placement = {
         "now": "Плейлист запущен",
         "next": "Плейлист добавлен в начало очереди",
@@ -203,13 +208,13 @@ def build_playlist_added_embed(
     description = f"Треков: {len(playlist.tracks)}"
     if data["placement"] != "end":
         description = f"**{playlist_name}**\n{description}"
-    embed = discord.Embed(
+    embed = SafeEmbed(
         title=title_by_placement[data["placement"]],
         description=description,
         color=config.Color.INFO,
     )
     duration = sum(track.length for track in playlist.tracks)
-    embed.add_field(name="Длительность", value=format_duration(duration))
+    embed.safe_add_field(name="Длительность", value=format_duration(duration))
     if playlist.tracks:
         embed.set_thumbnail(url=playlist.tracks[0].artwork_url or "")
     embed.set_footer(
@@ -224,7 +229,7 @@ def build_skip_embed(
     next_track: Track | None,
 ) -> discord.Embed:
     """Build feedback for a successful skip."""
-    embed = discord.Embed(
+    embed = SafeEmbed(
         title="Трек пропущен",
         description=(
             format_track_link(skipped.title, skipped.uri) if skipped else "???"
@@ -232,7 +237,7 @@ def build_skip_embed(
         color=config.Color.INFO,
     )
     if next_track:
-        embed.add_field(
+        embed.safe_add_field(
             name="Далее",
             value=format_track_link(next_track.title, next_track.uri),
             inline=False,
@@ -246,12 +251,12 @@ def build_rotate_embed(
     next_track: Track | None,
 ) -> discord.Embed:
     """Build feedback for moving the current track to the queue end."""
-    embed = discord.Embed(
+    embed = SafeEmbed(
         title="Трек перемещён в конец",
         description=format_track_link(moved_track.title, moved_track.uri),
         color=config.Color.INFO,
     )
-    embed.add_field(
+    embed.safe_add_field(
         name="Далее",
         value=(
             format_track_link(next_track.title, next_track.uri)
@@ -275,17 +280,16 @@ def build_repeat_embed(new_mode: RepeatMode | str | None) -> discord.Embed:
             message = "Повтор трека **включён**"
         case _:
             message = "Режим повтора **неизвестен**"
-    color = config.Color.WARNING if new_mode is RepeatMode.OFF else config.Color.SUCCESS
     return discord.Embed(
         title="Залупливание",
         description=message,
-        color=color,
+        color=config.Color.INFO,
     )
 
 
 def build_track_exception_embed(payload: TrackExceptionPayload) -> discord.Embed:
     """Build the user-facing notification for a track exception."""
-    embed = discord.Embed(
+    embed = SafeEmbed(
         title="Не удалось воспроизвести трек",
         description=(
             f"{format_track_link(payload.track.title, payload.track.uri)}\n"

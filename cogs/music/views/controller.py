@@ -30,6 +30,7 @@ from framework.feedback_ui import FeedbackType, FeedbackUI
 from framework.interaction_flow import ack_component
 from resources import RESTART_EMOJI
 from utils.callables import callable_name
+from utils.embeds import SafeEmbed
 
 from ..feedback import send_warning
 
@@ -387,7 +388,7 @@ class TrackControllerView(ui.View):
 
         description = f"`{cur_min}:{cur_sec:02d}` {bar} `-{rem_min}:{rem_sec:02d}`"
 
-        embed = discord.Embed(
+        embed = SafeEmbed(
             title=f"{MUSIC_PLAYER_EMOJIS['musical_note']} {track.title}",
             description=description,
             color=config.Color.INFO,
@@ -398,7 +399,8 @@ class TrackControllerView(ui.View):
         avatar = member.display_avatar if member else None
 
         embed.set_footer(
-            text="Бета-тестирование", icon_url=avatar.url if avatar else None
+            text=f"Запросил: {member.display_name if member else self.user_id}",
+            icon_url=avatar.url if avatar else None,
         )
         return embed
 

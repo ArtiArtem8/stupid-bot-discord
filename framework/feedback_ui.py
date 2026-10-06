@@ -18,7 +18,8 @@ from discord.ui import Button, View
 from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAny]
 
 import config
-from utils.embeds import SafeEmbed
+from utils.embeds import DEFAULT_LIMITS, SafeEmbed
+from utils.text_utils import truncate_text
 
 logger = logging.getLogger(__name__)
 
@@ -236,13 +237,55 @@ class FeedbackUI:
 
     @staticmethod
     def _add_delete_timer(embed: discord.Embed, delete_after: float | None) -> None:
-        if delete_after:
-            expire_at = utcnow() + timedelta(seconds=delete_after)
-            timer = f"-# Удалится {format_dt(expire_at, style='R')}"
-            if isinstance(embed, SafeEmbed):
-                embed.safe_add_field(name="", value=timer, inline=False)
-            else:
-                embed.add_field(name="", value=timer, inline=False)
+        if not delete_after:
+            return
+        expire_at = utcnow() + timedelta(seconds=delete_after)
+        timer = f"-# Удалится {format_dt(expire_at, style='R')}"
+        # Keep the timer complete, even when external content exhausts the budget.
+        name = ""
+        if len(embed.fields) >= DEFAULT_LIMITS.max_fields:
+            last = embed.fields[-1]
+            name = last.name or ""
+            value = truncate_text(
+                last.value or "", DEFAULT_LIMITS.field_value - len(timer) - 1
+            )
+            timer = f"{value}\n{timer}"
+            embed.remove_field(-1)
+        FeedbackUI._reserve_timer_space(embed, len(name) + len(timer))
+        embed.add_field(name=name, value=timer, inline=False)
+
+    @staticmethod
+    def _reserve_timer_space(embed: discord.Embed, size: int) -> None:
+        budget = DEFAULT_LIMITS.max_total - size
+        if len(embed) <= budget:
+            return
+        if embed.description:
+            embed.description = truncate_text(
+                embed.description,
+                max(0, len(embed.description) - (len(embed) - budget)),
+            )
+        if len(embed) > budget and embed.footer.text:
+            embed.set_footer(
+                text=truncate_text(
+                    embed.footer.text,
+                    max(0, len(embed.footer.text) - (len(embed) - budget)),
+                ),
+                icon_url=embed.footer.icon_url,
+            )
+        for index in reversed(range(len(embed.fields))):
+            if len(embed) <= budget:
+                break
+            field = embed.fields[index]
+            name, value = field.name or "", field.value or ""
+            excess = len(embed) - budget
+            embed.set_field_at(
+                index,
+                name=truncate_text(
+                    name, max(0, len(name) - max(0, excess - len(value)))
+                ),
+                value=truncate_text(value, max(0, len(value) - excess)),
+                inline=field.inline,
+            )
 
     @staticmethod
     async def _send_payload(
