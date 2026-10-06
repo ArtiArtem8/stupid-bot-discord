@@ -139,26 +139,39 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         cog, client = self._make_cog()
         active = 0
         peak = 0
+        occupied = asyncio.Event()
+        release = asyncio.Event()
+        started = [asyncio.Event() for _ in range(3)]
 
         async def query(_input: str) -> WolframResult:
             nonlocal active, peak
             active += 1
             peak = max(peak, active)
-            await asyncio.sleep(0.01)
+            if active == 2:
+                occupied.set()
+            await release.wait()
             active -= 1
             return WolframResult(success=False)
 
         client.query.side_effect = query
         interactions = [self._make_interaction()[0] for _ in range(3)]
+
+        async def request(index: int) -> None:
+            started[index].set()
+            await cog._handle_query(interactions[index], "sin(x)", mode="solve")
+
         with patch.object(FeedbackUI, "send", new=AsyncMock()):
-            await asyncio.gather(
-                *(
-                    cog._handle_query(item, "sin(x)", mode="solve")
-                    for item in interactions
-                )
-            )
+            requests = [asyncio.create_task(request(index)) for index in range(3)]
+            try:
+                await asyncio.gather(*(event.wait() for event in started))
+                await asyncio.wait_for(occupied.wait(), timeout=1)
+                self.assertEqual(client.query.await_count, 2)
+            finally:
+                release.set()
+                await asyncio.gather(*requests)
 
         self.assertEqual(peak, 2)
+        self.assertEqual(client.query.await_count, 3)
 
     async def test_query_rate_limit_uses_specific_safe_feedback(self) -> None:
         cog, client = self._make_cog()
@@ -451,7 +464,7 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             content,
             "@plotter [Wolfram](https://www.wolframalpha.com/"
-            + "input?i=plot+sin%28x%29) **Plot:** `sin(x)`",
+            "input?i=plot+sin%28x%29) **Plot:** `sin(x)`",
         )
         self.assertTrue(content.startswith("@plotter [Wolfram]("))
         self.assertNotIn("\n", content)

@@ -77,11 +77,6 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         _route_player_invalidation(connection)
         connection.is_player_usable.return_value = True
         connection.detach_stale_voice_client = AsyncMock()
-
-        async def invalidate(player: MusicPlayer, **_kwargs: object) -> None:
-            await connection.detach_stale_voice_client(player.guild, player)
-
-        connection.invalidate_player = AsyncMock(side_effect=invalidate)
         ui = MagicMock()
         ui.controller.destroy_for_guild = AsyncMock()
         ui.spawn_controller = AsyncMock()

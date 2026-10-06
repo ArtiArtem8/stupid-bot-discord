@@ -846,9 +846,6 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(started)
         stop_mock.assert_awaited_once()
 
-    async def test_force_skip_advances_to_next_track(self) -> None:
-        await self._assert_skip_mode(RepeatMode.OFF)
-
     async def test_skip_starts_next_track(self) -> None:
         await self._assert_skip_mode(RepeatMode.OFF)
 
