@@ -105,7 +105,7 @@ def truncate_text(
     if len(text) <= width:
         return text
 
-    if width < len(placeholder):
+    if width <= len(placeholder):
         return placeholder[:width]
     content_len = width - len(placeholder)
 
@@ -154,9 +154,6 @@ def truncate_sequence(
         return full_text
 
     budget = max_length - len(placeholder)
-
-    if not item_list:
-        return placeholder
 
     current_len = 0
     valid_items: list[str] = []
