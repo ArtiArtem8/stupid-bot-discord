@@ -42,6 +42,7 @@ class Arguments(argparse.Namespace):
     source_database: Path | None = None
     source_policy: Path | None = None
     legacy_timezone: str | None = None
+    allow_voice_prefix: bool = False
 
 
 def _hashes(source: Path, partial: Path | None, policy: Path | None) -> dict[Path, str]:
@@ -179,6 +180,7 @@ def _manifest(
     bounds = [record.observed_at.astimezone(UTC).isoformat() for record in data.voice]
     manifest: JsonObject = {
         "sources": files,
+        "voice_resolutions": data.voice_resolutions,
         "voice_observed_min": min(bounds) if bounds else None,
         "voice_observed_max": max(bounds) if bounds else None,
         "legacy_timezone": str(timezone) if timezone else None,
@@ -203,7 +205,9 @@ async def migrate_snapshot(args: Arguments) -> JsonObject:
     original = await run_in_thread(
         lambda: _hashes(source, args.source_database, args.source_policy)
     )
-    data = await run_in_thread(lambda: read_sources(source))
+    data = await run_in_thread(
+        lambda: read_sources(source, allow_voice_prefix=args.allow_voice_prefix)
+    )
     await run_in_thread(
         lambda: _choose_partial(data, args.source_database, args.source_policy)
     )
@@ -251,6 +255,7 @@ async def migrate_snapshot(args: Arguments) -> JsonObject:
                                 "voice_observed_min": manifest["voice_observed_min"],
                                 "voice_observed_max": manifest["voice_observed_max"],
                                 "scope": "entire imported voice history",
+                                "voice_resolution": data.voice_resolutions.get(name),
                                 "legacy_timezone": args.legacy_timezone,
                             },
                             sort_keys=True,
@@ -308,6 +313,11 @@ def main() -> None:
     parser.add_argument("--source-database", type=Path)
     parser.add_argument("--source-policy", type=Path)
     parser.add_argument("--legacy-timezone")
+    parser.add_argument(
+        "--allow-voice-prefix",
+        action="store_true",
+        help="Accept exact complete-record JSONL prefixes of gzip; reject divergence",
+    )
     args = parser.parse_args(namespace=Arguments())
     sys.stdout.write(
         json.dumps(asyncio.run(migrate_snapshot(args)), ensure_ascii=False, indent=2)

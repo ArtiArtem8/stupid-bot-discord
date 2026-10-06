@@ -113,21 +113,6 @@ class SQLiteBirthdayRepository:
                 )
             )
 
-    async def delete(self, key: int) -> bool:
-        """Delete this feature's settings and members, retaining global identities."""
-        async with self._database.transaction() as connection:
-            await connection.execute(
-                member_birthdays.delete().where(member_birthdays.c.guild_id == key)
-            )
-            return (
-                await connection.scalar(
-                    birthday_settings.delete()
-                    .where(birthday_settings.c.guild_id == key)
-                    .returning(birthday_settings.c.guild_id)
-                )
-                is not None
-            )
-
     async def set_user_birthday(
         self,
         guild_id: int,
@@ -264,7 +249,11 @@ class SQLiteBirthdayRepository:
             )
 
     async def claim_delivery(self, claim: BirthdayDelivery) -> bool:
-        """Claim a due date only while the detached settings/member versions match."""
+        """Claim a current due date, replacing only a definitely unsent obsolete claim.
+
+        Replacement changes the operation token atomically. Uncertain and sent
+        rows remain closed to retries; obsolete never means an attempted send.
+        """
         async with self._database.transaction() as connection:
             if not await _delivery_current(connection, claim):
                 return False
@@ -292,7 +281,23 @@ class SQLiteBirthdayRepository:
                     status="claimed",
                     updated_us=time.time_ns() // 1000,
                 )
-                .on_conflict_do_nothing()
+                .on_conflict_do_update(
+                    index_elements=[
+                        birthday_deliveries.c.guild_id,
+                        birthday_deliveries.c.user_id,
+                        birthday_deliveries.c.calendar_date,
+                    ],
+                    set_={
+                        "operation_id": claim.operation_id,
+                        "settings_version": claim.settings_version,
+                        "birthday_version": claim.birthday_version,
+                        "status": "claimed",
+                        "message_id": None,
+                        "updated_us": time.time_ns() // 1000,
+                    },
+                    where=(birthday_deliveries.c.status == "obsolete")
+                    & (birthday_deliveries.c.operation_id != claim.operation_id),
+                )
                 .returning(birthday_deliveries.c.operation_id)
             )
             return await connection.scalar(statement) == claim.operation_id

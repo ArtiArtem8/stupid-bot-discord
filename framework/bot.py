@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import time
 from functools import partial
 from pathlib import Path
 from typing import override
@@ -233,7 +232,7 @@ class StupidBot(commands.Bot):
     @tasks.loop(seconds=11)
     async def update_activity_task(self) -> None:
         """Refresh presence only when the formatted uptime changes."""
-        uptime = time.time() - self.uptime_manager.start_time
+        uptime = self.uptime_manager.elapsed_microseconds() / 1_000_000
         formatted_time = format_duration_ru(int(uptime), depth=2)
         activity_str = f"жизнь уже {formatted_time}."
 

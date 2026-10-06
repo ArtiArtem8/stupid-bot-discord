@@ -4,7 +4,7 @@ import asyncio
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy import select
 
@@ -95,3 +95,24 @@ class TestUptimeShutdown(unittest.IsolatedAsyncioTestCase):
                 )
         finally:
             await reader.close()
+
+    async def test_presence_uses_the_same_elapsed_duration_as_persistence(self) -> None:
+        path, _ = await temporary_database(self)
+        bot = StupidBot(database_path=path, cog_loader=MagicMock(spec=CogLoader))
+        self.addAsyncCleanup(bot.close)
+        await bot.restore_state()
+        with (
+            patch.object(
+                bot.uptime_manager, "elapsed_microseconds", return_value=120_000_000
+            ) as elapsed,
+            patch.object(bot, "change_presence", new_callable=AsyncMock) as presence,
+        ):
+            await bot.update_activity_task.coro(bot)
+            self.assertEqual(await bot.save_state(), 120.0)
+            self.assertEqual(elapsed.call_count, 2)
+            presence.assert_awaited_once()
+        async with bot._database.transaction() as connection:
+            self.assertEqual(
+                await connection.scalar(select(runtime_checkpoint.c.accumulated_us)),
+                120_000_000,
+            )

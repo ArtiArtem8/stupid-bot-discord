@@ -187,8 +187,5 @@ class BirthdayManager:
             guild_id, user_id, expected_version=expected_version
         )
 
-    async def delete_guild_config(self, guild_id: int) -> bool:
-        return await self.repo.delete(guild_id)
-
     async def get_all_guild_ids(self) -> list[int]:
         return await self.repo.get_all_guild_ids()

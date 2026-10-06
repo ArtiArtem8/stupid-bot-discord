@@ -44,6 +44,9 @@ optional known start, and observed reset. `runtime_checkpoint` points at the
 current period. Reset archives the previous period and changes the pointer in
 one transaction. A short outage resumes the same period. The archive timestamp
 is when the reset was observed, not an invented exact process-death time.
+Elapsed duration adds the process's monotonic delta to the restored total;
+checkpoint timestamps remain wall-clock UTC. A negative offline wall delta
+resumes that total without claiming knowledge of elapsed offline time.
 
 Manual inspection (no bot command is added):
 

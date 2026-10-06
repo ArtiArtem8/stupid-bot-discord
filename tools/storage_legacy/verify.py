@@ -1,13 +1,20 @@
 """Verify imported feature values and exact voice replay before publication."""
 
 from collections import Counter
+from datetime import UTC, timedelta
 
 from sqlalchemy import String, select, text
 
 from api.voice.metrics.xp import VoiceXpPolicy
 from api.voice.model import VoiceJournalRecord, VoiceObservation, VoiceSnapshot
+from api.voice.profile.build import build_profile
+from api.voice.profile.details import (
+    build_activity_detail,
+    build_people_detail,
+    build_xp_detail,
+)
 from api.voice.scope import VoiceScope
-from api.voice.timeline import build_timeline
+from api.voice.timeline import VoiceTimeline, build_timeline
 from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
 from repositories.monitor_repository import MonitorRepository
 from repositories.sqlite.database import SCHEMA_REVISION, Database
@@ -175,6 +182,44 @@ def _compare_voice(data: LegacyData, restored: list[VoiceJournalRecord]) -> None
     before, after = build_timeline(data.voice), build_timeline(restored)
     if before != after or Counter(data.voice) != Counter(restored):
         raise ValueError("Voice timeline, coverage or gaps differ after import")
+    contexts = _voice_contexts(data)
+    policy = VoiceXpPolicy()
+    for guild_id, user_id in contexts:
+        scope = VoiceScope(guild_id=guild_id)
+        if policy.calculate(before, user_id, scope) != policy.calculate(
+            after, user_id, scope
+        ):
+            raise ValueError("Exact voice XP differs after import")
+
+    for user_id in {uid for _, uid in contexts}:
+        if policy.calculate(before, user_id) != policy.calculate(after, user_id):
+            raise ValueError("Exact global voice XP differs after import")
+    _compare_read_models(data, before, after, contexts)
+
+
+def _compare_read_models(
+    data: LegacyData,
+    before: VoiceTimeline,
+    after: VoiceTimeline,
+    contexts: set[tuple[int, int]],
+) -> None:
+    if not data.voice:
+        return
+    # Fixed to the source horizon, never the verification machine's current date.
+    as_of = max(record.observed_at for record in data.voice) + timedelta(microseconds=1)
+    for guild_id, user_id in contexts:
+        if build_profile(before, user_id, guild_id, "UTC") != build_profile(
+            after, user_id, guild_id, "UTC"
+        ):
+            raise ValueError("Voice profile differs after import")
+        for builder in (build_activity_detail, build_people_detail, build_xp_detail):
+            if builder(before, user_id, guild_id, as_of, UTC) != builder(
+                after, user_id, guild_id, as_of, UTC
+            ):
+                raise ValueError("Voice detail differs after import")
+
+
+def _voice_contexts(data: LegacyData) -> set[tuple[int, int]]:
     contexts: set[tuple[int, int]] = set()
     for record in data.voice:
         if record.guild_id is None:
@@ -185,10 +230,4 @@ def _compare_voice(data: LegacyData, restored: list[VoiceJournalRecord]) -> None
             contexts.update(
                 (record.guild_id, state.user_id) for state in record.fact.states
             )
-    policy = VoiceXpPolicy()
-    for guild_id, user_id in contexts:
-        scope = VoiceScope(guild_id=guild_id)
-        if policy.calculate(before, user_id, scope) != policy.calculate(
-            after, user_id, scope
-        ):
-            raise ValueError("Exact voice XP differs after import")
+    return contexts

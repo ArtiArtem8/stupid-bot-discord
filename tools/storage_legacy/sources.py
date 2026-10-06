@@ -53,6 +53,7 @@ class LegacyData:
     monitors: list[LegacyMonitor] = field(default_factory=list[LegacyMonitor])
     uptime: tuple[int, int] | None = None
     voice: list[VoiceJournalRecord] = field(default_factory=list[VoiceJournalRecord])
+    voice_resolutions: JsonObject = field(default_factory=dict[str, JsonValue])
     sources: dict[Path, tuple[int, str]] = field(
         default_factory=dict[Path, tuple[int, str]]
     )
@@ -208,7 +209,40 @@ def _seconds(value: JsonValue) -> int:
     return int(decimal.to_integral_value())
 
 
-def _voice_files(source: Path) -> list[Path]:
+def _check_voice_pair(
+    path: Path, source: Path, result: LegacyData, *, allow_prefix: bool
+) -> None:
+    compressed = path.with_suffix(".jsonl.gz")
+    plain, full = path.read_bytes(), gzip.decompress(compressed.read_bytes())
+    rule = "identical"
+    if plain != full:
+        if not (allow_prefix and plain.endswith(b"\n") and full.startswith(plain)):
+            raise ValueError(f"Conflicting voice representations: {path}")
+        rule = "exact-ordered-prefix"
+    # Decode both representations: a byte prefix alone does not validate framing,
+    # supported schemas, or the order of the complete records.
+    prefix_records = [
+        decode_record(line)
+        for line in plain.decode("utf-8").splitlines()
+        if line.strip()
+    ]
+    full_records = [
+        decode_record(line)
+        for line in full.decode("utf-8").splitlines()
+        if line.strip()
+    ]
+    if prefix_records != full_records[: len(prefix_records)]:
+        raise ValueError(f"Conflicting decoded voice representations: {path}")
+    result.sources[path] = (len(prefix_records), f"voice-alternative:{rule}")
+    result.voice_resolutions[path.relative_to(source).as_posix()] = {
+        "rule": rule,
+        "selected": compressed.relative_to(source).as_posix(),
+        "prefix_records": len(prefix_records),
+        "selected_records": len(full_records),
+    }
+
+
+def _voice_files(source: Path, result: LegacyData, *, allow_prefix: bool) -> list[Path]:
     files: list[Path] = []
     for root in (source / "voice_probe", source / "voice_probe" / "v2"):
         scopes = [root / "session", *sorted(root.glob("guild_*"))]
@@ -224,23 +258,17 @@ def _voice_files(source: Path) -> list[Path]:
                     path.name.endswith(".jsonl")
                     and path.with_suffix(".jsonl.gz").exists()
                 ):
-                    # Alternate representations must contain identical facts.
-                    if path.read_bytes() != gzip.decompress(
-                        path.with_suffix(".jsonl.gz").read_bytes()
-                    ):
-                        raise ValueError(
-                            f"Conflicting voice representations: {path.name}"
-                        )
+                    _check_voice_pair(path, source, result, allow_prefix=allow_prefix)
                     continue
                 files.append(path)
     return files
 
 
-def read_sources(source: Path) -> LegacyData:
+def read_sources(source: Path, *, allow_voice_prefix: bool = False) -> LegacyData:
     """Read only named application stores, never recursively walk backups/exports."""
     result = LegacyData()
     _read_user_stores(source, result)
-    _read_operational(source, result)
+    _read_operational(source, result, allow_voice_prefix=allow_voice_prefix)
     return result
 
 
@@ -275,7 +303,9 @@ def _read_user_stores(source: Path, result: LegacyData) -> None:
         result.sources[path] = (len(result.questions), "questions-json")
 
 
-def _read_operational(source: Path, result: LegacyData) -> None:
+def _read_operational(
+    source: Path, result: LegacyData, *, allow_voice_prefix: bool
+) -> None:
     for path in sorted((source / "guild_monitor").glob("guild_*.json")):
         monitor = _monitor(path)
         if any(previous.guild_id == monitor.guild_id for previous in result.monitors):
@@ -291,7 +321,7 @@ def _read_operational(source: Path, result: LegacyData) -> None:
                 _seconds(raw.get("accumulated_uptime")),
             )
         result.sources[path] = (int(bool(raw)), "uptime-json")
-    for path in _voice_files(source):
+    for path in _voice_files(source, result, allow_prefix=allow_voice_prefix):
         payload = (
             gzip.decompress(path.read_bytes())
             if path.suffix == ".gz"

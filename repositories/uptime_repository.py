@@ -31,7 +31,8 @@ class UptimeRepository:
 
         Archive time is when this process observes the reset. The old period's
         last checkpoint retains its actual observation time; no crash time is
-        invented. Imported periods may have an unknown start.
+        invented. Imported periods may have an unknown start. A negative wall
+        delta resumes the confirmed total without crediting unknown offline time.
         """
         if threshold_us <= 0 or not boot_id:
             raise ValueError(

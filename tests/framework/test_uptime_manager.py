@@ -29,15 +29,27 @@ class TestUptimeManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_resume_then_reset_keeps_history_available_to_sql(self) -> None:
         first = UptimeManager(self.repository)
-        with patch.object(time, "time_ns", return_value=1000_000_000_000):
+        with (
+            patch.object(time, "time_ns", return_value=1000_000_000_000),
+            patch.object(time, "monotonic_ns", return_value=0),
+        ):
             await first.restore_uptime()
-        with patch.object(time, "time_ns", return_value=1120_000_000_000):
+        with (
+            patch.object(time, "time_ns", return_value=1120_000_000_000),
+            patch.object(time, "monotonic_ns", return_value=120_000_000_000),
+        ):
             self.assertEqual(await first.save_state(final=True), 120.0)
         second = UptimeManager(self.repository)
-        with patch.object(time, "time_ns", return_value=1130_000_000_000):
+        with (
+            patch.object(time, "time_ns", return_value=1130_000_000_000),
+            patch.object(time, "monotonic_ns", return_value=0),
+        ):
             await second.restore_uptime()
-        self.assertEqual(second.start_time, 1010.0)
-        with patch.object(time, "time_ns", return_value=1140_000_000_000):
+            self.assertEqual(second.elapsed_microseconds(), 120_000_000)
+        with (
+            patch.object(time, "time_ns", return_value=1140_000_000_000),
+            patch.object(time, "monotonic_ns", return_value=10_000_000_000),
+        ):
             self.assertEqual(await second.save_state(final=True), 130.0)
         third = UptimeManager(self.repository)
         with patch.object(time, "time_ns", return_value=6000_000_000_000):
@@ -74,3 +86,39 @@ class TestUptimeManager(unittest.IsolatedAsyncioTestCase):
         await self.database.close()
         with self.assertRaisesRegex(RuntimeError, "closing"):
             await manager.save_state(final=True)
+
+    async def test_wall_clock_jumps_do_not_change_elapsed_or_final_save(self) -> None:
+        manager = UptimeManager(self.repository)
+        with (
+            patch.object(time, "time_ns", return_value=1000_000_000_000),
+            patch.object(time, "monotonic_ns", return_value=10_000_000_000),
+        ):
+            await manager.restore_uptime()
+        for wall, monotonic, expected in [(900, 30, 20), (9000, 50, 40)]:
+            with (
+                self.subTest(wall=wall),
+                patch.object(time, "time_ns", return_value=wall * 1_000_000_000),
+                patch.object(
+                    time, "monotonic_ns", return_value=monotonic * 1_000_000_000
+                ),
+            ):
+                self.assertEqual(manager.elapsed_microseconds(), expected * 1_000_000)
+                self.assertEqual(await manager.save_state(final=True), expected)
+            async with self.database.transaction() as connection:
+                row = (
+                    await connection.execute(
+                        select(
+                            runtime_checkpoint.c.checkpoint_us,
+                            runtime_checkpoint.c.accumulated_us,
+                            runtime_checkpoint.c.origin,
+                        )
+                    )
+                ).one()
+            self.assertEqual(row, (wall * 1_000_000, expected * 1_000_000, "shutdown"))
+        resumed = UptimeManager(self.repository)
+        with (
+            patch.object(time, "time_ns", return_value=8000_000_000_000),
+            patch.object(time, "monotonic_ns", return_value=0),
+        ):
+            await resumed.restore_uptime()
+            self.assertEqual(resumed.elapsed_microseconds(), 40_000_000)

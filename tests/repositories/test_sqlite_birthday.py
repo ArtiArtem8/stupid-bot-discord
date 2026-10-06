@@ -6,6 +6,7 @@ from datetime import date
 from typing import override
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from api.birthday_models import BirthdayDelivery
 from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
@@ -74,7 +75,7 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((loaded.channel_id, loaded.birthday_role_id), (77, 88))
         self.assertEqual(set(loaded.users), set(range(1, 7)))
         await SQLiteVolumeRepository(self.database).save(VolumeData(1, 50))
-        self.assertTrue(await self.repo.delete(1))
+        await self.repo.clear_user_birthday(1, 1, expected_version=1)
         async with self.database.transaction() as connection:
             self.assertEqual(
                 await connection.scalar(select(music_settings.c.volume)), 50
@@ -163,3 +164,77 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.repo.get_all(), [])
         await self.repo.configure_guild(2, "Still usable", 20, None)
         self.assertEqual(await self.repo.get_all_guild_ids(), [2])
+
+    async def test_obsolete_claim_is_rearmed_once_and_old_token_is_inert(self) -> None:
+        for change in ("settings", "birthday"):
+            with self.subTest(change=change):
+                gid = 10 if change == "settings" else 20
+                await self.repo.set_user_birthday(
+                    gid, "Guild", gid, 2, "Member", "06-10-2000"
+                )
+                old = BirthdayDelivery(f"old-{gid}", gid, 2, date(2026, 10, 6), 1, 1)
+                self.assertTrue(await self.repo.claim_delivery(old))
+                if change == "settings":
+                    await self.repo.configure_guild(gid, "Guild", gid + 1, None)
+                else:
+                    await self.repo.set_user_birthday(
+                        gid, "Guild", gid, 2, "Member", "06-10-2001"
+                    )
+                self.assertFalse(await self.repo.begin_delivery(old))
+                fresh = [
+                    BirthdayDelivery(
+                        f"fresh-{gid}-{index}",
+                        gid,
+                        2,
+                        old.today,
+                        2 if change == "settings" else 1,
+                        2 if change == "birthday" else 1,
+                    )
+                    for index in range(2)
+                ]
+                results = await asyncio.gather(
+                    *(self.repo.claim_delivery(item) for item in fresh)
+                )
+                self.assertEqual(sum(results), 1)
+                winner = fresh[results.index(True)]
+                self.assertFalse(await self.repo.begin_delivery(old))
+                await self.repo.finish_delivery(old, 100)
+                self.assertTrue(await self.repo.begin_delivery(winner))
+                self.assertFalse(
+                    await self.repo.claim_delivery(fresh[1 - results.index(True)])
+                )
+                await self.repo.finish_delivery(old, 101)
+                await self.repo.finish_delivery(winner, 102)
+                self.assertFalse(await self.repo.claim_delivery(winner))
+                loaded = await self.repo.get(gid)
+                if loaded is None:
+                    self.fail("Missing birthday guild")
+                self.assertEqual(loaded.users[2].was_congrats, ["06-10-2026"])
+
+    async def test_failed_rearm_rolls_back_and_can_be_retried(self) -> None:
+        await self.repo.set_user_birthday(1, "Guild", 10, 2, "Member", "06-10-2000")
+        old = BirthdayDelivery("old", 1, 2, date(2026, 10, 6), 1, 1)
+        self.assertTrue(await self.repo.claim_delivery(old))
+        await self.repo.configure_guild(1, "Guild", 20, None)
+        self.assertFalse(await self.repo.begin_delivery(old))
+        fresh = BirthdayDelivery("fresh", 1, 2, old.today, 2, 1)
+        async with self.database.transaction() as connection:
+            await connection.exec_driver_sql(
+                """CREATE TRIGGER reject_rearm AFTER UPDATE ON birthday_deliveries
+                WHEN NEW.status = 'claimed' BEGIN
+                    SELECT RAISE(ABORT, 'injected');
+                END"""
+            )
+        with self.assertRaises(IntegrityError):
+            await self.repo.claim_delivery(fresh)
+        async with self.database.transaction() as connection:
+            row = (
+                await connection.execute(
+                    select(
+                        birthday_deliveries.c.operation_id, birthday_deliveries.c.status
+                    )
+                )
+            ).one()
+            self.assertEqual(row, ("old", "obsolete"))
+            await connection.exec_driver_sql("DROP TRIGGER reject_rearm")
+        self.assertTrue(await self.repo.claim_delivery(fresh))

@@ -89,13 +89,3 @@ class TestBirthdayManager(unittest.IsolatedAsyncioTestCase):
         repo.set_user_birthday.assert_awaited_once_with(
             1, "S", 123, 10, "User", "01-01-2000"
         )
-
-    async def test_delete_returns_false_when_missing(self) -> None:
-        repo = AsyncMock()
-        repo.delete.return_value = False
-        mgr = BirthdayManager(repo)
-
-        ok = await mgr.delete_guild_config(1)
-
-        self.assertFalse(ok)
-        repo.delete.assert_awaited_once_with(1)
