@@ -250,7 +250,7 @@ def _pixels(value: str) -> int:
 def theme_tokens(path: Path, appearance: LevelAppearance) -> dict[str, str]:
     """Load shared semantic colors, including the exact level-band accent."""
     raw = json_object(get_json(path))
-    tiers = json_object(json_object(raw)["tiers"])
+    tiers = json_object(raw["tiers"])
     values = json_object(tiers[appearance.tier.value])
     result: dict[str, str] = {"accent": f"#{appearance.color:06x}"}
     for key, value in values.items():

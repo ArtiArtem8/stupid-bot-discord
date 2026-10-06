@@ -137,7 +137,7 @@ def _format_name_history(history: Sequence[NameHistoryEntry]) -> str:
 class AdminCog(BaseCog):
     """Administrative commands for server management.
 
-    Requires administrator permissions for all commands.
+    Default command permissions target administrators; owner checks stay explicit.
     """
 
     def __init__(self, bot: commands.Bot, block_manager: BlockManager) -> None:
@@ -263,7 +263,7 @@ class AdminCog(BaseCog):
             status_value = (
                 f"**Заблокирован**\n"
                 f"• Администратор: <@{last_block.admin_id}>\n"
-                f"• Дата: {timestamp}"
+                f"• Дата: {timestamp}\n"
                 f"• Причина: {last_block.reason or 'Не указана'}\n"
             )
         else:

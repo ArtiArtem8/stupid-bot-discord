@@ -1,4 +1,4 @@
-"""Typed Core tables for the two stores sharing the application database."""
+"""Read-only descriptions of the earlier birthday and volume pilot tables."""
 
 from sqlalchemy import (
     Column,

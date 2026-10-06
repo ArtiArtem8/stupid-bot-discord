@@ -31,8 +31,11 @@ def _user(uid: str, raw: JsonValue) -> BirthdayUser:
 
 
 def _guild(gid: str, raw: JsonValue) -> BirthdayGuildConfig:
-    if not isinstance(raw, dict) or not isinstance(raw.get("Users"), dict):
+    if not isinstance(raw, dict):
         raise ValueError("Birthday guild must have a Users object")
+    members = raw.get("Users")
+    if not isinstance(members, dict):
+        raise ValueError("Birthday Users must be an object")
     role = raw.get("Birthday_role")
     result = BirthdayGuildConfig(
         identifier(gid),
@@ -42,9 +45,6 @@ def _guild(gid: str, raw: JsonValue) -> BirthdayGuildConfig:
         else identifier(raw.get("Channel_id")),
         birthday_role_id=None if role in (None, "") else identifier(role),
     )
-    members = raw["Users"]
-    if not isinstance(members, dict):
-        raise ValueError("Birthday Users must be an object")
     for uid, member in members.items():
         user = _user(uid, member)
         if user.user_id in result.users:

@@ -73,11 +73,11 @@ def _format_voice_result_message(
         VoiceCheckResult.USER_NOT_IN_VOICE: "Вы должны быть в голосовом канале!",
         VoiceCheckResult.USER_NOT_MEMBER: "Неверный тип пользователя",
     }
-    msg = messages.get(result, "Неизвестная ошибка")
-    fm1 = to_channel.mention if to_channel else "Неизвестный канал"
-    fm2 = from_channel.mention if from_channel else "Неизвестный канал"
+    template = messages.get(result, "Неизвестная ошибка")
+    destination = to_channel.mention if to_channel else "Неизвестный канал"
+    origin = from_channel.mention if from_channel else "Неизвестный канал"
 
-    return msg.format(fm1, fm2)
+    return template.format(destination, origin)
 
 
 class MusicCog(BaseCog):

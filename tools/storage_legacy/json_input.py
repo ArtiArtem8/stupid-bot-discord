@@ -47,7 +47,7 @@ def _volume(value: JsonValue) -> int:
         raise ValueError("Import requires a finite integral volume")
     result = int(value)
     if not 0 <= result <= 200:
-        raise ValueError("Volume exceeds SQLite's signed integer range")
+        raise ValueError("Volume must be between 0 and 200")
     return result
 
 

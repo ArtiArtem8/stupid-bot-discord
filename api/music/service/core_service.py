@@ -521,14 +521,11 @@ class CoreMusicService:
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="set_repeat")
 
-        try:
-            previous = player.repeat.mode
-            if mode is None:
-                player.repeat.toggle()
-            else:
-                player.repeat.mode = mode
-        except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            return await self._handle_player_io_failure(player, exc)
+        previous = player.repeat.mode
+        if mode is None:
+            player.repeat.toggle()
+        else:
+            player.repeat.mode = mode
 
         self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
 

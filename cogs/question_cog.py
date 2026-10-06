@@ -45,8 +45,6 @@ class QuestionCog(BaseCog):
             interaction.user.id,
             text,
         )
-        generated = False
-
         async with self._answer_lock:
             prev_message = await self._add_to_history(
                 interaction.user.id,
@@ -59,7 +57,6 @@ class QuestionCog(BaseCog):
             else:
                 self.answers.append(random_answer(text, answers=CAPABILITIES))
                 reply = self.answers.pop(0)
-                generated = True
 
         if prev_message is not None:
             logger.info(
@@ -68,7 +65,7 @@ class QuestionCog(BaseCog):
                 text,
                 reply,
             )
-        elif generated:
+        else:
             logger.info(
                 "/ask invoked user=%s user_id=%s question=%r",
                 interaction.user,

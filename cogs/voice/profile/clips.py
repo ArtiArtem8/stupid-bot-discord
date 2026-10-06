@@ -31,7 +31,7 @@ def load_clips(directory: Path, design: BoundDesign) -> tuple[AuthoredClip, ...]
     if not manifest.exists():
         return ()
     raw = json_object(get_json(manifest))
-    entries = json_object(raw).get("clips", [])
+    entries = raw.get("clips", [])
     if not isinstance(entries, list) or len(entries) > 8:
         raise ValueError("clips.json supports at most eight authored clips")
     clips: list[AuthoredClip] = []

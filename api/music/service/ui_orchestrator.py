@@ -8,6 +8,7 @@ from discord.ext import commands
 
 from api.music.protocols import ControllerManagerProtocol
 from api.music.service.state_manager import StateManager
+from api.music.session_events import main_session_channel_id
 
 if TYPE_CHECKING:
     from api.music.models import PlaybackAttempt, TrackRequester
@@ -42,10 +43,8 @@ class UIOrchestrator:
         channel_id = requester_info.channel_id
         if not channel_id:
             session = self.state.get_session(player.guild.id)
-            if session and session.channel_usage:
-                channel_id = max(
-                    session.channel_usage, key=lambda k: session.channel_usage[k]
-                )
+            if session:
+                channel_id = main_session_channel_id(session)
 
         if not channel_id:
             logger.debug("No channel found for track: %s", track.title)

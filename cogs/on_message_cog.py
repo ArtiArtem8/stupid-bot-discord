@@ -118,7 +118,7 @@ class OnMessageCog(commands.Cog):
             threshold: Minimum fuzzy-match score.
 
         Returns:
-            A repeatable answer when a candidate meets the threshold, otherwise
+            A random answer when a candidate meets the threshold, otherwise
             ``None``.
         """
         fuzzy_results = extract(
