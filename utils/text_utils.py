@@ -21,19 +21,20 @@ def random_answer(text: str, answers: list[str]) -> str:
     Raises:
         ZeroDivisionError: If ``answers`` is empty.
     """
-    k = 1
-    for v, i in enumerate(text.lower()):
-        if v == 1:
-            k += ord(i)
-        if ord(i) % 7 == 0:
-            k *= ord(i)
-        elif ord(i) % 3 == 0:
-            k += ord(i) ** 2 // 2
-        elif ord(i) % 5 == 0 or v % 17 == 0:
-            k += hash(ord(i))
+    score = 1
+    for index, character in enumerate(text.lower()):
+        codepoint = ord(character)
+        if index == 1:
+            score += codepoint
+        if codepoint % 7 == 0:
+            score *= codepoint
+        elif codepoint % 3 == 0:
+            score += codepoint**2 // 2
+        elif codepoint % 5 == 0 or index % 17 == 0:
+            score += hash(codepoint)
         else:
-            k += ord(i)
-    return answers[k % len(answers)]
+            score += codepoint
+    return answers[score % len(answers)]
 
 
 @lru_cache(maxsize=10)

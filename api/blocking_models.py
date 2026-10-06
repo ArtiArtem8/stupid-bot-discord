@@ -57,17 +57,16 @@ class BlockedUser:
 
     def update_name_history(self, username: str, global_name: str | None) -> bool:
         """Record a changed username and return whether stored names changed."""
-        if self.current_username != username or (
-            self.current_global_name != global_name and global_name is not None
-        ):
-            self.name_history.append(
-                NameHistoryEntry(
-                    username=username,
-                    timestamp=utcnow(),
-                )
-            )
-            self.current_username = username
-            if global_name is not None:
-                self.current_global_name = global_name
-            return True
-        return False
+        username_changed = self.current_username != username
+        global_name_changed = (
+            global_name is not None and self.current_global_name != global_name
+        )
+        if not username_changed and not global_name_changed:
+            return False
+        self.name_history.append(
+            NameHistoryEntry(username=username, timestamp=utcnow())
+        )
+        self.current_username = username
+        if global_name is not None:
+            self.current_global_name = global_name
+        return True
