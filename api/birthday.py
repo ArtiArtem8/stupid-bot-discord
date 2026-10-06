@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Collection
-from datetime import date, datetime
+from datetime import datetime
 
 import discord
 
@@ -12,7 +12,6 @@ from api.birthday_models import (
     BirthdayGuildConfig,
     BirthdayListEntry,
 )
-from repositories.birthday_repository import BirthdayRepository
 from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
 from utils.text_utils import TextPaginator, truncate_text
 
@@ -146,9 +145,7 @@ def create_birthday_list_embed(
 
 
 class BirthdayManager:
-    def __init__(
-        self, repository: BirthdayRepository | SQLiteBirthdayRepository
-    ) -> None:
+    def __init__(self, repository: SQLiteBirthdayRepository) -> None:
         self.repo = repository
 
     async def get_guild_config(self, guild_id: int) -> BirthdayGuildConfig | None:
@@ -158,12 +155,12 @@ class BirthdayManager:
         self,
         guild_id: int,
         server_name: str,
-        channel_id: int,
+        channel_id: int | None,
         user_id: int,
         user_name: str,
         birthday: str,
-    ) -> BirthdayGuildConfig:
-        return await self.repo.set_user_birthday(
+    ) -> None:
+        await self.repo.set_user_birthday(
             guild_id,
             server_name,
             channel_id,
@@ -178,32 +175,20 @@ class BirthdayManager:
         server_name: str,
         channel_id: int,
         birthday_role_id: int | None,
-    ) -> BirthdayGuildConfig:
-        return await self.repo.configure_guild(
+    ) -> None:
+        await self.repo.configure_guild(
             guild_id, server_name, channel_id, birthday_role_id
         )
 
     async def clear_user_birthday(
-        self, guild_id: int, user_id: int
+        self, guild_id: int, user_id: int, *, expected_version: int
     ) -> tuple[bool, bool]:
-        return await self.repo.clear_user_birthday(guild_id, user_id)
-
-    async def record_congratulation(
-        self, guild_id: int, user_id: int, congratulation_date: date
-    ) -> bool:
-        return await self.repo.record_congratulation(
-            guild_id, user_id, congratulation_date
+        return await self.repo.clear_user_birthday(
+            guild_id, user_id, expected_version=expected_version
         )
 
     async def delete_guild_config(self, guild_id: int) -> bool:
-        existing = await self.repo.get(guild_id)
-        if existing:
-            await self.repo.delete(guild_id)
-            return True
-        return False
+        return await self.repo.delete(guild_id)
 
     async def get_all_guild_ids(self) -> list[int]:
         return await self.repo.get_all_guild_ids()
-
-
-birthday_manager = BirthdayManager(BirthdayRepository())

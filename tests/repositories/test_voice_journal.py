@@ -1,14 +1,9 @@
+"""Bounded voice admission and conservative gaps survive the SQL storage change."""
+
 import asyncio
-import json
-import shutil
-import threading
 import unittest
 from collections.abc import Sequence
-from dataclasses import replace
-from datetime import timedelta
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from typing import BinaryIO, override
+from typing import override
 from unittest.mock import patch
 
 from api.voice.metrics.presence import presence
@@ -19,226 +14,20 @@ from api.voice.model import (
     VoiceJournalRecord,
     VoiceObservation,
     VoiceSnapshot,
-    VoiceStateSnapshot,
 )
 from api.voice.timeline import build_timeline
-from repositories._voice_codec import decode_record, encode_record
 from repositories.voice_journal import JournalWriteError, Submission, VoiceJournal
+from repositories.voice_store import VoiceStore
 from tests.api.voice.examples import START, at, human, record
-
-
-class TestVoiceCodec(unittest.TestCase):
-    def test_v2_round_trip_preserves_full_state_and_unknown_fields(self) -> None:
-        state = VoiceStateSnapshot(
-            1,
-            10,
-            False,
-            self_mute=True,
-            self_deaf=False,
-            server_mute=True,
-            server_deaf=False,
-            self_stream=True,
-            self_video=True,
-            suppress=False,
-            requested_to_speak_at=at(2),
-            session_id="session",
-            afk=False,
-        )
-        for fact in (
-            VoiceObservation(state),
-            VoiceSnapshot((state,)),
-            VoiceSnapshot((state,), authoritative=False),
-            ObservationGap(at(0), at(10), GapReason.WRITE_FAILURE, 1),
-            VoiceCheckpoint(),
-        ):
-            with self.subTest(fact=fact):
-                item = record(10, fact)
-                self.assertEqual(decode_record(encode_record(item)), item)
-        encoded = json.loads(encode_record(record(10, VoiceObservation(state))))
-        self.assertEqual(encoded["schema_version"], 2)
-        self.assertIn("self_stream", encoded["state"])
-        self.assertNotIn("sm", encoded["state"])
-
-    def test_legacy_snapshot_does_not_invent_missing_flags(self) -> None:
-        item = decode_record(
-            json.dumps(
-                {
-                    "seq": 1,
-                    "boot": "old",
-                    "at": START.isoformat(),
-                    "mono": 0,
-                    "kind": "startup",
-                    "guild": 1,
-                    "detail": {"presence": {"10": [1]}, "bot_presence": {"10": [9]}},
-                }
-            )
-        )
-        self.assertIsInstance(item.fact, VoiceSnapshot)
-        if isinstance(item.fact, VoiceSnapshot):
-            human_state, bot = item.fact.states
-            self.assertIsNone(human_state.self_mute)
-            self.assertIsNone(human_state.session_id)
-            self.assertIsNone(human_state.requested_to_speak_at)
-            self.assertIs(human_state.is_bot, False)
-            self.assertIs(bot.is_bot, True)
-
-    def test_legacy_flags_are_read_but_raised_hand_cannot_invent_timestamp(
-        self,
-    ) -> None:
-        item = decode_record(
-            json.dumps(
-                {
-                    "seq": 1,
-                    "boot": "old",
-                    "at": START.isoformat(),
-                    "mono": 0,
-                    "kind": "flags",
-                    "guild": 1,
-                    "user": 1,
-                    "channel_after": 10,
-                    "flags_after": {"sm": True, "sd": False, "st": True, "hr": True},
-                }
-            )
-        )
-        self.assertIsInstance(item.fact, VoiceObservation)
-        if isinstance(item.fact, VoiceObservation):
-            self.assertIs(item.fact.state.self_mute, True)
-            self.assertIs(item.fact.state.self_deaf, False)
-            self.assertIs(item.fact.state.self_stream, True)
-            self.assertIsNone(item.fact.state.self_video)
-            self.assertIsNone(item.fact.state.requested_to_speak_at)
-
-    def test_legacy_heartbeat_without_maps_cannot_close_gap(self) -> None:
-        legacy = decode_record(
-            json.dumps(
-                {
-                    "seq": 300,
-                    "boot": "one",
-                    "at": at(30).isoformat(),
-                    "mono": 30,
-                    "kind": "heartbeat",
-                    "guild": 1,
-                    "detail": {"members": 1},
-                }
-            )
-        )
-        timeline = build_timeline(
-            [
-                record(0, VoiceSnapshot((human(),))),
-                record(
-                    10,
-                    ObservationGap(at(10), None, GapReason.GATEWAY_DISCONNECT),
-                    guild=None,
-                ),
-                legacy,
-                record(40, VoiceCheckpoint()),
-            ]
-        )
-        self.assertEqual(presence(timeline, 1).total_seconds, 10)
-
-    def test_unknown_version_and_corrupt_schema_fail_explicitly(self) -> None:
-        for line in ('{"schema_version": 3}', "not json", '{"schema_version": 2}'):
-            with self.subTest(line=line), self.assertRaises(ValueError):
-                decode_record(line)
-
-    def test_partial_legacy_snapshot_is_not_claimed_as_a_full_population(self) -> None:
-        item = decode_record(
-            json.dumps(
-                {
-                    "seq": 1,
-                    "boot": "old",
-                    "at": START.isoformat(),
-                    "mono": 0,
-                    "kind": "startup",
-                    "guild": 1,
-                    "detail": {"presence": {"10": [1]}},
-                }
-            )
-        )
-        self.assertIsInstance(item.fact, VoiceSnapshot)
-        if isinstance(item.fact, VoiceSnapshot):
-            self.assertFalse(item.fact.authoritative)
-            self.assertEqual(item.fact.states[0].user_id, 1)
-
-    def test_legacy_overflow_after_a_snapshot_does_not_confirm_the_lost_window(
-        self,
-    ) -> None:
-        overflow = decode_record(
-            json.dumps(
-                {
-                    "seq": 301,
-                    "boot": "one",
-                    "at": at(30).isoformat(),
-                    "mono": 30,
-                    "kind": "overflow",
-                    "detail": {"dropped": 2},
-                }
-            )
-        )
-        timeline = build_timeline(
-            [
-                record(0, VoiceSnapshot((human(),))),
-                record(20, VoiceCheckpoint()),
-                record(30, VoiceSnapshot((human(),))),
-                overflow,
-                record(40, VoiceSnapshot((human(),))),
-                record(50, VoiceCheckpoint()),
-            ]
-        )
-        self.assertEqual(presence(timeline, 1).total_seconds, 10)
-
-    def test_legacy_raised_hand_preserves_true_false_and_unknown(self) -> None:
-        for flags, expected in (
-            ({"hr": True}, True),
-            ({"hr": False}, False),
-            ({}, None),
-        ):
-            with self.subTest(flags=flags):
-                item = decode_record(
-                    json.dumps(
-                        {
-                            "seq": 1,
-                            "boot": "old",
-                            "at": START.isoformat(),
-                            "mono": 0,
-                            "kind": "flags",
-                            "guild": 1,
-                            "user": 1,
-                            "channel_after": 10,
-                            "flags_after": flags,
-                        }
-                    )
-                )
-                self.assertIsInstance(item.fact, VoiceObservation)
-                if isinstance(item.fact, VoiceObservation):
-                    self.assertIs(item.fact.state.requested_to_speak, expected)
-                    self.assertIsNone(item.fact.state.requested_to_speak_at)
-                    self.assertEqual(decode_record(encode_record(item)), item)
-
-    def test_earlier_v2_without_raised_hand_boolean_keeps_unknown_null(self) -> None:
-        raw = {
-            "schema_version": 2,
-            "sequence": 1,
-            "boot_id": "v2",
-            "observed_at": START.isoformat(),
-            "monotonic": 0,
-            "guild_id": 1,
-            "kind": "observation",
-            "state": {"user_id": 1, "channel_id": 10, "requested_to_speak_at": None},
-        }
-        item = decode_record(json.dumps(raw))
-        self.assertIsInstance(item.fact, VoiceObservation)
-        if isinstance(item.fact, VoiceObservation):
-            self.assertIsNone(item.fact.state.requested_to_speak)
+from tests.storage import temporary_database
 
 
 class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
     @override
-    def setUp(self) -> None:
-        self.directory = TemporaryDirectory()
-        self.root = Path(self.directory.name)
-        self.journal = VoiceJournal(self.root, batch_size=2)
-        self.addCleanup(self.directory.cleanup)
+    async def asyncSetUp(self) -> None:
+        _, database = await temporary_database(self)
+        self.store = VoiceStore(database)
+        self.journal = VoiceJournal(self.store, batch_size=2)
 
     async def test_acceptance_is_not_persistence_and_shutdown_drains_batch(
         self,
@@ -259,39 +48,9 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
         )
         await self.journal.close()
 
-    async def test_close_awaits_in_flight_thread_even_if_caller_is_cancelled(
-        self,
-    ) -> None:
-        started, release = asyncio.Event(), asyncio.Event()
-        loop = asyncio.get_running_loop()
-        append = self.journal._append
-
-        def blocked(records: Sequence[VoiceJournalRecord]) -> None:
-            loop.call_soon_threadsafe(started.set)
-            asyncio.run_coroutine_threadsafe(release.wait(), loop).result(timeout=10)
-            append(records)
-
-        with patch.object(self.journal, "_append", side_effect=blocked):
-            self.journal.start()
-            self.journal.submit(record(0, VoiceSnapshot((human(),))))
-            await asyncio.wait_for(started.wait(), 5)
-            closing = asyncio.create_task(self.journal.close())
-            # The close operation starts before the writer is released.
-            closing_started = asyncio.Event()
-            loop.call_soon(closing_started.set)
-            await closing_started.wait()
-            self.assertFalse(closing.done())
-            closing.cancel()
-            with self.assertRaises(asyncio.CancelledError):
-                await closing
-            release.set()
-            await self.journal.close()
-        self.assertEqual(self.journal.counts.persisted, 1)
-        self.assertEqual(len(await self.journal.read_day(1, START.date())), 1)
-
     async def test_write_failure_never_reports_persistence(self) -> None:
         with patch.object(
-            self.journal, "_append", side_effect=OSError("disk unavailable")
+            self.store, "append", side_effect=OSError("disk unavailable")
         ):
             self.journal.start()
             self.journal.submit(record(0, VoiceSnapshot((human(),))))
@@ -305,17 +64,17 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
     async def test_recovered_writer_persists_failure_gap_without_retrying_batch(
         self,
     ) -> None:
-        append = self.journal._append
+        append = self.store.append
         calls = 0
 
-        def fail_once(records: Sequence[VoiceJournalRecord]) -> None:
+        async def fail_once(token: str, records: Sequence[VoiceJournalRecord]) -> int:
             nonlocal calls
             calls += 1
             if calls == 1:
                 raise OSError("transient write failure")
-            append(records)
+            return await append(token, records)
 
-        with patch.object(self.journal, "_append", side_effect=fail_once):
+        with patch.object(self.store, "append", side_effect=fail_once):
             self.journal.start()
             self.journal.submit(record(0, VoiceSnapshot((human(),))))
             with self.assertLogs("repositories.voice_journal", level="WARNING"):
@@ -329,7 +88,7 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.journal.read_day(1, START.date()), ())
 
     async def test_bounded_queue_records_overflow_gap(self) -> None:
-        journal = VoiceJournal(self.root, queue_size=1)
+        journal = VoiceJournal(self.store, queue_size=1)
         journal.start()
         self.assertEqual(
             journal.submit(record(0, VoiceSnapshot((human(),)))), Submission.ACCEPTED
@@ -348,322 +107,12 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(timeline.gaps[-1].reason, GapReason.WRITER_OVERFLOW)
         self.assertIsNone(timeline.gaps[-1].ended_at)
 
-    async def test_rotation_compression_and_retention_leave_legacy_bytes_untouched(
-        self,
-    ) -> None:
-        legacy = self.root / "guild_1" / f"events_{START.date()}.jsonl"
-        legacy.parent.mkdir(parents=True)
-        legacy_text = (
-            json.dumps(
-                {
-                    "seq": 1,
-                    "boot": "legacy",
-                    "at": START.isoformat(),
-                    "mono": 0,
-                    "kind": "startup",
-                    "guild": 1,
-                    "detail": {"presence": {"10": [2]}},
-                }
-            )
-            + "\n"
-        )
-        legacy.write_text(legacy_text, encoding="utf-8")
-        before = legacy.read_bytes()
-        self.journal.start()
-        self.journal.submit(record(0, VoiceSnapshot((human(),))))
-        self.journal.submit(record(86400, VoiceCheckpoint()))
-        await self.journal.close()
-        self.assertEqual(len(await self.journal.read_day(1, START.date())), 2)
-        self.assertEqual(
-            await self.journal.compact(before_day=START.date() + timedelta(days=1)), 1
-        )
-        self.assertEqual(len(await self.journal.read_day(1, START.date())), 2)
-        self.assertTrue(
-            (self.root / "v2/guild_1" / f"events_{START.date()}.jsonl.gz").exists()
-        )
-        self.assertEqual(
-            await self.journal.prune(
-                today=START.date() + timedelta(days=10), retention_days=1
-            ),
-            2,
-        )
-        self.assertEqual(legacy.read_bytes(), before)
-
-    async def test_read_all_combines_legacy_gzip_and_uncompressed_days(self) -> None:
-        legacy = self.root / "guild_1" / f"events_{START.date()}.jsonl"
-        legacy.parent.mkdir(parents=True)
-        old = record(0, VoiceCheckpoint(), boot="legacy", sequence=1)
-        legacy.write_text(encode_record(old) + "\n", encoding="utf-8")
-        first = record(60, VoiceCheckpoint())
-        later = record(86400, VoiceCheckpoint())
-        self.journal.start()
-        self.journal.submit(first)
-        self.journal.submit(later)
-        await self.journal.close()
-        await self.journal.compact(before_day=START.date() + timedelta(days=1))
-        self.assertEqual(await self.journal.read_all(1), (old, first, later))
-        self.assertEqual(await self.journal.read_all(None), ())
-
-    async def test_read_all_waits_for_writer_file_lock_and_only_returns_disk_facts(
-        self,
-    ) -> None:
-        started, release = asyncio.Event(), asyncio.Event()
-        loop = asyncio.get_running_loop()
-        append = self.journal._append
-
-        def blocked(records: Sequence[VoiceJournalRecord]) -> None:
-            loop.call_soon_threadsafe(started.set)
-            asyncio.run_coroutine_threadsafe(release.wait(), loop).result(timeout=10)
-            append(records)
-
-        with patch.object(self.journal, "_append", side_effect=blocked):
-            self.journal.start()
-            item = record(0, VoiceCheckpoint())
-            self.journal.submit(item)
-            await asyncio.wait_for(started.wait(), 5)
-            reading = asyncio.create_task(self.journal.read_all(1))
-            reading_started = asyncio.Event()
-            loop.call_soon(reading_started.set)
-            await reading_started.wait()
-            self.assertFalse(reading.done())
-            release.set()
-            self.assertEqual(await reading, (item,))
-            await self.journal.close()
-
-    async def test_snapshot_keeps_both_scopes_in_one_generation(self) -> None:
-        started, release = asyncio.Event(), asyncio.Event()
-        loop = asyncio.get_running_loop()
-        read_all = self.journal._read_all
-
-        def blocked(guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
-            records = read_all(guild_id)
-            if guild_id is not None:
-                loop.call_soon_threadsafe(started.set)
-                asyncio.run_coroutine_threadsafe(release.wait(), loop).result(
-                    timeout=10
-                )
-            return records
-
-        guild_record = record(0, VoiceSnapshot((human(),)))
-        session_record = record(1, VoiceCheckpoint(), guild=None)
-        with patch.object(self.journal, "_read_all", side_effect=blocked):
-            reading = asyncio.create_task(self.journal.snapshot_for_guild(1))
-            await asyncio.wait_for(started.wait(), 5)
-            try:
-                self.journal.start()
-                self.journal.submit(guild_record)
-                self.journal.submit(session_record)
-                closing = asyncio.create_task(self.journal.close())
-                writer_waiting = asyncio.Event()
-                loop.call_soon(writer_waiting.set)
-                await writer_waiting.wait()
-                self.assertFalse(closing.done())
-            finally:
-                release.set()
-            snapshot = await reading
-            await closing
-        self.assertEqual(snapshot.guild_records, ())
-        self.assertEqual(snapshot.session_records, ())
-        self.assertEqual(snapshot.generation, 0)
-        updated = await self.journal.snapshot_for_guild(1)
-        self.assertEqual(updated.guild_records, (guild_record,))
-        self.assertEqual(updated.session_records, (session_record,))
-        self.assertEqual(updated.generation, 2)
-
-    async def test_cancelled_snapshot_keeps_file_lock_until_worker_finishes(
-        self,
-    ) -> None:
-        started, release = asyncio.Event(), asyncio.Event()
-        loop = asyncio.get_running_loop()
-        read_all = self.journal._read_all
-
-        def blocked(guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
-            if guild_id is not None:
-                loop.call_soon_threadsafe(started.set)
-                asyncio.run_coroutine_threadsafe(release.wait(), loop).result(
-                    timeout=10
-                )
-            return read_all(guild_id)
-
-        with patch.object(self.journal, "_read_all", side_effect=blocked):
-            reading = asyncio.create_task(self.journal.snapshot_for_guild(1))
-            await asyncio.wait_for(started.wait(), 5)
-            try:
-                reading.cancel()
-                self.journal.start()
-                self.journal.submit(record(0, VoiceCheckpoint()))
-                closing = asyncio.create_task(self.journal.close())
-                writer_waiting = asyncio.Event()
-                loop.call_soon(writer_waiting.set)
-                await writer_waiting.wait()
-                self.assertFalse(reading.done())
-                self.assertFalse(closing.done())
-                self.assertEqual(self.journal.counts.persisted, 0)
-            finally:
-                release.set()
-            with self.assertRaises(asyncio.CancelledError):
-                await reading
-            await closing
-        self.assertEqual(self.journal.counts.persisted, 1)
-
-    async def test_twice_cancelled_compact_cannot_erase_a_later_persisted_record(
-        self,
-    ) -> None:
-        journal = VoiceJournal(self.root, batch_size=1)
-        first = record(0, VoiceCheckpoint(), sequence=1)
-        second = record(10, VoiceCheckpoint(), sequence=2)
-        appended = asyncio.Event()
-        copied = asyncio.Event()
-        attempted = asyncio.Event()
-        release = threading.Event()
-        loop = asyncio.get_running_loop()
-        append = journal._append
-        copy = shutil.copyfileobj
-
-        def observed_append(records: Sequence[VoiceJournalRecord]) -> None:
-            append(records)
-            loop.call_soon_threadsafe(appended.set)
-
-        def blocked_copy(source: BinaryIO, sink: BinaryIO) -> None:
-            copy(source, sink)
-            loop.call_soon_threadsafe(copied.set)
-            if not release.wait(10):
-                raise TimeoutError("Test did not release the physical compactor")
-
-        async def submit_and_close() -> None:
-            self.assertEqual(journal.submit(second), Submission.ACCEPTED)
-            attempted.set()
-            await journal.close()
-
-        with patch.object(journal, "_append", side_effect=observed_append):
-            journal.start()
-            self.assertEqual(journal.submit(first), Submission.ACCEPTED)
-            await asyncio.wait_for(appended.wait(), 5)
-            self.assertEqual(await journal.read_day(1, START.date()), (first,))
-            self.assertEqual(journal.counts.persisted, 1)
-
-        with (
-            patch("repositories.voice_journal.shutil.copyfileobj", new=blocked_copy),
-            self.assertLogs("repositories.voice_journal", level="WARNING"),
-        ):
-            compacting = asyncio.create_task(
-                journal.compact(before_day=START.date() + timedelta(days=1))
-            )
-            closing: asyncio.Task[None] | None = None
-            try:
-                await asyncio.wait_for(copied.wait(), 5)
-                compacting.cancel()
-                checkpoint = asyncio.Event()
-                loop.call_soon(checkpoint.set)
-                await checkpoint.wait()
-                compacting.cancel()
-                closing = asyncio.create_task(submit_and_close())
-                await attempted.wait()
-                checkpoint.clear()
-                loop.call_soon(checkpoint.set)
-                await checkpoint.wait()
-                self.assertFalse(compacting.done())
-                self.assertFalse(closing.done())
-                self.assertEqual(journal.counts.persisted, 1)
-            finally:
-                release.set()
-                await asyncio.gather(compacting, return_exceptions=True)
-                if closing is not None:
-                    await asyncio.gather(closing, return_exceptions=True)
-
-        self.assertTrue(compacting.cancelled())
-        with self.assertRaises(JournalWriteError):
-            await journal.close()
-        self.assertEqual(journal.counts.persisted, 1)
-        self.assertEqual(journal.counts.failed, 1)
-        self.assertEqual(await journal.read_day(1, START.date()), (first,))
-        gaps = await journal.read_day(None, START.date())
-        self.assertEqual(len(gaps), 1)
-        self.assertIsInstance(gaps[0].fact, ObservationGap)
-
-    async def test_reader_does_not_hide_corrupt_line_as_continuous_presence(
-        self,
-    ) -> None:
-        path = self.root / "v2/guild_1" / f"events_{START.date()}.jsonl"
-        path.parent.mkdir(parents=True)
-        path.write_text("truncated", encoding="utf-8")
-        with self.assertRaises(ValueError):
-            await self.journal.read_day(1, START.date())
-
-    async def test_rotation_uses_utc_calendar_day(self) -> None:
-        from datetime import timezone
-
-        item = replace(
-            record(0, VoiceSnapshot((human(),))),
-            observed_at=START.astimezone(timezone(timedelta(hours=-7))),
-        )
-        self.journal.start()
-        self.journal.submit(item)
-        await self.journal.close()
-        self.assertEqual(await self.journal.read_day(1, START.date()), (item,))
-
-    async def test_partial_failed_batch_cannot_credit_presence_before_recovery(
-        self,
-    ) -> None:
-        append = self.journal._append
-        first = True
-
-        def partial_failure(records: Sequence[VoiceJournalRecord]) -> None:
-            nonlocal first
-            if first:
-                first = False
-                append(records[:1])
-                raise OSError("Failure after a partial append")
-            append(records)
-
-        with patch.object(self.journal, "_append", side_effect=partial_failure):
-            self.journal.start()
-            for item in (
-                record(0, VoiceSnapshot((human(),))),
-                record(10, VoiceCheckpoint()),
-                record(20, VoiceSnapshot((human(),))),
-                record(30, VoiceCheckpoint()),
-            ):
-                self.journal.submit(item)
-            with self.assertLogs("repositories.voice_journal", level="WARNING"):
-                with self.assertRaises(JournalWriteError):
-                    await self.journal.close()
-        timeline = build_timeline(
-            (
-                *await self.journal.read_day(1, START.date()),
-                *await self.journal.read_day(None, START.date()),
-            )
-        )
-        self.assertEqual(self.journal.counts.failed, 2)
-        self.assertEqual(self.journal.counts.persisted, 2)
-        self.assertEqual(presence(timeline, 1).total_seconds, 10)
-
-    async def test_default_retention_preserves_compressed_and_uncompressed_history(
-        self,
-    ) -> None:
-        self.journal.start()
-        self.journal.submit(record(0, VoiceSnapshot(())))
-        self.journal.submit(record(86400, VoiceSnapshot(())))
-        await self.journal.close()
-        await self.journal.compact(before_day=START.date() + timedelta(days=1))
-        original = {path: path.read_bytes() for path in self.root.rglob("events_*")}
-        self.assertEqual(
-            await self.journal.prune(today=START.date() + timedelta(days=4000)), 0
-        )
-        self.assertEqual(
-            await self.journal.prune(
-                today=START.date() + timedelta(days=4000), retention_days=None
-            ),
-            0,
-        )
-        self.assertEqual({path: path.read_bytes() for path in original}, original)
-
     async def test_guild_overflow_does_not_invalidate_another_guild(self) -> None:
-        journal = VoiceJournal(self.root, queue_size=3)
+        journal = VoiceJournal(self.store, queue_size=3)
         journal.start()
         for item in (
             record(0, VoiceSnapshot((human(),))),
-            record(0, VoiceSnapshot((human(2),)), guild=2, sequence=1),
+            record(0, VoiceSnapshot((human(2, 20),)), guild=2, sequence=1),
             record(10, VoiceCheckpoint(), guild=2),
         ):
             self.assertEqual(journal.submit(item), Submission.ACCEPTED)
@@ -683,7 +132,7 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await journal.read_day(None, START.date()), ())
 
     async def test_overflow_keeps_independent_guild_and_global_markers(self) -> None:
-        journal = VoiceJournal(self.root, queue_size=1)
+        journal = VoiceJournal(self.store, queue_size=1)
         journal.start()
         journal.submit(record(0, VoiceCheckpoint(), guild=None))
         for item in (
@@ -709,7 +158,7 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
     async def test_overflow_preserves_the_start_of_a_rejected_retrospective_gap(
         self,
     ) -> None:
-        journal = VoiceJournal(self.root, queue_size=1)
+        journal = VoiceJournal(self.store, queue_size=1)
         journal.start()
         journal.submit(record(0, VoiceSnapshot((human(),))))
         self.assertEqual(
@@ -736,7 +185,7 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
     async def test_later_overflow_preserves_an_imprecise_pending_loss_bound(
         self,
     ) -> None:
-        journal = VoiceJournal(self.root, queue_size=1)
+        journal = VoiceJournal(self.store, queue_size=1)
         journal.start()
         journal.submit(record(0, VoiceSnapshot((human(),))))
         for item in (
@@ -758,3 +207,29 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(gaps), 1)
         self.assertEqual(gaps[0].started_at, at(5))
         self.assertFalse(gaps[0].known_bounds)
+
+    async def test_cancelled_close_retains_writer_until_physical_commit(self) -> None:
+        entered, release = asyncio.Event(), asyncio.Event()
+        append = self.store.append
+
+        async def hold(token: str, records: Sequence[VoiceJournalRecord]) -> int:
+            entered.set()
+            await release.wait()
+            return await append(token, records)
+
+        with patch.object(self.store, "append", side_effect=hold):
+            self.journal.start()
+            self.journal.submit(record(0, VoiceSnapshot(())))
+            await entered.wait()
+            closing = asyncio.create_task(self.journal.close())
+            scheduled = asyncio.Event()
+            asyncio.get_running_loop().call_soon(scheduled.set)
+            await scheduled.wait()
+            closing.cancel()
+            self.assertFalse(closing.done())
+            release.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await closing
+        self.assertTrue(self.journal.closed)
+        self.assertEqual(self.journal.counts.persisted, 1)
+        self.assertEqual(len(await self.journal.read_all(1)), 1)

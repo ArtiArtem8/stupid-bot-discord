@@ -12,7 +12,6 @@ import discord
 
 import config
 from api.birthday import BirthdayManager, parse_birthday, safe_fetch_member
-from api.birthday_models import BirthdayGuildConfig
 
 
 class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
@@ -83,23 +82,20 @@ class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
 class TestBirthdayManager(unittest.IsolatedAsyncioTestCase):
     async def test_set_user_birthday_delegates_semantic_mutation(self) -> None:
         repo = AsyncMock()
-        expected = BirthdayGuildConfig(1, "S", 123)
-        repo.set_user_birthday.return_value = expected
         mgr = BirthdayManager(repo)
 
-        cfg = await mgr.set_user_birthday(1, "S", 123, 10, "User", "01-01-2000")
+        await mgr.set_user_birthday(1, "S", 123, 10, "User", "01-01-2000")
 
-        self.assertIs(cfg, expected)
         repo.set_user_birthday.assert_awaited_once_with(
             1, "S", 123, 10, "User", "01-01-2000"
         )
 
     async def test_delete_returns_false_when_missing(self) -> None:
         repo = AsyncMock()
-        repo.get.return_value = None
+        repo.delete.return_value = False
         mgr = BirthdayManager(repo)
 
         ok = await mgr.delete_guild_config(1)
 
         self.assertFalse(ok)
-        repo.delete.assert_not_awaited()
+        repo.delete.assert_awaited_once_with(1)

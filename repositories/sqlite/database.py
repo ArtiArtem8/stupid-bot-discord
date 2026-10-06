@@ -8,18 +8,20 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import URL, Connection, String, create_engine, event, text
+from sqlalchemy import URL, Connection, String, create_engine, event, select, text
 from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, ConnectionPoolEntry
 
-SCHEMA_REVISION = "0002_music_volume"
+from repositories.sqlite.schema import storage_state
+
+SCHEMA_REVISION = "0003_application"
 
 
 class Database:
     """Own one engine and drain admitted transactions before disposing it.
 
-    Both repositories share this owner. Admission counts include pool waiters;
+    Application repositories share this owner. Admission counts include pool waiters;
     closing rejects later operations and waits for transaction exit, including
     rollback, before disposal. SQLAlchemy alone schedules connection checkouts.
     Raw engine access is for maintenance and diagnostics, outside runtime work.
@@ -109,18 +111,26 @@ def open_engine(path: Path) -> AsyncEngine:
     return engine
 
 
-async def validate_schema(engine: AsyncEngine) -> None:
+async def validate_schema(database: Database) -> None:
     """Reject unprepared or incompatible databases without running migrations.
 
     Connection and schema errors propagate to startup. No empty database or JSON
     fallback is allowed. Revision admission is separate from backup integrity.
     """
-    async with engine.connect() as connection:
+    path = database.engine.url.database
+    if path is not None and path.endswith(".building.sqlite"):
+        raise RuntimeError("SQLite import has not been published")
+    async with database.transaction() as connection:
         versions = await connection.scalars(
             text("SELECT version_num FROM alembic_version").columns(version_num=String)
         )
         if list(versions) != [SCHEMA_REVISION]:
             raise RuntimeError("Unsupported SQLite schema; run explicit maintenance")
+        state = await connection.scalar(
+            select(storage_state.c.status).where(storage_state.c.singleton == 1)
+        )
+        if state != "COMPLETE":
+            raise RuntimeError("SQLite import is not complete")
 
 
 def migrate(path: Path, revision: str = "head") -> None:

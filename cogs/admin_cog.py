@@ -10,7 +10,7 @@ Provides:
 
 import logging
 from enum import StrEnum
-from typing import NoReturn, override
+from typing import TYPE_CHECKING, NoReturn, override
 
 import discord
 from discord import app_commands
@@ -18,13 +18,16 @@ from discord.ext import commands
 from discord.utils import format_dt
 
 import config
-from api.blocking import block_manager
+from api.blocking import BlockManager
 from framework.base_cog import BaseCog
 from framework.checks import is_owner_app
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from resources import ACTION_TITLES
 from utils.embeds import SafeEmbed
 from utils.text_utils import truncate_sequence, truncate_text
+
+if TYPE_CHECKING:
+    from framework.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +100,9 @@ class AdminCog(BaseCog):
     Requires administrator permissions for all commands.
     """
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: commands.Bot, block_manager: BlockManager) -> None:
         super().__init__(bot)
+        self.block_manager = block_manager
 
     @override
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:
@@ -124,7 +128,7 @@ class AdminCog(BaseCog):
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ) -> None:
         guild = await self._require_guild(interaction)
-        if await block_manager.is_user_blocked(guild.id, user.id):
+        if await self.block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -132,7 +136,7 @@ class AdminCog(BaseCog):
                 ephemeral=True,
             )
             return
-        await block_manager.block_user(guild.id, user, interaction.user.id, reason)
+        await self.block_manager.block_user(guild.id, user, interaction.user.id, reason)
         logger.info("Blocked user %d in guild %d", user.id, guild.id)
         embed = create_block_embed(user, BLOCK, reason)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
@@ -151,7 +155,7 @@ class AdminCog(BaseCog):
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ) -> None:
         guild = await self._require_guild(interaction)
-        if not await block_manager.is_user_blocked(guild.id, user.id):
+        if not await self.block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -159,7 +163,9 @@ class AdminCog(BaseCog):
                 ephemeral=True,
             )
             return
-        await block_manager.unblock_user(guild.id, user, interaction.user.id, reason)
+        await self.block_manager.unblock_user(
+            guild.id, user, interaction.user.id, reason
+        )
         logger.info("Unblocked user %d in guild %d", user.id, guild.id)
         embed = create_block_embed(user, UNBLOCK, reason)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
@@ -181,7 +187,7 @@ class AdminCog(BaseCog):
         ephemeral: bool = True,
     ) -> None:
         guild = await self._require_guild(interaction)
-        user_entry = await block_manager.get_user(guild.id, user.id)
+        user_entry = await self.block_manager.get_user(guild.id, user.id)
 
         if not user_entry or not user_entry.block_history:
             logger.info(
@@ -323,7 +329,7 @@ class AdminCog(BaseCog):
         ephemeral: bool = True,
     ) -> None:
         guild = await self._require_guild(interaction)
-        all_users = await block_manager.get_guild_users(guild.id)
+        all_users = await self.block_manager.get_guild_users(guild.id)
         blocked_users = [u for u in all_users if u.is_blocked]
 
         if not blocked_users:
@@ -432,6 +438,6 @@ class AdminCog(BaseCog):
         )
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: "StupidBot") -> None:
     """Register the administration cog."""
-    await bot.add_cog(AdminCog(bot))
+    await bot.add_cog(AdminCog(bot, bot.block_manager))

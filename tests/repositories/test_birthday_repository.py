@@ -2,18 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-import logging
 import unittest
 from datetime import date
-from typing import override
 from unittest.mock import Mock
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
-from repositories.birthday_repository import BirthdayRepository
-from tests.repositories.fakes import InMemoryJsonStore
 from utils.birthday_utils import calculate_days_until_birthday
-from utils.json_types import JsonObject
 
 
 class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
@@ -164,106 +158,3 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         ref_date_leap = date(2024, 1, 1)
         days_leap = calculate_days_until_birthday(bday_str, ref_date_leap)
         self.assertEqual(days_leap, 59)
-
-
-class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
-    @override
-    def setUp(self) -> None:
-        self.store = InMemoryJsonStore()
-        self.repo = BirthdayRepository(self.store)
-
-    async def test_save_and_get_guild(self) -> None:
-        config = BirthdayGuildConfig(
-            guild_id=123, server_name="MyServer", channel_id=456, birthday_role_id=789
-        )
-        user = BirthdayUser(1, "User", "01-01-2000")
-        config.users[1] = user
-
-        await self.repo.save(config)
-
-        loaded = await self.repo.get(123)
-
-        self.assertIsNotNone(loaded)
-        if loaded is None:
-            self.fail("expected saved birthday guild config")
-        self.assertEqual(loaded.server_name, "MyServer")
-        self.assertEqual(loaded.channel_id, 456)
-        self.assertEqual(loaded.birthday_role_id, 789)
-        self.assertIn(1, loaded.users)
-        self.assertEqual(loaded.users[1].name, "User")
-
-    async def test_get_nonexistent_returns_none(self) -> None:
-        result = await self.repo.get(99999)
-        self.assertIsNone(result)
-
-    async def test_get_all(self) -> None:
-        c1 = BirthdayGuildConfig(1, "G1", 100)
-        c2 = BirthdayGuildConfig(2, "G2", 200)
-
-        await self.repo.save(c1)
-        await self.repo.save(c2)
-
-        all_guilds = await self.repo.get_all()
-
-        self.assertEqual(len(all_guilds), 2)
-        ids = {g.guild_id for g in all_guilds}
-        self.assertEqual(ids, {1, 2})
-
-    async def test_delete(self) -> None:
-        c1 = BirthdayGuildConfig(1, "G1", 100)
-        await self.repo.save(c1)
-
-        await self.repo.delete(1)
-
-        result = await self.repo.get(1)
-        self.assertIsNone(result)
-
-    async def test_get_all_handles_corrupt_data(self) -> None:
-        bad_data: JsonObject = {
-            "1": {"Server_name": "Valid", "Channel_id": "1", "Users": {}},
-            "2": "Not a dict",
-            "not_an_int": {},
-            "3": {},  # Missing required fields (should trigger exception)
-        }
-        self.repo = BirthdayRepository(InMemoryJsonStore(bad_data))
-
-        logging.disable(logging.ERROR)
-        try:
-            results = await self.repo.get_all()
-        finally:
-            logging.disable(logging.NOTSET)
-
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].guild_id, 1)
-
-    async def test_concurrent_user_updates_preserve_both_birthdays(self) -> None:
-        await asyncio.gather(
-            self.repo.set_user_birthday(123, "Guild", 456, 1, "One", "01-01-2000"),
-            self.repo.set_user_birthday(123, "Guild", 456, 2, "Two", "02-02-2000"),
-        )
-
-        loaded = await self.repo.get(123)
-
-        self.assertIsNotNone(loaded)
-        if loaded is None:
-            self.fail("expected saved birthday guild config")
-        self.assertEqual(set(loaded.users), {1, 2})
-
-    async def test_semantic_update_rejects_invalid_existing_guild(self) -> None:
-        store = InMemoryJsonStore({"123": {}})
-        repo = BirthdayRepository(store)
-
-        with self.assertRaises(ValueError):
-            await repo.set_user_birthday(123, "Guild", 456, 1, "One", "01-01-2000")
-
-        self.assertEqual(store.data, {"123": {}})
-
-    async def test_clear_missing_birthday_is_noop(self) -> None:
-        await self.repo.save(BirthdayGuildConfig(123, "Guild", 456))
-        calls_before = self.store.update_calls
-
-        guild_exists, cleared = await self.repo.clear_user_birthday(123, 1)
-
-        self.assertTrue(guild_exists)
-        self.assertFalse(cleared)
-        self.assertEqual(self.store.update_calls, calls_before + 1)

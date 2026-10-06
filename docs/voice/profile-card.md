@@ -168,9 +168,10 @@ frames alone need about
 140.6 MiB, before encoder overhead.
 
 Timelines are cached for at most four guilds. A miss reads all retained guild and
-session history, including compressed days. Journal generations are global, so
-activity in another guild can invalidate a timeline. There are no incremental
-reads or per-guild revisions. Reload clears caches and closes the owned shell
+shared session history from SQLite. Guild/shared commit watermarks invalidate
+only relevant scopes; telemetry counts are not cache keys. There are no
+incremental reads. Cold reads/replay have bounded admission, and cancellation
+retains the slot until physical replay finishes. Reload clears caches and closes the owned shell
 after admitted work completes; cancelling a Discord request does not cancel
 native work already running.
 

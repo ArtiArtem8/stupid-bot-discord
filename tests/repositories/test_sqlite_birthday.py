@@ -1,134 +1,117 @@
-"""Exercise the opt-in repository against migrated on-disk SQLite databases."""
+"""Birthday mutations, stale confirmations and conservative delivery claims."""
 
 import asyncio
-import json
-import tempfile
 import unittest
 from datetime import date
-from pathlib import Path
 from typing import override
 
-from alembic.autogenerate import compare_metadata
-from alembic.migration import MigrationContext
-from sqlalchemy import Connection, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
 
-from api.birthday_models import BirthdayGuildConfig, BirthdayUser
-from repositories.birthday_repository import BirthdayRepository
-from repositories.birthday_sqlite.import_json import load_birthdays
+from api.birthday_models import BirthdayDelivery
 from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
-from repositories.sqlite.database import Database, copy_database, migrate, open_engine
-from repositories.sqlite.schema import congratulations, guilds, metadata, users
-from tests.repositories.fakes import InMemoryJsonStore
-from utils.asyncio_utils import run_in_thread
-from utils.json_types import JsonObject
-from utils.json_utils import save_json
+from repositories.sqlite.identity import ensure_channel
+from repositories.sqlite.schema import (
+    birthday_deliveries,
+    birthday_settings,
+    music_settings,
+)
+from repositories.sqlite_volume_repository import SQLiteVolumeRepository
+from repositories.volume_repository import VolumeData
+from tests.storage import temporary_database
 
 
 class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncSetUp(self) -> None:
-        self.directory = tempfile.TemporaryDirectory()
-        self.addCleanup(self.directory.cleanup)
-        self.path = Path(self.directory.name) / "pilot.sqlite"
-        await run_in_thread(lambda: migrate(self.path))
-        self.engine = open_engine(self.path)
-        self.addAsyncCleanup(self.engine.dispose)
-        self.repo = SQLiteBirthdayRepository(Database(self.engine))
+        self.path, self.database = await temporary_database(self)
+        self.repo = SQLiteBirthdayRepository(self.database)
 
-    async def test_matches_json_repository_operations(self) -> None:
-        reference = BirthdayRepository(InMemoryJsonStore())
-        for repo in (reference, self.repo):
-            self.assertIsNone(await repo.get(9))
-            self.assertEqual(await repo.clear_user_birthday(9, 1), (False, False))
-            await repo.configure_guild(1, "Original", 20, 30)
-            await repo.set_user_birthday(1, "Ignored", 99, 2, "Member", "29-02-2000")
-            self.assertTrue(await repo.record_congratulation(1, 2, date(2026, 2, 28)))
-            self.assertFalse(await repo.record_congratulation(1, 2, date(2026, 2, 28)))
-            self.assertFalse(await repo.record_congratulation(1, 99, date(2026, 2, 28)))
-            await repo.set_user_birthday(1, "Ignored", 99, 2, "Renamed", "01-01-2000")
-            self.assertEqual(await repo.clear_user_birthday(1, 99), (True, False))
-            self.assertEqual(await repo.clear_user_birthday(1, 2), (True, True))
-            self.assertEqual(await repo.clear_user_birthday(1, 2), (True, False))
-            await repo.configure_guild(1, "Ignored", 40, None)
-        self.assertEqual(await self.repo.get_all(), await reference.get_all())
-        self.assertEqual(await self.repo.get_all_guild_ids(), [1])
-        loaded = await self.repo.get(1)
-        self.assertIsNotNone(loaded)
-        if loaded is not None:
-            loaded.users.clear()
-        self.assertEqual(await self.repo.get(1), await reference.get(1))
-
-    async def test_concurrent_settings_members_and_duplicate_markers(self) -> None:
-        await self.repo.configure_guild(1, "Guild", 10, None)
-        # Exercise ownership with a small fixture; throughput is measured by
-        # the separate workload, not by a deadline under parallel CI load.
-        await asyncio.wait_for(
-            asyncio.gather(
-                self.repo.configure_guild(1, "Guild", 77, 88),
-                *(
-                    self.repo.set_user_birthday(
-                        1, "Ignored", 99, uid, "Member", "01-01-2000"
-                    )
-                    for uid in range(6)
-                ),
-            ),
-            timeout=10,
+    async def test_mutations_preserve_settings_history_and_detached_reads(self) -> None:
+        self.assertIsNone(await self.repo.get(1))
+        self.assertEqual(
+            await self.repo.clear_user_birthday(1, 2, expected_version=1),
+            (False, False),
         )
-        results = await asyncio.gather(
-            *(
-                self.repo.record_congratulation(1, 2, date(2026, 10, 6))
-                for _ in range(8)
-            )
+        await self.repo.configure_guild(1, "Original", 10, 30)
+        await self.repo.set_user_birthday(1, "Ignored", 99, 2, "Member", "01-01-2000")
+        config = await self.repo.get(1)
+        if config is None:
+            self.fail("Missing guild")
+        self.assertEqual(
+            (config.server_name, config.channel_id, config.birthday_role_id),
+            ("Original", 10, 30),
         )
-        self.assertEqual(sum(results), 1)
+        config.users.clear()
         loaded = await self.repo.get(1)
         if loaded is None:
-            self.fail("Expected guild")
+            self.fail("Missing guild")
+        self.assertIn(2, loaded.users)
+        await self.repo.set_user_birthday(1, "Ignored", 99, 2, "Member", "02-01-2000")
+        self.assertEqual(
+            await self.repo.clear_user_birthday(1, 2, expected_version=1), (True, False)
+        )
+        self.assertEqual(
+            await self.repo.clear_user_birthday(1, 2, expected_version=2), (True, True)
+        )
+        self.assertEqual(
+            await self.repo.clear_user_birthday(1, 2, expected_version=2), (True, False)
+        )
+
+    async def test_concurrent_members_and_settings_have_no_lost_updates(self) -> None:
+        await self.repo.configure_guild(1, "Guild", 10, None)
+        await asyncio.gather(
+            self.repo.configure_guild(1, "Changed", 77, 88),
+            *(
+                self.repo.set_user_birthday(
+                    1, "Ignored", 99, uid, "Member", "01-01-2000"
+                )
+                for uid in range(1, 7)
+            ),
+        )
+        loaded = await self.repo.get(1)
+        if loaded is None:
+            self.fail("Missing guild")
         self.assertEqual((loaded.channel_id, loaded.birthday_role_id), (77, 88))
-        self.assertEqual(len(loaded.users), 6)
+        self.assertEqual(set(loaded.users), set(range(1, 7)))
+        await SQLiteVolumeRepository(self.database).save(VolumeData(1, 50))
+        self.assertTrue(await self.repo.delete(1))
+        async with self.database.transaction() as connection:
+            self.assertEqual(
+                await connection.scalar(select(music_settings.c.volume)), 50
+            )
+
+    async def test_only_one_claim_and_uncertain_send_is_not_repeated(self) -> None:
+        await self.repo.set_user_birthday(1, "Guild", 10, 2, "Member", "06-10-2000")
+        claims = [
+            BirthdayDelivery(str(index), 1, 2, date(2026, 10, 6), 1, 1)
+            for index in range(8)
+        ]
+        results = await asyncio.gather(
+            *(self.repo.claim_delivery(claim) for claim in claims)
+        )
+        self.assertEqual(sum(results), 1)
+        winner = claims[results.index(True)]
+        self.assertTrue(await self.repo.begin_delivery(winner))
+        self.assertFalse(await self.repo.begin_delivery(winner))
+        self.assertFalse(await self.repo.claim_delivery(winner))
+        await self.repo.finish_delivery(winner, 100)
+        await self.repo.finish_delivery(winner, 100)
+        loaded = await self.repo.get(1)
+        if loaded is None:
+            self.fail("Missing guild")
         self.assertEqual(loaded.users[2].was_congrats, ["06-10-2026"])
 
-    async def test_save_override_history_replacement_and_cascade(self) -> None:
-        original = BirthdayGuildConfig(1, "Guild", 20)
-        original.users[2] = BirthdayUser(
-            2, "Name", "", ["legacy", "legacy", "01-01-2020"]
-        )
-        await self.repo.save(original, key=3)
-        original.guild_id = 3
-        self.assertEqual(await self.repo.get(3), original)
-        await self.repo.save(BirthdayGuildConfig(3, "Replacement", 40))
-        self.assertEqual((await self.repo.get_all())[0].users, {})
-        await self.repo.save(original)
-        await self.repo.delete(3)
-        self.assertIsNone(await self.repo.get(3))
-        async with self.engine.begin() as connection:
+    async def test_changed_settings_or_birthday_prevents_claimed_send(self) -> None:
+        await self.repo.set_user_birthday(1, "Guild", 10, 2, "Member", "06-10-2000")
+        claim = BirthdayDelivery("stale", 1, 2, date(2026, 10, 6), 1, 1)
+        self.assertTrue(await self.repo.claim_delivery(claim))
+        await self.repo.configure_guild(1, "Guild", 20, None)
+        self.assertFalse(await self.repo.begin_delivery(claim))
+        async with self.database.transaction() as connection:
             self.assertEqual(
-                list((await connection.scalars(select(users.c.user_id))).all()), []
+                await connection.scalar(select(birthday_deliveries.c.status)),
+                "obsolete",
             )
-            self.assertEqual(
-                list((await connection.scalars(select(congratulations.c.value))).all()),
-                [],
-            )
-            with self.assertRaises(IntegrityError):
-                await connection.execute(
-                    users.insert().values(
-                        guild_id=999, user_id=2, name="N", birthday="", position=0
-                    )
-                )
-
-    async def test_failed_aggregate_save_rolls_back_and_engine_is_reusable(
-        self,
-    ) -> None:
-        original = BirthdayGuildConfig(1, "Original", 20)
-        await self.repo.save(original)
-        invalid = BirthdayGuildConfig(1, "Changed", 40)
-        invalid.users[2**70] = BirthdayUser(2**70, "Too large", "")
-        with self.assertRaises(OverflowError):
-            await self.repo.save(invalid)
-        self.assertEqual(await self.repo.get(1), original)
-        await self.repo.configure_guild(2, "Still works", 30, None)
-        self.assertEqual(await self.repo.get_all_guild_ids(), [1, 2])
 
     async def test_cancelled_transaction_cannot_commit_other_task(self) -> None:
         await self.repo.configure_guild(1, "Original", 20, None)
@@ -136,9 +119,12 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
         release = asyncio.Event()
 
         async def first() -> None:
-            async with self.engine.begin() as connection:
+            async with self.database.transaction() as connection:
+                await ensure_channel(connection, 999, 1)
                 await connection.execute(
-                    guilds.update().where(guilds.c.guild_id == 1).values(channel_id=999)
+                    birthday_settings.update()
+                    .where(birthday_settings.c.guild_id == 1)
+                    .values(channel_id=999)
                 )
                 entered.set()
                 await release.wait()
@@ -148,201 +134,32 @@ class TestSQLiteBirthday(unittest.IsolatedAsyncioTestCase):
             await self.repo.configure_guild(2, "Independent", 30, None)
 
         first_task = asyncio.create_task(first())
-        second_task: asyncio.Task[None] | None = None
-        try:
-            await asyncio.wait_for(entered.wait(), 5)
-            second_task = asyncio.create_task(second())
-            await asyncio.wait_for(second_started.wait(), 5)
-            self.assertFalse(second_task.done())
-            first_task.cancel()
-            with self.assertRaises(asyncio.CancelledError):
-                await asyncio.wait_for(first_task, 5)
-            await asyncio.wait_for(second_task, 5)
-            configs = await self.repo.get_all()
-            self.assertEqual(
-                [(g.guild_id, g.channel_id) for g in configs], [(1, 20), (2, 30)]
-            )
-        finally:
-            first_task.cancel()
-            if second_task is not None:
-                second_task.cancel()
-            await asyncio.gather(
-                first_task,
-                *([second_task] if second_task else []),
-                return_exceptions=True,
-            )
-
-    async def test_import_repeat_conflict_and_backup_restore(self) -> None:
-        source = self.path.with_suffix(".json")
-        config = BirthdayGuildConfig(1, "Guild", 20)
-        config.users[2] = BirthdayUser(2, "Member", "29-02-2000", ["28-02-2025"])
-        payload = json.dumps({"1": config.to_dict()}, ensure_ascii=False)
-        await run_in_thread(lambda: source.write_text(payload, encoding="utf-8"))
-        configs = await run_in_thread(lambda: load_birthdays(source))
-        self.assertEqual(await self.repo.import_guilds(configs), 1)
-        self.assertEqual(await self.repo.import_guilds(configs), 0)
-        backup = self.path.with_name("backup.sqlite")
-        restored = self.path.with_name("restored.sqlite")
-        await run_in_thread(lambda: copy_database(self.path, backup))
-        await self.repo.configure_guild(1, "Ignored", 99, None)
-        with self.assertRaises(ValueError):
-            await self.repo.import_guilds(
-                [BirthdayGuildConfig(3, "Must roll back", 40), *configs]
-            )
-        self.assertIsNone(await self.repo.get(3))
-        await run_in_thread(lambda: copy_database(backup, restored))
-        restored_engine = open_engine(restored)
-        try:
-            self.assertEqual(
-                await SQLiteBirthdayRepository(Database(restored_engine)).get_all(),
-                configs,
-            )
-        finally:
-            await restored_engine.dispose()
-        with self.assertRaises(FileExistsError):
-            await run_in_thread(lambda: copy_database(self.path, backup))
+        await entered.wait()
+        second_task = asyncio.create_task(second())
+        await second_started.wait()
+        self.assertFalse(second_task.done())
+        first_task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await first_task
+        await second_task
         self.assertEqual(
-            await run_in_thread(lambda: source.read_text(encoding="utf-8")), payload
+            [(g.guild_id, g.channel_id) for g in await self.repo.get_all()],
+            [(1, 20), (2, 30)],
         )
 
     async def test_cancelled_pool_waiter_never_writes(self) -> None:
-        waiting = asyncio.Event()
+        started = asyncio.Event()
+        async with self.database.transaction():
 
-        async def queued_write() -> None:
-            waiting.set()
-            await self.repo.configure_guild(2, "Cancelled", 30, None)
+            async def waiting() -> None:
+                started.set()
+                await self.repo.configure_guild(1, "Never committed", 10, None)
 
-        async with self.engine.begin() as connection:
-            await connection.execute(
-                guilds.insert().values(
-                    guild_id=1,
-                    server_name="Owner",
-                    channel_id=20,
-                    birthday_role_id=None,
-                )
-            )
-            task = asyncio.create_task(queued_write())
-            try:
-                await asyncio.wait_for(waiting.wait(), 5)
-                self.assertFalse(task.done())
-                task.cancel()
-                with self.assertRaises(asyncio.CancelledError):
-                    await asyncio.wait_for(task, 5)
-            finally:
-                task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
-        self.assertEqual(await self.repo.get_all_guild_ids(), [1])
-        await self.repo.configure_guild(3, "Reusable", 40, None)
-        self.assertEqual(await self.repo.get_all_guild_ids(), [1, 3])
-
-    async def test_migration_matches_runtime_schema(self) -> None:
-        def compare(connection: Connection) -> None:
-            self.assertEqual(
-                compare_metadata(MigrationContext.configure(connection), metadata), []
-            )
-
-        async with self.engine.begin() as connection:
-            await connection.run_sync(compare)
-            self.assertEqual(
-                (await connection.exec_driver_sql("PRAGMA foreign_keys")).scalar(), 1
-            )
-            self.assertEqual(
-                (await connection.exec_driver_sql("PRAGMA journal_mode")).scalar(),
-                "wal",
-            )
-            self.assertEqual(
-                (await connection.exec_driver_sql("PRAGMA synchronous")).scalar(), 2
-            )
-
-    async def test_migration_repeat_and_reopen_preserve_data(self) -> None:
-        await self.repo.configure_guild(1, "Persisted", 20, None)
-        await self.engine.dispose()
-        await run_in_thread(lambda: migrate(self.path))
-        reopened = open_engine(self.path)
-        try:
-            self.assertEqual(
-                await SQLiteBirthdayRepository(Database(reopened)).get_all_guild_ids(),
-                [1],
-            )
-        finally:
-            await reopened.dispose()
-
-    async def test_invalid_import_is_rejected_before_any_write(self) -> None:
-        source = self.path.with_suffix(".json")
-        invalid_cases: tuple[JsonObject, ...] = (
-            {"1": {}},
-            {
-                "1": {
-                    "Server_name": "G",
-                    "Channel_id": "2",
-                    "Users": {"3": {"name": "N", "birthday": "", "was_congrats": [42]}},
-                }
-            },
-        )
-        for invalid in invalid_cases:
-            with self.subTest(invalid=invalid):
-                await run_in_thread(
-                    lambda invalid=invalid: source.write_text(
-                        json.dumps(invalid), encoding="utf-8"
-                    )
-                )
-                with self.assertRaises(ValueError):
-                    await run_in_thread(lambda: load_birthdays(source))
+            task = asyncio.create_task(waiting())
+            await started.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
         self.assertEqual(await self.repo.get_all(), [])
-
-    async def test_literal_duplicate_keys_are_rejected_at_every_object_level(
-        self,
-    ) -> None:
-        source = self.path.with_suffix(".json")
-        member = '{"name":"N","birthday":"","was_congrats":["old","old"]}'
-        guild = '{"Server_name":"G","Channel_id":"2","Users":{}}'
-        cases = (
-            '{"1":' + guild + ',"1":' + guild + "}",
-            '{"1":{"Server_name":"G","Channel_id":"2","Users":{"3":'
-            + member
-            + ',"3":'
-            + member
-            + "}}}",
-            '{"1":{"Server_name":"G","Server_name":"H","Channel_id":"2","Users":{}}}',
-            '{"1":{"Server_name":"G","Channel_id":"2","Users":{"3":{"name":"A","name":"B","birthday":""}}}}',
-        )
-        for payload in cases:
-            with self.subTest(payload=payload):
-                await run_in_thread(
-                    lambda payload=payload: source.write_text(payload, encoding="utf-8")
-                )
-                with self.assertRaisesRegex(ValueError, "Duplicate JSON object key"):
-                    await run_in_thread(lambda: load_birthdays(source))
-        self.assertEqual(await self.repo.get_all(), [])
-
-    async def test_file_backed_import_preserves_decoded_order_and_history(self) -> None:
-        source = self.path.with_suffix(".json")
-        payload: JsonObject = {
-            "1": {
-                "Server_name": "G",
-                "Channel_id": "2",
-                "Users": {
-                    "2": {
-                        "name": "Two",
-                        "birthday": "",
-                        "was_congrats": ["old", "old"],
-                    },
-                    "10": {"name": "Ten", "birthday": ""},
-                },
-            }
-        }
-        await run_in_thread(lambda: save_json(source, payload))
-        imported = await run_in_thread(lambda: load_birthdays(source))
-        self.assertEqual(list(imported[0].users), [10, 2])
-        self.assertEqual(await self.repo.import_guilds(imported), 1)
-        loaded = (await self.repo.get_all())[0]
-        self.assertEqual(list(loaded.users), [10, 2])
-        self.assertEqual(loaded.users[2].was_congrats, ["old", "old"])
-        self.assertEqual(await self.repo.import_guilds(imported), 0)
-        imported[0].users = dict(reversed(list(imported[0].users.items())))
-        with self.assertRaisesRegex(ValueError, "conflicts"):
-            await self.repo.import_guilds(
-                [BirthdayGuildConfig(9, "Rollback", 2), *imported]
-            )
-        self.assertIsNone(await self.repo.get(9))
-        self.assertEqual(list((await self.repo.get_all())[0].users), [10, 2])
+        await self.repo.configure_guild(2, "Still usable", 20, None)
+        self.assertEqual(await self.repo.get_all_guild_ids(), [2])

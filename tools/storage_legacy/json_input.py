@@ -8,7 +8,8 @@ from repositories.volume_repository import VolumeData
 from utils.json_types import JsonObject, JsonValue, is_json_object
 
 
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject repeated JSON fields before their evidence is lost to dict conversion."""
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
@@ -22,7 +23,7 @@ def load_object(path: Path) -> JsonObject:
     # Narrow the standard decoder's Any before checking the complete JSON shape.
     raw = cast(
         object,
-        json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object),
+        json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object),
     )
     if not is_json_object(raw):
         raise ValueError("Import JSON must be an object")
@@ -34,7 +35,7 @@ def identifier(value: JsonValue) -> int:
     if not isinstance(value, str) or not value.isascii() or not value.isdecimal():
         raise ValueError("IDs must be decimal strings")
     result = int(value)
-    if result > 2**63 - 1:
+    if not 0 < result < 2**63:
         raise ValueError("ID exceeds SQLite's signed integer range")
     return result
 
@@ -45,7 +46,7 @@ def _volume(value: JsonValue) -> int:
     if isinstance(value, float) and not value.is_integer():
         raise ValueError("Import requires a finite integral volume")
     result = int(value)
-    if not -(2**63) <= result < 2**63:
+    if not 0 <= result <= 200:
         raise ValueError("Volume exceeds SQLite's signed integer range")
     return result
 

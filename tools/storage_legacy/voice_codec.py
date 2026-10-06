@@ -14,6 +14,7 @@ from api.voice.model import (
     VoiceSnapshot,
     VoiceStateSnapshot,
 )
+from tools.storage_legacy.json_input import unique_object
 from utils.json_types import JsonObject, JsonValue, is_json_object
 
 
@@ -82,7 +83,7 @@ def _encode_fact(fact: VoiceFact) -> JsonObject:
 def decode_record(line: str) -> VoiceJournalRecord:
     """Decode v2 or legacy facts; reject corruption instead of hiding lost time."""
     # json.loads has an Any return; validate once at this serialization boundary.
-    value: object = json.loads(line)  # pyright: ignore[reportAny]
+    value: object = json.loads(line, object_pairs_hook=unique_object)  # pyright: ignore[reportAny]
     raw = _object(value)
     if "schema_version" not in raw:
         return _decode_legacy(raw)

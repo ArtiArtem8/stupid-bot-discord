@@ -7,6 +7,7 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from io import BytesIO
 from typing import override
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -43,6 +44,7 @@ from cogs.voice.profile.view import ProfileDetail, VoiceProfileView
 from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from repositories.voice_journal import VoiceJournal
+from utils.asyncio_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 _TIMELINE_CACHE_ENTRIES = 4
@@ -80,6 +82,7 @@ class VoiceProfileCog(BaseCog):
             OrderedDict()
         )
         self._cache_lock = asyncio.Lock()
+        self._timeline_admitted = 0
         self._journal_owner: VoiceJournal | None = None
         self._epoch = 0
         self._media_renderer = ProfileMediaRenderer()
@@ -316,29 +319,37 @@ class VoiceProfileCog(BaseCog):
         return user.display_name if user is not None else "Unknown user"
 
     async def _timeline(self, guild_id: int) -> ProfileSnapshot:
-        async with self._cache_lock:
-            collector = self.bot.get_cog("VoiceCollectorCog")
-            # Extension reload replaces the Cog class, but not the journal type.
-            journal: object = getattr(collector, "journal", None)
-            if not isinstance(journal, VoiceJournal):
-                raise RuntimeError("Voice collector is unavailable")
-            if self._journal_owner is not journal:
-                self._timeline_cache.clear()
-                self._journal_owner = journal
-                self._epoch += 1
-                self._media_cache.invalidate(self._epoch)
-            return await self._read_snapshot(journal, guild_id)
+        if self._timeline_admitted >= MEDIA_LIMIT or self._close_task is not None:
+            raise RenderBusyError("Voice history is busy")
+        self._timeline_admitted += 1
+        try:
+            async with self._cache_lock:
+                collector = self.bot.get_cog("VoiceCollectorCog")
+                # Extension reload replaces the Cog class, but not the journal type.
+                journal: object = getattr(collector, "journal", None)
+                if not isinstance(journal, VoiceJournal):
+                    raise RuntimeError("Voice collector is unavailable")
+                if self._journal_owner is not journal:
+                    self._timeline_cache.clear()
+                    self._journal_owner = journal
+                    self._epoch += 1
+                    self._media_cache.invalidate(self._epoch)
+                return await self._read_snapshot(journal, guild_id)
+        finally:
+            self._timeline_admitted -= 1
 
     async def _read_snapshot(
         self, journal: VoiceJournal, guild_id: int
     ) -> ProfileSnapshot:
         cached = self._timeline_cache.get(guild_id)
-        if cached is not None and cached[0] == journal.counts.persisted:
+        if cached is not None and cached[0] == await journal.revision(guild_id):
             self._timeline_cache.move_to_end(guild_id)
             return ProfileSnapshot(cached[1], self._epoch, cached[0])
         snapshot = await journal.snapshot_for_guild(guild_id)
-        timeline = await asyncio.to_thread(
-            build_timeline, (*snapshot.guild_records, *snapshot.session_records)
+        timeline = await run_in_thread(
+            partial(
+                build_timeline, (*snapshot.guild_records, *snapshot.session_records)
+            )
         )
         self._timeline_cache[guild_id] = (snapshot.generation, timeline)
         self._timeline_cache.move_to_end(guild_id)

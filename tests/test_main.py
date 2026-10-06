@@ -28,19 +28,21 @@ class TestMainTracing(unittest.IsolatedAsyncioTestCase):
                 bot.restore_state = AsyncMock()
                 bot.start = AsyncMock()
                 bot.save_state = AsyncMock(return_value=0.0)
+                bot.close = AsyncMock()
                 bot.__aenter__ = AsyncMock(return_value=bot)
                 bot.__aexit__ = AsyncMock(return_value=False)
                 args = ["main.py", "--tracemalloc"] if enabled else ["main.py"]
                 root = Path(directory)
-                selected = root / "birthdays.sqlite" if sqlite else None
-                if selected is not None:
-                    args.extend(("--sqlite", str(selected)))
+                selected = (
+                    root / "selected.sqlite" if sqlite else root / "data" / "app.sqlite"
+                )
+                if sqlite:
+                    args.extend(("--database", str(selected)))
                 credential = "test"
                 with (
                     patch.object(sys, "argv", args),
                     patch.object(config, "DISCORD_BOT_TOKEN", credential),
                     patch.object(config, "DATA_DIR", root / "data"),
-                    patch.object(config, "BACKUP_DIR", root / "backups"),
                     patch.object(config, "COGS_DIR", root / "cogs"),
                     patch.object(entry, "setup_logging"),
                     patch.object(tracemalloc, "start") as trace,
@@ -63,4 +65,5 @@ class TestMainTracing(unittest.IsolatedAsyncioTestCase):
                         await entry.main()
                 self.assertEqual(trace.call_count, int(enabled))
                 bot.start.assert_awaited_once_with(token=credential)
-                bot.save_state.assert_awaited_once()
+                bot.save_state.assert_not_awaited()
+                bot.close.assert_awaited_once()

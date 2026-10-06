@@ -208,7 +208,7 @@ asyncio.run(check())
         def inject_orphan() -> None:
             with closing(sqlite3.connect(self.path)) as connection:
                 connection.execute(
-                    "INSERT INTO birthday_users VALUES (999, 1, 'N', '', 0)"
+                    "INSERT INTO member_birthdays VALUES (999, 1, NULL, 0, 'N', 1)"
                 )
                 connection.commit()
 
@@ -218,7 +218,7 @@ asyncio.run(check())
 
         def change_revision() -> None:
             with closing(sqlite3.connect(self.path)) as connection:
-                connection.execute("DELETE FROM birthday_users")
+                connection.execute("DELETE FROM member_birthdays")
                 connection.execute("UPDATE alembic_version SET version_num='unknown'")
                 connection.commit()
 

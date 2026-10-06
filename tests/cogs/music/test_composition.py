@@ -4,18 +4,20 @@ import unittest
 from unittest.mock import MagicMock
 
 from cogs.music.composition import create_music_components
-from repositories.volume_repository import VolumeRepository
-from tests.repositories.fakes import InMemoryJsonStore
+from repositories.volume_repository import VolumeStore
 
 
 class TestMusicComposition(unittest.TestCase):
     def test_graph_shares_each_stateful_dependency(self) -> None:
         bot = MagicMock()
 
-        volumes = VolumeRepository(InMemoryJsonStore())
+        volumes = MagicMock(spec=VolumeStore)
         components = create_music_components(bot, volumes)
         self.assertIs(components.volumes, volumes)
         self.assertIs(components.healer.volume_repo, volumes)
+        self.assertIs(
+            components.healer.volume_settings, components.service.volume_settings
+        )
 
         self.assertIs(components.service.connection, components.connection)
         self.assertIs(components.service.state, components.state)

@@ -14,6 +14,9 @@ class TestSessionSummaryView(unittest.IsolatedAsyncioTestCase):
     async def test_empty_session_shows_private_warning(self) -> None:
         view = SessionSummaryView(session=MusicSession(guild_id=1))
         interaction = MagicMock()
+        interaction.client = MagicMock()
+        interaction.client.block_manager = MagicMock()
+        interaction.client.block_manager.is_user_blocked = AsyncMock(return_value=False)
 
         with patch(
             "cogs.music.views.session.send_warning",
@@ -43,6 +46,9 @@ class TestSessionSummaryView(unittest.IsolatedAsyncioTestCase):
             )
         view = SessionSummaryView(session=session)
         interaction = MagicMock()
+        interaction.client = MagicMock()
+        interaction.client.block_manager = MagicMock()
+        interaction.client.block_manager.is_user_blocked = AsyncMock(return_value=False)
         interaction.user.id = 42
         send_message = AsyncMock(return_value=MagicMock(resource=None))
 

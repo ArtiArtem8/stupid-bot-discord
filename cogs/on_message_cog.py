@@ -6,6 +6,7 @@ Listens to messages and responds to greetings.
 import logging
 import secrets
 from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING
 
 from discord import Message
 from discord.ext import commands
@@ -13,8 +14,11 @@ from rapidfuzz.process import extract
 from rapidfuzz.utils import default_process
 
 import config
-from api.blocking import block_manager
+from api.blocking import BlockManager
 from resources import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
+
+if TYPE_CHECKING:
+    from framework.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +26,9 @@ logger = logging.getLogger(__name__)
 class OnMessageCog(commands.Cog):
     """Log, auto-respond to greetings and common phrases."""
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: commands.Bot, block_manager: BlockManager) -> None:
         self.bot = bot
+        self.block_manager = block_manager
 
     @commands.Cog.listener()
     async def on_message(self, message: Message) -> None:
@@ -32,7 +37,7 @@ class OnMessageCog(commands.Cog):
             return
         if message.content.startswith(tuple(await self.bot.get_prefix(message))):
             return
-        if message.guild and await block_manager.is_user_blocked(
+        if message.guild and await self.block_manager.is_user_blocked(
             message.guild.id, message.author.id
         ):
             return
@@ -170,6 +175,6 @@ class OnMessageCog(commands.Cog):
         logger.info("Discord message: %s", payload)
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: "StupidBot") -> None:
     """Register the message-listener cog."""
-    await bot.add_cog(OnMessageCog(bot))
+    await bot.add_cog(OnMessageCog(bot, bot.block_manager))

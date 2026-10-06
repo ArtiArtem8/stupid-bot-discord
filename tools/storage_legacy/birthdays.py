@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
-from repositories.sqlite.import_json import identifier, load_object
+from tools.storage_legacy.json_input import identifier, load_object
 from utils.json_types import JsonObject, JsonValue
 
 
@@ -37,7 +37,9 @@ def _guild(gid: str, raw: JsonValue) -> BirthdayGuildConfig:
     result = BirthdayGuildConfig(
         identifier(gid),
         _string(raw, "Server_name"),
-        identifier(raw.get("Channel_id")),
+        None
+        if raw.get("Channel_id") in (0, "0", None, "")
+        else identifier(raw.get("Channel_id")),
         birthday_role_id=None if role in (None, "") else identifier(role),
     )
     members = raw["Users"]

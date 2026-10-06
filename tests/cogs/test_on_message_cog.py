@@ -10,7 +10,7 @@ from cogs.on_message_cog import OnMessageCog
 class TestMessageLogging(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        self.cog = OnMessageCog(MagicMock())
+        self.cog = OnMessageCog(MagicMock(), MagicMock())
 
     def _message(self, content: str) -> MagicMock:
         message = MagicMock()

@@ -8,7 +8,7 @@
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/b094540d4d7b4bbea618b775ce0597e7)](https://app.codacy.com/gh/ArtiArtem8/stupid-bot-discord/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/badges/quality-score.png?b=main)](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/?branch=main)
 
-**StupidBot** is a Discord bot built with Python 3.12 and [discord.py](https://github.com/Rapptz/discord.py). It uses cogs for music, utilities, and server administration tools. Runtime data defaults to JSON under `data/`; birthdays and music volume also support explicitly selected SQLite, and user-facing text is mostly Russian.
+**StupidBot** is a Discord bot built with Python 3.12 and [discord.py](https://github.com/Rapptz/discord.py). It uses cogs for music, utilities, and server administration tools. Durable application data uses one SQLite database; user-facing text is mostly Russian.
 
 ## Features
 
@@ -61,11 +61,13 @@ Allocation tracing is disabled by default. For memory diagnostics, start with
 `uv run --locked --no-dev main.py --tracemalloc`. Tracing adds CPU and memory
 overhead and is intended for diagnostic runs.
 
-Birthdays and music volume can share a prepared local SQLite file with `--sqlite DATABASE`.
-Migrations and import are explicit maintenance commands; see
-[Windows SQLite setup and limitations](repositories/sqlite/README.md).
-Without the switch, both continue using JSON. Existing birthday databases require
-the explicit `0002_music_volume` upgrade; their saved data is preserved.
+Prepare the database explicitly before starting the bot. All durable features use
+`data/app.sqlite` by default; `--database PATH` selects another prepared file.
+See [Windows SQLite setup, import and recovery](repositories/sqlite/README.md).
+Missing, incompatible or unfinished databases stop startup. There is no automatic
+migration, import, empty-database creation or JSON fallback. Existing migrations
+`0001_birthdays` and `0002_music_volume` remain intact; `0003_application` upgrades
+their data to the shared schema.
 
 Platform launcher scripts are also included:
 
@@ -84,9 +86,9 @@ Platform launcher scripts are also included:
 Global configuration is loaded in `config.py`.
 
 - Environment variables cover the Discord token, optional owner ID, optional WolframAlpha ID, and Lavalink connection values.
-- `VOICE_PROBE_ENABLED=true` enables voice collection (`cogs/voice/collector_cog.py`). New raw facts are written under `data/voice_probe/v2/`; existing legacy journals remain read-only. Finished v2 days are compressed and retained indefinitely by default; pruning requires an explicit retention setting.
+- `VOICE_PROBE_ENABLED=true` enables voice collection (`cogs/voice/collector_cog.py`). Raw facts are committed to typed SQLite tables. The one-shot importer reads old JSONL/gzip snapshots; runtime never writes or repairs them. Voice history is retained indefinitely.
 - `/voice-profile` privately shows your server-local voice XP, level and statistics by default. `private:false` publishes the card with an owner-only trash button; Refresh is also owner-only. Controls disappear after ten minutes of inactivity. Starter through Rare use PNG; Epic and higher use four-second lossless animated WebP, with PNG fallback. The renderer requires **Inkscape** on the bot host and the bundled Inter fonts. `VOICE_PROFILE_TIMEZONE` defaults to `UTC`. See [profile card setup](docs/voice/profile-card.md).
-- Runtime directories are `data/`, `backups/`, and `temp/`.
+- Runtime files use `data/` and temporary renderer directories. Backups are explicit SQLite maintenance operations.
 - Logging is configured in `utils/logging_setup.py`.
 - Static strings and small resource lists live in `resources.py`.
 

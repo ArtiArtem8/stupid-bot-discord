@@ -23,6 +23,7 @@ from api.music.models import (
 )
 from api.music.player import MusicPlayer
 from api.music.service.core_service import CoreMusicService
+from api.music.volume import VolumeSettings
 from tests.api.music.helpers import make_entry, make_playlist, make_track
 
 
@@ -44,6 +45,8 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.connection.invalidate_node_and_players = AsyncMock()
         self.state = MagicMock()
         self.volume_repo = MagicMock()
+        self.volume_repo.get_volume = AsyncMock(return_value=80)
+        self.volume_repo.save = AsyncMock()
         self.playback_events = MagicMock()
         self.voice_lifecycle = MagicMock()
         self.ui = MagicMock()
@@ -51,7 +54,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             self.bot,
             self.connection,
             self.state,
-            self.volume_repo,
+            VolumeSettings(self.volume_repo),
             self.playback_events,
             self.voice_lifecycle,
             self.ui,

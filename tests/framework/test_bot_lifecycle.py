@@ -13,15 +13,20 @@ from discord.ext import commands
 import config
 from framework.bot import StupidBot
 from framework.cog_loader import CogLoader
+from tests.storage import temporary_database
 
 
 class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
+    @override
+    async def asyncSetUp(self) -> None:
+        self.database_path, _ = await temporary_database(self)
+
     async def test_successful_startup_still_starts_and_closes_background_loops(
         self,
     ) -> None:
         ready = asyncio.Event()
         loader = MagicMock(spec=CogLoader)
-        bot = StupidBot(cog_loader=loader)
+        bot = StupidBot(cog_loader=loader, database_path=self.database_path)
         with (
             patch.object(bot.tree, "sync", new=AsyncMock()) as sync,
             patch.object(
@@ -47,7 +52,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(task.done())
 
     async def test_close_before_startup_is_idempotent(self) -> None:
-        bot = StupidBot()
+        bot = StupidBot(database_path=self.database_path)
         await bot.close()
         await bot.close()
         self.assertTrue(bot.is_closed())
@@ -57,7 +62,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
     async def test_partial_startup_failure_still_closes_loaded_resources(self) -> None:
         loader = MagicMock(spec=CogLoader)
         loader.load_cogs.side_effect = RuntimeError("partial load")
-        bot = StupidBot(cog_loader=loader)
+        bot = StupidBot(cog_loader=loader, database_path=self.database_path)
         with patch.object(commands.Bot, "close", new=AsyncMock()) as discord_close:
             with self.assertRaises(RuntimeError):
                 await bot.setup_hook()
@@ -76,7 +81,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
                 release = asyncio.Event()
                 ready = asyncio.Event()
                 loader = MagicMock(spec=CogLoader)
-                bot = StupidBot(cog_loader=loader)
+                bot = StupidBot(cog_loader=loader, database_path=self.database_path)
 
                 with (
                     patch.object(bot.tree, "sync", new=AsyncMock()) as sync,
@@ -135,7 +140,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
                 release = asyncio.Event()
                 unloaded = asyncio.Event()
                 loader = MagicMock(spec=CogLoader)
-                bot = StupidBot(cog_loader=loader)
+                bot = StupidBot(cog_loader=loader, database_path=self.database_path)
 
                 await bot.add_cog(StartupCog(unloaded))
 
@@ -166,7 +171,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
 
     async def test_setup_after_close_does_not_load_or_sync(self) -> None:
         loader = MagicMock(spec=CogLoader)
-        bot = StupidBot(cog_loader=loader)
+        bot = StupidBot(cog_loader=loader, database_path=self.database_path)
         await bot.close()
         ready = asyncio.Event()
         with (
@@ -194,7 +199,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
         release = asyncio.Event()
         persisted = asyncio.Event()
         loader = MagicMock(spec=CogLoader)
-        bot = StupidBot(cog_loader=loader)
+        bot = StupidBot(cog_loader=loader, database_path=self.database_path)
 
         async def save() -> float:
             started.set()
@@ -249,7 +254,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
     async def test_watcher_failure_does_not_skip_discord_shutdown(self) -> None:
         loader = MagicMock(spec=CogLoader)
         loader.close.side_effect = RuntimeError("watcher failed")
-        bot = StupidBot(cog_loader=loader)
+        bot = StupidBot(cog_loader=loader, database_path=self.database_path)
         with (
             patch.object(commands.Bot, "close", new=AsyncMock()) as discord_close,
             self.assertLogs("framework.bot", level="ERROR"),

@@ -25,8 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.pool import ConnectionPoolEntry
 
 from api.voice.model import VoiceJournalRecord
-from repositories._voice_codec import decode_record, encode_record
 from repositories.sqlite.database import open_engine
+from tools.storage_legacy.voice_codec import decode_record, encode_record
 
 metadata = MetaData()
 

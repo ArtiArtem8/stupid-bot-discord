@@ -6,7 +6,7 @@ import tarfile
 from pathlib import Path
 
 from api.voice.model import VoiceJournalRecord
-from repositories._voice_codec import decode_record
+from tools.storage_legacy.voice_codec import decode_record
 
 _PATH = re.compile(
     r"(?:.*/)?data/voice_probe/(?P<v2>v2/)?(?P<scope>session|guild_[0-9]+)/events_(?P<day>[0-9-]+)\.jsonl(?P<gzip>\.gz)?$"

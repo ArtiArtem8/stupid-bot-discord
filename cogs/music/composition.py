@@ -9,6 +9,7 @@ from api.music.service.playback_events import PlaybackEventHandlers
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
+from api.music.volume import VolumeSettings
 from cogs.music.views.controller import TrackControllerManager
 from repositories.volume_repository import VolumeStore
 
@@ -34,7 +35,8 @@ def create_music_components(bot: commands.Bot, volumes: VolumeStore) -> MusicCom
     state = StateManager()
     controllers = TrackControllerManager(bot, connection)
     ui = UIOrchestrator(bot, controllers, state)
-    healer = SessionHealer(bot, connection, state, volumes, ui)
+    volume_settings = VolumeSettings(volumes)
+    healer = SessionHealer(bot, connection, state, volume_settings, ui)
     voice_lifecycle = VoiceLifecycleHandlers(bot, connection, state, ui, healer)
     playback_events = PlaybackEventHandlers(
         bot,
@@ -47,7 +49,7 @@ def create_music_components(bot: commands.Bot, volumes: VolumeStore) -> MusicCom
         bot,
         connection,
         state,
-        volumes,
+        volume_settings,
         playback_events,
         voice_lifecycle,
         ui,

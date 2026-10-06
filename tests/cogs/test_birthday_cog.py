@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-from api.birthday import birthday_manager
-from api.birthday_models import BirthdayGuildConfig, BirthdayUser
+from api.birthday import BirthdayManager
+from api.birthday_models import BirthdayDelivery, BirthdayGuildConfig, BirthdayUser
 from cogs.birthday_cog import BirthdayCog
 
 
@@ -26,7 +26,21 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self.bot.get_channel.return_value = self.channel
         self.user = BirthdayUser(10, "User", "29-02-2000")
         self.cfg = BirthdayGuildConfig(42, "Guild", 8, {10: self.user}, 7)
-        self.cog = BirthdayCog(self.bot)
+        self.manager = MagicMock(spec=BirthdayManager)
+        self.manager.repo = MagicMock()
+        self.manager.repo.versions_current = AsyncMock(return_value=True)
+        claimed: set[tuple[int, int, date]] = set()
+
+        async def claim(value: BirthdayDelivery) -> bool:
+            key = (value.guild_id, value.user_id, value.today)
+            if key in claimed:
+                return False
+            claimed.add(key)
+            return True
+
+        self.manager.repo.claim_delivery = AsyncMock(side_effect=claim)
+        self.manager.repo.begin_delivery = AsyncMock(return_value=True)
+        self.cog = BirthdayCog(self.bot, self.manager)
 
         async def add(role: discord.Role, **_kwargs: object) -> None:
             self.member.roles.append(role)
@@ -34,21 +48,18 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         async def remove(role: discord.Role, **_kwargs: object) -> None:
             self.member.roles.remove(role)
 
-        async def record(_guild_id: int, _user_id: int, today: date) -> None:
-            self.user.add_congratulation(today)
+        async def record(claim: BirthdayDelivery, _message_id: int) -> None:
+            self.user.add_congratulation(claim.today)
 
         self.member.add_roles.side_effect = add
         self.member.remove_roles.side_effect = remove
         config_patch = patch.object(
-            birthday_manager, "get_guild_config", new=AsyncMock(return_value=self.cfg)
+            self.manager, "get_guild_config", new=AsyncMock(return_value=self.cfg)
         )
         config_patch.start()
         self.addCleanup(config_patch.stop)
-        record_patch = patch.object(
-            birthday_manager, "record_congratulation", new=AsyncMock(side_effect=record)
-        )
-        self.record = record_patch.start()
-        self.addCleanup(record_patch.stop)
+        self.record = AsyncMock(side_effect=record)
+        self.manager.repo.finish_delivery = self.record
 
     async def test_february_29_role_follows_non_leap_celebration(
         self,
@@ -60,7 +71,7 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self.member.add_roles.assert_awaited_once()
         self.member.remove_roles.assert_not_awaited()
         self.channel.send.assert_awaited_once()
-        self.record.assert_awaited_once_with(42, 10, today)
+        self.record.assert_awaited_once()
         await self.cog._process_guild(42, date(2027, 3, 1))
         self.assertNotIn(self.role, self.member.roles)
         self.member.remove_roles.assert_awaited_once()
@@ -106,7 +117,9 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self.member.add_roles.assert_awaited_once()
         self.record.assert_not_awaited()
 
-    async def test_failed_message_is_not_recorded_and_can_be_retried(self) -> None:
+    async def test_unknown_message_outcome_is_not_recorded_or_blindly_retried(
+        self,
+    ) -> None:
         today = date(2027, 2, 28)
         self.channel.send.side_effect = discord.HTTPException(
             MagicMock(status=503, reason="unavailable"), "retry"
@@ -116,4 +129,5 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self.record.assert_not_awaited()
         self.channel.send.side_effect = None
         await self.cog._process_guild(42, today)
-        self.record.assert_awaited_once_with(42, 10, today)
+        self.record.assert_not_awaited()
+        self.channel.send.assert_awaited_once()

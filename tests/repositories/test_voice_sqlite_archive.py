@@ -9,8 +9,8 @@ from pathlib import Path
 
 from api.voice.model import VoiceCheckpoint
 from experiments.voice_sqlite.archive import read_archive
-from repositories._voice_codec import encode_record
 from tests.api.voice.examples import record
+from tools.storage_legacy.voice_codec import encode_record
 
 
 class TestVoiceArchive(unittest.TestCase):

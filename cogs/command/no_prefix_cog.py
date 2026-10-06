@@ -7,13 +7,14 @@ import asyncio
 import logging
 import time
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 import discord
 from discord import Message, app_commands
 from discord.ext import commands
 from discord.utils import format_dt, utcnow
 
-from api.blocking import block_manager
+from api.blocking import BlockManager
 from cogs.command.prefix_suggestions import (
     Command,
     Suggestion,
@@ -22,12 +23,16 @@ from cogs.command.prefix_suggestions import (
     is_guild_command,
 )
 
+if TYPE_CHECKING:
+    from framework.bot import StupidBot
+
 
 class PrefixBlockerCog(commands.Cog):
     """Redirect users from prefix commands to slash commands."""
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: commands.Bot, block_manager: BlockManager) -> None:
         self.bot = bot
+        self.block_manager = block_manager
         self.logger = logging.getLogger("PrefixBlockerCog")
         self._app_cmd_cache: dict[
             int | None, tuple[float, dict[str, app_commands.AppCommand]]
@@ -114,7 +119,7 @@ class PrefixBlockerCog(commands.Cog):
         if raw_content is None:
             return
 
-        if message.guild and await block_manager.is_user_blocked(
+        if message.guild and await self.block_manager.is_user_blocked(
             message.guild.id, message.author.id
         ):
             return
@@ -180,6 +185,6 @@ class PrefixBlockerCog(commands.Cog):
             )
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: "StupidBot") -> None:
     """Register the prefix-warning cog."""
-    await bot.add_cog(PrefixBlockerCog(bot))
+    await bot.add_cog(PrefixBlockerCog(bot, bot.block_manager))

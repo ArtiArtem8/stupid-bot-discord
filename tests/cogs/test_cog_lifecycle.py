@@ -4,7 +4,8 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from api.birthday import birthday_manager
+from api.birthday import BirthdayManager
+from api.guild_monitoring import ServerMonitoringManager
 from cogs.birthday_cog import BirthdayCog
 from cogs.guild_monitor_cog import ServerMonitorCog
 
@@ -17,7 +18,8 @@ class TestCogLoopLifecycle(unittest.IsolatedAsyncioTestCase):
         finished = asyncio.Event()
         bot = MagicMock()
         bot.wait_until_ready = AsyncMock()
-        cog = BirthdayCog(bot)
+        manager = MagicMock(spec=BirthdayManager)
+        cog = BirthdayCog(bot, manager)
 
         async def guild_ids() -> list[int]:
             entered.set()
@@ -30,7 +32,7 @@ class TestCogLoopLifecycle(unittest.IsolatedAsyncioTestCase):
             return []
 
         with patch.object(
-            birthday_manager, "get_all_guild_ids", new=AsyncMock(side_effect=guild_ids)
+            manager, "get_all_guild_ids", new=AsyncMock(side_effect=guild_ids)
         ):
             await cog.cog_load()
             unloading: asyncio.Task[None] | None = None
@@ -50,7 +52,7 @@ class TestCogLoopLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(cog.birthday_timer.is_running())
 
     async def test_birthday_loop_uses_cog_lifecycle(self) -> None:
-        cog = BirthdayCog(MagicMock())
+        cog = BirthdayCog(MagicMock(), MagicMock(spec=BirthdayManager))
         loop = cog.birthday_timer
         self.assertIsNone(loop.get_task())
 
@@ -68,7 +70,7 @@ class TestCogLoopLifecycle(unittest.IsolatedAsyncioTestCase):
         cancel.assert_called_once()
 
     async def test_guild_monitor_loop_uses_cog_lifecycle(self) -> None:
-        cog = ServerMonitorCog(MagicMock())
+        cog = ServerMonitorCog(MagicMock(), MagicMock(spec=ServerMonitoringManager))
         loop = cog.cleanup_task
         self.assertIsNone(loop.get_task())
 

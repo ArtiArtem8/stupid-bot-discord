@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-from api.blocking import block_manager
 from cogs.guild_monitor_cog import ServerMonitorCog
 from cogs.voice.profile.view import ProfileAction, VoiceProfileView
 from cogs.voice.profile_cog import VoiceProfileCog
@@ -36,7 +35,9 @@ class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
         )
         self.item.guild.get_channel_or_thread.return_value = channel
         self.blocked = AsyncMock(return_value=True)
-        blocked_patch = patch.object(block_manager, "is_user_blocked", self.blocked)
+        blocked_patch = patch.object(
+            self.bot.block_manager, "is_user_blocked", self.blocked
+        )
         blocked_patch.start()
         self.addCleanup(blocked_patch.stop)
 
@@ -115,7 +116,7 @@ class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
         self._assert_denied_once()
 
     async def test_registered_monitor_group_uses_cog_check(self) -> None:
-        cog = ServerMonitorCog(self.bot)
+        cog = ServerMonitorCog(self.bot, self.bot.monitor_manager)
         self.bot.tree.add_command(cog.monitor)
         self.item.command = cog.monitor_status
         self.item.data = {

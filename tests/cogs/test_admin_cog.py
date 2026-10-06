@@ -14,7 +14,7 @@ from framework.feedback_ui import FeedbackUI
 
 class TestDeleteMessage(unittest.IsolatedAsyncioTestCase):
     def _make_context(self) -> tuple[AdminCog, MagicMock, MagicMock]:
-        cog = AdminCog(MagicMock())
+        cog = AdminCog(MagicMock(), MagicMock())
         interaction = MagicMock(spec=discord.Interaction)
         channel = MagicMock(spec=discord.TextChannel)
         channel.fetch_message = AsyncMock()

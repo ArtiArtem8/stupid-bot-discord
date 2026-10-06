@@ -54,18 +54,3 @@ class TestBlockingModels(unittest.TestCase):
         self.assertEqual(len(user.name_history), 1)
         self.assertEqual(user.name_history[0].username, "new")
         self.assertEqual(user.name_history[0].timestamp, fixed)
-
-    def test_to_dict_from_dict_roundtrip(self) -> None:
-        user = BlockedUser(
-            user_id=5,
-            current_username="name",
-            current_global_name="g",
-            blocked=True,
-        )
-        payload = user.to_dict()
-        restored = BlockedUser.from_dict(payload)
-
-        self.assertEqual(restored.user_id, 5)
-        self.assertEqual(restored.current_username, "name")
-        self.assertEqual(restored.current_global_name, "g")
-        self.assertTrue(restored.blocked)

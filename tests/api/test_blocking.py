@@ -1,81 +1,36 @@
-"""Tests for blocking manager operations."""
-
-from __future__ import annotations
+"""The manager sends each block transition through one repository operation."""
 
 import unittest
-from types import SimpleNamespace
-from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
 from api.blocking import BlockManager
-from api.blocking_models import BlockedUser
+from repositories.sqlite_blocking_repository import SQLiteBlockingRepository
 
 
 class TestBlockManager(unittest.IsolatedAsyncioTestCase):
-    async def test_is_user_blocked_false_when_missing(self) -> None:
-        repo = AsyncMock()
-        repo.get.return_value = None
-        mgr = BlockManager(repo)
+    async def test_access_uses_committed_state_and_propagates_unavailability(
+        self,
+    ) -> None:
+        repository = MagicMock(spec=SQLiteBlockingRepository)
+        repository.is_blocked = AsyncMock(return_value=False)
+        manager = BlockManager(repository)
+        self.assertFalse(await manager.is_user_blocked(1, 2))
+        repository.is_blocked.assert_awaited_once_with(1, 2)
+        repository.is_blocked.side_effect = OSError("unavailable")
+        with self.assertRaises(OSError):
+            await manager.is_user_blocked(1, 2)
 
-        blocked = await mgr.is_user_blocked(guild_id=1, user_id=2)
-
-        self.assertFalse(blocked)
-        repo.get.assert_awaited_once_with((1, 2))
-
-    async def test_is_user_blocked_true_when_found(self) -> None:
-        repo = AsyncMock()
-        repo.get.return_value = BlockedUser(
-            user_id=2,
-            current_username="u",
-            current_global_name=None,
-            blocked=True,
+    async def test_block_and_unblock_each_use_atomic_change(self) -> None:
+        repository = MagicMock(spec=SQLiteBlockingRepository)
+        repository.change = AsyncMock(return_value=True)
+        manager = BlockManager(repository)
+        member = MagicMock(spec=discord.Member, id=2, display_name="Nick", name="Name")
+        self.assertTrue(await manager.block_user(1, member, 3, "reason"))
+        self.assertTrue(await manager.unblock_user(1, member, 3, "reason"))
+        self.assertEqual(repository.change.await_count, 2)
+        self.assertEqual(
+            [call.kwargs["blocked"] for call in repository.change.await_args_list],
+            [True, False],
         )
-        mgr = BlockManager(repo)
-
-        blocked = await mgr.is_user_blocked(guild_id=1, user_id=2)
-
-        self.assertTrue(blocked)
-
-    async def test_block_user_creates_or_updates_and_saves(self) -> None:
-        repo = AsyncMock()
-        repo.get.return_value = None
-        mgr = BlockManager(repo)
-
-        member = cast(
-            discord.Member,
-            cast(
-                object,
-                SimpleNamespace(
-                    id=10,
-                    display_name="Nick",
-                    name="Global",
-                ),
-            ),
-        )
-
-        user = await mgr.block_user(guild_id=99, target=member, admin_id=7, reason="r")
-
-        self.assertTrue(user.blocked)
-        repo.save.assert_awaited()
-
-    async def test_unblock_user_when_not_blocked_does_not_toggle(self) -> None:
-        repo = AsyncMock()
-        repo.get.return_value = BlockedUser(
-            user_id=10,
-            current_username="Nick",
-            current_global_name="Global",
-            blocked=False,
-        )
-        mgr = BlockManager(repo)
-
-        member = cast(
-            discord.Member,
-            cast(object, SimpleNamespace(id=10, display_name="Nick", name="Global")),
-        )
-        user = await mgr.unblock_user(
-            guild_id=99, target=member, admin_id=7, reason="r"
-        )
-
-        self.assertFalse(user.blocked)

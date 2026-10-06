@@ -14,7 +14,7 @@ logger = logging.getLogger("StupidBot")
 class Arguments(argparse.Namespace):
     watch: bool = False
     tracemalloc: bool = False
-    sqlite: Path | None = None
+    database: Path | None = None
 
 
 async def main() -> None:
@@ -32,10 +32,11 @@ async def main() -> None:
         help="Enable allocation tracing for memory diagnostics (adds overhead).",
     )
     parser.add_argument(
-        "--sqlite",
+        "--database",
         type=Path,
         metavar="DATABASE",
-        help="Use a migrated SQLite file for birthdays and music volume.",
+        default=config.DATA_DIR / "app.sqlite",
+        help="Path to the prepared application SQLite database.",
     )
     args = parser.parse_args(namespace=Arguments())
     if args.tracemalloc:
@@ -43,7 +44,6 @@ async def main() -> None:
 
     for directory in [
         config.DATA_DIR,
-        config.BACKUP_DIR,
         config.COGS_DIR,
     ]:
         directory.mkdir(parents=True, exist_ok=True)
@@ -52,21 +52,24 @@ async def main() -> None:
 
     if not config.DISCORD_BOT_TOKEN:
         logger.critical("DISCORD_BOT_TOKEN is missing in environment/config!")
-        return
+        raise SystemExit(1)
 
-    bot = StupidBot(watch_cogs=args.watch, database_path=args.sqlite)
-    await bot.restore_state()
+    bot = StupidBot(
+        watch_cogs=args.watch,
+        database_path=args.database or config.DATA_DIR / "app.sqlite",
+    )
 
     logger.info("Starting bot...")
     try:
         async with bot:
+            await bot.restore_state()
             await bot.start(token=config.DISCORD_BOT_TOKEN)
     except (KeyboardInterrupt, SystemExit):
         logger.info("Keyboard Interrupt detected.")
         raise
     finally:
-        uptime = await bot.save_state()
-        logger.info("Bot stopped. Final saved uptime: %.0fs", uptime)
+        await bot.close()
+        logger.info("Bot stopped.")
 
 
 if __name__ == "__main__":

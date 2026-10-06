@@ -26,6 +26,9 @@ from tests.api.music.helpers import make_entry, make_playlist, make_track
 
 def _make_interaction() -> MagicMock:
     interaction = MagicMock()
+    interaction.client = MagicMock()
+    interaction.client.block_manager = MagicMock()
+    interaction.client.block_manager.is_user_blocked = AsyncMock(return_value=False)
     interaction.user.id = 42
     interaction.user.display_name = "Requester"
     interaction.user.display_avatar.url = "https://example.com/avatar.png"

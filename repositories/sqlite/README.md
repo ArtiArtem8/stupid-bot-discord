@@ -1,119 +1,127 @@
-# Shared SQLite storage
+# Application SQLite storage
 
-`--sqlite DATABASE` selects one existing SQLite file for birthdays and music
-volume. Without this switch both features retain their JSON paths. Blocking,
-monitoring, reporting, uptime and voice storage are unchanged. SQLAlchemy Core,
-aiosqlite and Alembic are runtime dependencies pinned by `uv.lock`.
+All durable features use one prepared database: birthdays, music volume, blocking
+and its audit, reports, question answers, monitoring snapshots, uptime and voice
+facts. `--database PATH` selects the file; default is `data/app.sqlite`. There are
+no feature backend flags, JSON fallback, automatic migrations or startup imports.
+SQLAlchemy Core, aiosqlite and Alembic remain the pinned runtime stack.
 
-This replaces the previous `--birthday-sqlite` switch. Maintenance now runs through
-`python -m repositories.sqlite`; birthday import is named `import-birthdays`.
-There is no independent engine, database file or runtime flag for music volume.
+## Prepare a local Windows copy
 
-## Upgrade the existing local birthday database
-
-Work only on the local Windows copy. Stop the application owner before migration
-or import. Set `$localDb` to the **same file already holding the birthday data**;
-do not create another database for volume. For example, with the earlier local
-setup:
+The following commands are maintenance only and do not start Discord. Use a
+separate directory and immutable copies of old data. Do not run two application
+owners against one file. A new empty installation is initialized explicitly:
 
 ```powershell
-$localDb = "$env:TEMP/stupid-birthday-local/birthdays.sqlite"
-uv run --locked python -m repositories.sqlite --database "$localDb" backup "$env:TEMP/stupid-birthday-local/before-volume.sqlite"
+$localDb = "$env:TEMP/stupid-local/app.sqlite"
+New-Item -ItemType Directory -Force (Split-Path $localDb)
 uv run --locked python -m repositories.sqlite --database "$localDb" migrate
-uv run --locked python -m repositories.sqlite --database "$localDb" import-volumes data/music_volumes.json
+uv run --locked python -m repositories.sqlite --database "$localDb" check
 ```
 
-Backup refuses to overwrite an existing destination; choose a new filename for
-another backup. Migration retains revision `0001_birthdays` unchanged and applies
-`0002_music_volume` on top. The new table has no foreign key to birthdays: a guild
-may use music without registering birthdays. Existing birthday settings, member
-order and duplicate congratulation history entries remain intact.
-
-For a new local database, first create its parent directory, run `migrate`, then
-explicitly import both sources:
+To migrate legacy stores instead, choose a NEW destination and an offline source
+directory containing the named files listed below:
 
 ```powershell
-uv run --locked python -m repositories.sqlite --database "$localDb" import-birthdays data/user_birthdays.json
-uv run --locked python -m repositories.sqlite --database "$localDb" import-volumes data/music_volumes.json
+uv run --locked python -m tools.migrate_storage_once --source "$env:TEMP/stupid-source-copy" --destination "$env:TEMP/stupid-local/imported.sqlite"
 ```
 
-To select the prepared database on a future authorized launch, pass
-`--sqlite "$localDb"` to `main.py`. This selects these two stores only, not a
-sandbox for the bot's other data. Startup checks the supported Alembic revision
-before loading cogs. Missing files and incompatible schemas fail without implicit
-creation, migration, import, or fallback to JSON. An old `0001` database must be
-explicitly upgraded first.
+The importer reads `user_birthdays.json`, `music_volumes.json`,
+`blocked_users.json`, `user_reports.json`, `user_answers.json`, `last_run.json`,
+`guild_monitor/guild_*.json` and `voice_probe/{session,guild_*}` plus their `v2`
+counterparts. Missing features are empty. It never recursively imports backups.
+Literal duplicate keys, normalized ID collisions, invalid dates/IDs/volumes,
+unknown voice schemas and contradictory channel/role guilds cause refusal.
+Volume is 0–200, including saved zero; no clamping occurs. Participant order and
+repeated birthday history/role entries are retained. Original bytes are unchanged.
 
-Removing the switch returns both features to their original JSON files. SQLite
-changes are **not** exported back automatically; those JSON files are historical
-snapshots, not synchronized rollback copies. Keep a database backup before
-switching. A consistent copy can be restored to a new filename:
+If an earlier 0001/0002 SQLite file contains independent birthday or volume edits,
+pass a closed, checkpointed copy with `--source-database PATH` and
+`--source-policy POLICY.json`. The policy must explicitly contain both keys:
+
+```json
+{"birthdays": "sqlite", "volume": "json"}
+```
+
+Each feature chooses its entire source. There is no silent merge or newest-file
+heuristic. Both provided source formats are validated even when one loses the
+selection. The partial source database is read-only and never upgraded in place
+by the importer. A separate explicit `migrate` can upgrade a standalone 0001/0002
+copy in place; those frozen revisions are unchanged and 0003 preserves their
+saved birthday/member/history/volume rows before replacing the old tables.
+
+Old naive report timestamps retain their original text with unknown UTC time.
+`--legacy-timezone Europe/Berlin` optionally interprets unambiguous local times;
+DST folds/gaps remain unknown. Historical display hints do not become current
+usernames. Imported uptime provides one checkpoint period with unknown start,
+not an invented history or proof of clean shutdown.
+
+The importer prints hashes, selected formats, counts, UTC observation bounds and
+a manifest digest. It writes a new `.building.sqlite`, compares feature models,
+ordered raw facts, timeline/coverage/gaps and exact XP, checks integrity/FKs, marks
+COMPLETE, closes handles and checkpoints WAL before no-overwrite publication.
+A failure leaves an unpublished file which startup rejects. Choose a new staging
+path after diagnosing failure; there is no resumable-import framework. Repeating
+an existing destination explicitly refuses without modifying it.
+
+For a later authorized application launch, select the published file using
+`main.py --database PATH`. This integration did not launch a live bot or modify
+Linux, launchers, deployment or existing application data.
+
+## Backup, restore and rollback
 
 ```powershell
-uv run --locked python -m repositories.sqlite --database "$env:TEMP/stupid-birthday-local/restored.sqlite" restore "$env:TEMP/stupid-birthday-local/before-volume.sqlite"
+uv run --locked python -m repositories.sqlite --database "$localDb" backup "$env:TEMP/stupid-local/backup.sqlite"
+uv run --locked python -m repositories.sqlite --database "$env:TEMP/stupid-local/restored.sqlite" restore "$env:TEMP/stupid-local/backup.sqlite"
 ```
 
-A pre-volume backup still requires `migrate` before current startup accepts it.
-Backup uses SQLite's Online Backup API and `quick_check`, including committed WAL
-content. It may read a live source; it never overwrites a destination or repairs
-application data. Before selecting a restored file, check foreign keys, schema
-revision and repository readability as well as structural integrity.
+Backup uses SQLite Online Backup, including committed WAL contents, and refuses
+an existing destination. It checks structure, but can retain a diagnostic copy
+with invalid foreign keys. Restore/check additionally require current revision,
+COMPLETE state and valid FKs; failed validation never falls back to empty data.
+An older backup needs explicit `migrate` on its new copy before current startup.
+Never copy just the main file of an active WAL database.
 
-## Import contracts
+Before cutover, rollback means the old code and untouched old data. After new
+SQLite writes, reverting to those JSON snapshots loses the new records unless a
+separate reverse transfer is implemented. There is no dual-write rollback copy,
+no automatic repair and no downgrade from the normalized schema.
 
-Both import commands decode and validate the complete source before writing,
-then import all entries in one transaction. Repeating an identical import is a
-no-op. An existing differing value aborts the entire attempt; no partial inserts
-or implicit overwrite survive. Resolve differences explicitly in a separate
-input copy before retrying. Source JSON bytes are never modified.
+## Ownership and operation semantics
 
-Literal duplicate object keys and different keys normalizing to the same guild
-or member ID are rejected. IDs must be decimal strings fitting signed 64-bit
-SQLite integers. Volume accepts integer values, integer strings and finite
-integral floats; booleans, fractional values, malformed entries and overflow
-are rejected. Import never silently truncates or skips data. Storage preserves
-integer volume values without adding a clamp; the command's existing 0–200 range
-and missing-setting default remain unchanged. A saved zero remains zero.
+`StupidBot` constructs the feature owners and one `Database`. Preparation checks
+revision and completion before restoring uptime or loading cogs. SQLAlchemy's
+queued pool has one connection, no overflow, a ten-second checkout timeout and a
+five-second SQLite busy timeout. Explicit BEGIN, foreign keys and FULL synchronous
+mode apply; migrations enable WAL. Increasing pool size requires revisiting
+read-modify-write semantics. Multiple independent writers are not supported.
 
-Birthday identity includes member insertion order, not just dataclass equality.
-Order is the source file's decoded order (the JSON writer sorts keys
-lexicographically). Legacy date strings and repeated history array entries are
-retained. A Discord send and its saved congratulation marker are still separate
-operations; database transactions do not promise exactly-once message delivery.
+Transactions are short and own a connection for the complete domain operation.
+SQL is released before Discord, renderer or voice replay work. Shutdown stops
+startup/reload and producers, unloads cogs, drains the accepted voice queue, saves
+final uptime while SQLite is open, rejects new DB admission, drains admitted
+transactions/pool waiters and disposes. Repeated/cancelled close callers share the
+same cleanup. Storage failures propagate; authorization fails closed.
 
-## Ownership and shutdown
+Birthday deletion compares member version. Delivery has a unique member/day key,
+rechecks settings/member versions and persists uncertain status before HTTP.
+Timeouts, crashes and interrupted claims do not trigger blind resend. Block state
+and audit commit together. Question conflicts return the committed winner and do
+not consume the RAM answer queue on failure. Reports commit before acknowledgement;
+interaction retries return the original report without another notification.
 
-`StupidBot` selects repositories and owns one `Database` and engine. Birthday
-commands, timer and confirmations use the selected manager. Music composition
-receives the chosen `VolumeStore` and supplies that same instance to the service
-and healer. It never creates a second persistence owner on cog reload.
+Monitoring replaces snapshots atomically, compares snapshot identity on deletion,
+serializes member leave/restore, and rechecks before subsequent role requests.
+Successful remote edits are not rolled back by a later SQL/HTTP failure. Volume
+commands, join and healer share a per-guild ordering owner; healer playback PATCH
+uses current stored intent. Neither mechanism holds SQL across HTTP. A network
+mutation with an unknown outcome is not proof of a remote rollback.
 
-Each operation enters `Database.transaction()`. The owner counts admitted
-operations, including those waiting for SQLAlchemy's pool, until transaction exit.
-Shutdown stops producers through cog cleanup, rejects new database operations,
-waits for admitted operations to release their transactions, then disposes the
-engine. A cancelled close caller still waits for cleanup. This is resource
-lifetime tracking, not a transaction scheduler; connection scheduling remains in
-SQLAlchemy. Runtime code must not bypass this owner with raw engine access.
+Voice batches have stable retry keys plus content fingerprints; mismatches refuse.
+Facts, states and revisions commit together. Revisions are independent of writer
+telemetry and combine guild/shared watermarks. Nullable flags and empty snapshots
+retain meaning, including equal-sequence loss markers. Cold profile reads/replay
+have bounded admission; cancellation retains ownership until replay work finishes.
+No retention, incremental projection or timeline coalescing is introduced here.
 
-The queued pool remains `pool_size=1`, `max_overflow=0`, with 10-second checkout
-and 5-second SQLite busy timeouts. It serializes readers and writers. Transactions
-use explicit SQLAlchemy BEGIN hooks; migration enables WAL and connections enable
-foreign keys and FULL synchronous mode. Changing pool size requires revisiting
-read-modify-write concurrency, not merely performance tuning.
-
-## Verification and limits
-
-Tests use temporary Windows files and offline application composition. They cover
-upgrading a populated `0001` database, birthday preservation, volume parity with
-JSON, default and zero values, mixed mutations, rollback, duplicate/conflicting
-imports, backup of both stores, and shutdown during an unfinished volume commit.
-The shutdown test also checks rejected late birthday access, cancelled close,
-physical connection closure and persisted data after application recreation.
-Existing birthday and music behavior tests remain in the combined local gate.
-
-The shared decoder retains one `cast(object, ...)` to narrow the standard JSON
-loader's result before validation. Repositories need no type suppressions. This
-work makes no claim of lower total code complexity while both backends coexist,
-nor of improved voice analytics. No live bot, Linux host, deployment, or new
-performance experiment is part of this integration.
+See [schema and manual uptime history queries](SCHEMA.md) for relational contracts.

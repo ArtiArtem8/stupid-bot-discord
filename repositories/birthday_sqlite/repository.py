@@ -1,184 +1,187 @@
-"""Persist birthday aggregates with typed Core queries and owned transactions."""
+"""Birthday settings and member operations over normalized, shared identities."""
 
-from collections.abc import Sequence
+import time
 from datetime import date
-from typing import override
+from time import strptime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from api.birthday_models import BirthdayGuildConfig, BirthdayUser
-from repositories.base_repository import BaseRepository
+import config
+from api.birthday_models import BirthdayDelivery, BirthdayGuildConfig, BirthdayUser
 from repositories.sqlite.database import Database
-from repositories.sqlite.schema import congratulations, guilds, users
+from repositories.sqlite.identity import (
+    discord_id,
+    ensure_channel,
+    ensure_guild,
+    ensure_member,
+    ensure_role,
+)
+from repositories.sqlite.schema import (
+    birthday_deliveries,
+    birthday_history,
+    birthday_settings,
+    member_birthdays,
+)
+from utils.birthday_utils import is_birthday_today
 
 
 async def _read(
     connection: AsyncConnection, key: int | None = None
 ) -> list[BirthdayGuildConfig]:
     query = select(
-        guilds.c.guild_id,
-        guilds.c.server_name,
-        guilds.c.channel_id,
-        guilds.c.birthday_role_id,
+        birthday_settings.c.guild_id,
+        birthday_settings.c.guild_name_hint,
+        birthday_settings.c.channel_id,
+        birthday_settings.c.birthday_role_id,
+        birthday_settings.c.version,
     )
     if key is not None:
-        query = query.where(guilds.c.guild_id == key)
-    rows = await connection.execute(query.order_by(guilds.c.guild_id))
+        query = query.where(birthday_settings.c.guild_id == key)
+    rows = await connection.execute(query.order_by(birthday_settings.c.guild_id))
     configs = {
-        gid: BirthdayGuildConfig(gid, name, channel, birthday_role_id=role)
-        for gid, name, channel, role in rows
+        gid: BirthdayGuildConfig(
+            gid, name, channel, birthday_role_id=role, version=version
+        )
+        for gid, name, channel, role, version in rows
     }
-    if configs:
-        members = await connection.execute(
-            select(
-                users.c.guild_id,
-                users.c.user_id,
-                users.c.name,
-                users.c.birthday,
-            )
-            .where(users.c.guild_id.in_(configs))
-            .order_by(users.c.guild_id, users.c.position)
+    if not configs:
+        return []
+    members = await connection.execute(
+        select(
+            member_birthdays.c.guild_id,
+            member_birthdays.c.user_id,
+            member_birthdays.c.display_name_hint,
+            member_birthdays.c.birth_date,
+            member_birthdays.c.version,
         )
-        for gid, uid, name, birthday in members:
-            configs[gid].users[uid] = BirthdayUser(uid, name, birthday)
-        history = await connection.execute(
-            select(
-                congratulations.c.guild_id,
-                congratulations.c.user_id,
-                congratulations.c.value,
-            )
-            .where(congratulations.c.guild_id.in_(configs))
-            .order_by(
-                congratulations.c.guild_id,
-                congratulations.c.user_id,
-                congratulations.c.position,
-            )
+        .where(member_birthdays.c.guild_id.in_(configs))
+        .order_by(member_birthdays.c.guild_id, member_birthdays.c.position)
+    )
+    for gid, uid, name, birthday, version in members:
+        formatted = (
+            date.fromisoformat(birthday).strftime(config.DATE_FORMAT)
+            if birthday
+            else ""
         )
-        for gid, uid, value in history:
-            configs[gid].users[uid].was_congrats.append(value)
+        configs[gid].users[uid] = BirthdayUser(uid, name, formatted, version=version)
+    history = await connection.execute(
+        select(
+            birthday_history.c.guild_id,
+            birthday_history.c.user_id,
+            birthday_history.c.value,
+        )
+        .where(birthday_history.c.guild_id.in_(configs))
+        .order_by(
+            birthday_history.c.guild_id,
+            birthday_history.c.user_id,
+            birthday_history.c.position,
+        )
+    )
+    for gid, uid, value in history:
+        configs[gid].users[uid].was_congrats.append(value)
     return list(configs.values())
 
 
-async def _save(
-    connection: AsyncConnection, entity: BirthdayGuildConfig, key: int
-) -> None:
-    statement = insert(guilds).values(
-        guild_id=key,
-        server_name=entity.server_name,
-        channel_id=entity.channel_id,
-        birthday_role_id=entity.birthday_role_id,
-    )
-    await connection.execute(
-        statement.on_conflict_do_update(
-            index_elements=[guilds.c.guild_id],
-            set_={
-                "server_name": entity.server_name,
-                "channel_id": entity.channel_id,
-                "birthday_role_id": entity.birthday_role_id,
-            },
-        )
-    )
-    await connection.execute(users.delete().where(users.c.guild_id == key))
-    for position, (uid, user) in enumerate(entity.users.items()):
-        await connection.execute(
-            insert(users).values(
-                guild_id=key,
-                user_id=uid,
-                name=user.name,
-                birthday=user.birthday,
-                position=position,
-            )
-        )
-        for index, value in enumerate(user.was_congrats):
-            await connection.execute(
-                insert(congratulations).values(
-                    guild_id=key, user_id=uid, position=index, value=value
-                )
-            )
+class SQLiteBirthdayRepository:
+    """Return detached aggregates on reads; mutations target only affected rows.
 
-
-class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
-    """Implement birthday operations through the shared database owner.
-
-    Use the shared Database owner: its queued checkout spans each operation.
-    Results are detached domain objects. Reads never create schema; errors and
-    cancellation propagate after the SQLAlchemy transaction context unwinds.
-    This repository does not send Discord messages or promise exactly-once sends.
+    The shared database owns transaction admission. Version checks protect stale
+    confirmations. No database transaction spans a Discord request.
     """
 
     def __init__(self, database: Database) -> None:
         self._database = database
 
-    @override
     async def get(self, key: int) -> BirthdayGuildConfig | None:
         async with self._database.transaction() as connection:
-            configs = await _read(connection, key)
-            return configs[0] if configs else None
+            rows = await _read(connection, key)
+            return rows[0] if rows else None
 
-    @override
     async def get_all(self) -> list[BirthdayGuildConfig]:
         async with self._database.transaction() as connection:
             return await _read(connection)
 
-    @override
-    async def save(self, entity: BirthdayGuildConfig, key: int | None = None) -> None:
-        """Replace an aggregate atomically, matching the existing explicit save API."""
-        async with self._database.transaction() as connection:
-            await _save(connection, entity, entity.guild_id if key is None else key)
-
-    @override
-    async def delete(self, key: int) -> None:
-        async with self._database.transaction() as connection:
-            await connection.execute(guilds.delete().where(guilds.c.guild_id == key))
-
     async def get_all_guild_ids(self) -> list[int]:
         async with self._database.transaction() as connection:
             return list(
-                (
-                    await connection.scalars(
-                        select(guilds.c.guild_id).order_by(guilds.c.guild_id)
+                await connection.scalars(
+                    select(birthday_settings.c.guild_id).order_by(
+                        birthday_settings.c.guild_id
                     )
-                ).all()
+                )
+            )
+
+    async def delete(self, key: int) -> bool:
+        """Delete this feature's settings and members, retaining global identities."""
+        async with self._database.transaction() as connection:
+            await connection.execute(
+                member_birthdays.delete().where(member_birthdays.c.guild_id == key)
+            )
+            return (
+                await connection.scalar(
+                    birthday_settings.delete()
+                    .where(birthday_settings.c.guild_id == key)
+                    .returning(birthday_settings.c.guild_id)
+                )
+                is not None
             )
 
     async def set_user_birthday(
         self,
         guild_id: int,
         server_name: str,
-        channel_id: int,
+        channel_id: int | None,
         user_id: int,
         user_name: str,
         birthday: str,
-    ) -> BirthdayGuildConfig:
-        """Update one member, preserving existing delivery settings and history."""
+    ) -> None:
+        """Set a calendar birthday without reloading history or changing settings."""
+        birth_date = date(*strptime(birthday, config.DATE_FORMAT)[:3]).isoformat()
         async with self._database.transaction() as connection:
+            await ensure_member(connection, guild_id, user_id)
+            if channel_id is not None:
+                await ensure_channel(connection, channel_id, guild_id)
             await connection.execute(
-                insert(guilds)
+                insert(birthday_settings)
                 .values(
                     guild_id=guild_id,
-                    server_name=server_name,
+                    guild_name_hint=server_name,
                     channel_id=channel_id,
                     birthday_role_id=None,
+                    version=1,
                 )
                 .on_conflict_do_nothing()
             )
-            existing = (await _read(connection, guild_id))[0]
-            statement = insert(users).values(
+            position = await connection.scalar(
+                select(
+                    func.coalesce(func.max(member_birthdays.c.position), -1) + 1
+                ).where(member_birthdays.c.guild_id == guild_id)
+            )
+            statement = insert(member_birthdays).values(
                 guild_id=guild_id,
                 user_id=user_id,
-                name=user_name,
-                birthday=birthday,
-                position=len(existing.users),
+                birth_date=birth_date,
+                display_name_hint=user_name,
+                position=position,
+                version=1,
             )
             await connection.execute(
                 statement.on_conflict_do_update(
-                    index_elements=[users.c.guild_id, users.c.user_id],
-                    set_={"name": user_name, "birthday": birthday},
+                    index_elements=[
+                        member_birthdays.c.guild_id,
+                        member_birthdays.c.user_id,
+                    ],
+                    set_={
+                        "birth_date": birth_date,
+                        "display_name_hint": user_name,
+                        "version": member_birthdays.c.version + 1,
+                    },
+                    where=member_birthdays.c.birth_date.is_distinct_from(birth_date)
+                    | (member_birthdays.c.display_name_hint != user_name),
                 )
             )
-            return (await _read(connection, guild_id))[0]
 
     async def configure_guild(
         self,
@@ -186,85 +189,207 @@ class SQLiteBirthdayRepository(BaseRepository[BirthdayGuildConfig, int]):
         server_name: str,
         channel_id: int,
         birthday_role_id: int | None,
-    ) -> BirthdayGuildConfig:
-        """Change delivery settings, preserving an existing guild name and members."""
+    ) -> None:
+        """Change delivery settings without replacing members or history."""
         async with self._database.transaction() as connection:
-            statement = insert(guilds).values(
+            await ensure_guild(connection, guild_id)
+            await ensure_channel(connection, channel_id, guild_id)
+            if birthday_role_id is not None:
+                await ensure_role(connection, birthday_role_id, guild_id)
+            statement = insert(birthday_settings).values(
                 guild_id=guild_id,
-                server_name=server_name,
+                guild_name_hint=server_name,
                 channel_id=channel_id,
                 birthday_role_id=birthday_role_id,
+                version=1,
             )
             await connection.execute(
                 statement.on_conflict_do_update(
-                    index_elements=[guilds.c.guild_id],
+                    index_elements=[birthday_settings.c.guild_id],
                     set_={
                         "channel_id": channel_id,
                         "birthday_role_id": birthday_role_id,
+                        "version": birthday_settings.c.version + 1,
                     },
+                    where=birthday_settings.c.channel_id.is_distinct_from(channel_id)
+                    | birthday_settings.c.birthday_role_id.is_distinct_from(
+                        birthday_role_id
+                    ),
                 )
             )
-            return (await _read(connection, guild_id))[0]
 
     async def clear_user_birthday(
-        self, guild_id: int, user_id: int
+        self, guild_id: int, user_id: int, *, expected_version: int
     ) -> tuple[bool, bool]:
-        """Return (guild exists, birthday was present), retaining member history."""
+        """Return (settings exist, cleared), rejecting obsolete confirmations."""
         async with self._database.transaction() as connection:
-            configs = await _read(connection, guild_id)
-            if not configs:
-                return False, False
-            user = configs[0].get_user(user_id)
-            if user is None or not user.has_birthday():
-                return True, False
-            await connection.execute(
-                users.update()
-                .where(users.c.guild_id == guild_id, users.c.user_id == user_id)
-                .values(birthday="")
-            )
-            return True, True
-
-    async def record_congratulation(
-        self, guild_id: int, user_id: int, congratulation_date: date
-    ) -> bool:
-        """Append a sent marker once; the queued transaction owns read and update."""
-        async with self._database.transaction() as connection:
-            configs = await _read(connection, guild_id)
-            if not configs:
-                return False
-            user = configs[0].get_user(user_id)
-            if user is None or user.was_congratulated_today(congratulation_date):
-                return False
-            user.add_congratulation(congratulation_date)
-            await connection.execute(
-                insert(congratulations).values(
-                    guild_id=guild_id,
-                    user_id=user_id,
-                    position=len(user.was_congrats) - 1,
-                    value=user.was_congrats[-1],
+            exists = await connection.scalar(
+                select(birthday_settings.c.guild_id).where(
+                    birthday_settings.c.guild_id == guild_id
                 )
             )
-            return True
+            changed = await connection.scalar(
+                member_birthdays.update()
+                .where(
+                    member_birthdays.c.guild_id == guild_id,
+                    member_birthdays.c.user_id == user_id,
+                    member_birthdays.c.version == expected_version,
+                    member_birthdays.c.birth_date.is_not(None),
+                )
+                .values(birth_date=None, version=member_birthdays.c.version + 1)
+                .returning(member_birthdays.c.user_id)
+            )
+            return exists is not None, changed is not None
 
-    async def import_guilds(self, configs: Sequence[BirthdayGuildConfig]) -> int:
-        """Import atomically, accepting identical repeats and rejecting conflicts.
-
-        Member insertion order is part of import identity. Differing aggregates abort
-        the entire import rather than
-        overwriting changes made since a previous import. Return inserted guilds.
-        """
-        inserted = 0
+    async def versions_current(
+        self, guild_id: int, user_id: int, settings_version: int, birthday_version: int
+    ) -> bool:
+        """Recheck detached settings/member intent before an external role update."""
         async with self._database.transaction() as connection:
-            for config in configs:
-                existing = await _read(connection, config.guild_id)
-                if existing:
-                    if existing[0] != config or list(existing[0].users) != list(
-                        config.users
-                    ):
-                        raise ValueError(
-                            f"Birthday import conflicts with guild {config.guild_id}"
-                        )
-                    continue
-                await _save(connection, config, config.guild_id)
-                inserted += 1
-        return inserted
+            return (
+                await connection.scalar(
+                    select(member_birthdays.c.user_id)
+                    .join(
+                        birthday_settings,
+                        birthday_settings.c.guild_id == member_birthdays.c.guild_id,
+                    )
+                    .where(
+                        member_birthdays.c.guild_id == guild_id,
+                        member_birthdays.c.user_id == user_id,
+                        member_birthdays.c.version == birthday_version,
+                        birthday_settings.c.version == settings_version,
+                    )
+                )
+                is not None
+            )
+
+    async def claim_delivery(self, claim: BirthdayDelivery) -> bool:
+        """Claim a due date only while the detached settings/member versions match."""
+        async with self._database.transaction() as connection:
+            if not await _delivery_current(connection, claim):
+                return False
+            marker = await connection.scalar(
+                select(birthday_history.c.position)
+                .where(
+                    birthday_history.c.guild_id == claim.guild_id,
+                    birthday_history.c.user_id == claim.user_id,
+                    birthday_history.c.value
+                    == claim.today.strftime(config.DATE_FORMAT),
+                )
+                .limit(1)
+            )
+            if marker is not None:
+                return False
+            statement = (
+                insert(birthday_deliveries)
+                .values(
+                    guild_id=claim.guild_id,
+                    user_id=claim.user_id,
+                    calendar_date=claim.today.isoformat(),
+                    operation_id=claim.operation_id,
+                    settings_version=claim.settings_version,
+                    birthday_version=claim.birthday_version,
+                    status="claimed",
+                    updated_us=time.time_ns() // 1000,
+                )
+                .on_conflict_do_nothing()
+                .returning(birthday_deliveries.c.operation_id)
+            )
+            return await connection.scalar(statement) == claim.operation_id
+
+    async def begin_delivery(self, claim: BirthdayDelivery) -> bool:
+        """Recheck versions and mark the send as potentially executed.
+
+        A process crash or cancellation after this commit leaves 'uncertain'. It
+        must never trigger an automatic second send for the same calendar key.
+        """
+        async with self._database.transaction() as connection:
+            current = await _delivery_current(connection, claim)
+            changed = await connection.scalar(
+                birthday_deliveries.update()
+                .where(
+                    birthday_deliveries.c.operation_id == claim.operation_id,
+                    birthday_deliveries.c.status == "claimed",
+                )
+                .values(
+                    status="uncertain" if current else "obsolete",
+                    updated_us=time.time_ns() // 1000,
+                )
+                .returning(birthday_deliveries.c.operation_id)
+            )
+            return current and changed is not None
+
+    async def finish_delivery(self, claim: BirthdayDelivery, message_id: int) -> None:
+        """Confirm a send and append its presentation history atomically."""
+        discord_id(message_id)
+        async with self._database.transaction() as connection:
+            changed = await connection.scalar(
+                birthday_deliveries.update()
+                .where(
+                    birthday_deliveries.c.operation_id == claim.operation_id,
+                    birthday_deliveries.c.status == "uncertain",
+                )
+                .values(
+                    status="sent",
+                    message_id=message_id,
+                    updated_us=time.time_ns() // 1000,
+                )
+                .returning(birthday_deliveries.c.operation_id)
+            )
+            if changed is None:
+                return
+            exists = await connection.scalar(
+                select(member_birthdays.c.user_id).where(
+                    member_birthdays.c.guild_id == claim.guild_id,
+                    member_birthdays.c.user_id == claim.user_id,
+                )
+            )
+            if exists is None:
+                return
+            position = await connection.scalar(
+                select(
+                    func.coalesce(func.max(birthday_history.c.position), -1) + 1
+                ).where(
+                    birthday_history.c.guild_id == claim.guild_id,
+                    birthday_history.c.user_id == claim.user_id,
+                )
+            )
+            await connection.execute(
+                insert(birthday_history).values(
+                    guild_id=claim.guild_id,
+                    user_id=claim.user_id,
+                    position=position,
+                    value=claim.today.strftime(config.DATE_FORMAT),
+                    origin="confirmed_send",
+                )
+            )
+
+    async def recover_deliveries(self) -> None:
+        """Keep interrupted claims uncertain; do not guess the remote outcome."""
+        async with self._database.transaction() as connection:
+            await connection.execute(
+                birthday_deliveries.update()
+                .where(birthday_deliveries.c.status == "claimed")
+                .values(status="uncertain", updated_us=time.time_ns() // 1000)
+            )
+
+
+async def _delivery_current(
+    connection: AsyncConnection, claim: BirthdayDelivery
+) -> bool:
+    birthday = await connection.scalar(
+        select(member_birthdays.c.birth_date)
+        .join(
+            birthday_settings,
+            birthday_settings.c.guild_id == member_birthdays.c.guild_id,
+        )
+        .where(
+            member_birthdays.c.guild_id == claim.guild_id,
+            member_birthdays.c.user_id == claim.user_id,
+            member_birthdays.c.version == claim.birthday_version,
+            birthday_settings.c.version == claim.settings_version,
+        )
+    )
+    return birthday is not None and is_birthday_today(
+        date.fromisoformat(birthday).strftime(config.DATE_FORMAT), claim.today
+    )

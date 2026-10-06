@@ -7,28 +7,31 @@ with answer history tracking to prevent duplicate questions.
 import asyncio
 import logging
 import secrets
+from typing import TYPE_CHECKING
 
 from discord import Interaction, app_commands
 from discord.ext import commands
 
 import config
 from framework.base_cog import BaseCog
+from repositories.question_repository import QuestionRepository
 from resources import CAPABILITIES
-from utils.json_store import AsyncJsonFileStore
-from utils.json_types import JsonObject
 from utils.text_utils import random_answer, str_local
+
+if TYPE_CHECKING:
+    from framework.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 
 
 class QuestionCog(BaseCog):
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: commands.Bot, repository: QuestionRepository) -> None:
         super().__init__(bot)
         self.answers = secrets.SystemRandom().sample(
             CAPABILITIES, min(len(CAPABILITIES), config.MAX_ANSWER_SAMPLE_SIZE)
         )
         self._answer_lock = asyncio.Lock()
-        self._history_store = AsyncJsonFileStore(config.ANSWER_FILE, backup_amount=2)
+        self._repository = repository
         logger.info("Initialized /ask answer queue size=%s", len(self.answers))
 
     @app_commands.command(
@@ -46,7 +49,7 @@ class QuestionCog(BaseCog):
 
         async with self._answer_lock:
             prev_message = await self._add_to_history(
-                str(interaction.user.id),
+                interaction.user.id,
                 text,
                 self.answers[0],
             )
@@ -76,39 +79,15 @@ class QuestionCog(BaseCog):
         await interaction.response.send_message(reply)
 
     async def _add_to_history(
-        self, user_id: str, question: str, answer: str
+        self, user_id: int, question: str, answer: str
     ) -> str | None:
-        """Store one normalized question without overwriting an existing answer.
-
-        The history store serializes the read-modify-write operation for this cog
-        instance. The existing answer is returned when the same user already asked
-        the normalized question; otherwise the new answer is persisted and
-        ``None`` is returned.
-        """
-        filtered_text = str_local(question)
-        existing_answer: str | None = None
-
-        def _updater(data: JsonObject) -> None:
-            nonlocal existing_answer
-            user_history = data.get(user_id)
-            if user_history is None:
-                user_history = {}
-                data[user_id] = user_history
-            elif not isinstance(user_history, dict):
-                raise ValueError("Question history has an invalid user record")
-
-            existing = user_history.get(filtered_text)
-            if isinstance(existing, str):
-                existing_answer = existing
-                return
-            if existing is not None:
-                raise ValueError("Question history has an invalid answer record")
-            user_history[filtered_text] = answer
-
-        await self._history_store.update(_updater)
-        return existing_answer
+        """Return the committed winner without advancing the queue on failed storage."""
+        committed, inserted = await self._repository.answer(
+            user_id, str_local(question), answer
+        )
+        return None if inserted else committed
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: "StupidBot") -> None:
     """Register the question cog."""
-    await bot.add_cog(QuestionCog(bot))
+    await bot.add_cog(QuestionCog(bot, bot.question_repository))

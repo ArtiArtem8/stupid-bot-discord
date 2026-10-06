@@ -1,13 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, override
-
-import config
-from repositories.base_repository import BaseRepository
-from repositories.json_object_store import JsonObjectStore
-from utils.json_store import AsyncJsonFileStore
-from utils.json_types import JsonObject
+from typing import Protocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,63 +19,6 @@ class VolumeStore(Protocol):
         """Return the persisted volume or the configured default."""
         ...
 
-    async def save(self, entity: VolumeData, key: int | None = None) -> None:
+    async def save(self, entity: VolumeData) -> None:
         """Persist the entity's guild volume before returning."""
         ...
-
-
-class VolumeRepository(BaseRepository[VolumeData, int]):
-    """Persist music volume settings through the music subsystem's JSON store."""
-
-    def __init__(self, store: JsonObjectStore | None = None) -> None:
-        self._store = store or AsyncJsonFileStore(config.MUSIC_VOLUME_FILE)
-
-    @override
-    async def get(self, key: int) -> VolumeData | None:
-        """Get guild config by guild_id."""
-        data = await self._store.read()
-        raw = data.get(str(key))
-        if raw is None:
-            return None
-        if isinstance(raw, bool):
-            return None
-        if not isinstance(raw, (int, float, str)):
-            return None
-        try:
-            vol = int(raw)
-        except (ValueError, TypeError):
-            return None
-        return VolumeData(guild_id=key, volume=vol)
-
-    @override
-    async def get_all(self) -> list[VolumeData]:
-        data = await self._store.read()
-        results: list[VolumeData] = []
-        for gid, vol in data.items():
-            if (
-                not gid.isdigit()
-                or not isinstance(vol, (int, str, float))
-                or isinstance(vol, bool)
-            ):
-                continue
-            results.append(VolumeData(guild_id=int(gid), volume=int(vol)))
-        return results
-
-    @override
-    async def save(self, entity: VolumeData, key: int | None = None) -> None:
-        def _upd(d: JsonObject) -> None:
-            d[str(entity.guild_id)] = entity.volume
-
-        await self._store.update(_upd)
-
-    @override
-    async def delete(self, key: int) -> None:
-        def _upd(d: JsonObject) -> None:
-            d.pop(str(key), None)
-
-        await self._store.update(_upd)
-
-    async def get_volume(self, guild_id: int) -> int:
-        """Get the volume for a guild, or the default if not set."""
-        entity = await self.get(guild_id)
-        return entity.volume if entity else config.MUSIC_DEFAULT_VOLUME
