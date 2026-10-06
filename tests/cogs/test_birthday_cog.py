@@ -1,11 +1,13 @@
 """Birthday roles follow the date policy independently of notification delivery."""
 
+import asyncio
 import unittest
 from datetime import date
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
+from sqlalchemy.exc import OperationalError
 
 from api.birthday import BirthdayManager
 from api.birthday_models import BirthdayDelivery, BirthdayGuildConfig, BirthdayUser
@@ -13,6 +15,29 @@ from cogs.birthday_cog import BirthdayCog
 
 
 class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
+    async def test_timer_retries_after_guild_listing_database_failure(self) -> None:
+        self.bot.wait_until_ready = AsyncMock()
+        calls = 0
+
+        async def list_guilds() -> list[int]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise OperationalError("SELECT", {}, RuntimeError("database busy"))
+            self.cog.birthday_timer.stop()
+            return []
+
+        self.manager.get_all_guild_ids = AsyncMock(side_effect=list_guilds)
+        self.cog.birthday_timer.change_interval(seconds=0)
+        with self.assertLogs("cogs.birthday_cog", level="ERROR"):
+            task = self.cog.birthday_timer.start()
+            try:
+                await asyncio.wait_for(task, timeout=2)
+            finally:
+                await self.cog.cog_unload()
+        self.assertEqual(calls, 2)
+        self.assertFalse(self.cog.birthday_timer.failed())
+
     @override
     def setUp(self) -> None:
         self.bot = MagicMock()

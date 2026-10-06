@@ -12,6 +12,7 @@ from discord import Interaction, app_commands
 from discord.errors import Forbidden, HTTPException
 from discord.ext import commands, tasks
 from discord.ui import Button
+from sqlalchemy.exc import SQLAlchemyError
 
 import config
 from api.birthday import (
@@ -202,7 +203,11 @@ class BirthdayCog(BaseCog):
     async def birthday_timer(self) -> None:
         """Check registered birthdays and deliver due congratulations."""
         today = date.today()
-        guild_ids = await self.manager.get_all_guild_ids()
+        try:
+            guild_ids = await self.manager.get_all_guild_ids()
+        except SQLAlchemyError:
+            logger.exception("Failed to list birthday guilds; retrying next interval")
+            return
         for guild_id in guild_ids:
             try:
                 await self._process_guild(guild_id, today)
