@@ -27,6 +27,25 @@ class TestUptimeManager(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(self.database.close)
         self.repository = UptimeRepository(self.database)
 
+    async def test_restore_logs_start_resume_and_reset_after_commit(self) -> None:
+        for moment, expected in ((100, "started"), (105, "resumed"), (1000, "reset")):
+            with self.assertLogs(
+                "repositories.uptime_repository", level="INFO"
+            ) as logs:
+                checkpoint = await self.repository.restore_or_start(
+                    now_us=moment * 1_000_000,
+                    threshold_us=60_000_000,
+                    boot_id=str(moment),
+                )
+            self.assertIn(
+                f"Uptime {expected}: period={checkpoint.period_id}", logs.output[0]
+            )
+            async with self.database.transaction() as connection:
+                self.assertEqual(
+                    await connection.scalar(select(runtime_checkpoint.c.period_id)),
+                    checkpoint.period_id,
+                )
+
     async def test_resume_then_reset_keeps_history_available_to_sql(self) -> None:
         first = UptimeManager(self.repository)
         with (

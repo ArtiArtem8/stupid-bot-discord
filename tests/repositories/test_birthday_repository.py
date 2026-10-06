@@ -80,6 +80,20 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
                 await connection.scalar(select(music_settings.c.volume)), 50
             )
 
+    async def test_recovery_logs_existing_and_interrupted_uncertain_deliveries(
+        self,
+    ) -> None:
+        await self.repo.set_user_birthday(1, "Guild", 10, 2, "Member", "06-10-2000")
+        claim = BirthdayDelivery("interrupted", 1, 2, date(2026, 10, 6), 1, 1)
+        self.assertTrue(await self.repo.claim_delivery(claim))
+        for _ in range(2):
+            with self.assertLogs(
+                "repositories.birthday_repository", level="WARNING"
+            ) as logs:
+                await self.repo.recover_deliveries()
+            self.assertIn("1 uncertain deliveries", logs.output[0])
+            self.assertFalse(await self.repo.claim_delivery(claim))
+
     async def test_only_one_claim_and_uncertain_send_is_not_repeated(self) -> None:
         await self.repo.set_user_birthday(1, "Guild", 10, 2, "Member", "06-10-2000")
         claims = [

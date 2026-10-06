@@ -57,8 +57,13 @@ async def handle_app_command_error(
         original = error.original
         if isinstance(original, discord.DiscordException):
             logger.error(
-                "Discord exception in app command %r",
+                "Discord command failed: command=%r guild=%s channel=%s user=%s "
+                "interaction=%s",
                 interaction.command,
+                interaction.guild_id,
+                interaction.channel_id,
+                interaction.user.id,
+                interaction.id,
                 exc_info=original,
             )
             await FeedbackUI.send(
@@ -77,8 +82,13 @@ async def handle_app_command_error(
         original = error
 
     logger.error(
-        "Unhandled exception in app command %r",
+        "Unhandled command failure: command=%r guild=%s channel=%s "
+        "user=%s interaction=%s",
         interaction.command,
+        interaction.guild_id,
+        interaction.channel_id,
+        interaction.user.id,
+        interaction.id,
         exc_info=original,
     )
     await FeedbackUI.send(

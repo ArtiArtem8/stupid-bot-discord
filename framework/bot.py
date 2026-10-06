@@ -108,7 +108,11 @@ class StupidBot(commands.Bot):
                 raise RuntimeError("Application is closing")
             if self._prepared:
                 return
+            logger.info(
+                "Validating SQLite database: %s", self._database.engine.url.database
+            )
             await validate_schema(self._database)
+            logger.info("SQLite schema validated; storage is COMPLETE")
             await self.birthday_manager.repo.recover_deliveries()
             await self.uptime_manager.restore_uptime()
             self._prepared = True

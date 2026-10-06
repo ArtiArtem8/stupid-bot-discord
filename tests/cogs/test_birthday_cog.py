@@ -15,6 +15,22 @@ from cogs.birthday_cog import BirthdayCog
 
 
 class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_channel_warns_once_until_recovery(self) -> None:
+        self.bot.get_channel.return_value = None
+        today = date(2027, 2, 28)
+        with self.assertLogs("cogs.birthday_cog", level="WARNING") as logs:
+            await self.cog._process_guild(42, today)
+            await self.cog._process_guild(42, today)
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn("guild=42 channel=8", logs.output[0])
+        self.bot.get_channel.return_value = self.channel
+        with self.assertLogs("cogs.birthday_cog", level="INFO") as logs:
+            await self.cog._process_guild(42, today)
+        self.assertTrue(any("channel recovered" in line for line in logs.output))
+        self.bot.get_channel.return_value = None
+        with self.assertLogs("cogs.birthday_cog", level="WARNING"):
+            await self.cog._process_guild(42, today)
+
     async def test_timer_retries_after_guild_listing_database_failure(self) -> None:
         self.bot.wait_until_ready = AsyncMock()
         calls = 0

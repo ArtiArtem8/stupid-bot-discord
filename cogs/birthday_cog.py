@@ -186,6 +186,7 @@ class BirthdayCog(BaseCog):
     def __init__(self, bot: commands.Bot, manager: BirthdayManager) -> None:
         super().__init__(bot)
         self.manager = manager
+        self._unavailable_channels: dict[int, int | None] = {}
 
     @override
     async def cog_load(self) -> None:
@@ -242,7 +243,25 @@ class BirthdayCog(BaseCog):
         await self._reconcile_roles(guild, config, today, role)
         channel = self.bot.get_channel(config.channel_id) if config.channel_id else None
         if not isinstance(channel, discord.TextChannel):
+            if (
+                guild_id not in self._unavailable_channels
+                or self._unavailable_channels[guild_id] != config.channel_id
+            ):
+                logger.warning(
+                    "Birthday notifications unavailable: guild=%s channel=%s; "
+                    "retrying each interval",
+                    guild_id,
+                    config.channel_id,
+                )
+                self._unavailable_channels[guild_id] = config.channel_id
             return
+        if guild_id in self._unavailable_channels:
+            self._unavailable_channels.pop(guild_id)
+            logger.info(
+                "Birthday notification channel recovered: guild=%s channel=%s",
+                guild_id,
+                config.channel_id,
+            )
         birthday_users = config.get_birthdays_today(today)
         for user in birthday_users:
             await self._handle_birthday(guild, channel, user, today, config.version)
@@ -310,9 +329,24 @@ class BirthdayCog(BaseCog):
                 return
             message = await channel.send(embed=embed)
             await self.manager.repo.finish_delivery(claim, message.id)
+            logger.info(
+                "Birthday delivered: guild=%s user=%s operation=%s message=%s",
+                guild.id,
+                user.user_id,
+                claim.operation_id,
+                message.id,
+            )
 
         except Exception:
-            logger.exception("Failed to handle birthday for user %s", user.user_id)
+            logger.exception(
+                "Birthday delivery failed: guild=%s user=%s channel=%s "
+                "operation=%s date=%s",
+                guild.id,
+                user.user_id,
+                channel.id,
+                claim.operation_id,
+                today,
+            )
 
     @app_commands.command(
         name="set-birthday",

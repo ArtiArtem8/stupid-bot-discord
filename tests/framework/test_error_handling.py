@@ -99,6 +99,9 @@ class TestAppCommandErrors(unittest.IsolatedAsyncioTestCase):
         error = await _wrap_callback_error(original)
         interaction = MagicMock(spec=discord.Interaction)
         interaction.command = error.command
+        interaction.guild_id = 42
+        interaction.channel_id = 43
+        interaction.id = 44
         send = AsyncMock()
 
         with (
@@ -115,6 +118,8 @@ class TestAppCommandErrors(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["error_info"], "RuntimeError")
         self.assertNotIn("private exception detail", str(kwargs))
         self.assertIn("private exception detail", "\n".join(logs.output))
+        self.assertIn("guild=42 channel=43", logs.output[0])
+        self.assertIn("interaction=44", logs.output[0])
 
     async def test_callback_discord_exception_preserves_discord_error_feedback(
         self,

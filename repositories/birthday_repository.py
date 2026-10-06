@@ -1,5 +1,6 @@
 """Birthday settings and member operations over normalized, shared identities."""
 
+import logging
 import time
 from datetime import date
 from time import strptime
@@ -25,6 +26,8 @@ from repositories.sqlite.schema import (
     member_birthdays,
 )
 from utils.birthday_utils import is_birthday_today
+
+logger = logging.getLogger(__name__)
 
 
 async def _read(
@@ -382,6 +385,17 @@ class BirthdayRepository:
                 birthday_deliveries.update()
                 .where(birthday_deliveries.c.status == "claimed")
                 .values(status="uncertain", updated_us=time.time_ns() // 1000)
+            )
+            uncertain = await connection.scalar(
+                select(func.count())
+                .select_from(birthday_deliveries)
+                .where(birthday_deliveries.c.status == "uncertain")
+            )
+        if uncertain:
+            logger.warning(
+                "Birthday recovery: %d uncertain deliveries retained; automatic "
+                "resend disabled",
+                uncertain,
             )
 
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 from sqlalchemy import select
 
-from api.reporting import ReportModal, _build_report_data, submit_report
+from api.reporting import ReportModal, _build_report_data, _notify_report, submit_report
 from repositories.report_repository import ReportRepository
 from repositories.sqlite.schema import reports
 from tests.storage import temporary_database
@@ -27,6 +27,17 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         self.interaction.channel = None
         self.interaction.message = None
         self.interaction.response = MagicMock(spec=discord.InteractionResponse)
+
+    async def test_missing_notification_channel_logs_persisted_report_id(self) -> None:
+        await self.repository.set_channel(99)
+        report, channel = await submit_report(
+            self.repository, self.interaction, "reason"
+        )
+        self.interaction.client.get_channel.return_value = None
+        with self.assertLogs("api.reporting", level="WARNING") as logs:
+            await _notify_report(self.interaction, report, channel)
+        self.assertIn(report["report_id"], logs.output[0])
+        self.assertIn("channel=99", logs.output[0])
 
     async def test_dm_report_and_settings_survive_without_a_guild(self) -> None:
         await self.repository.set_channel(99)

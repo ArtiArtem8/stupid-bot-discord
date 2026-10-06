@@ -67,10 +67,10 @@ class QuestionCog(BaseCog):
             )
         else:
             logger.info(
-                "/ask invoked user=%s user_id=%s question=%r",
-                interaction.user,
+                "/ask resolved user_id=%s result=new question=%r answer=%r",
                 interaction.user.id,
                 text,
+                reply,
             )
 
         await interaction.response.send_message(reply)

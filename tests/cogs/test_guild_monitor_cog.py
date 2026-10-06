@@ -24,6 +24,20 @@ class TestGuildMonitorCog(unittest.IsolatedAsyncioTestCase):
         _, database = await temporary_database(self)
         self.manager = ServerMonitoringManager(MonitorRepository(database))
 
+    async def test_join_logs_when_every_role_is_skipped(self) -> None:
+        member = MagicMock(spec=discord.Member, id=5, bot=False)
+        member.guild = MagicMock(spec=discord.Guild, id=10)
+        await self.manager.set_enabled(10, True)
+        cog = ServerMonitorCog(MagicMock(), self.manager)
+        with (
+            patch.object(
+                self.manager, "restore_snapshot", new=AsyncMock(return_value=([], [7]))
+            ),
+            self.assertLogs("cogs.guild_monitor_cog", level="WARNING") as logs,
+        ):
+            await cog.on_member_join(member)
+        self.assertIn("guild=10 user=5 restored=0 skipped=[7]", logs.output[0])
+
     async def test_zero_success_restore_reports_warning_without_claiming_success(
         self,
     ) -> None:

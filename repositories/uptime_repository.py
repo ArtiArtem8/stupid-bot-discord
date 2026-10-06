@@ -1,5 +1,6 @@
 """Persist uptime checkpoints and retain periods across downtime-triggered resets."""
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -7,6 +8,8 @@ from sqlalchemy.dialects.sqlite import insert
 
 from repositories.sqlite.database import Database
 from repositories.sqlite.schema import runtime_checkpoint, uptime_periods
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,8 +59,10 @@ class UptimeRepository:
                     checkpoint_us=saved_checkpoint_us,
                     accumulated_us=saved_accumulated_us,
                 )
+            action = "started"
             accumulated = 0
             if previous is not None and now_us - previous.checkpoint_us < threshold_us:
+                action = "resumed"
                 period_id = previous.period_id
                 accumulated = previous.accumulated_us
                 await connection.execute(
@@ -67,6 +72,7 @@ class UptimeRepository:
                 )
             else:
                 if previous is not None:
+                    action = "reset"
                     await connection.execute(
                         uptime_periods.update()
                         .where(uptime_periods.c.period_id == previous.period_id)
@@ -104,7 +110,17 @@ class UptimeRepository:
                     },
                 )
             )
-            return UptimeCheckpoint(period_id, now_us, accumulated)
+        logger.info(
+            "Uptime %s: period=%s boot=%s accumulated_seconds=%.3f "
+            "previous_period=%s wall_gap_seconds=%s",
+            action,
+            period_id,
+            boot_id,
+            accumulated / 1_000_000,
+            previous.period_id if previous else None,
+            (now_us - previous.checkpoint_us) / 1_000_000 if previous else None,
+        )
+        return UptimeCheckpoint(period_id, now_us, accumulated)
 
     async def save(
         self,

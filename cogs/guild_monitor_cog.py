@@ -74,13 +74,14 @@ class ServerMonitorCog(BaseCog):
                 member.guild.id,
                 role_names,
             )
-            if skipped:
-                logger.warning(
-                    "Skipped %d roles for %s (deleted or unpermitted): %s",
-                    len(skipped),
-                    member,
-                    skipped,
-                )
+        if skipped:
+            logger.warning(
+                "Role restore incomplete: guild=%s user=%s restored=%d skipped=%s",
+                member.guild.id,
+                member.id,
+                len(restored),
+                skipped,
+            )
 
     monitor = app_commands.Group(
         name="monitor",

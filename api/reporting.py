@@ -101,17 +101,23 @@ async def _notify_report(
         return
 
     channel = interaction.client.get_channel(report_channel_id)
-    if isinstance(channel, discord.abc.Messageable):
-        try:
-            await channel.send(embed=_create_report_embed(report))
-        except discord.HTTPException as exc:
-            logger.warning(
-                "Failed to notify report channel %s for report %s (HTTP %s, code %s)",
-                report_channel_id,
-                report["report_id"],
-                exc.status,
-                exc.code,
-            )
+    if not isinstance(channel, discord.abc.Messageable):
+        logger.warning(
+            "Report notification skipped: report=%s channel=%s unavailable in cache",
+            report["report_id"],
+            report_channel_id,
+        )
+        return
+    try:
+        await channel.send(embed=_create_report_embed(report))
+    except discord.HTTPException as exc:
+        logger.warning(
+            "Failed to notify report channel %s for report %s (HTTP %s, code %s)",
+            report_channel_id,
+            report["report_id"],
+            exc.status,
+            exc.code,
+        )
 
 
 class ReportModal(Modal, title="Отправить отчёт о баге"):
