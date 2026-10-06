@@ -40,7 +40,8 @@ class Motion:
     @classmethod
     def load(cls, path: Path, tier: str) -> Motion:
         document = json_object(get_json(path))
-        values = json_object(json_object(json_object(document)["tiers"])[tier])
+        tiers = json_object(document["tiers"])
+        values = json_object(tiers[tier])
 
         def integer(key: str, low: int, high: int) -> int:
             value = values[key]

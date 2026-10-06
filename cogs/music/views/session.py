@@ -31,16 +31,13 @@ class SessionPaginationAdapter(PaginationData):
         return max(1, len(self._paginator.pages))
 
     def _build_paginator(self) -> TextPaginator:
-        lines = [
-            (
-                f"{format_dt(t.end_timestamp, 'T')} • {i}. "
-                f"{'~~' if t.skipped else ''}"
-                f"{format_track_link(truncate_text(t.title, 45), t.uri)}"
-                f"{'~~' if t.skipped else ''} "
-                f"{f'(<@{t.requester_id}>)' if t.requester_id else ''}"
-            )
-            for i, t in enumerate(self.session.tracks, 1)
-        ]
+        lines: list[str] = []
+        for index, track in enumerate(self.session.tracks, 1):
+            timestamp = format_dt(track.end_timestamp, "T")
+            marker = "~~" if track.skipped else ""
+            link = format_track_link(truncate_text(track.title, 45), track.uri)
+            requester = f"(<@{track.requester_id}>)" if track.requester_id else ""
+            lines.append(f"{timestamp} • {index}. {marker}{link}{marker} {requester}")
         return TextPaginator(
             lines,
             page_size=self.page_size,

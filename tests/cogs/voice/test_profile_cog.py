@@ -3,6 +3,7 @@
 import asyncio
 import os
 import sys
+import threading
 import unittest
 from collections.abc import Awaitable, Callable
 from io import BytesIO
@@ -26,15 +27,21 @@ from cogs.voice.profile.media import ProfileMedia, RenderBusyError
 from cogs.voice.profile.raster import Box
 from cogs.voice.profile.view import ProfileAction, VoiceProfileView
 from cogs.voice.profile_cog import ProfileSnapshot, VoiceProfileCog
+from framework.bot import StupidBot
 from framework.feedback_ui import FeedbackUI
 from repositories.voice_journal import VoiceJournal
+from repositories.voice_repository import VoiceRepository
 from tests.api.voice.examples import human, record
 from tests.cogs.voice.profile.test_details_support import profile_request
 from tests.cogs.voice.profile.test_media import profile_at
+from tests.storage import temporary_database
 
 
 def interaction(user_id: int = 10, *, guild: bool = True) -> MagicMock:
     item = MagicMock(spec=discord.Interaction)
+    item.client = MagicMock()
+    item.client.block_manager = MagicMock()
+    item.client.block_manager.is_user_blocked = AsyncMock(return_value=False)
     item.user = MagicMock(spec=discord.Member)
     item.user.id = user_id
     item.user.name = "listener"
@@ -258,55 +265,53 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         await cog.cog_unload()
         self.assertIsNone(cog._asset_cache.get(str(asset)))
 
-    async def test_timeline_cache_reuses_and_invalidates_on_persisted_count(
+    async def test_timeline_cache_reuses_and_invalidates_on_read_revision(
         self,
     ) -> None:
-        with TemporaryDirectory() as directory:
-            bot = MagicMock()
-            journal = VoiceJournal(Path(directory))
-            bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
-                bot, journal=journal
-            )
-            cog = VoiceProfileCog(bot)
-            with patch.object(
-                journal, "snapshot_for_guild", wraps=journal.snapshot_for_guild
-            ) as reading:
-                empty = await cog._timeline(1)
-                self.assertEqual(empty.timeline.rooms, ())
-                await cog._timeline(1)
-                self.assertEqual(reading.await_count, 1)
-                journal.start()
-                journal.submit(record(0, VoiceSnapshot((human(),))))
-                journal.submit(record(3600, VoiceCheckpoint()))
-                await journal.close()
-                updated = await cog._timeline(1)
-                self.assertEqual(len(updated.timeline.rooms), 1)
-                await cog._timeline(1)
-                self.assertEqual(reading.await_count, 2)
+        bot = MagicMock()
+        journal = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
+        bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
+            bot, journal=journal
+        )
+        cog = VoiceProfileCog(bot)
+        with patch.object(
+            journal, "snapshot_for_guild", wraps=journal.snapshot_for_guild
+        ) as reading:
+            empty = await cog._timeline(1)
+            self.assertEqual(empty.timeline.rooms, ())
+            await cog._timeline(1)
+            self.assertEqual(reading.await_count, 1)
+            journal.start()
+            journal.submit(record(0, VoiceSnapshot((human(),))))
+            journal.submit(record(3600, VoiceCheckpoint()))
+            await journal.close()
+            updated = await cog._timeline(1)
+            self.assertEqual(len(updated.timeline.rooms), 1)
+            await cog._timeline(1)
+            self.assertEqual(reading.await_count, 2)
 
     async def test_timeline_cache_evicts_least_recent_guild(self) -> None:
-        with TemporaryDirectory() as directory:
-            bot = MagicMock()
-            journal = VoiceJournal(Path(directory))
-            bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
-                bot, journal=journal
-            )
-            cog = VoiceProfileCog(bot)
-            with (
-                patch.object(cog_module, "_TIMELINE_CACHE_ENTRIES", 2),
-                patch.object(
-                    journal, "snapshot_for_guild", wraps=journal.snapshot_for_guild
-                ) as reading,
-            ):
-                await cog._timeline(1)
-                await cog._timeline(2)
-                await cog._timeline(1)
-                await cog._timeline(3)
-                await cog._timeline(1)
-                self.assertEqual(reading.await_count, 3)
-                await cog._timeline(2)
-                self.assertEqual(reading.await_count, 4)
-                self.assertEqual(len(cog._timeline_cache), 2)
+        bot = MagicMock()
+        journal = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
+        bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
+            bot, journal=journal
+        )
+        cog = VoiceProfileCog(bot)
+        with (
+            patch.object(cog_module, "_TIMELINE_CACHE_ENTRIES", 2),
+            patch.object(
+                journal, "snapshot_for_guild", wraps=journal.snapshot_for_guild
+            ) as reading,
+        ):
+            await cog._timeline(1)
+            await cog._timeline(2)
+            await cog._timeline(1)
+            await cog._timeline(3)
+            await cog._timeline(1)
+            self.assertEqual(reading.await_count, 3)
+            await cog._timeline(2)
+            self.assertEqual(reading.await_count, 4)
+            self.assertEqual(len(cog._timeline_cache), 2)
 
     async def test_guild_only_failure_is_ephemeral_without_defer(self) -> None:
         bot = MagicMock()
@@ -500,35 +505,31 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         await cog.cog_unload()
 
     async def test_collector_replacement_changes_snapshot_epoch(self) -> None:
-        with TemporaryDirectory() as directory:
-            bot = MagicMock()
-            old = VoiceJournal(Path(directory) / "old")
-            new = VoiceJournal(Path(directory) / "new")
-            cog = VoiceProfileCog(bot)
-            bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
-                bot, journal=old
-            )
-            first = await cog._timeline(42)
-            bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
-                bot, journal=new
-            )
-            second = await cog._timeline(42)
-            self.assertNotEqual(first.epoch, second.epoch)
-            self.assertEqual(first.generation, second.generation)
+        bot = MagicMock()
+        old = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
+        new = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
+        cog = VoiceProfileCog(bot)
+        bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
+            bot, journal=old
+        )
+        first = await cog._timeline(42)
+        bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
+            bot, journal=new
+        )
+        second = await cog._timeline(42)
+        self.assertNotEqual(first.epoch, second.epoch)
+        self.assertEqual(first.generation, second.generation)
 
     async def test_real_collector_reload_preserves_profile_access(self) -> None:
         # Extension loading replaces sys.modules entries and the package's
         # module attribute; restore both so other tests keep their class refs.
         with (
-            TemporaryDirectory() as directory,
             patch.dict(sys.modules),
             patch.object(cogs.voice, "collector_cog", cogs.voice.collector_cog),
-            patch.object(config, "VOICE_PROBE_DIR", Path(directory)),
             patch.object(config, "VOICE_PROBE_ENABLED", False),
         ):
-            async with commands.Bot(
-                command_prefix="!", intents=discord.Intents.none()
-            ) as bot:
+            database_path, _ = await temporary_database(self)
+            async with StupidBot(database_path=database_path) as bot:
                 cog = VoiceProfileCog(bot)
                 await bot.load_extension("cogs.voice.collector_cog")
                 first = await cog._timeline(42)
@@ -741,3 +742,68 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
         first.response.defer.assert_awaited_once()
         first.edit_original_response.assert_awaited_once_with(attachments=[updated])
         updated.close()
+
+
+class TestColdReadBudget(unittest.IsolatedAsyncioTestCase):
+    async def test_default_budget_rejects_fifth_request_and_recovers_capacity(
+        self,
+    ) -> None:
+        bot = MagicMock()
+        bot.get_cog.return_value.journal = MagicMock(spec=VoiceJournal)
+        cog = VoiceProfileCog(bot)
+        self.addAsyncCleanup(cog.cog_unload)
+        release = asyncio.Event()
+        started = [asyncio.Event() for _ in range(4)]
+        snapshot = ProfileSnapshot(VoiceTimeline((), (), ()), 1, 1)
+
+        async def read(_journal: VoiceJournal, _guild_id: int) -> ProfileSnapshot:
+            await release.wait()
+            return snapshot
+
+        async def request(index: int) -> ProfileSnapshot:
+            started[index].set()
+            return await cog._timeline(index + 1)
+
+        with patch.object(cog, "_read_snapshot", side_effect=read):
+            readers = [asyncio.create_task(request(index)) for index in range(4)]
+            try:
+                await asyncio.gather(*(event.wait() for event in started))
+                with self.assertRaises(RenderBusyError):
+                    await asyncio.wait_for(cog._timeline(5), timeout=1)
+            finally:
+                release.set()
+                await asyncio.gather(*readers)
+            self.assertIs(await cog._timeline(5), snapshot)
+
+    async def test_cancelled_replay_retains_admission_until_worker_finishes(
+        self,
+    ) -> None:
+        _, database = await temporary_database(self)
+        bot = MagicMock()
+        bot.get_cog.return_value.journal = VoiceJournal(VoiceRepository(database))
+        cog = VoiceProfileCog(bot)
+        entered, release = threading.Event(), threading.Event()
+
+        def replay(_records: object) -> VoiceTimeline:
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError("Test did not release replay")
+            return VoiceTimeline((), (), ())
+
+        with (
+            patch.object(cog_module, "build_timeline", side_effect=replay),
+            patch.object(cog_module, "_TIMELINE_REQUEST_LIMIT", 1),
+        ):
+            reader = asyncio.create_task(cog._timeline(1))
+            try:
+                self.assertTrue(await asyncio.to_thread(entered.wait, 5))
+                reader.cancel()
+                with self.assertRaises(RenderBusyError):
+                    await cog._timeline(2)
+                self.assertFalse(reader.done())
+            finally:
+                release.set()
+                with self.assertRaises(asyncio.CancelledError):
+                    await reader
+        await cog._timeline(2)
+        await cog.cog_unload()

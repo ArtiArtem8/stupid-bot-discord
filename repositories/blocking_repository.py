@@ -1,126 +1,232 @@
-from __future__ import annotations
+"""Atomic guild-scoped access state and ordered administrator/name observations."""
 
-import logging
-from typing import cast, override
+from datetime import datetime
 
-import config
-from api.blocking_models import BlockedUser
-from repositories.base_repository import BaseRepository
-from repositories.blocking_codec import as_json_object, try_decode_user
-from repositories.json_object_store import JsonObjectStore
-from utils.json_store import AsyncJsonFileStore
-from utils.json_types import JsonObject, JsonValue
+from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 
-type BlockedUserKey = tuple[int, int]  # (guild_id, user_id)
+from api.blocking_models import BlockedUser, BlockHistoryEntry, NameHistoryEntry
+from repositories.sqlite.database import Database
+from repositories.sqlite.identity import (
+    ensure_member,
+    ensure_user,
+    from_microseconds,
+    observe_username,
+    utc_microseconds,
+)
+from repositories.sqlite.schema import (
+    block_events,
+    member_blocks,
+    member_name_observations,
+)
 
-logger = logging.getLogger(__name__)
 
-
-class BlockingRepository(BaseRepository[BlockedUser, BlockedUserKey]):
-    """Persist per-guild blocked-user records through one owned JSON store."""
-
-    def __init__(self, store: JsonObjectStore | None = None) -> None:
-        self._store = store or AsyncJsonFileStore(config.BLOCKED_USERS_FILE)
-
-    def _get_users_map_raw(self, data: JsonObject, guild_id: int) -> JsonObject:
-        """Safely extract the users map for a guild from the JSON data."""
-        raw_guild = as_json_object(data.get(str(guild_id)))
-        if raw_guild is None:
-            return {}
-
-        raw_users = as_json_object(raw_guild.get("users"))
-        if raw_users is None:
-            return {}
-
-        return raw_users
-
-    def _ensure_users_map_raw(self, data: JsonObject, guild_id: int) -> JsonObject:
-        """Ensure that the guild/users object exists and return the users map."""
-        guild_key = str(guild_id)
-
-        raw_guild = as_json_object(data.get(guild_key))
-        if raw_guild is None:
-            raw_guild = {}
-            data[guild_key] = raw_guild
-
-        raw_users = as_json_object(raw_guild.get("users"))
-        if raw_users is None:
-            raw_users = {}
-            raw_guild["users"] = raw_users
-
-        return raw_users
-
-    @override
-    async def get(self, key: BlockedUserKey) -> BlockedUser | None:
-        """Get a single user by (guild_id, user_id)."""
-        guild_id, user_id = key
-        data = await self._store.read()
-
-        users_map = self._get_users_map_raw(data, guild_id)
-        raw_user = users_map.get(str(user_id))
-
-        return try_decode_user(raw_user)
-
-    @override
-    async def get_all(self) -> list[BlockedUser]:
-        """Get all users from all guilds."""
-        data = await self._store.read()
-        all_users: list[BlockedUser] = []
-
-        for guild_id, guild_value in data.items():
-            guild_data = as_json_object(guild_value)
-            if guild_data is None:
-                continue
-
-            users_data = as_json_object(guild_data.get("users"))
-            if users_data is None:
-                continue
-
-            for user_value in users_data.values():
-                user = try_decode_user(user_value)
-                if user is not None:
-                    all_users.append(user)
-                else:
-                    logger.warning(
-                        "Skipping invalid blocked-user record in guild %s", guild_id
-                    )
-
-        return all_users
-
-    @override
-    async def save(
-        self, entity: BlockedUser, key: BlockedUserKey | None = None
-    ) -> None:
-        """Save a user entity under its (guild_id, user_id) key."""
-        if key is None:
-            raise ValueError(
-                "Key (guild_id, user_id) is required for BlockingRepository.save"
+async def _read(
+    connection: AsyncConnection, guild_id: int, user_id: int
+) -> BlockedUser | None:
+    row = (
+        await connection.execute(
+            select(
+                member_blocks.c.display_name_hint,
+                member_blocks.c.username_hint,
+                member_blocks.c.blocked,
+            ).where(
+                member_blocks.c.guild_id == guild_id, member_blocks.c.user_id == user_id
             )
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    display, username, blocked = row
+    user = BlockedUser(user_id, display, username, blocked=blocked)
+    events = await connection.execute(
+        select(
+            block_events.c.action,
+            block_events.c.admin_id,
+            block_events.c.reason,
+            block_events.c.created_us,
+        )
+        .where(block_events.c.guild_id == guild_id, block_events.c.user_id == user_id)
+        .order_by(block_events.c.action, block_events.c.ordinal)
+    )
+    for action, admin, reason, moment in events:
+        history = user.block_history if action == "block" else user.unblock_history
+        history.append(BlockHistoryEntry(admin, reason, from_microseconds(moment)))
+    names = await connection.execute(
+        select(
+            member_name_observations.c.display_name,
+            member_name_observations.c.created_us,
+        )
+        .where(
+            member_name_observations.c.guild_id == guild_id,
+            member_name_observations.c.user_id == user_id,
+        )
+        .order_by(member_name_observations.c.ordinal)
+    )
+    user.name_history = [
+        NameHistoryEntry(name, from_microseconds(moment)) for name, moment in names
+    ]
+    return user
 
-        guild_id, user_id = key
 
-        def _updater(data: JsonObject) -> None:
-            users_map = self._ensure_users_map_raw(data, guild_id)
-            users_map[str(user_id)] = cast(JsonValue, cast(object, entity.to_dict()))
+class BlockingRepository:
+    """Change access state and its audit on one connection; reads never fail open."""
 
-        await self._store.update(_updater)
+    def __init__(self, database: Database) -> None:
+        self._database = database
 
-    @override
-    async def delete(self, key: BlockedUserKey) -> None:
-        """Delete a user by (guild_id, user_id)."""
-        guild_id, user_id = key
+    async def is_blocked(self, guild_id: int, user_id: int) -> bool:
+        """Read committed access state; propagate storage failures to authorization."""
+        async with self._database.transaction() as connection:
+            value = await connection.scalar(
+                select(member_blocks.c.blocked).where(
+                    member_blocks.c.guild_id == guild_id,
+                    member_blocks.c.user_id == user_id,
+                )
+            )
+            return value is True
 
-        def _updater(data: JsonObject) -> None:
-            users_map = self._get_users_map_raw(data, guild_id)
-            users_map.pop(str(user_id), None)
-
-        await self._store.update(_updater)
+    async def get(self, key: tuple[int, int]) -> BlockedUser | None:
+        """Read a detached history in one snapshot transaction."""
+        async with self._database.transaction() as connection:
+            return await _read(connection, *key)
 
     async def get_all_for_guild(self, guild_id: int) -> list[BlockedUser]:
-        """Get all users for a single guild."""
-        data = await self._store.read()
-        users_map = self._get_users_map_raw(data, guild_id)
+        """Return tracked members for the administrator's history view."""
+        async with self._database.transaction() as connection:
+            ids = await connection.scalars(
+                select(member_blocks.c.user_id)
+                .where(member_blocks.c.guild_id == guild_id)
+                .order_by(member_blocks.c.user_id)
+            )
+            result: list[BlockedUser] = []
+            for user_id in ids:
+                user = await _read(connection, guild_id, user_id)
+                if user is not None:
+                    result.append(user)
+            return result
 
-        return [
-            user for u in users_map.values() if (user := try_decode_user(u)) is not None
-        ]
+    async def change(
+        self,
+        guild_id: int,
+        user_id: int,
+        *,
+        blocked: bool,
+        display_name: str,
+        username: str | None,
+        admin_id: int,
+        reason: str,
+        observed_at: datetime,
+    ) -> bool:
+        """Commit a state transition, audit and changed display hint atomically.
+
+        Repeating the current state does not append another logical block/unblock.
+        Legacy action lists retain their own ordinals; runtime event IDs order
+        newly committed transitions without inventing order between old lists.
+        """
+        async with self._database.transaction() as connection:
+            await ensure_member(connection, guild_id, user_id)
+            await ensure_user(connection, admin_id)
+            moment = utc_microseconds(observed_at)
+            if username is not None:
+                await observe_username(connection, user_id, username, moment)
+            await _observe_name(
+                connection, guild_id, user_id, display_name, username, moment
+            )
+            changed = await connection.scalar(
+                member_blocks.update()
+                .where(
+                    member_blocks.c.guild_id == guild_id,
+                    member_blocks.c.user_id == user_id,
+                    member_blocks.c.blocked != blocked,
+                )
+                .values(blocked=blocked, version=member_blocks.c.version + 1)
+                .returning(member_blocks.c.version)
+            )
+            if changed is not None:
+                action = "block" if blocked else "unblock"
+                position = await connection.scalar(
+                    select(
+                        func.coalesce(func.max(block_events.c.ordinal), -1) + 1
+                    ).where(
+                        block_events.c.guild_id == guild_id,
+                        block_events.c.user_id == user_id,
+                        block_events.c.action == action,
+                    )
+                )
+                await connection.execute(
+                    insert(block_events).values(
+                        guild_id=guild_id,
+                        user_id=user_id,
+                        action=action,
+                        ordinal=position,
+                        admin_id=admin_id,
+                        reason=reason,
+                        created_us=moment,
+                        origin="observed",
+                    )
+                )
+            return changed is not None
+
+
+async def _observe_name(
+    connection: AsyncConnection,
+    guild_id: int,
+    user_id: int,
+    display_name: str,
+    username: str | None,
+    moment: int,
+) -> None:
+    previous = (
+        await connection.execute(
+            select(
+                member_blocks.c.display_name_hint, member_blocks.c.username_hint
+            ).where(
+                member_blocks.c.guild_id == guild_id, member_blocks.c.user_id == user_id
+            )
+        )
+    ).one_or_none()
+    if (
+        previous is not None
+        and previous[0] == display_name
+        and (username is None or previous[1] == username)
+    ):
+        return
+    statement = insert(member_blocks).values(
+        guild_id=guild_id,
+        user_id=user_id,
+        display_name_hint=display_name,
+        username_hint=username,
+        blocked=False,
+        version=1,
+    )
+    await connection.execute(
+        statement.on_conflict_do_update(
+            index_elements=[member_blocks.c.guild_id, member_blocks.c.user_id],
+            set_={
+                "display_name_hint": display_name,
+                "username_hint": username
+                if username is not None
+                else member_blocks.c.username_hint,
+                "version": member_blocks.c.version + 1,
+            },
+        )
+    )
+    position = await connection.scalar(
+        select(
+            func.coalesce(func.max(member_name_observations.c.ordinal), -1) + 1
+        ).where(
+            member_name_observations.c.guild_id == guild_id,
+            member_name_observations.c.user_id == user_id,
+        )
+    )
+    await connection.execute(
+        insert(member_name_observations).values(
+            guild_id=guild_id,
+            user_id=user_id,
+            ordinal=position,
+            display_name=display_name,
+            created_us=moment,
+        )
+    )

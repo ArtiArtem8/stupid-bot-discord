@@ -219,7 +219,7 @@ def check_template(
         _check_resources(element)
     missing = required - nodes.keys()
     if missing:
-        raise ValueError("Missing SVG IDs: " + ", ".join(sorted(missing)))
+        raise ValueError(f"Missing SVG IDs: {', '.join(sorted(missing))}")
     return root, nodes
 
 
@@ -250,7 +250,7 @@ def _pixels(value: str) -> int:
 def theme_tokens(path: Path, appearance: LevelAppearance) -> dict[str, str]:
     """Load shared semantic colors, including the exact level-band accent."""
     raw = json_object(get_json(path))
-    tiers = json_object(json_object(raw)["tiers"])
+    tiers = json_object(raw["tiers"])
     values = json_object(tiers[appearance.tier.value])
     result: dict[str, str] = {"accent": f"#{appearance.color:06x}"}
     for key, value in values.items():
@@ -289,7 +289,7 @@ def fit_texts(
                         len(clusters) - 2, int(len(clusters) * maximum / box.width) - 2
                     ),
                 )
-                replace_text(node, "".join(clusters[:keep]).rstrip("…") + "…")
+                replace_text(node, f"{''.join(clusters[:keep]).rstrip('…')}…")
             changed = True
         if not changed:
             return boxes
@@ -402,7 +402,7 @@ def _bind_images(nodes: dict[str, Element], identity: CardIdentity) -> tuple[str
         if png:
             nodes[identifier].set(
                 f"{{{XLINK}}}href",
-                "data:image/png;base64," + base64.b64encode(png).decode(),
+                f"data:image/png;base64,{base64.b64encode(png).decode()}",
             )
             style(nodes[fallback], "display", "none")
         else:

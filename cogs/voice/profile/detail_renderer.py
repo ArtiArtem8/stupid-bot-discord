@@ -101,7 +101,7 @@ class DetailCardRenderer:
         if avatar:
             nodes["user-avatar"].set(
                 f"{{{XLINK}}}href",
-                "data:image/png;base64," + base64.b64encode(avatar).decode(),
+                f"data:image/png;base64,{base64.b64encode(avatar).decode()}",
             )
             style(nodes["avatar-fallback"], "display", "none")
         else:

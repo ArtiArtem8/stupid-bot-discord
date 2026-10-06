@@ -9,8 +9,9 @@ from api.music.service.playback_events import PlaybackEventHandlers
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
+from api.music.volume import VolumeSettings
 from cogs.music.views.controller import TrackControllerManager
-from repositories.volume_repository import VolumeRepository
+from repositories.volume_repository import VolumeStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +21,7 @@ class MusicComponents:
     service: CoreMusicService
     connection: ConnectionManager
     state: StateManager
-    volumes: VolumeRepository
+    volumes: VolumeStore
     controllers: TrackControllerManager
     ui: UIOrchestrator
     healer: SessionHealer
@@ -28,14 +29,14 @@ class MusicComponents:
     voice_lifecycle: VoiceLifecycleHandlers
 
 
-def create_music_components(bot: commands.Bot) -> MusicComponents:
+def create_music_components(bot: commands.Bot, volumes: VolumeStore) -> MusicComponents:
     """Build the explicit music object graph for one cog lifecycle."""
     connection = ConnectionManager(bot)
     state = StateManager()
-    volumes = VolumeRepository()
     controllers = TrackControllerManager(bot, connection)
     ui = UIOrchestrator(bot, controllers, state)
-    healer = SessionHealer(bot, connection, state, volumes, ui)
+    volume_settings = VolumeSettings(volumes)
+    healer = SessionHealer(bot, connection, state, volume_settings, ui)
     voice_lifecycle = VoiceLifecycleHandlers(bot, connection, state, ui, healer)
     playback_events = PlaybackEventHandlers(
         bot,
@@ -48,7 +49,7 @@ def create_music_components(bot: commands.Bot) -> MusicComponents:
         bot,
         connection,
         state,
-        volumes,
+        volume_settings,
         playback_events,
         voice_lifecycle,
         ui,

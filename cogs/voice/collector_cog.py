@@ -13,8 +13,8 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timedelta
-from typing import override
+from datetime import datetime
+from typing import TYPE_CHECKING, override
 
 import discord
 from discord.ext import commands, tasks
@@ -35,6 +35,9 @@ from api.voice.model import (
 from repositories.voice_journal import Submission, VoiceJournal
 from utils.json_types import JsonObject, JsonValue, is_json_object
 
+if TYPE_CHECKING:
+    from framework.bot import StupidBot
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,20 +48,12 @@ class VoiceCollectorCog(commands.Cog):
         self,
         bot: commands.Bot,
         *,
-        journal: VoiceJournal | None = None,
+        journal: VoiceJournal,
         monotonic: Callable[[], float] = time.monotonic,
         now: Callable[[], datetime] = utcnow,
     ) -> None:
         self.bot = bot
-        self.journal = (
-            journal
-            if journal is not None
-            else VoiceJournal(
-                config.VOICE_PROBE_DIR,
-                queue_size=config.VOICE_PROBE_EVENT_QUEUE_MAX,
-                batch_size=config.VOICE_PROBE_WRITER_BATCH_MAX,
-            )
-        )
+        self.journal = journal
         self._monotonic = monotonic
         self._now = now
         self._boot_id = uuid.uuid4().hex
@@ -76,17 +71,17 @@ class VoiceCollectorCog(commands.Cog):
         self._running = True
         self._record(VoiceLifecycle())
         self._heartbeat.start()
-        self._maintenance.start()
         if self.bot.is_ready():
             self._resume()
 
     @override
     async def cog_unload(self) -> None:
         if not self._running:
+            await self.journal.close()
             return
         self._online = False
         pending: list[asyncio.Task[None]] = []
-        for loop in (self._heartbeat, self._maintenance):
+        for loop in (self._heartbeat,):
             task = loop.get_task()
             if task is not None:
                 loop.cancel()
@@ -266,22 +261,7 @@ class VoiceCollectorCog(commands.Cog):
             guild.id,
         )
 
-    @tasks.loop(hours=24)
-    async def _maintenance(self) -> None:
-        today = self._now().date()
-        try:
-            await self.journal.compact(
-                before_day=today - timedelta(days=config.VOICE_PROBE_COMPACT_AFTER_DAYS)
-            )
-            await self.journal.prune(
-                today=today, retention_days=config.VOICE_PROBE_RETENTION_DAYS
-            )
-        except OSError as exc:
-            logger.warning("Voice journal maintenance failed: %s", type(exc).__name__)
-            logger.debug("Voice maintenance traceback", exc_info=True)
-
     @_heartbeat.before_loop
-    @_maintenance.before_loop
     async def _before_loops(self) -> None:
         await self.bot.wait_until_ready()
 
@@ -380,6 +360,6 @@ def _flag(value: JsonValue) -> bool | None:
     return value if isinstance(value, bool) else None
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: StupidBot) -> None:
     """Register the voice collector through the normal extension lifecycle."""
-    await bot.add_cog(VoiceCollectorCog(bot))
+    await bot.add_cog(VoiceCollectorCog(bot, journal=bot.create_voice_journal()))

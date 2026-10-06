@@ -73,6 +73,11 @@ class MusicPlayer(mafic.Player[discord.Client]):
     def queue_snapshot(self) -> tuple[QueueEntry, ...]:
         return self.queue.snapshot()
 
+    async def shuffle_queue(self) -> None:
+        """Shuffle after pending transitions finish, including their rollback."""
+        async with self._transition_lock:
+            self.queue.shuffle()
+
     def resolve_current_attempt(self, event_token: str) -> PlaybackAttempt | None:
         """Resolve the current attempt from its transport token."""
         attempt = self._current_attempt

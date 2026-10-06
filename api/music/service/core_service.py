@@ -42,7 +42,7 @@ from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 from api.music.session_events import dispatch_music_session_end
-from repositories.volume_repository import VolumeRepository
+from api.music.volume import VolumeSettings
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class CoreMusicService:
         bot: commands.Bot,
         connection_manager: ConnectionManager,
         state_manager: StateManager,
-        volume_repository: VolumeRepository,
+        volume_settings: VolumeSettings,
         playback_events: PlaybackEventHandlers,
         voice_lifecycle: VoiceLifecycleHandlers,
         ui_orchestrator: UIOrchestrator,
@@ -74,7 +74,8 @@ class CoreMusicService:
         self.bot = bot
         self.connection = connection_manager
         self.state = state_manager
-        self.volume_repo = volume_repository
+        self.volume_settings = volume_settings
+        self.volume_repo = volume_settings.repository
         self.playback_events = playback_events
         self.voice_lifecycle = voice_lifecycle
         self.ui = ui_orchestrator
@@ -112,9 +113,10 @@ class CoreMusicService:
                 failure_context="successful_join_missing_player",
             )
             if player:
-                vol = await self.volume_repo.get_volume(guild.id)
                 try:
-                    await player.set_volume(vol)
+                    async with self.volume_settings.operation(guild.id) as vol:
+                        if self.connection.get_player(guild.id) is player:
+                            await player.set_volume(vol)
                 except EXPECTED_LAVALINK_IO_ERRORS as exc:
                     await self._handle_player_io_failure(player, exc)
                     return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
@@ -356,8 +358,7 @@ class CoreMusicService:
             message = compact_external_log_text(exc.message)
             cause = compact_external_log_text(exc.cause)
             message_format = (
-                "Track load failure guild=%s query=%r severity=%s "
-                + "message=%r cause=%r"
+                "Track load failure guild=%s query=%r severity=%s message=%r cause=%r"
             )
             logger.warning(
                 message_format,
@@ -462,10 +463,7 @@ class CoreMusicService:
     ) -> MusicResult[None]:
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="shuffle")
-        try:
-            player.queue.shuffle()
-        except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            return await self._handle_player_io_failure(player, exc)
+        await player.shuffle_queue()
 
         self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
 
@@ -501,15 +499,13 @@ class CoreMusicService:
         )
 
     async def set_volume(self, guild_id: int, volume: int) -> MusicResult[int]:
-        from repositories.volume_repository import VolumeData
-
-        await self.volume_repo.save(VolumeData(guild_id=guild_id, volume=volume))
-        player = self.connection.get_player(guild_id)
-        if player:
-            try:
-                await player.set_volume(volume)
-            except EXPECTED_LAVALINK_IO_ERRORS as exc:
-                return await self._handle_player_io_failure(player, exc)
+        async with self.volume_settings.operation(guild_id, desired=volume) as current:
+            player = self.connection.get_player(guild_id)
+            if player:
+                try:
+                    await player.set_volume(current)
+                except EXPECTED_LAVALINK_IO_ERRORS as exc:
+                    return await self._handle_player_io_failure(player, exc)
         return MusicResult(MusicResultStatus.SUCCESS, "Volume set", data=volume)
 
     async def get_volume(self, guild_id: int) -> int:
@@ -525,14 +521,11 @@ class CoreMusicService:
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="set_repeat")
 
-        try:
-            previous = player.repeat.mode
-            if mode is None:
-                player.repeat.toggle()
-            else:
-                player.repeat.mode = mode
-        except EXPECTED_LAVALINK_IO_ERRORS as exc:
-            return await self._handle_player_io_failure(player, exc)
+        previous = player.repeat.mode
+        if mode is None:
+            player.repeat.toggle()
+        else:
+            player.repeat.mode = mode
 
         self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
 

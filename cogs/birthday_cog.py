@@ -4,28 +4,33 @@ import asyncio
 import logging
 import secrets
 from datetime import date
-from typing import Literal, Self, override
+from typing import TYPE_CHECKING, Literal, Self, override
+from uuid import uuid4
 
 import discord
 from discord import Interaction, app_commands
 from discord.errors import Forbidden, HTTPException
 from discord.ext import commands, tasks
 from discord.ui import Button
+from sqlalchemy.exc import SQLAlchemyError
 
 import config
 from api.birthday import (
-    birthday_manager,
+    BirthdayManager,
     create_birthday_list_embed,
     parse_birthday,
     safe_fetch_member,
 )
-from api.birthday_models import BirthdayGuildConfig, BirthdayUser
+from api.birthday_models import BirthdayDelivery, BirthdayGuildConfig, BirthdayUser
 from framework.authorization import check_component_access
 from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from resources import BIRTHDAY_WISHES
 from utils.birthday_utils import is_birthday_today
 from utils.embeds import SafeEmbed
+
+if TYPE_CHECKING:
+    from framework.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +85,18 @@ async def safe_role_edit(
 class ConfirmDeleteView(discord.ui.View):
     """Confirmation view for birthday deletion."""
 
-    def __init__(self, user_id: int, guild_id: int) -> None:
+    def __init__(
+        self,
+        user_id: int,
+        guild_id: int,
+        manager: BirthdayManager,
+        expected_version: int,
+    ) -> None:
         super().__init__(timeout=30)
         self.user_id = user_id
+        self.expected_version = expected_version
         self.guild_id = guild_id
+        self.manager = manager
 
     @discord.ui.button(label="Да", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: Interaction, _: Button[Self]) -> None:
@@ -99,8 +112,8 @@ class ConfirmDeleteView(discord.ui.View):
         if not await check_component_access(interaction):
             return
         try:
-            guild_exists, cleared = await birthday_manager.clear_user_birthday(
-                self.guild_id, self.user_id
+            guild_exists, cleared = await self.manager.clear_user_birthday(
+                self.guild_id, self.user_id, expected_version=self.expected_version
             )
         except Exception:
             logger.exception(
@@ -126,7 +139,9 @@ class ConfirmDeleteView(discord.ui.View):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="У вас нет сохранённого дня рождения.",
+                description=(
+                    "Дата уже изменена или удалена. Откройте подтверждение заново."
+                ),
                 ephemeral=True,
             )
             return
@@ -168,8 +183,10 @@ class BirthdayCog(BaseCog):
         Set BIRTHDAY_CHECK_INTERVAL in config for check frequency (seconds)
     """
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: commands.Bot, manager: BirthdayManager) -> None:
         super().__init__(bot)
+        self.manager = manager
+        self._unavailable_channels: dict[int, int | None] = {}
 
     @override
     async def cog_load(self) -> None:
@@ -187,7 +204,11 @@ class BirthdayCog(BaseCog):
     async def birthday_timer(self) -> None:
         """Check registered birthdays and deliver due congratulations."""
         today = date.today()
-        guild_ids = await birthday_manager.get_all_guild_ids()
+        try:
+            guild_ids = await self.manager.get_all_guild_ids()
+        except SQLAlchemyError:
+            logger.exception("Failed to list birthday guilds; retrying next interval")
+            return
         for guild_id in guild_ids:
             try:
                 await self._process_guild(guild_id, today)
@@ -210,7 +231,7 @@ class BirthdayCog(BaseCog):
         if not guild:
             return
 
-        config = await birthday_manager.get_guild_config(guild_id)
+        config = await self.manager.get_guild_config(guild_id)
         if not config:
             return
 
@@ -220,12 +241,30 @@ class BirthdayCog(BaseCog):
             else None
         )
         await self._reconcile_roles(guild, config, today, role)
-        channel = self.bot.get_channel(config.channel_id)
+        channel = self.bot.get_channel(config.channel_id) if config.channel_id else None
         if not isinstance(channel, discord.TextChannel):
+            if (
+                guild_id not in self._unavailable_channels
+                or self._unavailable_channels[guild_id] != config.channel_id
+            ):
+                logger.warning(
+                    "Birthday notifications unavailable: guild=%s channel=%s; "
+                    "retrying each interval",
+                    guild_id,
+                    config.channel_id,
+                )
+                self._unavailable_channels[guild_id] = config.channel_id
             return
+        if guild_id in self._unavailable_channels:
+            self._unavailable_channels.pop(guild_id)
+            logger.info(
+                "Birthday notification channel recovered: guild=%s channel=%s",
+                guild_id,
+                config.channel_id,
+            )
         birthday_users = config.get_birthdays_today(today)
         for user in birthday_users:
-            await self._handle_birthday(guild, channel, user, today)
+            await self._handle_birthday(guild, channel, user, today, config.version)
 
     async def _reconcile_roles(
         self,
@@ -241,7 +280,9 @@ class BirthdayCog(BaseCog):
         for user_id, user_data in config.users.items():
             try:
                 member = await safe_fetch_member(guild, user_id)
-                if member is None:
+                if member is None or not await self.manager.repo.versions_current(
+                    guild.id, user_id, config.version, user_data.version
+                ):
                     continue
                 birthday_today = is_birthday_today(user_data.birthday, today)
                 if birthday_today and role not in member.roles:
@@ -263,21 +304,19 @@ class BirthdayCog(BaseCog):
         channel: discord.TextChannel,
         user: BirthdayUser,
         today: date,
+        settings_version: int,
     ) -> None:
-        """Send and record one pending birthday congratulation.
-
-        Args:
-            guild: Guild context
-            channel: Channel for messages
-            user: User with birthday
-            today: Current date
-
-        """
+        """Claim a current birthday before attempting its external delivery."""
         member = await safe_fetch_member(guild, user.user_id)
         if not member:
             return
 
+        claim = BirthdayDelivery(
+            uuid4().hex, guild.id, user.user_id, today, settings_version, user.version
+        )
         try:
+            if not await self.manager.repo.claim_delivery(claim):
+                return
             wish = secrets.choice(BIRTHDAY_WISHES or ["С днём рождения!"])
             embed = SafeEmbed(
                 title=f"🎉 ПОЗДРАВЛЕНИЯ {user.name}",
@@ -286,12 +325,38 @@ class BirthdayCog(BaseCog):
             )
             embed.set_thumbnail(url=config.BOT_ICON)
 
-            await channel.send(embed=embed)
-
-            await birthday_manager.record_congratulation(guild.id, user.user_id, today)
+            if not await self.manager.repo.begin_delivery(claim):
+                return
+            message = await channel.send(embed=embed)
+            await self.manager.repo.finish_delivery(claim, message.id)
+            logger.info(
+                "Birthday delivered: guild=%s user=%s operation=%s message=%s",
+                guild.id,
+                user.user_id,
+                claim.operation_id,
+                message.id,
+            )
 
         except Exception:
-            logger.exception("Failed to handle birthday for user %s", user.user_id)
+            logger.exception(
+                "Birthday delivery failed: guild=%s user=%s channel=%s "
+                "operation=%s date=%s",
+                guild.id,
+                user.user_id,
+                channel.id,
+                claim.operation_id,
+                today,
+            )
+        finally:
+            try:
+                await self.manager.repo.release_delivery(claim)
+            except Exception:
+                logger.exception(
+                    "Failed to release birthday claim: guild=%s user=%s operation=%s",
+                    guild.id,
+                    user.user_id,
+                    claim.operation_id,
+                )
 
     @app_commands.command(
         name="set-birthday",
@@ -313,10 +378,10 @@ class BirthdayCog(BaseCog):
             )
             return
         guild = await self._require_guild(interaction)
-        await birthday_manager.set_user_birthday(
+        await self.manager.set_user_birthday(
             guild_id=guild.id,
             server_name=guild.name,
-            channel_id=interaction.channel_id or 0,
+            channel_id=interaction.channel_id,
             user_id=interaction.user.id,
             user_name=interaction.user.name,
             birthday=normalized_date,
@@ -346,7 +411,7 @@ class BirthdayCog(BaseCog):
     ) -> None:
         guild = await self._require_guild(interaction)
 
-        await birthday_manager.configure_guild(
+        await self.manager.configure_guild(
             guild_id=guild.id,
             server_name=guild.name,
             channel_id=channel.id,
@@ -368,7 +433,7 @@ class BirthdayCog(BaseCog):
     @app_commands.guild_only()
     async def remove_birthday(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
-        config = await birthday_manager.get_guild_config(guild.id)
+        config = await self.manager.get_guild_config(guild.id)
 
         if not config:
             await FeedbackUI.send(
@@ -389,7 +454,9 @@ class BirthdayCog(BaseCog):
             )
             return
 
-        view = ConfirmDeleteView(interaction.user.id, guild.id)
+        view = ConfirmDeleteView(
+            interaction.user.id, guild.id, self.manager, user.version
+        )
         msg = "Вы уверены, что хотите удалить свой день рождения?"
         await FeedbackUI.send(
             interaction,
@@ -410,7 +477,7 @@ class BirthdayCog(BaseCog):
         self, interaction: Interaction, ephemeral: bool = True
     ) -> None:
         guild = await self._require_guild(interaction)
-        config = await birthday_manager.get_guild_config(guild.id)
+        config = await self.manager.get_guild_config(guild.id)
         if not config:
             await FeedbackUI.send(
                 interaction,
@@ -448,6 +515,6 @@ class BirthdayCog(BaseCog):
         await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: "StupidBot") -> None:
     """Register the birthday cog."""
-    await bot.add_cog(BirthdayCog(bot))
+    await bot.add_cog(BirthdayCog(bot, bot.birthday_manager))

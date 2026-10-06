@@ -1,7 +1,7 @@
 """Music Cog Controller."""
 
 import logging
-from typing import override
+from typing import TYPE_CHECKING, override
 
 import discord
 from discord import Interaction, Member, app_commands
@@ -24,6 +24,7 @@ from api.music.models import (
 from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackUI
 from framework.interaction_flow import run_with_defer
+from repositories.volume_repository import VolumeStore
 
 from .composition import create_music_components
 from .feedback import (
@@ -49,6 +50,9 @@ from .views import (
     SessionSummaryView,
 )
 
+if TYPE_CHECKING:
+    from framework.bot import StupidBot
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,26 +67,26 @@ def _format_voice_result_message(
         VoiceCheckResult.CONNECTION_FAILED: "Ошибка подключения к {0}",
         VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE: MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
         VoiceCheckResult.TIMEOUT: "Время подключения к {0} **истекло**"
-        + "\n*Попробуйте сменить регион этого канала!*",
+        "\n*Попробуйте сменить регион этого канала!*",
         VoiceCheckResult.MOVED_CHANNELS: "Переместился {1} -> {0}",
         VoiceCheckResult.SUCCESS: "Успешно подключился к {0}",
         VoiceCheckResult.USER_NOT_IN_VOICE: "Вы должны быть в голосовом канале!",
         VoiceCheckResult.USER_NOT_MEMBER: "Неверный тип пользователя",
     }
-    msg = messages.get(result, "Неизвестная ошибка")
-    fm1 = to_channel.mention if to_channel else "Неизвестный канал"
-    fm2 = from_channel.mention if from_channel else "Неизвестный канал"
+    template = messages.get(result, "Неизвестная ошибка")
+    destination = to_channel.mention if to_channel else "Неизвестный канал"
+    origin = from_channel.mention if from_channel else "Неизвестный канал"
 
-    return msg.format(fm1, fm2)
+    return template.format(destination, origin)
 
 
 class MusicCog(BaseCog):
     """Music playback controller."""
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: commands.Bot, volumes: VolumeStore) -> None:
         super().__init__(bot)
 
-        self.components = create_music_components(bot)
+        self.components = create_music_components(bot, volumes)
         self.service = self.components.service
 
     @override
@@ -613,6 +617,6 @@ class MusicCog(BaseCog):
         )
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: "StupidBot") -> None:
     """Register the music cog."""
-    await bot.add_cog(MusicCog(bot))
+    await bot.add_cog(MusicCog(bot, bot.volume_repository))

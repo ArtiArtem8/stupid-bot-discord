@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 from discord.ext import commands
 
-from api.birthday import birthday_manager
-from api.blocking import block_manager
+from api.birthday import BirthdayManager
+from api.blocking import BlockManager
 from api.music.models import MusicSession, PlaybackAttempt
 from cogs.admin_cog import AdminCog
 from cogs.birthday_cog import ConfirmDeleteView
@@ -36,7 +36,10 @@ class TestAuthorization(unittest.IsolatedAsyncioTestCase):
         self.item.delete_original_response = AsyncMock()
         self.blocked = AsyncMock(return_value=True)
         self.feedback = AsyncMock()
-        self.block_patch = patch.object(block_manager, "is_user_blocked", self.blocked)
+        self.manager = MagicMock(spec=BlockManager)
+        self.item.client = MagicMock()
+        self.item.client.block_manager = self.manager
+        self.block_patch = patch.object(self.manager, "is_user_blocked", self.blocked)
         self.block_patch.start()
         self.addCleanup(self.block_patch.stop)
         feedback_patch = patch.object(FeedbackUI, "send", self.feedback)
@@ -67,7 +70,9 @@ class TestAuthorization(unittest.IsolatedAsyncioTestCase):
         self.item.response.defer.assert_not_awaited()
 
     async def test_admin_bypass_does_not_consult_blocking(self) -> None:
-        self.assertTrue(await AdminCog(MagicMock()).interaction_check(self.item))
+        self.assertTrue(
+            await AdminCog(MagicMock(), self.manager).interaction_check(self.item)
+        )
         self.blocked.assert_not_awaited()
 
     async def test_refresh_checks_new_block_after_card_creation_but_delete_is_allowed(
@@ -137,9 +142,9 @@ class TestAuthorization(unittest.IsolatedAsyncioTestCase):
     async def test_birthday_confirm_does_not_modify_registration_when_blocked(
         self,
     ) -> None:
-        view = ConfirmDeleteView(10, 42)
+        view = ConfirmDeleteView(10, 42, MagicMock(spec=BirthdayManager), 1)
         with patch.object(
-            birthday_manager, "clear_user_birthday", new=AsyncMock()
+            view.manager, "clear_user_birthday", new=AsyncMock()
         ) as clear:
             await view.confirm.callback(self.item)
         clear.assert_not_awaited()

@@ -1,30 +1,22 @@
-"""Single-owner append-only voice journal with bounded buffering.
+"""Single-owner bounded voice queue backed by atomic SQLite batches.
 
-New writes use root/v2/{session,guild_ID}/events_UTC-DATE.jsonl. Legacy files
-remain read-only. Keep one instance for a root for the entire collector lifetime.
-Submission is synchronous and preserves event order without blocking Discord.
-Only fsynced batches advance persisted; close drains in-flight work without
-cancelling the writer. A partial append is not retried and opens a conservative
-write-failure gap. Readers fail explicitly on corrupt files.
+Admission remains synchronous. Only committed batches count as persisted;
+telemetry never doubles as a read revision. Failed writes open conservative
+loss windows, and closing drains accepted work before database disposal.
 """
 
 from __future__ import annotations
 
 import asyncio
-import gzip
 import logging
-import os
-import shutil
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, date, timedelta
+from datetime import date
 from enum import StrEnum
-from functools import partial
-from pathlib import Path
+from uuid import uuid4
 
 from api.voice.model import GapReason, ObservationGap, VoiceJournalRecord
-from repositories._voice_codec import decode_record, encode_record
-from utils.asyncio_utils import run_in_thread
+from repositories.voice_repository import VoiceJournalSnapshot, VoiceRepository
 
 logger = logging.getLogger(__name__)
 
@@ -52,38 +44,31 @@ class JournalWriteError(OSError):
     """At least one accepted batch failed; close could not promise persistence."""
 
 
-@dataclass(frozen=True, slots=True)
-class VoiceJournalSnapshot:
-    """Guild and shared session facts read under one file lock, without flushing."""
-
-    guild_records: tuple[VoiceJournalRecord, ...]
-    session_records: tuple[VoiceJournalRecord, ...]
-    generation: int
-
-
 class VoiceJournal:
-    """Own queue, writer lifecycle and serialized file maintenance for one root."""
+    """Own queue admission, write-failure gaps and writer shutdown."""
 
     def __init__(
-        self, root: Path, *, queue_size: int = 10_000, batch_size: int = 500
+        self, store: VoiceRepository, *, queue_size: int = 10_000, batch_size: int = 500
     ) -> None:
         if queue_size < 1 or batch_size < 1:
             raise ValueError("Queue and batch sizes must be positive")
-        self.root = root
+        self.store = store
         self._queue: asyncio.Queue[VoiceJournalRecord | None] = asyncio.Queue(
             queue_size
         )
         self._batch_size = batch_size
         self._writer: asyncio.Task[None] | None = None
         self._closing = False
-        # Without this lock, maintenance could gzip a file while the writer's
-        # worker thread appends to it, losing the newly appended bytes.
-        self._files = asyncio.Lock()
         self._received = self._accepted = self._persisted = 0
         self._failed = self._rejected = 0
         self._losses: dict[int | None, VoiceJournalRecord] = {}
         self._write_error: Exception | None = None
         self._close_task: asyncio.Task[None] | None = None
+
+    @property
+    def closed(self) -> bool:
+        """Return whether this queue owner has finished draining."""
+        return self._close_task is not None and self._close_task.done()
 
     @property
     def counts(self) -> JournalCounts:
@@ -126,7 +111,15 @@ class VoiceJournal:
         if self._close_task is None:
             self._closing = True
             self._close_task = asyncio.create_task(self._drain())
-        await asyncio.shield(self._close_task)
+        cancellation: asyncio.CancelledError | None = None
+        while not self._close_task.done():
+            try:
+                await asyncio.shield(self._close_task)
+            except asyncio.CancelledError as error:
+                cancellation = error
+        self._close_task.result()
+        if cancellation is not None:
+            raise cancellation
 
     async def _drain(self) -> None:
         if self._writer is not None:
@@ -188,12 +181,12 @@ class VoiceJournal:
         if not records:
             return
         try:
-            await self._file_work(partial(self._append, records))
+            await self.store.append(uuid4().hex, records)
         except Exception as exc:
             self._write_error = exc
             self._failed += len(batch)
-            # A worker may have appended only part of a batch. Invalidate from
-            # its first fact through recovery, but never retry those facts.
+            # An unconfirmed commit may have persisted this batch. Keep the
+            # failure window conservative until a new authoritative snapshot.
             start = min(
                 r.fact.started_at
                 if isinstance(r.fact, ObservationGap)
@@ -217,142 +210,20 @@ class VoiceJournal:
         else:
             self._persisted += len(batch)
 
-    def _path_for(self, record: VoiceJournalRecord) -> Path:
-        return self._day_path(
-            self.root / "v2", record.guild_id, record.observed_at.astimezone(UTC).date()
-        )
-
-    @staticmethod
-    def _day_path(root: Path, guild_id: int | None, day: date) -> Path:
-        area = "session" if guild_id is None else f"guild_{guild_id}"
-        return root / area / f"events_{day.isoformat()}.jsonl"
-
-    def _append(self, records: Sequence[VoiceJournalRecord]) -> None:
-        batches: dict[Path, list[str]] = {}
-        for record in records:
-            batches.setdefault(self._path_for(record), []).append(encode_record(record))
-        for path, lines in batches.items():
-            if path.with_suffix(".jsonl.gz").exists():
-                raise OSError("Cannot append to an archived journal day")
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("a", encoding="utf-8") as handle:
-                handle.write("".join(f"{line}\n" for line in lines))
-                handle.flush()
-                os.fsync(handle.fileno())
-
     async def read_day(
         self, guild_id: int | None, day: date
     ) -> tuple[VoiceJournalRecord, ...]:
-        """Read persisted legacy and v2 facts; no implicit queue flush.
-
-        Include session records when building a guild timeline. A day slice
-        without a preceding authoritative snapshot intentionally starts unknown.
-        """
-        return await self._file_work(partial(self._read_day, guild_id, day))
+        """Read a UTC day without flushing the queue or inventing preceding coverage."""
+        return await self.store.read_all(guild_id, day)
 
     async def read_all(self, guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
-        """Read all persisted legacy and v2 facts for one scope in day order.
-
-        The writer queue is intentionally untouched. File access shares the
-        writer and maintenance lock, including gzip replacement.
-        """
-        return await self._file_work(partial(self._read_all, guild_id))
+        """Read committed scope history; pending queue entries remain unconfirmed."""
+        return await self.store.read_all(guild_id)
 
     async def snapshot_for_guild(self, guild_id: int) -> VoiceJournalSnapshot:
-        """Read both histories without interleaved writes or maintenance.
+        """Read guild/shared facts and their revision in one SQL snapshot."""
+        return await self.store.snapshot_for_guild(guild_id)
 
-        Generation is the journal-wide persisted count, not a per-guild revision.
-        Cancellation waits for physical reads before releasing the file lock.
-        """
-        return await self._file_work(partial(self._snapshot_for_guild, guild_id))
-
-    def _snapshot_for_guild(self, guild_id: int) -> VoiceJournalSnapshot:
-        return VoiceJournalSnapshot(
-            self._read_all(guild_id), self._read_all(None), self._persisted
-        )
-
-    def _read_all(self, guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
-        area = "session" if guild_id is None else f"guild_{guild_id}"
-        days: set[date] = set()
-        for root in (self.root, self.root / "v2"):
-            for path in (root / area).glob("events_*.jsonl*"):
-                day = _day_from_name(path.name)
-                if day is not None:
-                    days.add(day)
-        return tuple(
-            record for day in sorted(days) for record in self._read_day(guild_id, day)
-        )
-
-    def _read_day(
-        self, guild_id: int | None, day: date
-    ) -> tuple[VoiceJournalRecord, ...]:
-        records: list[VoiceJournalRecord] = []
-        for root in (self.root, self.root / "v2"):
-            path = self._day_path(root, guild_id, day)
-            compressed = path.with_suffix(".jsonl.gz")
-            if compressed.exists():
-                with gzip.open(compressed, "rt", encoding="utf-8") as handle:
-                    records.extend(
-                        decode_record(line) for line in handle if line.strip()
-                    )
-            elif path.exists():
-                with path.open(encoding="utf-8") as handle:
-                    records.extend(
-                        decode_record(line) for line in handle if line.strip()
-                    )
-        return tuple(records)
-
-    async def compact(self, *, before_day: date) -> int:
-        """Atomically archive finished v2 days only; never modify legacy files."""
-        return await self._file_work(partial(self._compact, before_day))
-
-    def _compact(self, before_day: date) -> int:
-        count = 0
-        for path in (self.root / "v2").glob("*/events_*.jsonl"):
-            day = _day_from_name(path.name)
-            if day is None or day >= before_day:
-                continue
-            target = path.with_suffix(".jsonl.gz")
-            temporary = target.with_suffix(".gz.tmp")
-            try:
-                with path.open("rb") as source, gzip.open(temporary, "wb") as sink:
-                    shutil.copyfileobj(source, sink)
-                temporary.replace(target)
-                path.unlink()
-            finally:
-                temporary.unlink(missing_ok=True)
-            count += 1
-        return count
-
-    async def prune(self, *, today: date, retention_days: int | None = None) -> int:
-        """Prune v2 only for an explicit positive retention; None performs no I/O."""
-        if retention_days is None:
-            return 0
-        if retention_days < 1:
-            raise ValueError("Retention must be positive")
-        return await self._file_work(
-            partial(self._prune, today - timedelta(days=retention_days))
-        )
-
-    async def _file_work[T](self, operation: Callable[[], T]) -> T:
-        # Cancellation must not release the file lock while its worker thread
-        # still accesses a day file (notably during collector unload).
-        async with self._files:
-            return await run_in_thread(operation)
-
-    def _prune(self, cutoff: date) -> int:
-        count = 0
-        for path in (self.root / "v2").glob("*/events_*.jsonl*"):
-            day = _day_from_name(path.name)
-            if day is not None and day < cutoff:
-                path.unlink()
-                count += 1
-        return count
-
-
-def _day_from_name(name: str) -> date | None:
-    raw = name.removeprefix("events_").removesuffix(".gz").removesuffix(".jsonl")
-    try:
-        return date.fromisoformat(raw)
-    except ValueError:
-        return None
+    async def revision(self, guild_id: int) -> int:
+        """Return a committed scoped revision, independent of queue telemetry."""
+        return await self.store.revision(guild_id)

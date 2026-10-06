@@ -24,6 +24,14 @@ from framework.feedback_ui import FeedbackType, FeedbackUI
 from tests.api.music.helpers import make_entry
 
 
+def _interaction() -> MagicMock:
+    item = MagicMock()
+    item.client = MagicMock()
+    item.client.block_manager = MagicMock()
+    item.client.block_manager.is_user_blocked = AsyncMock(return_value=False)
+    return item
+
+
 def _make_http_error(
     error_type: type[discord.HTTPException],
     status: int,
@@ -49,6 +57,13 @@ def _make_snapshot(
 
 
 class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
+    def test_long_current_and_queued_tracks_fit_fields(self) -> None:
+        snapshot = _make_snapshot("x" * 2000, current_identifier="y" * 2000)
+        embed = QueuePaginationAdapter(snapshot).make_embed(0)
+        self.assertEqual(len(embed.fields), 2)
+        for field in embed.fields:
+            self.assertLessEqual(len(field.value or ""), 1024)
+
     async def test_first_page_shows_current_and_initial_queue_tracks(self) -> None:
         snapshot = _make_snapshot("one", "two", current_identifier="current")
         adapter = QueuePaginationAdapter(snapshot, page_size=1)
@@ -86,7 +101,7 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
 
         paginator = QueuePaginator(adapter, refresh, user_id=42)
         await paginator.prepare()
-        interaction = MagicMock()
+        interaction = _interaction()
         edit_message = AsyncMock()
 
         self.assertEqual(await paginator.get_total_pages(), 3)
@@ -114,7 +129,7 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
 
         paginator = QueuePaginator(adapter, refresh, user_id=42)
         paginator.page = 1
-        interaction = MagicMock()
+        interaction = _interaction()
         edit_message = AsyncMock()
 
         with patch.object(interaction.response, "edit_message", edit_message):
@@ -139,7 +154,7 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
             return None
 
         paginator = QueuePaginator(adapter, refresh, user_id=42)
-        interaction = MagicMock()
+        interaction = _interaction()
 
         with patch(
             "cogs.music.views.queue.send_warning",
@@ -162,7 +177,7 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
             return snapshot
 
         paginator = QueuePaginator(adapter, refresh, user_id=42)
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 99
 
         with patch(
@@ -209,7 +224,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             remove_callback=remove,
             timeout=120,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 42
         message = MagicMock()
         interaction.message = message
@@ -278,7 +293,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             remove_callback=remove_entries,
             timeout=120,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 42
         message = MagicMock()
         interaction.message = message
@@ -319,7 +334,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             remove_callback=remove,
             timeout=120,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 42
         message = MagicMock()
         interaction.message = message
@@ -369,7 +384,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             remove_callback=remove,
             timeout=120,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 42
         message = MagicMock()
         interaction.message = message
@@ -415,7 +430,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             remove_callback=remove,
             timeout=120,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 42
         interaction.message = None
 
@@ -438,7 +453,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             remove_callback=AsyncMock(),
             timeout=120,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         message = MagicMock()
         interaction.message = message
         error = RuntimeError("queue undo failed")
@@ -473,7 +488,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
                     remove_callback=AsyncMock(),
                     timeout=120,
                 )
-                interaction = MagicMock()
+                interaction = _interaction()
                 message = MagicMock()
                 interaction.message = message
                 cleanup_error = _make_http_error(error_type, status)
@@ -511,7 +526,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             remove_callback=remove,
             timeout=120,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 42
         message = MagicMock()
         interaction.message = message
@@ -548,7 +563,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             remove_callback=remove,
             timeout=120,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 42
         message = MagicMock()
         interaction.message = message
@@ -588,7 +603,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             remove_callback=remove,
             timeout=120,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 99
 
         with patch.object(

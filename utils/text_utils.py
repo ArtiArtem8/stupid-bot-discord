@@ -21,19 +21,20 @@ def random_answer(text: str, answers: list[str]) -> str:
     Raises:
         ZeroDivisionError: If ``answers`` is empty.
     """
-    k = 1
-    for v, i in enumerate(text.lower()):
-        if v == 1:
-            k += ord(i)
-        if ord(i) % 7 == 0:
-            k *= ord(i)
-        elif ord(i) % 3 == 0:
-            k += ord(i) ** 2 // 2
-        elif ord(i) % 5 == 0 or v % 17 == 0:
-            k += hash(ord(i))
+    score = 1
+    for index, character in enumerate(text.lower()):
+        codepoint = ord(character)
+        if index == 1:
+            score += codepoint
+        if codepoint % 7 == 0:
+            score *= codepoint
+        elif codepoint % 3 == 0:
+            score += codepoint**2 // 2
+        elif codepoint % 5 == 0 or index % 17 == 0:
+            score += hash(codepoint)
         else:
-            k += ord(i)
-    return answers[k % len(answers)]
+            score += codepoint
+    return answers[score % len(answers)]
 
 
 @lru_cache(maxsize=10)
@@ -64,22 +65,21 @@ def format_list(strlist: list[str], cut: int, theme: bool = True) -> list[str]:
     Returns:
         The same list instance after separator insertion.
     """
-    jolen = 0
-    char = " "
-    last = len(strlist) - 1
-    for v, i in enumerate(strlist):
-        jolen += len(i)
-        if v == 0 and theme:
-            if v + 1 < len(strlist) and jolen + len(strlist[v + 1]) > cut:
-                strlist[v] += "\n"
-                jolen = 0
-        elif v == last:
+    line_width = 0
+    last_index = len(strlist) - 1
+    for index, fragment in enumerate(strlist):
+        line_width += len(fragment)
+        if index == 0 and theme:
+            if last_index > 0 and line_width + len(strlist[1]) > cut:
+                strlist[index] += "\n"
+                line_width = 0
+        elif index == last_index:
             break
-        elif jolen > cut:
-            jolen = 0
-            strlist[v] += ",\n"
+        elif line_width > cut:
+            line_width = 0
+            strlist[index] += ",\n"
         else:
-            strlist[v] += "," + char
+            strlist[index] += ", "
     return strlist
 
 
@@ -105,7 +105,7 @@ def truncate_text(
     if len(text) <= width:
         return text
 
-    if width < len(placeholder):
+    if width <= len(placeholder):
         return placeholder[:width]
     content_len = width - len(placeholder)
 
@@ -154,9 +154,6 @@ def truncate_sequence(
         return full_text
 
     budget = max_length - len(placeholder)
-
-    if not item_list:
-        return placeholder
 
     current_len = 0
     valid_items: list[str] = []

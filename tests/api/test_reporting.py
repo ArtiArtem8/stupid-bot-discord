@@ -1,158 +1,104 @@
-"""Tests for reporting helpers and submission flow."""
-
-from __future__ import annotations
+"""Reports commit before acknowledgement and deduplicate interaction retries."""
 
 import unittest
-from datetime import datetime
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from types import SimpleNamespace
-from typing import cast, override
-from unittest.mock import AsyncMock, Mock, patch
+from typing import override
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
+from sqlalchemy import select
 
-from api.reporting import (
-    ReportModal,
-    _build_report_data,
-    set_report_channel,
-    submit_report,
-)
-from utils.json_store import AsyncJsonFileStore
+from api.reporting import ReportModal, _build_report_data, _notify_report, submit_report
+from repositories.report_repository import ReportRepository
+from repositories.sqlite.schema import reports
+from tests.storage import temporary_database
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncSetUp(self) -> None:
-        self.temp_dir = TemporaryDirectory()
-        self.addCleanup(self.temp_dir.cleanup)
-        self.store = AsyncJsonFileStore(
-            Path(self.temp_dir.name) / "reports.json", backup_amount=0
+        _, self.database = await temporary_database(self)
+        self.repository = ReportRepository(self.database)
+        self.interaction = MagicMock(spec=discord.Interaction, id=777)
+        self.interaction.user = MagicMock(
+            spec=discord.User, id=1, name="Author", avatar=None
         )
+        self.interaction.user.name = "Author"
+        self.interaction.guild = None
+        self.interaction.channel = None
+        self.interaction.message = None
+        self.interaction.response = MagicMock(spec=discord.InteractionResponse)
 
-    async def test_submit_report_appends_and_returns_channel(self) -> None:
-        user = SimpleNamespace(id=1, name="u", avatar=None)
-        guild = SimpleNamespace(id=10, name="g")
-        channel = SimpleNamespace(id=20, name="c")
-        client = SimpleNamespace(get_channel=Mock())
-
-        interaction = cast(
-            discord.Interaction[discord.Client],
-            cast(
-                object,
-                SimpleNamespace(
-                    user=user,
-                    guild=guild,
-                    channel=channel,
-                    client=client,
-                ),
-            ),
+    async def test_missing_notification_channel_logs_persisted_report_id(self) -> None:
+        await self.repository.set_channel(99)
+        report, channel = await submit_report(
+            self.repository, self.interaction, "reason"
         )
+        self.interaction.client.get_channel.return_value = None
+        with self.assertLogs("api.reporting", level="WARNING") as logs:
+            await _notify_report(self.interaction, report, channel)
+        self.assertIn(report["report_id"], logs.output[0])
+        self.assertIn("channel=99", logs.output[0])
 
-        fixed_dt = datetime(2025, 1, 1, 12, 0, 0)
-
-        with (
-            patch("api.reporting._report_store", self.store),
-            patch("api.reporting.datetime") as dt_mock,
-            patch("api.reporting.uuid.uuid4", return_value="RID"),
-        ):
-            dt_mock.now.return_value = fixed_dt
-            await set_report_channel(999)
-            report, channel_id = await submit_report(interaction, "reason")
-
-        data = await self.store.read()
-        self.assertEqual(report["report_id"], "RID")
-        self.assertEqual(channel_id, 999)
-        self.assertEqual(data["reports"], [report])
-        self.assertEqual(data["report_channel_id"], 999)
-        client.get_channel.assert_not_called()
-
-    async def test_report_and_channel_updates_preserve_each_other(self) -> None:
-        interaction = cast(
-            discord.Interaction[discord.Client],
-            cast(
-                object,
-                SimpleNamespace(
-                    user=SimpleNamespace(id=1, name="u", avatar=None),
-                    guild=None,
-                    channel=None,
-                ),
-            ),
+    async def test_dm_report_and_settings_survive_without_a_guild(self) -> None:
+        await self.repository.set_channel(99)
+        report, channel = await submit_report(
+            self.repository, self.interaction, "reason"
         )
+        self.assertEqual(channel, 99)
+        self.assertIsNone(report["guild"]["id"])
+        repeated, channel = await submit_report(
+            self.repository, self.interaction, "reason"
+        )
+        self.assertEqual(repeated, report)
+        self.assertIsNone(channel)
+        with self.assertRaisesRegex(ValueError, "Conflicting"):
+            await submit_report(self.repository, self.interaction, "different reason")
+        async with self.database.transaction() as connection:
+            rows = (
+                await connection.execute(
+                    select(reports.c.report_id, reports.c.created_us)
+                )
+            ).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0], report["report_id"])
+        self.assertIsNotNone(rows[0][1])
 
-        with patch("api.reporting._report_store", self.store):
-            await submit_report(interaction, "reason")
-            await set_report_channel(123)
-
-        data = await self.store.read()
-        self.assertEqual(data["report_channel_id"], 123)
-        self.assertEqual(len(cast(list[object], data["reports"])), 1)
-
-    async def test_modal_responds_before_message_edit_and_notification(self) -> None:
+    async def test_modal_persists_before_response_then_notifies(self) -> None:
         events: list[str] = []
 
-        async def record_response(**_kwargs: object) -> None:
-            events.append("respond")
+        async def response(**_kwargs: object) -> None:
+            async with self.database.transaction() as connection:
+                self.assertIsNotNone(
+                    await connection.scalar(select(reports.c.report_id))
+                )
+            events.append("response")
 
-        async def record_edit(**_kwargs: object) -> None:
-            events.append("edit")
+        async def notification(*_args: object) -> None:
+            events.append("notification")
 
-        async def record_notification(**_kwargs: object) -> None:
-            events.append("notify")
-
-        user = SimpleNamespace(id=1, name="u", avatar=None)
-        message = SimpleNamespace(id=30, edit=AsyncMock(side_effect=record_edit))
-        send_target = SimpleNamespace(send=AsyncMock(side_effect=record_notification))
-        response_send = AsyncMock(side_effect=record_response)
-        interaction = cast(
-            discord.Interaction[discord.Client],
-            cast(
-                object,
-                SimpleNamespace(
-                    user=user,
-                    guild=None,
-                    channel=None,
-                    client=SimpleNamespace(get_channel=Mock(return_value=send_target)),
-                    message=message,
-                    response=SimpleNamespace(send_message=response_send),
-                ),
-            ),
-        )
-        report = _build_report_data(interaction, "reason")
-
-        async def persist_report(
-            _interaction: object, _reason: str
-        ) -> tuple[object, int]:
-            events.append("persist")
-            return report, 999
-
-        modal = ReportModal()
-        modal.reason._value = "reason"
-        with (
-            patch("api.reporting.submit_report", side_effect=persist_report),
-            patch("api.reporting.discord.abc.Messageable", object),
+        modal = ReportModal(self.repository)
+        modal.reason._value = "a useful report"
+        self.interaction.response.send_message = AsyncMock(side_effect=response)
+        with patch(
+            "api.reporting._notify_report", new=AsyncMock(side_effect=notification)
         ):
-            await modal.on_submit(interaction)
+            await modal.on_submit(self.interaction)
+        self.assertEqual(events, ["response", "notification"])
 
-        self.assertEqual(events, ["persist", "respond", "edit", "notify"])
-        response_send.assert_awaited_once()
-        response_call = response_send.await_args
-        if response_call is None:
-            self.fail("expected the modal response to be sent")
-        self.assertTrue(response_call.kwargs["ephemeral"])
+    async def test_persistence_failure_cannot_send_success_or_notification(
+        self,
+    ) -> None:
+        modal = ReportModal(self.repository)
+        modal.reason._value = "a useful report"
+        with patch.object(
+            self.repository, "submit", side_effect=OSError("write failed")
+        ):
+            with self.assertRaises(OSError):
+                await modal.on_submit(self.interaction)
+        self.interaction.response.send_message.assert_not_awaited()
 
-    def test_build_report_data_basic(self) -> None:
-        interaction = cast(
-            discord.Interaction[discord.Client],
-            cast(
-                object,
-                SimpleNamespace(
-                    user=SimpleNamespace(id=1, name="u", avatar=None),
-                    guild=None,
-                    channel=None,
-                ),
-            ),
-        )
-        data = _build_report_data(interaction, "r")
-        self.assertEqual(data["reason"], "r")
-        self.assertIsNone(data["guild"]["id"])
+    def test_new_report_time_is_aware(self) -> None:
+        from datetime import datetime
+
+        value = _build_report_data(self.interaction, "reason")
+        self.assertIsNotNone(datetime.fromisoformat(value["created_at"]).utcoffset())

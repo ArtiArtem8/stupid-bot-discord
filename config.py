@@ -3,7 +3,6 @@
 import os
 from enum import IntEnum
 from pathlib import Path
-from typing import Final
 
 from dotenv import load_dotenv
 
@@ -31,7 +30,6 @@ LAVALINK_CONNECT_RETRY_DELAY = float(os.getenv("LAVALINK_CONNECT_RETRY_DELAY", "
 # --- Directory structure ---
 BASE_DIR = Path(__file__).resolve().parent
 COGS_DIR = BASE_DIR / "cogs"
-BACKUP_DIR = BASE_DIR / "backups"
 DATA_DIR = BASE_DIR / "data"
 
 
@@ -62,18 +60,6 @@ PAGE_SIZE = 10
 ERROR_THUMBNAIL = "https://cdn.discordapp.com/emojis/839119737458917467.webp?size=96&animated=true"  # mm-m-m-monkey  # noqa: E501
 
 
-# --- Data Files ---
-# fmt: off
-_JSON_SUFFIX: Final = ".json"
-LAST_RUN_FILE = (DATA_DIR / "last_run").with_suffix(_JSON_SUFFIX)  # Main bot
-BLOCKED_USERS_FILE = (DATA_DIR / "blocked_users").with_suffix(_JSON_SUFFIX)  # Admin cog
-BIRTHDAY_FILE = (DATA_DIR / "user_birthdays").with_suffix(_JSON_SUFFIX)  # Birthday cog
-MUSIC_VOLUME_FILE = (DATA_DIR / "music_volumes").with_suffix(_JSON_SUFFIX)  # Music cog
-REPORT_FILE = (DATA_DIR / "user_reports").with_suffix(_JSON_SUFFIX)  # Report cog
-ANSWER_FILE = (DATA_DIR / "user_answers").with_suffix(_JSON_SUFFIX)  # Question cog
-# fmt: on
-
-VOICE_PROBE_DIR = DATA_DIR / "voice_probe"  # cogs/voice/collector_cog.py
 VOICE_PROFILE_TIMEZONE = os.getenv("VOICE_PROFILE_TIMEZONE", "UTC")
 
 
@@ -123,10 +109,6 @@ VOICE_PROBE_FULL_ANCHOR_SECONDS = 900
 VOICE_PROBE_EVENT_QUEUE_MAX = 10_000
 """Buffer between the event listener and the single journal writer."""
 VOICE_PROBE_WRITER_BATCH_MAX = 500
-"""Maximum number of lines written per journal batch."""
+"""Maximum number of facts committed per journal batch."""
 VOICE_PROBE_MONOTONIC_JUMP_SECONDS = 30.0
 """Delta above which the process clock is treated as suspended."""
-VOICE_PROBE_COMPACT_AFTER_DAYS = 1
-"""Age in days before v2 JSONL files are replaced with gzip archives."""
-VOICE_PROBE_RETENTION_DAYS: int | None = None
-"""Optional v2 retention in days; None keeps all history. Legacy is never pruned."""

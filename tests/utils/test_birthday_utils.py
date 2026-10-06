@@ -26,7 +26,7 @@ class TestCalculateDaysUntilBirthday(unittest.TestCase):
         self.assertEqual(result, 0)
 
     def test_leap_year_birthday_on_actual_day(self) -> None:
-        reference = date(2025, 2, 28)
+        reference = date(2024, 2, 29)
         birthday_str = "29-02-1992"
 
         result = calculate_days_until_birthday(birthday_str, reference)

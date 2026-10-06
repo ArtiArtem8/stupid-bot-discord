@@ -9,8 +9,9 @@ Provides:
 """
 
 import logging
+from collections.abc import Sequence
 from enum import StrEnum
-from typing import NoReturn, override
+from typing import TYPE_CHECKING, NoReturn, override
 
 import discord
 from discord import app_commands
@@ -18,13 +19,17 @@ from discord.ext import commands
 from discord.utils import format_dt
 
 import config
-from api.blocking import block_manager
+from api.blocking import BlockManager
+from api.blocking_models import BlockedUser, NameHistoryEntry
 from framework.base_cog import BaseCog
 from framework.checks import is_owner_app
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from resources import ACTION_TITLES
 from utils.embeds import SafeEmbed
 from utils.text_utils import truncate_sequence, truncate_text
+
+if TYPE_CHECKING:
+    from framework.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 
@@ -91,14 +96,53 @@ def format_danger_level(block_count: int) -> str:
     return "🔴 Высокий"
 
 
+def _format_recent_block_events(user: BlockedUser) -> str:
+    events = sorted(
+        [(entry.timestamp, "BLOCK", entry) for entry in user.block_history]
+        + [(entry.timestamp, "UNBLOCK", entry) for entry in user.unblock_history],
+        key=lambda event: event[0],
+        reverse=True,
+    )[:5]
+    lines: list[str] = []
+    for timestamp, action, entry in events:
+        icon = "🔒" if action == "BLOCK" else "🔓"
+        reason = truncate_text(entry.reason or "Не указана", width=200, mode="middle")
+        lines.append(
+            f"{icon} **{action}** {format_dt(timestamp, 'R')}\n"
+            f"• Админ: <@{entry.admin_id}>\n"
+            f"• Причина: {reason}"
+        )
+    return truncate_sequence(
+        lines,
+        max_length=config.MAX_EMBED_FIELD_LENGTH,
+        separator="\n",
+        placeholder="...",
+    )
+
+
+def _format_name_history(history: Sequence[NameHistoryEntry]) -> str:
+    lines: list[str] = []
+    for entry in sorted(history, key=lambda entry: entry.timestamp, reverse=True)[:3]:
+        timestamp = format_dt(entry.timestamp, "D")
+        name = truncate_text(entry.username, width=200)
+        lines.append(f"{timestamp}:\n• Имя: {name}")
+    return truncate_sequence(
+        lines,
+        max_length=config.MAX_EMBED_FIELD_LENGTH,
+        separator="\n",
+        placeholder="...",
+    )
+
+
 class AdminCog(BaseCog):
     """Administrative commands for server management.
 
-    Requires administrator permissions for all commands.
+    Default command permissions target administrators; owner checks stay explicit.
     """
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: commands.Bot, block_manager: BlockManager) -> None:
         super().__init__(bot)
+        self.block_manager = block_manager
 
     @override
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:
@@ -124,7 +168,7 @@ class AdminCog(BaseCog):
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ) -> None:
         guild = await self._require_guild(interaction)
-        if await block_manager.is_user_blocked(guild.id, user.id):
+        if await self.block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -132,7 +176,7 @@ class AdminCog(BaseCog):
                 ephemeral=True,
             )
             return
-        await block_manager.block_user(guild.id, user, interaction.user.id, reason)
+        await self.block_manager.block_user(guild.id, user, interaction.user.id, reason)
         logger.info("Blocked user %d in guild %d", user.id, guild.id)
         embed = create_block_embed(user, BLOCK, reason)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
@@ -151,7 +195,7 @@ class AdminCog(BaseCog):
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ) -> None:
         guild = await self._require_guild(interaction)
-        if not await block_manager.is_user_blocked(guild.id, user.id):
+        if not await self.block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -159,7 +203,9 @@ class AdminCog(BaseCog):
                 ephemeral=True,
             )
             return
-        await block_manager.unblock_user(guild.id, user, interaction.user.id, reason)
+        await self.block_manager.unblock_user(
+            guild.id, user, interaction.user.id, reason
+        )
         logger.info("Unblocked user %d in guild %d", user.id, guild.id)
         embed = create_block_embed(user, UNBLOCK, reason)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
@@ -181,7 +227,7 @@ class AdminCog(BaseCog):
         ephemeral: bool = True,
     ) -> None:
         guild = await self._require_guild(interaction)
-        user_entry = await block_manager.get_user(guild.id, user.id)
+        user_entry = await self.block_manager.get_user(guild.id, user.id)
 
         if not user_entry or not user_entry.block_history:
             logger.info(
@@ -217,7 +263,7 @@ class AdminCog(BaseCog):
             status_value = (
                 f"**Заблокирован**\n"
                 f"• Администратор: <@{last_block.admin_id}>\n"
-                f"• Дата: {timestamp}"
+                f"• Дата: {timestamp}\n"
                 f"• Причина: {last_block.reason or 'Не указана'}\n"
             )
         else:
@@ -229,58 +275,15 @@ class AdminCog(BaseCog):
             inline=False,
         )
 
-        all_events = sorted(
-            [(e.timestamp, "BLOCK", e) for e in user_entry.block_history]
-            + [(e.timestamp, "UNBLOCK", e) for e in user_entry.unblock_history],
-            key=lambda x: x[0],
-            reverse=True,
-        )[:5]
-
-        if all_events:
-            history_lines: list[str] = []
-            for timestamp, action, entry in all_events:
-                icon = ("🔓", "🔒")[action == "BLOCK"]
-                truncated_reason = truncate_text(
-                    entry.reason or "Не указана", width=200, mode="middle"
-                )
-                history_lines.append(
-                    f"{icon} **{action}** {format_dt(timestamp, 'R')}\n"
-                    + f"• Админ: <@{entry.admin_id}>\n"
-                    + f"• Причина: {truncated_reason}"
-                )
-
-            history_value = truncate_sequence(
-                history_lines,
-                max_length=config.MAX_EMBED_FIELD_LENGTH,
-                separator="\n",
-                placeholder="...",
-            )
-            embed.safe_add_field(
-                name="Последние события",
-                value=history_value,
-                inline=False,
-            )
-
-        if user_entry.name_history[:21]:
-            name_changes: list[str] = []
-            for name_entry in sorted(
-                user_entry.name_history,
-                key=lambda x: x.timestamp,
-                reverse=True,
-            )[:3]:
-                ts = format_dt(name_entry.timestamp, "D")
-                username_text = truncate_text(name_entry.username, width=200)
-                name_changes.append(f"{ts}:\n• Имя: {username_text}")
-
-            names_value = truncate_sequence(
-                name_changes,
-                max_length=config.MAX_EMBED_FIELD_LENGTH,
-                separator="\n",
-                placeholder="...",
-            )
+        embed.safe_add_field(
+            name="Последние события",
+            value=_format_recent_block_events(user_entry),
+            inline=False,
+        )
+        if user_entry.name_history:
             embed.safe_add_field(
                 name="История имён",
-                value=names_value,
+                value=_format_name_history(user_entry.name_history),
             )
 
         first_block_ts = format_dt(user_entry.block_history[0].timestamp, "D")
@@ -323,7 +326,7 @@ class AdminCog(BaseCog):
         ephemeral: bool = True,
     ) -> None:
         guild = await self._require_guild(interaction)
-        all_users = await block_manager.get_guild_users(guild.id)
+        all_users = await self.block_manager.get_guild_users(guild.id)
         blocked_users = [u for u in all_users if u.is_blocked]
 
         if not blocked_users:
@@ -432,6 +435,6 @@ class AdminCog(BaseCog):
         )
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: "StupidBot") -> None:
     """Register the administration cog."""
-    await bot.add_cog(AdminCog(bot))
+    await bot.add_cog(AdminCog(bot, bot.block_manager))

@@ -1,14 +1,23 @@
 """Blocked-user policy for command dispatch and sensitive components."""
 
 import logging
+from typing import Protocol, runtime_checkable
 
 import discord
 
-from api.blocking import block_manager
+from api.blocking import BlockManager
 from framework.error_handler import handle_app_command_error
 from framework.exceptions import BlockedUserError
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class AccessClient(Protocol):
+    """Client capability needed by command and component authorization."""
+
+    @property
+    def block_manager(self) -> BlockManager: ...
 
 
 async def check_command_access(interaction: discord.Interaction) -> bool:
@@ -17,7 +26,12 @@ async def check_command_access(interaction: discord.Interaction) -> bool:
     Command owners apply intentional bypasses before calling this predicate.
     It raises ``BlockedUserError`` for the global command error handler.
     """
-    if interaction.guild and await block_manager.is_user_blocked(
+    if not interaction.guild:
+        return True
+    client = interaction.client
+    if not isinstance(client, AccessClient):
+        raise RuntimeError("Client has no configured access-state owner")
+    if await client.block_manager.is_user_blocked(
         interaction.guild.id, interaction.user.id
     ):
         logger.debug(

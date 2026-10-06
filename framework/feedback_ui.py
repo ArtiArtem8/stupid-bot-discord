@@ -18,7 +18,8 @@ from discord.ui import Button, View
 from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAny]
 
 import config
-from utils.embeds import SafeEmbed
+from utils.embeds import DEFAULT_LIMITS, SafeEmbed
+from utils.text_utils import truncate_text
 
 logger = logging.getLogger(__name__)
 
@@ -217,35 +218,74 @@ class FeedbackUI:
         disable_report_btn: bool,
         error_info: str | None,
     ) -> ViewDirective | View | None:
-        if (
-            feedback_type is FeedbackType.ERROR
-            and not disable_report_btn
-            and view is MISSING
-        ):
-            if FeedbackUI._default_report_callback is None:
-                raise RuntimeError(
-                    "FeedbackUI not configured. Call FeedbackUI.configure() at startup."
-                )
-            return ReportButtonView(
-                interaction.user.id,
-                FeedbackUI._default_report_callback,
-                error_info=error_info,
-            )
-        if view is MISSING:
-            return ViewDirective.OMIT
         if view is None or isinstance(view, View):
             return view
-        raise TypeError("view must be a discord.ui.View, None, or omitted")
+        if view is not MISSING:
+            raise TypeError("view must be a discord.ui.View, None, or omitted")
+        if feedback_type is not FeedbackType.ERROR or disable_report_btn:
+            return ViewDirective.OMIT
+        report_callback = FeedbackUI._default_report_callback
+        if report_callback is None:
+            raise RuntimeError(
+                "FeedbackUI not configured. Call FeedbackUI.configure() at startup."
+            )
+        return ReportButtonView(
+            interaction.user.id,
+            report_callback,
+            error_info=error_info,
+        )
 
     @staticmethod
     def _add_delete_timer(embed: discord.Embed, delete_after: float | None) -> None:
-        if delete_after:
-            expire_at = utcnow() + timedelta(seconds=delete_after)
-            timer = f"-# Удалится {format_dt(expire_at, style='R')}"
-            if isinstance(embed, SafeEmbed):
-                embed.safe_add_field(name="", value=timer, inline=False)
-            else:
-                embed.add_field(name="", value=timer, inline=False)
+        if not delete_after:
+            return
+        expire_at = utcnow() + timedelta(seconds=delete_after)
+        timer = f"-# Удалится {format_dt(expire_at, style='R')}"
+        # Keep the timer complete, even when external content exhausts the budget.
+        name = ""
+        if len(embed.fields) >= DEFAULT_LIMITS.max_fields:
+            last = embed.fields[-1]
+            name = last.name or ""
+            value = truncate_text(
+                last.value or "", DEFAULT_LIMITS.field_value - len(timer) - 1
+            )
+            timer = f"{value}\n{timer}"
+            embed.remove_field(-1)
+        FeedbackUI._reserve_timer_space(embed, len(name) + len(timer))
+        embed.add_field(name=name, value=timer, inline=False)
+
+    @staticmethod
+    def _reserve_timer_space(embed: discord.Embed, size: int) -> None:
+        budget = DEFAULT_LIMITS.max_total - size
+        if len(embed) <= budget:
+            return
+        if embed.description:
+            embed.description = truncate_text(
+                embed.description,
+                max(0, len(embed.description) - (len(embed) - budget)),
+            )
+        if len(embed) > budget and embed.footer.text:
+            embed.set_footer(
+                text=truncate_text(
+                    embed.footer.text,
+                    max(0, len(embed.footer.text) - (len(embed) - budget)),
+                ),
+                icon_url=embed.footer.icon_url,
+            )
+        for index in reversed(range(len(embed.fields))):
+            if len(embed) <= budget:
+                break
+            field = embed.fields[index]
+            name, value = field.name or "", field.value or ""
+            excess = len(embed) - budget
+            embed.set_field_at(
+                index,
+                name=truncate_text(
+                    name, max(0, len(name) - max(0, excess - len(value)))
+                ),
+                value=truncate_text(value, max(0, len(value) - excess)),
+                inline=field.inline,
+            )
 
     @staticmethod
     async def _send_payload(

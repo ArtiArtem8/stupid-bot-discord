@@ -96,9 +96,7 @@ def _select_suggestions(
             near, key=lambda item: _rank_guild_match(item, entries), reverse=True
         )
         primary = _suggestion(query, *ranked[0], entries)
-        alternative = (
-            _suggestion(query, *ranked[1], entries) if len(ranked) >= 2 else None
-        )
+        alternative = _suggestion(query, *ranked[1], entries)
         return SuggestionPair(primary, alternative)
 
     primary = _suggestion(query, top_key, top_score, entries)

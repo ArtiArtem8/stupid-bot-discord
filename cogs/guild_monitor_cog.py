@@ -2,16 +2,19 @@
 
 import asyncio
 import logging
-from typing import override
+from typing import TYPE_CHECKING, override
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
 import config
-from api.guild_monitoring import monitor_manager
+from api.guild_monitoring import ServerMonitoringManager
 from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackType, FeedbackUI
+
+if TYPE_CHECKING:
+    from framework.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +22,9 @@ logger = logging.getLogger(__name__)
 class ServerMonitorCog(BaseCog):
     """Monitors server members and restores roles when they rejoin."""
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: commands.Bot, manager: ServerMonitoringManager) -> None:
         super().__init__(bot)
+        self.manager = manager
 
     @override
     async def cog_load(self) -> None:
@@ -40,7 +44,7 @@ class ServerMonitorCog(BaseCog):
         if member.bot:
             return
 
-        count = await monitor_manager.save_snapshot(member)
+        count = await self.manager.save_snapshot(member)
         if count > 0:
             logger.info(
                 "Saved %d roles for %s (ID: %d) in guild %d",
@@ -55,10 +59,10 @@ class ServerMonitorCog(BaseCog):
         if member.bot:
             return
 
-        if not await monitor_manager.is_enabled(member.guild.id):
+        if not await self.manager.is_enabled(member.guild.id):
             return
 
-        restored, skipped = await monitor_manager.restore_snapshot(member)
+        restored, skipped = await self.manager.restore_snapshot(member)
 
         if restored:
             role_names = ", ".join(role.name for role in restored)
@@ -70,13 +74,14 @@ class ServerMonitorCog(BaseCog):
                 member.guild.id,
                 role_names,
             )
-            if skipped:
-                logger.warning(
-                    "Skipped %d roles for %s (deleted or unpermitted): %s",
-                    len(skipped),
-                    member,
-                    skipped,
-                )
+        if skipped:
+            logger.warning(
+                "Role restore incomplete: guild=%s user=%s restored=%d skipped=%s",
+                member.guild.id,
+                member.id,
+                len(restored),
+                skipped,
+            )
 
     monitor = app_commands.Group(
         name="monitor",
@@ -116,7 +121,7 @@ class ServerMonitorCog(BaseCog):
             )
             return
 
-        await monitor_manager.set_enabled(guild.id, True, ttl_days)
+        await self.manager.set_enabled(guild.id, True, ttl_days)
         logger.info("Monitoring enabled for guild %d with TTL=%s", guild.id, ttl_days)
 
         ttl_text = (
@@ -139,7 +144,7 @@ class ServerMonitorCog(BaseCog):
     async def monitor_disable(self, interaction: discord.Interaction) -> None:
         guild = await self._require_guild(interaction)
 
-        if not await monitor_manager.is_enabled(guild.id):
+        if not await self.manager.is_enabled(guild.id):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
@@ -148,7 +153,7 @@ class ServerMonitorCog(BaseCog):
             )
             return
 
-        await monitor_manager.set_enabled(guild.id, False)
+        await self.manager.set_enabled(guild.id, False)
         logger.info("Monitoring disabled for guild %d", guild.id)
         msg = (
             "Сохранённые снимки ролей не удалены. "
@@ -169,9 +174,9 @@ class ServerMonitorCog(BaseCog):
     async def monitor_status(self, interaction: discord.Interaction) -> None:
         guild = await self._require_guild(interaction)
 
-        enabled = await monitor_manager.is_enabled(guild.id)
-        ttl = await monitor_manager.get_ttl(guild.id)
-        snapshots = await monitor_manager.get_all_snapshots(guild.id)
+        enabled = await self.manager.is_enabled(guild.id)
+        ttl = await self.manager.get_ttl(guild.id)
+        snapshots = await self.manager.get_all_snapshots(guild.id)
 
         embed = discord.Embed(
             title=f"Статус мониторинга: {guild.name}",
@@ -220,7 +225,7 @@ class ServerMonitorCog(BaseCog):
     ) -> None:
         guild = await self._require_guild(interaction)
 
-        deleted = await monitor_manager.delete_snapshot(guild.id, user.id)
+        deleted = await self.manager.delete_snapshot(guild.id, user.id)
 
         if deleted:
             logger.info(
@@ -250,7 +255,7 @@ class ServerMonitorCog(BaseCog):
     ) -> None:
         guild = await self._require_guild(interaction)
 
-        snapshot = await monitor_manager.get_snapshot(guild.id, user.id)
+        snapshot = await self.manager.get_snapshot(guild.id, user.id)
         if not snapshot:
             await FeedbackUI.send(
                 interaction,
@@ -262,7 +267,7 @@ class ServerMonitorCog(BaseCog):
 
         await interaction.response.defer(ephemeral=True)
 
-        restored, skipped = await monitor_manager.restore_snapshot(user)
+        restored, skipped = await self.manager.restore_snapshot(user)
 
         if not restored and not skipped:
             await FeedbackUI.send(
@@ -312,7 +317,7 @@ class ServerMonitorCog(BaseCog):
 
         for guild in self.bot.guilds:
             try:
-                removed = await monitor_manager.cleanup_expired(guild.id)
+                removed = await self.manager.cleanup_expired(guild.id)
                 if removed > 0:
                     logger.info(
                         "Cleaned up %d expired snapshots in guild %d", removed, guild.id
@@ -325,6 +330,6 @@ class ServerMonitorCog(BaseCog):
         await self.bot.wait_until_ready()
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: "StupidBot") -> None:
     """Register the guild-monitoring cog."""
-    await bot.add_cog(ServerMonitorCog(bot))
+    await bot.add_cog(ServerMonitorCog(bot, bot.monitor_manager))

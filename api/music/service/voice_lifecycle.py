@@ -86,8 +86,7 @@ class VoiceLifecycleHandlers:
         affected_guild_ids: set[int] = {player.guild.id for player in players}
         if node.label not in self._unavailable_node_labels:
             message_format = (
-                "Lavalink node unavailable node=%s node_available=%s "
-                + "affected_guilds=%s"
+                "Lavalink node unavailable node=%s node_available=%s affected_guilds=%s"
             )
             logger.warning(
                 message_format,
@@ -120,8 +119,7 @@ class VoiceLifecycleHandlers:
         guild_id = event.player.guild.id
         reason = compact_external_log_text(event.reason)
         message_format = (
-            "Discord voice websocket failure guild=%s code=%s "
-            + "by_discord=%s reason=%r"
+            "Discord voice websocket failure guild=%s code=%s by_discord=%s reason=%r"
         )
         logger.warning(
             message_format,

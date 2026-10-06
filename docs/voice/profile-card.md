@@ -20,7 +20,6 @@ IDs from the returned Discord image URLs alongside the main attachment, and
 binds all detail embeds through `attachment://` filenames. Keeping both the IDs
 and these bindings prevents deleted images and duplicate standalone previews.
 Only the new PNG is uploaded on reveal; refresh replaces the full file set.
-The attachment adapter is covered against discord.py's multipart serializer.
 
 ## Detail scopes and coverage
 
@@ -88,17 +87,15 @@ hours onward.
 
 The next-level estimate divides exact remaining XP by pooled XP per voice hour
 over the same 30 local dates. Longer observations contribute proportionally more
-than short ones; inactive dates contribute neither XP nor voice hours. The pure
-`api.voice.prediction` module uses the existing XP and level projections, without
-copying award rates. Main profiles and other details do not invoke it.
+than short ones; inactive dates contribute neither XP nor voice hours.
+`api.voice.prediction` uses the canonical XP and level projections.
 
 The small neutral caption below lifetime XP explicitly says "in voice" and shows
 approximate hours, or minutes below one hour. It is omitted with less than one
-observed voice hour, or without
-earning voice in the last seven local dates. These are availability guards, not
-calibrated accuracy thresholds. Coverage describes completeness separately and
-does not multiply the measured pace. There is no confidence range, extrapolated
-trend, calendar completion date or automatic fallback to a stale lifetime pace.
+observed voice hour, or without earning voice in the last seven local dates.
+These are availability guards, not calibrated accuracy thresholds. Coverage describes completeness separately and
+does not multiply the measured pace. The estimate has no confidence range or
+calendar completion date.
 
 Every card labels recent coverage. People and XP also label lifetime coverage,
 measured from the earliest retained guild evidence to the request time. Missing
@@ -106,10 +103,7 @@ history has no lifetime coverage denominator; it is not reported as known empty
 time. Percentages truncate to two decimal places so incomplete observation never
 rounds up to 100%. Lifetime values are limited to retained, observed history.
 
-Sessions merge returns after less than five minutes of continuously observed
-absence within the same guild. The absence earns no time or XP. Average and
-median session lengths sum actual presence within each session, excluding breaks.
-Midnight does not split sessions; observation gaps still do.
+See [voice history](architecture.md#sessions-and-companions) for session grouping.
 
 ## Setup
 
@@ -164,15 +158,13 @@ and detail jobs share a four-job admission limit and one worker, starting before
 profile/detail calculations and asset reads. Details are not cached. Cancellation
 does not release a slot until its work finishes. One persistent `Inkscape --shell`
 process prepares the layers, then Pillow composes the animation. The 80 RGBA
-frames alone need about
-140.6 MiB, before encoder overhead.
+frames alone need about 140.6 MiB, before encoder overhead.
 
 Timelines are cached for at most four guilds. A miss reads all retained guild and
-session history, including compressed days. Journal generations are global, so
-activity in another guild can invalidate a timeline. There are no incremental
-reads or per-guild revisions. Reload clears caches and closes the owned shell
-after admitted work completes; cancelling a Discord request does not cancel
-native work already running.
+shared session history from SQLite. Guild/shared commit watermarks invalidate
+only relevant scopes. Cold reads/replay have bounded admission, and cancellation
+retains the slot until physical replay finishes. Reload clears caches and closes
+the owned shell after admitted work completes.
 
 ## Editing artwork
 

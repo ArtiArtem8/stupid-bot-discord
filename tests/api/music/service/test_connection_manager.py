@@ -1634,7 +1634,7 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(
                     captured.records[0].getMessage(),
                     "Lavalink unavailable due to terminal connection failure "
-                    + f"({type(error).__name__})",
+                    f"({type(error).__name__})",
                 )
                 self.assertIsNone(captured.records[0].exc_info)
 

@@ -89,7 +89,7 @@ class WolframResult:
     def plot_url(self) -> str | None:
         """Extract the first valid plot URL."""
         for pod in self.pods:
-            if "plot" in pod.id.lower() or pod.id == "ImagePod:GraphData":
+            if _is_plot_pod(pod.id):
                 if image_url := _first_image_url(pod):
                     return image_url
         for pod in self.pods:
@@ -129,8 +129,12 @@ def _first_image_url(pod: Pod) -> str | None:
     return next((subpod.image_url for subpod in pod.subpods if subpod.image_url), None)
 
 
+def _is_plot_pod(pod_id: str) -> bool:
+    return "plot" in pod_id.lower() or pod_id == "ImagePod:GraphData"
+
+
 def _parse_unsuccessful_result(root: Element) -> WolframResult:
-    """Build the existing failure result from an unsuccessful response."""
+    """Read the API error, with a fallback for absent or empty messages."""
     error = root.find("error")
     if error is None:
         return WolframResult(success=False, error_msg="No results found")
@@ -155,8 +159,8 @@ def _parse_subpod(element: Element) -> SubPod:
 
 
 def _should_ignore_pod(*, title: str, pod_id: str) -> bool:
-    """Return whether the existing pod filters should exclude a pod."""
-    if "plot" in pod_id.lower() or pod_id == "ImagePod:GraphData":
+    """Keep plot pods even when their titles match the exclusion list."""
+    if _is_plot_pod(pod_id):
         return False
     return title in WOLFRAM_IGNORED_TITLES or any(
         pattern in title for pattern in WOLFRAM_IGNORED_PATTERNS
@@ -169,7 +173,7 @@ def _has_displayable_content(subpods: Sequence[SubPod]) -> bool:
 
 
 def _parse_pod(element: Element) -> Pod | None:
-    """Parse one displayable pod while preserving the existing filters."""
+    """Parse a pod with displayable content unless its title is excluded."""
     title = element.get("title", "")
     pod_id = element.get("id", "")
     if _should_ignore_pod(title=title, pod_id=pod_id):

@@ -155,11 +155,17 @@ class QueuePaginationAdapter(PaginationData):
         return max(1, len(self._paginator.pages))
 
     def _build_paginator(self, snapshot: QueueSnapshot) -> TextPaginator:
+        lines: list[str] = []
+        for index, entry in enumerate(snapshot.queue, 1):
+            prefix = f"{index}. "
+            link = format_track_link(
+                entry.track.title,
+                entry.track.uri,
+                max_length=config.MAX_EMBED_FIELD_LENGTH - len(prefix),
+            )
+            lines.append(f"{prefix}{link}")
         return TextPaginator(
-            [
-                f"{i}. {format_track_link(entry.track.title, entry.track.uri)}"
-                for i, entry in enumerate(snapshot.queue, 1)
-            ],
+            lines,
             page_size=self.page_size,
             max_length=config.MAX_EMBED_FIELD_LENGTH,
             separator="\n",

@@ -34,7 +34,7 @@ ANIMATED_TIERS = frozenset(
         LevelTier.TRANSCENDENT,
     )
 )
-MEDIA_LIMIT = 5 * 1024 * 1024
+MEDIA_BYTE_LIMIT = 5 * 1024 * 1024
 
 
 class RenderBusyError(RuntimeError):
@@ -110,7 +110,7 @@ class ProfileMediaRenderer:
             return ProfileMedia(png, "png")
         try:
             data = encode_webp(prepared)
-            if len(data) > MEDIA_LIMIT:
+            if len(data) > MEDIA_BYTE_LIMIT:
                 raise ValueError("WebP exceeds media budget")
             logger.info(
                 "Profile rendered: tier=%s prepare=%.3fs total=%.3fs bytes=%d",

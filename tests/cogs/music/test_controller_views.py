@@ -16,6 +16,14 @@ from framework.feedback_ui import FeedbackType, FeedbackUI
 from tests.api.music.helpers import make_entry
 
 
+def _interaction() -> MagicMock:
+    item = MagicMock()
+    item.client = MagicMock()
+    item.client.block_manager = MagicMock()
+    item.client.block_manager.is_user_blocked = AsyncMock(return_value=False)
+    return item
+
+
 class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
     async def test_stale_view_stop_does_not_remove_new_controller(self) -> None:
         manager = TrackControllerManager(MagicMock(), MagicMock())
@@ -407,6 +415,17 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         )
         return button
 
+    def test_embed_bounds_title_and_identifies_requester(self) -> None:
+        attempt = PlaybackAttempt(1, make_entry("x" * 500))
+        view, player, _ = self._make_view(attempt)
+        player.guild.get_member.return_value = MagicMock(display_name="Listener")
+        embed = view.make_embed()
+        self.assertLessEqual(len(embed.title or ""), 256)
+        self.assertEqual(embed.footer.text, "Запросил: Listener")
+        player.guild.get_member.return_value = None
+        self.assertEqual(view.make_embed().footer.text, "Запросил: 10")
+        view.stop()
+
     def test_view_stores_exact_playback_attempt(self) -> None:
         attempt = PlaybackAttempt(1, make_entry("track"))
         view, _, _ = self._make_view(attempt)
@@ -422,7 +441,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             MagicMock(current_attempt=attempt),
             on_stop=on_stop,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 10
 
         with (
@@ -450,7 +469,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         attempt = PlaybackAttempt(1, make_entry("track"))
         view, player, _ = self._make_view(attempt)
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 99
 
         with (
@@ -477,7 +496,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
     async def test_owner_denial_http_error_is_best_effort(self) -> None:
         attempt = PlaybackAttempt(1, make_entry("track"))
         view, player, _ = self._make_view(attempt)
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 99
         response = MagicMock(status=500, reason="test")
         error = discord.HTTPException(response, "failed")
@@ -510,7 +529,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         view, player, _ = self._make_view(attempt, player)
         player.seek_attempt = AsyncMock(side_effect=seek)
         safe_update = AsyncMock()
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 10
 
         async def acknowledge(_interaction: object) -> None:
@@ -552,7 +571,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
                 )
                 view, player, _ = self._make_view(attempt, player)
                 safe_update = AsyncMock()
-                interaction = MagicMock()
+                interaction = _interaction()
                 interaction.user.id = 10
 
                 with (
@@ -578,7 +597,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         view._frozen_position = 15_000
         view._pause_start_time = 123.0
         safe_update = AsyncMock()
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 10
 
         with (
@@ -616,7 +635,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         player.toggle_pause_for_attempt = AsyncMock(
             side_effect=aiohttp.ClientConnectionError("down")
         )
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 10
 
         with (
@@ -643,7 +662,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         player = MagicMock(current_attempt=attempt, paused=False, position=12_000)
         view, player, _ = self._make_view(attempt, player)
         safe_update = AsyncMock()
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 10
 
         with (
@@ -692,7 +711,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         view._frozen_position = 8_000
         view._pause_start_time = 10.0
         safe_update = AsyncMock()
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 10
 
         with (
@@ -718,7 +737,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         attempt = PlaybackAttempt(1, make_entry("track"))
         view, player, on_stop = self._make_view(attempt)
         player.skip.return_value = (None, None)
-        interaction = MagicMock()
+        interaction = _interaction()
         interaction.user.id = 10
 
         with patch(
@@ -746,7 +765,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             on_stop_callback=on_stop,
             on_player_failure=on_player_failure,
         )
-        interaction = MagicMock()
+        interaction = _interaction()
 
         with (
             patch("cogs.music.views.controller.logger.exception") as log_exception,

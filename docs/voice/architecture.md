@@ -6,18 +6,17 @@ the bot was offline or disconnected.
 ## Collection and storage
 
 `VoiceCollectorCog` converts raw Discord observations and snapshots into facts.
-`VoiceJournal` owns their queue, writer and file maintenance. `build_timeline()`
-reconstructs history without Discord or file I/O; scoped queries calculate
+`VoiceJournal` owns their queue and writer; `VoiceRepository` commits typed facts
+through the shared application Database. `build_timeline()` reconstructs history
+without Discord or storage I/O; scoped queries calculate
 presence, companions, activity and XP from that timeline.
 
-Each journal root has one writer per process. Received, queued and persisted
-counts are distinct: only a successful flushed and fsynced append advances the
-persisted count. Shutdown drains admitted records. Cancelling a shutdown waiter
-does not cancel the physical write.
-
-New records use schema v2 and live under
-`data/voice_probe/v2/{session,guild_ID}/events_YYYY-MM-DD.jsonl`, rotated by UTC
-observation date. Global lifecycle records use the `session` scope.
+One queue owner feeds the shared database. Received, accepted and persisted counts
+are distinct: only acknowledged committed batches advance persisted telemetry.
+A separate scoped read revision changes atomically with published facts. Shutdown
+drains accepted records before engine disposal; cancellation of its caller does
+not release ownership of the write. SQL batch IDs resolve identical retries and
+reject changed content. The runtime has one schema, governed by Alembic.
 
 | Kind | Payload |
 | --- | --- |
@@ -27,7 +26,7 @@ observation date. Global lifecycle records use the `session` scope.
 | `checkpoint` | Liveness timestamp |
 | `lifecycle` | Stopped flag |
 
-Every record carries `schema_version`, `sequence`, `boot_id`, `observed_at`,
+Every record carries `sequence`, `boot_id`, `observed_at`,
 `monotonic`, `guild_id` and `kind`. A null guild denotes a global record. Wall
 clock timestamps are UTC; monotonic time detects clock discontinuities. Within
 a boot, sequence determines record order. Boots use their earliest wall time;
@@ -39,8 +38,9 @@ and AFK status. Unknown fields remain `None`. A known null channel means leave;
 `channel_known=False` means the channel is unresolved.
 
 A raw requested-to-speak timestamp means `True`, explicit null means `False`,
-and an absent field stays unknown. Earlier v2 records without the explicit
-boolean still decode, but a null timestamp alone cannot establish `False`.
+and an absent field stays unknown. The offline importer maps earlier records
+without the explicit boolean to unknown; a null timestamp alone cannot establish
+`False`.
 AFK comes from the channel ID and available guild AFK configuration; without that
 configuration it stays unknown.
 
@@ -49,7 +49,8 @@ configuration it stays unknown.
 A timeline contains room intervals, observation coverage and gaps. Intervals are
 half-open: their start is included and their end excluded. Only an authoritative
 full snapshot opens or restores coverage for its guild. An empty snapshot also
-establishes coverage; a checkpoint or cache snapshot does not.
+establishes coverage; a checkpoint does not. A cache snapshot is authoritative
+only when all channel identities are resolved.
 
 Voice changes split intervals at their observation timestamps. Disconnects,
 clock changes, boot changes and lost writes interrupt coverage. A full snapshot
@@ -63,15 +64,14 @@ telemetry. Gaps are removed from room time and coverage, including retrospective
 and overlapping gaps. Nothing is extrapolated after the final observation.
 
 Queue overflow records the affected guild and earliest known lost timestamp.
-It does not invalidate other guilds. A failed disk batch may partially write
-multiple files, so it creates a conservative global gap. Failed batches are not
-retried or counted as persisted; shutdown reports the failure even if later
-batches recover.
+It does not invalidate other guilds. A failed/uncertain batch creates a
+conservative global gap; its SQL envelopes, states and revision are atomic.
+Failed queue batches are not retried or counted as persisted; shutdown reports
+the failure even if later batches recover.
 
 Timeline reconstruction needs the relevant guild and session records, including
-preceding full snapshots. Readers reject corruption and unknown schemas rather
-than silently skipping facts. Recover damaged files from copies; the writer does
-not rewrite them.
+preceding full snapshots. Startup rejects incompatible database revisions; readers
+reject invalid stored variants.
 
 ## Sessions and companions
 
@@ -99,26 +99,21 @@ Activity arithmetic uses elapsed UTC seconds, while hour, weekday and date
 buckets use the requested timezone, default UTC. Repeated DST hours accumulate
 in one bucket; skipped hours receive no time.
 
-## Compression, retention and older records
+## Retention and older records
 
-Finished v2 days are compressed losslessly. `VOICE_PROBE_RETENTION_DAYS` defaults
-to `None`, retaining all history. An explicit positive retention period deletes
-v2 files dated strictly before `today - retention_days`. Without persistent
-aggregates, pruning also limits future all-time statistics to retained history.
-
-Legacy journals under the original root remain read-only. Their events map to
-observations, presence maps to snapshots and heartbeat-only records to checkpoints.
-Missing population maps cannot establish coverage. Legacy resume/drop/clock/drift
-markers map to gaps; missing lower bounds conservatively invalidate from the
-boot's first record. Missing flags, populations and event timestamps cannot be
-recovered. Legacy files are never compressed or pruned by the v2 writer.
+SQLite facts are retained indefinitely. The one-shot importer reads the original
+and v2 JSONL/gzip formats
+from offline copies; it rejects conflicting alternate files and unknown schemas.
+Legacy events map to observations, presence maps to snapshots and heartbeats to
+checkpoints. Missing population/flags remain unknown. Resume/drop/clock/drift
+markers map to conservative gaps. The original files remain untouched. See [storage operations](../../repositories/sqlite/README.md).
 
 ## Discord integration
 
 The bot enables `on_socket_raw_receive` through the public `enable_debug_events`
 client option when `VOICE_PROBE_ENABLED=true`. The collector's sole private API
 access is `guild._voice_states`, needed to retain unresolved channel IDs in cache
-snapshots. Those snapshots remain non-authoritative.
+snapshots. Unresolved channel IDs make a snapshot non-authoritative.
 
 The ordinary Cog loader discovers the collector and profile command. Collector
 shutdown drains the journal; profile shutdown drains media work and closes its

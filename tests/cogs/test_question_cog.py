@@ -1,131 +1,81 @@
-"""Tests for question-history persistence."""
-
-from __future__ import annotations
+"""Question history returns the committed winner and protects the RAM answer queue."""
 
 import asyncio
 import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from typing import Any, cast, override
+from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from discord.app_commands import CommandInvokeError
+from sqlalchemy import select
+
 from cogs.question_cog import QuestionCog
-from utils.json_store import AsyncJsonFileStore
+from repositories.question_repository import QuestionRepository
+from repositories.sqlite.schema import question_answers
+from tests.storage import temporary_database
 from utils.text_utils import str_local
 
 
 class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncSetUp(self) -> None:
-        self.temp_dir = TemporaryDirectory()
-        self.addCleanup(self.temp_dir.cleanup)
-        self.store = AsyncJsonFileStore(
-            Path(self.temp_dir.name) / "answers.json", backup_amount=0
-        )
-        self.cog = QuestionCog(MagicMock())
-        self.cog._history_store = self.store
+        _, self.database = await temporary_database(self)
+        self.repository = QuestionRepository(self.database)
+        self.cog = QuestionCog(MagicMock(), self.repository)
 
     async def test_returns_existing_answer_without_rewriting_it(self) -> None:
-        first = await self.cog._add_to_history("1", "Question?", "answer")
-        second = await self.cog._add_to_history("1", "Question?", "other")
-
-        self.assertIsNone(first)
-        self.assertEqual(second, "answer")
-        data = await self.store.read()
-        self.assertEqual(data["1"], {str_local("Question?"): "answer"})
-
-    async def test_different_questions_are_both_preserved(self) -> None:
-        await self.cog._add_to_history("1", "First?", "yes")
-        await self.cog._add_to_history("1", "Second?", "no")
-
-        data = await self.store.read()
+        self.assertIsNone(await self.cog._add_to_history(1, "Question?", "answer"))
         self.assertEqual(
-            data["1"],
-            {
-                str_local("First?"): "yes",
-                str_local("Second?"): "no",
-            },
+            await self.cog._add_to_history(1, "Question?", "other"), "answer"
+        )
+        async with self.database.transaction() as connection:
+            rows = (
+                await connection.execute(
+                    select(
+                        question_answers.c.user_id,
+                        question_answers.c.normalized_question,
+                        question_answers.c.answer,
+                    )
+                )
+            ).all()
+        self.assertEqual(rows, [(1, str_local("Question?"), "answer")])
+
+    async def test_concurrent_insert_returns_one_committed_winner(self) -> None:
+        results = await asyncio.gather(
+            *(self.repository.answer(1, "same", str(index)) for index in range(8))
+        )
+        self.assertEqual(sum(inserted for _, inserted in results), 1)
+        self.assertEqual(len({answer for answer, _ in results}), 1)
+        self.assertEqual(
+            await self.repository.answer(2, "same", "different user"),
+            ("different user", True),
         )
 
-    async def test_invalid_user_record_is_preserved(self) -> None:
-        await self.store.write({"1": "invalid"})
-
-        with self.assertRaisesRegex(ValueError, "invalid user record"):
-            await self.cog._add_to_history("1", "Question?", "answer")
-
-        self.assertEqual(await self.store.read(), {"1": "invalid"})
-
-    async def test_ask_log_contains_full_question(self) -> None:
+    async def test_failed_persistence_does_not_advance_queue_or_respond(self) -> None:
+        self.cog.answers = ["first", "second"]
         interaction = MagicMock()
         interaction.user.id = 1
-        interaction.user.__str__.return_value = "question-author"
         interaction.response.send_message = AsyncMock()
-        self.cog.answers = ["answer"]
+        with patch.object(
+            self.repository, "answer", side_effect=OSError("unavailable")
+        ):
+            with self.assertRaises(CommandInvokeError) as failure:
+                await self.cog.q._do_call(interaction, {"text": "Question?"})
+        self.assertIsInstance(failure.exception.original, OSError)
+        self.assertEqual(self.cog.answers, ["first", "second"])
+        interaction.response.send_message.assert_not_awaited()
 
-        with patch("cogs.question_cog.logger.info") as log_info:
-            await cast(Any, QuestionCog.q).callback(
-                self.cog,
-                interaction,
-                text="Полный текст вопроса?",
-            )
-
-        rendered = [
-            cast(str, call.args[0]) % call.args[1:] for call in log_info.call_args_list
-        ]
-        self.assertTrue(
-            any("Полный текст вопроса?" in record for record in rendered),
-            rendered,
+    async def test_concurrent_questions_send_the_answer_they_commit(self) -> None:
+        self.cog.answers = ["first", "second"]
+        items = [MagicMock(), MagicMock()]
+        for index, item in enumerate(items, start=1):
+            item.user.id = index
+            item.response.send_message = AsyncMock()
+        await asyncio.gather(
+            *(self.cog.q._do_call(item, {"text": "Question?"}) for item in items)
         )
-
-    async def test_concurrent_new_questions_store_the_answers_they_send(self) -> None:
-        self.cog.answers = ["answer-one", "answer-two"]
-        first_waiting = asyncio.Event()
-        release_first = asyncio.Event()
-        second_started = asyncio.Event()
-        original_add = self.cog._add_to_history
-
-        async def coordinated_add(
-            user_id: str, question: str, answer: str
-        ) -> str | None:
-            if user_id == "1":
-                first_waiting.set()
-                await release_first.wait()
-            return await original_add(user_id, question, answer)
-
-        def make_interaction(user_id: int) -> tuple[MagicMock, AsyncMock]:
-            interaction = MagicMock()
-            interaction.user.id = user_id
-            send = AsyncMock()
-            interaction.response.send_message = send
-            return interaction, send
-
-        async def invoke(
-            interaction: MagicMock, text: str, started: asyncio.Event | None = None
-        ) -> None:
-            if started is not None:
-                started.set()
-            await cast(Any, QuestionCog.q).callback(self.cog, interaction, text=text)
-
-        first_interaction, first_send = make_interaction(1)
-        second_interaction, second_send = make_interaction(2)
-
-        with patch.object(self.cog, "_add_to_history", side_effect=coordinated_add):
-            first = asyncio.create_task(invoke(first_interaction, "First?"))
-            await asyncio.wait_for(first_waiting.wait(), timeout=2)
-            second = asyncio.create_task(
-                invoke(second_interaction, "Second?", second_started)
+        for index, item in enumerate(items, start=1):
+            answer, inserted = await self.repository.answer(
+                index, str_local("Question?"), "must not replace"
             )
-            await asyncio.wait_for(second_started.wait(), timeout=2)
-            release_first.set()
-            await asyncio.wait_for(asyncio.gather(first, second), timeout=2)
-
-        first_call = first_send.await_args
-        second_call = second_send.await_args
-        if first_call is None or second_call is None:
-            self.fail("expected both question responses to be sent")
-
-        data = await self.store.read()
-        first_history = cast(dict[str, object], data["1"])
-        second_history = cast(dict[str, object], data["2"])
-        self.assertEqual(first_history[str_local("First?")], first_call.args[0])
-        self.assertEqual(second_history[str_local("Second?")], second_call.args[0])
+            self.assertFalse(inserted)
+            item.response.send_message.assert_awaited_once_with(answer)

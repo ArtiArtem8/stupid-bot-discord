@@ -1,7 +1,5 @@
 # Contributing to StupidBot
 
-Keep the change focused. A small fix does not need to become an architecture rewrite.
-
 ## Setup
 
 ```bash
@@ -38,11 +36,10 @@ with limited resources.
 
 ## Commit Messages
 
-Use imperative messages with a reasonable scope, like `Fix birthday reminder timezone`.
+Use a conventional prefix and an imperative summary, such as
+`fix: correct birthday reminder timezone` or `refactor: simplify profile formatting`.
 
 Voice subsystem invariants and schema: [architecture](docs/voice/architecture.md).
 
-Voice Profile Studio is a separate design/QA project. Approved runtime assets are
-ported explicitly; its editor, benchmarks and parity suite do not run inside the
-bot. See [profile card maintenance](docs/voice/profile-card.md) for the native
-smoke check and asset update procedure.
+See [profile card maintenance](docs/voice/profile-card.md) for artwork updates
+and the native rendering check.

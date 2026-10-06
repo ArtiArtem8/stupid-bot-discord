@@ -120,7 +120,7 @@ class NativeRasterizer:
         ):
             raise RuntimeError(
                 "Required Inter fonts are missing; check resources/fonts "
-                + "or PROFILE_FONT_DIR"
+                "or PROFILE_FONT_DIR"
             )
         for name in ("Inter.ttf", "Inter-600.ttf", "Inter-750.ttf"):
             ImageFont.truetype(str(self.font_dir / name), 16)
@@ -167,10 +167,8 @@ class NativeRasterizer:
             except Empty as error:
                 raise RuntimeError("Inkscape shell timed out") from error
             if chunk is None:
-                raise RuntimeError(
-                    "Inkscape shell closed unexpectedly: "
-                    + data[-1800:].decode("utf-8", "replace")
-                )
+                diagnostic = data[-1800:].decode("utf-8", "replace")
+                raise RuntimeError(f"Inkscape shell closed unexpectedly: {diagnostic}")
             data.extend(chunk)
             if len(data) > 8 * 1024 * 1024:
                 raise RuntimeError("Inkscape shell output exceeded its budget")
@@ -237,7 +235,7 @@ class NativeRasterizer:
                 process = self._process or self._start_shell()
                 if process.stdin is None:
                     raise RuntimeError("Inkscape input pipe is unavailable")
-                _ = process.stdin.write((";".join(actions) + "\n").encode("utf-8"))
+                _ = process.stdin.write((f"{';'.join(actions)}\n").encode())
                 process.stdin.flush()
                 return self._wait_prompt()
             except (OSError, RuntimeError):

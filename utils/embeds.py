@@ -55,7 +55,7 @@ class SafeEmbed(discord.Embed):
     Construction and setter overrides truncate supported text fields. Field
     helpers truncate per-field content and check field-count and aggregate
     budgets. Exhausted budgets raise a limit-specific error in strict mode; in
-    non-strict mode, a field is omitted or its value is truncated.
+    non-strict mode, a field is omitted or its name and value are truncated.
     """
 
     def __init__(
@@ -68,23 +68,30 @@ class SafeEmbed(discord.Embed):
         self._limits = limits
 
         if self.title:
-            self.title = truncate_text(self.title, self._limits.title)
+            self.title = truncate_text(self.title, min(limits.title, limits.max_total))
         if self.description:
-            self.description = truncate_text(self.description, self._limits.description)
+            self.description = truncate_text(
+                self.description,
+                min(limits.description, limits.max_total - len(self.title or "")),
+            )
 
     @override
     def set_footer(
         self, *, text: str | None = None, icon_url: str | None = None
     ) -> Self:
         if text is not None:
-            text = truncate_text(str(text), self._limits.footer)
+            remaining = self._limits.max_total - len(self) + len(self.footer.text or "")
+            text = truncate_text(str(text), max(0, min(self._limits.footer, remaining)))
         return super().set_footer(text=text, icon_url=icon_url)
 
     @override
     def set_author(
         self, *, name: str, url: str | None = None, icon_url: str | None = None
     ) -> Self:
-        name = truncate_text(str(name), self._limits.author_name)
+        remaining = self._limits.max_total - len(self) + len(self.author.name or "")
+        name = truncate_text(
+            str(name), max(0, min(self._limits.author_name, remaining))
+        )
         return super().set_author(name=name, url=url, icon_url=icon_url)
 
     def safe_add_field(
@@ -120,6 +127,7 @@ class SafeEmbed(discord.Embed):
         if projected > self._limits.max_total:
             if strict:
                 raise CharacterLimitExceededError(self._limits.max_total)
+            name = truncate_text(name, max(0, self._limits.max_total - len(self)))
             remaining = max(0, self._limits.max_total - (len(self) + len(name)))
             value = truncate_text(value, min(self._limits.field_value, remaining))
 

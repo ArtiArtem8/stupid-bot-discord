@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import NotRequired, Self, TypedDict
+from typing import TypedDict
 
 import discord
 
@@ -24,21 +24,16 @@ class BirthdayListEntry(TypedDict):
     user_id: int
 
 
-class BirthdayUserDict(TypedDict):
-    """Stored JSON shape for one birthday user."""
+@dataclass(frozen=True, slots=True)
+class BirthdayDelivery:
+    """A durable claim for one calendar-day send using specific saved versions."""
 
-    name: str
-    birthday: str
-    was_congrats: NotRequired[list[str]]
-
-
-class BirthdayGuildDict(TypedDict):
-    """Stored JSON shape for one guild's birthday configuration."""
-
-    Server_name: str
-    Channel_id: str
-    Users: dict[str, BirthdayUserDict]
-    Birthday_role: NotRequired[str | None]
+    operation_id: str
+    guild_id: int
+    user_id: int
+    today: date
+    settings_version: int
+    birthday_version: int
 
 
 @dataclass
@@ -49,6 +44,7 @@ class BirthdayUser:
     name: str
     birthday: str
     was_congrats: list[str] = field(default_factory=list[str])
+    version: int = 1
 
     def has_birthday(self) -> bool:
         return bool(self.birthday and len(self.birthday) == 10)
@@ -76,22 +72,6 @@ class BirthdayUser:
     def clear_birthday(self) -> None:
         self.birthday = ""
 
-    def to_dict(self) -> BirthdayUserDict:
-        return {
-            "name": self.name,
-            "birthday": self.birthday,
-            "was_congrats": self.was_congrats.copy(),
-        }
-
-    @classmethod
-    def from_dict(cls, user_id: int, data: BirthdayUserDict) -> Self:
-        return cls(
-            user_id=user_id,
-            name=data["name"],
-            birthday=data["birthday"],
-            was_congrats=data.get("was_congrats", []),
-        )
-
 
 @dataclass
 class BirthdayGuildConfig:
@@ -99,9 +79,10 @@ class BirthdayGuildConfig:
 
     guild_id: int
     server_name: str
-    channel_id: int
+    channel_id: int | None
     users: dict[int, BirthdayUser] = field(default_factory=dict[int, BirthdayUser])
     birthday_role_id: int | None = None
+    version: int = 1
 
     def get_user(self, user_id: int) -> BirthdayUser | None:
         return self.users.get(user_id)
@@ -131,16 +112,6 @@ class BirthdayGuildConfig:
             if is_birthday_today(user.birthday, today)
             and not user.was_congratulated_today(today)
         ]
-
-    def to_dict(self) -> BirthdayGuildDict:
-        return {
-            "Server_name": self.server_name,
-            "Channel_id": str(self.channel_id),
-            "Users": {str(uid): u.to_dict() for uid, u in self.users.items()},
-            "Birthday_role": str(self.birthday_role_id)
-            if self.birthday_role_id is not None
-            else None,
-        }
 
     async def get_sorted_birthday_list(
         self, guild: discord.Guild, reference_date: date, logger: logging.Logger
@@ -220,24 +191,3 @@ class BirthdayGuildConfig:
             len(entries),
         )
         return entries
-
-    @classmethod
-    def from_dict(cls, guild_id: int, data: BirthdayGuildDict) -> Self:
-        users_data = data["Users"]
-        users = {
-            int(uid): BirthdayUser.from_dict(int(uid), data)
-            for uid, data in users_data.items()
-        }
-        birthday_role_raw = data.get("Birthday_role")
-        birthday_role_id = (
-            int(birthday_role_raw)
-            if birthday_role_raw and birthday_role_raw.isdigit()
-            else None
-        )
-        return cls(
-            guild_id=guild_id,
-            server_name=data["Server_name"],
-            channel_id=int(data["Channel_id"]),
-            users=users,
-            birthday_role_id=birthday_role_id,
-        )

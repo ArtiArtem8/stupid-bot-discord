@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from api.blocking import block_manager
+from api.blocking import BlockManager
 from cogs.command.no_prefix_cog import PrefixBlockerCog
 
 
@@ -22,9 +22,10 @@ class TestPrefixAuthorization(unittest.IsolatedAsyncioTestCase):
                 message = MagicMock(spec=discord.Message, content=content)
                 message.author = MagicMock(spec=discord.Member, id=10, bot=False)
                 message.guild = MagicMock(spec=discord.Guild, id=42)
-                cog = PrefixBlockerCog(bot)
+                manager = MagicMock(spec=BlockManager)
+                cog = PrefixBlockerCog(bot, manager)
                 with patch.object(
-                    block_manager, "is_user_blocked", new=AsyncMock(return_value=True)
+                    manager, "is_user_blocked", new=AsyncMock(return_value=True)
                 ) as blocked:
                     await cog.on_message(message)
                 blocked.assert_not_awaited()
@@ -40,9 +41,10 @@ class TestPrefixAuthorization(unittest.IsolatedAsyncioTestCase):
         message = MagicMock(spec=discord.Message, content="!play")
         message.author = MagicMock(spec=discord.Member, id=10, bot=False)
         message.guild = MagicMock(spec=discord.Guild, id=42)
-        cog = PrefixBlockerCog(bot)
+        manager = MagicMock(spec=BlockManager)
+        cog = PrefixBlockerCog(bot, manager)
         with patch.object(
-            block_manager, "is_user_blocked", new=AsyncMock(return_value=True)
+            manager, "is_user_blocked", new=AsyncMock(return_value=True)
         ) as blocked:
             await cog.on_message(message)
         blocked.assert_awaited_once_with(42, 10)
@@ -71,10 +73,11 @@ class TestPrefixAuthorization(unittest.IsolatedAsyncioTestCase):
                 message.guild = (
                     MagicMock(spec=discord.Guild, id=42) if in_guild else None
                 )
-                cog = PrefixBlockerCog(bot)
+                manager = MagicMock(spec=BlockManager)
+                cog = PrefixBlockerCog(bot, manager)
                 with (
                     patch.object(
-                        block_manager,
+                        manager,
                         "is_user_blocked",
                         new=AsyncMock(return_value=False),
                     ) as blocked,

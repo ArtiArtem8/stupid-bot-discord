@@ -19,6 +19,7 @@ from api.music.models import (
 from api.music.player import MusicPlayer
 from api.music.queue import QueueManager, RepeatManager
 from api.music.service.state_manager import StateManager
+from api.music.volume import VolumeSettings
 from tests.api.music.helpers import make_entry
 
 
@@ -33,6 +34,12 @@ def _route_player_invalidation(connection: MagicMock) -> None:
         await connection.detach_stale_voice_client(player.guild, player)
 
     connection.invalidate_player = AsyncMock(side_effect=invalidate)
+
+
+def _volumes() -> VolumeSettings:
+    repository = MagicMock()
+    repository.get_volume = AsyncMock(return_value=50)
+    return VolumeSettings(repository)
 
 
 def _snapshot() -> PlayerStateSnapshot:
@@ -70,15 +77,10 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         _route_player_invalidation(connection)
         connection.is_player_usable.return_value = True
         connection.detach_stale_voice_client = AsyncMock()
-
-        async def invalidate(player: MusicPlayer, **_kwargs: object) -> None:
-            await connection.detach_stale_voice_client(player.guild, player)
-
-        connection.invalidate_player = AsyncMock(side_effect=invalidate)
         ui = MagicMock()
         ui.controller.destroy_for_guild = AsyncMock()
         ui.spawn_controller = AsyncMock()
-        healer = SessionHealer(MagicMock(), connection, StateManager(), MagicMock(), ui)
+        healer = SessionHealer(MagicMock(), connection, StateManager(), _volumes(), ui)
         return healer, connection, ui
 
     def test_youtube_source_identification_uses_track_source_only(self) -> None:
@@ -128,7 +130,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         connection.invalidate_player = AsyncMock()
         ui = MagicMock()
         ui.controller.destroy_for_guild = AsyncMock()
-        healer = SessionHealer(MagicMock(), connection, StateManager(), MagicMock(), ui)
+        healer = SessionHealer(MagicMock(), connection, StateManager(), _volumes(), ui)
         attempt = PlaybackAttempt(1, make_entry("expected"))
         player = MagicMock(
             current_attempt=attempt,
@@ -220,7 +222,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         connection.detach_stale_voice_client = AsyncMock()
         ui = MagicMock()
         ui.controller.destroy_for_guild = AsyncMock()
-        healer = SessionHealer(MagicMock(), connection, StateManager(), MagicMock(), ui)
+        healer = SessionHealer(MagicMock(), connection, StateManager(), _volumes(), ui)
         expected = PlaybackAttempt(1, make_entry("same", entry_id=1))
         replacement = PlaybackAttempt(2, make_entry("same", entry_id=2))
         player = MagicMock(
@@ -264,7 +266,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         connection.detach_stale_voice_client = AsyncMock(side_effect=detach_old)
         ui = MagicMock()
         ui.controller.destroy_for_guild = AsyncMock()
-        healer = SessionHealer(MagicMock(), connection, StateManager(), MagicMock(), ui)
+        healer = SessionHealer(MagicMock(), connection, StateManager(), _volumes(), ui)
 
         with patch("api.music.healer.asyncio.sleep", new=AsyncMock()):
             restored = await healer._confirm_restored_track_active(
@@ -663,7 +665,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         state = StateManager()
         ui = MagicMock()
         ui.spawn_controller = AsyncMock()
-        healer = SessionHealer(bot, connection, state, MagicMock(), ui)
+        healer = SessionHealer(bot, connection, state, _volumes(), ui)
 
         channel = MagicMock(spec=VoiceChannel)
 
@@ -700,7 +702,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
             current_entry=entry,
             position=100,
             is_paused=False,
-            volume=50,
+            volume=12,
             queue=(),
             repeat_mode=RepeatMode.OFF,
             session=None,
@@ -723,7 +725,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         _route_player_invalidation(connection)
         ui = MagicMock()
         ui.spawn_controller = AsyncMock()
-        healer = SessionHealer(bot, connection, StateManager(), MagicMock(), ui)
+        healer = SessionHealer(bot, connection, StateManager(), _volumes(), ui)
         guild = MagicMock()
         channel = MagicMock(spec=VoiceChannel)
         guild.get_channel.return_value = channel
@@ -779,7 +781,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         ui = MagicMock()
         ui.spawn_controller = AsyncMock()
         ui.controller.destroy_for_guild = AsyncMock()
-        healer = SessionHealer(bot, connection, state, MagicMock(), ui)
+        healer = SessionHealer(bot, connection, state, _volumes(), ui)
         guild = MagicMock()
         guild.id = 1
         channel = MagicMock(spec=VoiceChannel)
@@ -840,7 +842,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         ui = MagicMock()
         ui.spawn_controller = AsyncMock()
         ui.controller.destroy_for_guild = AsyncMock()
-        healer = SessionHealer(MagicMock(), connection, StateManager(), MagicMock(), ui)
+        healer = SessionHealer(MagicMock(), connection, StateManager(), _volumes(), ui)
         guild = MagicMock()
         attempt = PlaybackAttempt(1, make_entry("expected"))
         player = MagicMock(
@@ -869,7 +871,7 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         state = StateManager()
         ui = MagicMock()
         ui.spawn_controller = AsyncMock()
-        healer = SessionHealer(bot, connection, state, MagicMock(), ui)
+        healer = SessionHealer(bot, connection, state, _volumes(), ui)
         old = PlaybackAttempt(7, make_entry("old", requester_id=99))
         state.record_track_start(1, old)
         guild = MagicMock()

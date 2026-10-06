@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Collection
-from datetime import date, datetime
+from datetime import datetime
 
 import discord
 
@@ -155,12 +155,12 @@ class BirthdayManager:
         self,
         guild_id: int,
         server_name: str,
-        channel_id: int,
+        channel_id: int | None,
         user_id: int,
         user_name: str,
         birthday: str,
-    ) -> BirthdayGuildConfig:
-        return await self.repo.set_user_birthday(
+    ) -> None:
+        await self.repo.set_user_birthday(
             guild_id,
             server_name,
             channel_id,
@@ -175,32 +175,17 @@ class BirthdayManager:
         server_name: str,
         channel_id: int,
         birthday_role_id: int | None,
-    ) -> BirthdayGuildConfig:
-        return await self.repo.configure_guild(
+    ) -> None:
+        await self.repo.configure_guild(
             guild_id, server_name, channel_id, birthday_role_id
         )
 
     async def clear_user_birthday(
-        self, guild_id: int, user_id: int
+        self, guild_id: int, user_id: int, *, expected_version: int
     ) -> tuple[bool, bool]:
-        return await self.repo.clear_user_birthday(guild_id, user_id)
-
-    async def record_congratulation(
-        self, guild_id: int, user_id: int, congratulation_date: date
-    ) -> bool:
-        return await self.repo.record_congratulation(
-            guild_id, user_id, congratulation_date
+        return await self.repo.clear_user_birthday(
+            guild_id, user_id, expected_version=expected_version
         )
-
-    async def delete_guild_config(self, guild_id: int) -> bool:
-        existing = await self.repo.get(guild_id)
-        if existing:
-            await self.repo.delete(guild_id)
-            return True
-        return False
 
     async def get_all_guild_ids(self) -> list[int]:
         return await self.repo.get_all_guild_ids()
-
-
-birthday_manager = BirthdayManager(BirthdayRepository())

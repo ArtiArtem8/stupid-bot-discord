@@ -1,13 +1,15 @@
-from __future__ import annotations
+"""Persist guild volume intent through the application's shared database."""
 
 from dataclasses import dataclass
-from typing import override
+from typing import Protocol
+
+from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert
 
 import config
-from repositories.base_repository import BaseRepository
-from repositories.json_object_store import JsonObjectStore
-from utils.json_store import AsyncJsonFileStore
-from utils.json_types import JsonObject
+from repositories.sqlite.database import Database
+from repositories.sqlite.identity import discord_id, ensure_guild
+from repositories.sqlite.schema import music_settings
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,58 +20,66 @@ class VolumeData:
     volume: int
 
 
-class VolumeRepository(BaseRepository[VolumeData, int]):
-    """Persist music volume settings through the music subsystem's JSON store."""
-
-    def __init__(self, store: JsonObjectStore | None = None) -> None:
-        self._store = store or AsyncJsonFileStore(config.MUSIC_VOLUME_FILE)
-
-    @override
-    async def get(self, key: int) -> VolumeData | None:
-        """Get guild config by guild_id."""
-        data = await self._store.read()
-        raw = data.get(str(key))
-        if raw is None:
-            return None
-        if isinstance(raw, bool):
-            return None
-        if not isinstance(raw, (int, float, str)):
-            return None
-        try:
-            vol = int(raw)
-        except (ValueError, TypeError):
-            return None
-        return VolumeData(guild_id=key, volume=vol)
-
-    @override
-    async def get_all(self) -> list[VolumeData]:
-        data = await self._store.read()
-        results: list[VolumeData] = []
-        for gid, vol in data.items():
-            if (
-                not gid.isdigit()
-                or not isinstance(vol, (int, str, float))
-                or isinstance(vol, bool)
-            ):
-                continue
-            results.append(VolumeData(guild_id=int(gid), volume=int(vol)))
-        return results
-
-    @override
-    async def save(self, entity: VolumeData, key: int | None = None) -> None:
-        def _upd(d: JsonObject) -> None:
-            d[str(entity.guild_id)] = entity.volume
-
-        await self._store.update(_upd)
-
-    @override
-    async def delete(self, key: int) -> None:
-        def _upd(d: JsonObject) -> None:
-            d.pop(str(key), None)
-
-        await self._store.update(_upd)
+class VolumeStore(Protocol):
+    """Music's persisted volume capability, shared by service and healer."""
 
     async def get_volume(self, guild_id: int) -> int:
-        """Get the volume for a guild, or the default if not set."""
+        """Return the persisted volume or the configured default."""
+        ...
+
+    async def save(self, entity: VolumeData) -> None:
+        """Persist the entity's guild volume before returning."""
+        ...
+
+
+class VolumeRepository:
+    """Own bounded settings queries, without remote playback side effects."""
+
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    async def get(self, key: int) -> VolumeData | None:
+        discord_id(key)
+        async with self._database.transaction() as connection:
+            volume = await connection.scalar(
+                select(music_settings.c.volume).where(music_settings.c.guild_id == key)
+            )
+        return None if volume is None else VolumeData(key, volume)
+
+    async def get_all(self) -> list[VolumeData]:
+        async with self._database.transaction() as connection:
+            rows = await connection.execute(
+                select(music_settings.c.guild_id, music_settings.c.volume).order_by(
+                    music_settings.c.guild_id
+                )
+            )
+            return [VolumeData(guild_id, volume) for guild_id, volume in rows]
+
+    async def save(self, entity: VolumeData) -> None:
+        """Commit desired volume; unchanged intent is a no-op."""
+        _validate_volume(entity.volume)
+        async with self._database.transaction() as connection:
+            await ensure_guild(connection, entity.guild_id)
+            statement = insert(music_settings).values(
+                guild_id=entity.guild_id, volume=entity.volume, version=1
+            )
+            await connection.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[music_settings.c.guild_id],
+                    set_={
+                        "volume": entity.volume,
+                        "version": music_settings.c.version + 1,
+                    },
+                    where=music_settings.c.volume != entity.volume,
+                )
+            )
+
+    async def get_volume(self, guild_id: int) -> int:
+        """Return saved volume, including zero, or the configured default."""
         entity = await self.get(guild_id)
-        return entity.volume if entity else config.MUSIC_DEFAULT_VOLUME
+        return config.MUSIC_DEFAULT_VOLUME if entity is None else entity.volume
+
+
+def _validate_volume(value: object) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 200:
+        raise ValueError("Volume must be an integer between 0 and 200")

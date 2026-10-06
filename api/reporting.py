@@ -2,50 +2,24 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
-from typing import Self, TypedDict, cast, override
+from datetime import UTC, datetime
+from typing import Self, override
 
 import discord
 from discord import DMChannel, Interaction
 from discord.ui import Modal, TextInput
 
 import config
+from api.report_models import ReportDataDict
+from repositories.report_repository import ReportRepository
 from utils.embeds import SafeEmbed
-from utils.json_store import AsyncJsonFileStore
-from utils.json_types import JsonObject, JsonValue
 
 logger = logging.getLogger(__name__)
-_report_store = AsyncJsonFileStore(config.REPORT_FILE)
-
-
-class UserInfoDict(TypedDict):
-    id: int
-    name: str
-    avatar: str | None
-
-
-class GuildInfoDict(TypedDict):
-    id: int | None
-    name: str | None
-
-
-class ChannelInfoDict(TypedDict):
-    id: int | None
-    name: str | None
-
-
-class ReportDataDict(TypedDict):
-    user: UserInfoDict
-    guild: GuildInfoDict
-    channel: ChannelInfoDict
-    reason: str
-    created_at: str
-    report_id: str
 
 
 def _build_report_data(interaction: Interaction, reason: str) -> ReportDataDict:
     """Construct the stored report data."""
-    create_date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    create_date = datetime.now(UTC).isoformat()
 
     channel_name = "Unknown"
     if isinstance(interaction.channel, DMChannel):
@@ -81,7 +55,7 @@ def _create_report_embed(report: ReportDataDict) -> discord.Embed:
     embed = SafeEmbed(
         title="Отчёт",
         color=config.Color.INFO,
-        timestamp=datetime.now(),
+        timestamp=datetime.now(UTC),
     )
     embed.safe_add_field(
         name="Описание",
@@ -110,38 +84,14 @@ def _create_report_embed(report: ReportDataDict) -> discord.Embed:
 
 
 async def submit_report(
-    interaction: Interaction, reason: str
+    repository: ReportRepository, interaction: Interaction, reason: str
 ) -> tuple[ReportDataDict, int | None]:
-    """Persist a report and return its configured notification channel."""
-    report = _build_report_data(interaction, reason)
-    report_channel_id: int | None = None
-
-    def _updater(data: JsonObject) -> None:
-        nonlocal report_channel_id
-        reports = data.get("reports")
-        if reports is None:
-            reports = []
-            data["reports"] = reports
-        elif not isinstance(reports, list):
-            raise ValueError("Report data has an invalid reports list")
-        reports.append(cast(JsonValue, cast(object, report)))
-
-        raw_channel_id = data.get("report_channel_id")
-        if isinstance(raw_channel_id, int) and not isinstance(raw_channel_id, bool):
-            report_channel_id = raw_channel_id
-
-    await _report_store.update(_updater)
-    logger.info("New report: %s", report["report_id"])
-    return report, report_channel_id
-
-
-async def set_report_channel(channel_id: int) -> None:
-    """Persist the developer channel without replacing concurrent reports."""
-
-    def _updater(data: JsonObject) -> None:
-        data["report_channel_id"] = channel_id
-
-    await _report_store.update(_updater)
+    """Commit a deduplicated report before acknowledging or notifying Discord."""
+    result = await repository.submit(
+        _build_report_data(interaction, reason), request_key=str(interaction.id)
+    )
+    logger.info("Report persisted: %s", result[0]["report_id"])
+    return result
 
 
 async def _notify_report(
@@ -151,17 +101,23 @@ async def _notify_report(
         return
 
     channel = interaction.client.get_channel(report_channel_id)
-    if isinstance(channel, discord.abc.Messageable):
-        try:
-            await channel.send(embed=_create_report_embed(report))
-        except discord.HTTPException as exc:
-            logger.warning(
-                "Failed to notify report channel %s for report %s (HTTP %s, code %s)",
-                report_channel_id,
-                report["report_id"],
-                exc.status,
-                exc.code,
-            )
+    if not isinstance(channel, discord.abc.Messageable):
+        logger.warning(
+            "Report notification skipped: report=%s channel=%s unavailable in cache",
+            report["report_id"],
+            report_channel_id,
+        )
+        return
+    try:
+        await channel.send(embed=_create_report_embed(report))
+    except discord.HTTPException as exc:
+        logger.warning(
+            "Failed to notify report channel %s for report %s (HTTP %s, code %s)",
+            report_channel_id,
+            report["report_id"],
+            exc.status,
+            exc.code,
+        )
 
 
 class ReportModal(Modal, title="Отправить отчёт о баге"):
@@ -180,14 +136,19 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
         min_length=10,
     )
 
-    def __init__(self, error_info: str | None = None) -> None:
+    def __init__(
+        self, repository: ReportRepository, error_info: str | None = None
+    ) -> None:
         super().__init__()
+        self._repository = repository
         if error_info:
             self.reason.default = error_info
 
     @override
     async def on_submit(self, interaction: Interaction) -> None:
-        report, report_channel_id = await submit_report(interaction, self.reason.value)
+        report, report_channel_id = await submit_report(
+            self._repository, interaction, self.reason.value
+        )
         embed = SafeEmbed(
             title="Спасибо за отчёт!",
             description=f"-# Ваш персональный ID: `{report['report_id']}`",
@@ -207,7 +168,9 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
 
 
 async def handle_report_button(
-    interaction: discord.Interaction, error_info: str | None = None
+    repository: ReportRepository,
+    interaction: discord.Interaction,
+    error_info: str | None = None,
 ) -> None:
     """Open the report-submission modal."""
-    await interaction.response.send_modal(ReportModal(error_info))
+    await interaction.response.send_modal(ReportModal(repository, error_info))

@@ -23,7 +23,7 @@ from api.music.protocols import HealerProtocol
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
-from repositories.volume_repository import VolumeRepository
+from api.music.volume import VolumeSettings
 
 from .models import (
     PLAYBACK_USER_DATA_KEY,
@@ -60,13 +60,14 @@ class SessionHealer(HealerProtocol):
         bot: commands.Bot,
         connection_manager: ConnectionManager,
         state_manager: StateManager,
-        volume_repository: VolumeRepository,
+        volume_settings: VolumeSettings,
         ui_orchestrator: UIOrchestrator,
     ) -> None:
         self.bot = bot
         self.connection = connection_manager
         self.state = state_manager
-        self.volume_repo = volume_repository
+        self.volume_settings = volume_settings
+        self.volume_repo = volume_settings.repository
         self.ui = ui_orchestrator
 
         self._locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -503,11 +504,16 @@ class SessionHealer(HealerProtocol):
         if player is None:
             return False
 
-        self.state.clear_track_start_times(snapshot.guild_id)
-        if not await self._restore_player_runtime_state(player, snapshot):
-            return False
-
-        return await self._restore_current_track(player, snapshot, target.guild)
+        # Playback restore also sends volume in its PATCH. Keep that entire remote
+        # operation ordered with commands, using the current persisted intent.
+        async with self.volume_settings.operation(snapshot.guild_id) as volume:
+            if self.connection.get_player(snapshot.guild_id) is not player:
+                return False
+            current = replace(snapshot, volume=volume)
+            self.state.clear_track_start_times(snapshot.guild_id)
+            if not await self._restore_player_runtime_state(player, current):
+                return False
+            return await self._restore_current_track(player, current, target.guild)
 
     def _resolve_restore_target(
         self, snapshot: PlayerStateSnapshot

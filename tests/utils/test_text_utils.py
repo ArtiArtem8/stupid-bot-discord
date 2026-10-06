@@ -90,6 +90,10 @@ class TestTextUtils(unittest.TestCase):
         self.assertEqual(len(out), 5)
         self.assertTrue(out.startswith("..."))
 
+    def test_truncate_text_start_with_no_room_for_content(self) -> None:
+        self.assertEqual(truncate_text("abcdef", 3, mode="start"), "...")
+        self.assertEqual(truncate_text("abcdef", 0, placeholder="", mode="start"), "")
+
     def test_truncate_text_mode_middle_right_len_zero(self) -> None:
         out = truncate_text("abcdef", 4, mode="middle")
         self.assertEqual(out, "a...")
