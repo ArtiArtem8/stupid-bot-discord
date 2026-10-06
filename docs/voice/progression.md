@@ -82,9 +82,8 @@ x = L - 1
 T(L) = 200*x^2 + 2050*x
 ```
 
-Level one starts at zero XP and levels have no upper cap. The linear component
-slows early tier changes; the cost of each additional level still grows, with a
-softer late-game slope than the former pure quadratic curve.
+Level one starts at zero XP and levels have no upper cap. Each additional level
+requires more XP.
 
 These times assume normal social activity at 1200 XP/hour, without bonuses or
 penalties:

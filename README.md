@@ -21,8 +21,6 @@
 - **Feedback reports**: `/report`, `/set-report-channel`.
 - **Utilities**: deterministic Magic 8-Ball answers, greeting reactions, and Russian time formatting.
 
-New features usually belong in a cog under `cogs/`.
-
 ## Prerequisites
 
 - Python 3.12.
@@ -51,6 +49,11 @@ For music, run Lavalink separately and make sure its host, port, password, and s
 
 ## Usage
 
+Prepare `data/app.sqlite` before starting the bot, or select another prepared
+file with `--database PATH`. Follow [SQLite setup, import and recovery](repositories/sqlite/README.md).
+Startup rejects missing, incompatible or unfinished databases; migrations and
+imports are explicit maintenance operations.
+
 Start the bot with `uv`:
 
 ```bash
@@ -60,14 +63,6 @@ uv run --locked --no-dev main.py
 Allocation tracing is disabled by default. For memory diagnostics, start with
 `uv run --locked --no-dev main.py --tracemalloc`. Tracing adds CPU and memory
 overhead and is intended for diagnostic runs.
-
-Prepare the database explicitly before starting the bot. All durable features use
-`data/app.sqlite` by default; `--database PATH` selects another prepared file.
-See [Windows SQLite setup, import and recovery](repositories/sqlite/README.md).
-Missing, incompatible or unfinished databases stop startup. There is no automatic
-migration, import, empty-database creation or JSON fallback. Existing migrations
-`0001_birthdays` and `0002_music_volume` remain intact; `0003_application` upgrades
-their data to the shared schema.
 
 Platform launcher scripts are also included:
 
@@ -86,7 +81,7 @@ Platform launcher scripts are also included:
 Global configuration is loaded in `config.py`.
 
 - Environment variables cover the Discord token, optional owner ID, optional WolframAlpha ID, and Lavalink connection values.
-- `VOICE_PROBE_ENABLED=true` enables voice collection (`cogs/voice/collector_cog.py`). Raw facts are committed to typed SQLite tables. The one-shot importer reads old JSONL/gzip snapshots; runtime never writes or repairs them. Voice history is retained indefinitely.
+- `VOICE_PROBE_ENABLED=true` enables voice collection (`cogs/voice/collector_cog.py`). Observed facts are stored in SQLite and retained indefinitely.
 - `/voice-profile` privately shows your server-local voice XP, level and statistics by default. `private:false` publishes the card with an owner-only trash button; Refresh is also owner-only. Controls disappear after ten minutes of inactivity. Starter through Rare use PNG; Epic and higher use four-second lossless animated WebP, with PNG fallback. The renderer requires **Inkscape** on the bot host and the bundled Inter fonts. `VOICE_PROFILE_TIMEZONE` defaults to `UTC`. See [profile card setup](docs/voice/profile-card.md).
 - Runtime files use `data/` and temporary renderer directories. Backups are explicit SQLite maintenance operations.
 - Logging is configured in `utils/logging_setup.py`.

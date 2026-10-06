@@ -38,8 +38,9 @@ and AFK status. Unknown fields remain `None`. A known null channel means leave;
 `channel_known=False` means the channel is unresolved.
 
 A raw requested-to-speak timestamp means `True`, explicit null means `False`,
-and an absent field stays unknown. The offline importer maps earlier records without the explicit boolean to
-unknown; a null timestamp alone cannot establish `False`.
+and an absent field stays unknown. The offline importer maps earlier records
+without the explicit boolean to unknown; a null timestamp alone cannot establish
+`False`.
 AFK comes from the channel ID and available guild AFK configuration; without that
 configuration it stays unknown.
 
@@ -65,14 +66,12 @@ and overlapping gaps. Nothing is extrapolated after the final observation.
 Queue overflow records the affected guild and earliest known lost timestamp.
 It does not invalidate other guilds. A failed/uncertain batch creates a
 conservative global gap; its SQL envelopes, states and revision are atomic.
-Failed queue batches are not
-retried or counted as persisted; shutdown reports the failure even if later
-batches recover.
+Failed queue batches are not retried or counted as persisted; shutdown reports
+the failure even if later batches recover.
 
 Timeline reconstruction needs the relevant guild and session records, including
-preceding full snapshots. Startup rejects an incompatible database revision; readers reject invalid
-stored variants rather than silently skipping facts. No runtime repair or raw-file
-fallback is attempted.
+preceding full snapshots. Startup rejects incompatible database revisions; readers
+reject invalid stored variants.
 
 ## Sessions and companions
 
@@ -102,13 +101,12 @@ in one bucket; skipped hours receive no time.
 
 ## Retention and older records
 
-SQLite facts are retained indefinitely. There is no runtime gzip/rotation/pruning
-path. The explicit one-shot importer reads the original and v2 JSONL/gzip formats
+SQLite facts are retained indefinitely. The one-shot importer reads the original
+and v2 JSONL/gzip formats
 from offline copies; it rejects conflicting alternate files and unknown schemas.
 Legacy events map to observations, presence maps to snapshots and heartbeats to
 checkpoints. Missing population/flags remain unknown. Resume/drop/clock/drift
-markers map to conservative gaps. The original files remain untouched and are
-not runtime backends. See [storage operations](../../repositories/sqlite/README.md).
+markers map to conservative gaps. The original files remain untouched. See [storage operations](../../repositories/sqlite/README.md).
 
 ## Discord integration
 

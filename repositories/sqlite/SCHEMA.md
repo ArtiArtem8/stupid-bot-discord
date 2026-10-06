@@ -3,8 +3,7 @@
 All candidate keys below functionally determine their row's non-key attributes.
 Semicolons separate alternate candidate keys, commas form composite keys. SQL
 NULL is unknown, not false/zero; absence of an optional feature row is meaningful.
-The schema aims at normalized mutable state, without claiming every relation is
-BCNF. Historical labels and constrained scope copies are deliberate exceptions.
+Historical labels and constrained scope copies are deliberate denormalization.
 
 | Table | Candidate keys | Kind | Lifecycle / additional dependency |
 |---|---|---|---|
@@ -48,7 +47,7 @@ Elapsed duration adds the process's monotonic delta to the restored total;
 checkpoint timestamps remain wall-clock UTC. A negative offline wall delta
 resumes that total without claiming knowledge of elapsed offline time.
 
-Manual inspection (no bot command is added):
+Read uptime history directly with SQL:
 
 ```sql
 SELECT period_id,
@@ -60,12 +59,6 @@ SELECT period_id,
 FROM uptime_periods ORDER BY period_id;
 ```
 
-Composite UNIQUE(parent_id, guild_id) constraints on global identities are
-non-minimal superkeys for scope-enforcing foreign keys, not extra candidate keys.
-Snapshot/state child guild IDs are constrained redundant scope columns; this is
-an explicit normalization exception for referential scope enforcement.
-
-
 ## Representation and normalization exceptions
 
 IDs are positive signed 64-bit integers. Aware instants use exact UTC microseconds;
@@ -75,9 +68,10 @@ shutdown. Snapshot labels never determine identity or rewrite older facts.
 
 `channels.channel_id -> guild_id` and `roles.role_id -> guild_id`; member scope is
 composite. Role/state child scope columns repeat the parent's guild only to enforce
-same-guild foreign keys. `snapshot_id -> guild_id` inside snapshot children is a
-constrained normalization exception. Report user/guild/channel names and avatars,
-birthday display hints and role-leave names are historical snapshots, not current
+same-guild foreign keys. Composite UNIQUE(parent_id, guild_id) constraints support
+these references; they are superkeys rather than additional candidate keys.
+Report user/guild/channel names and avatars, birthday display hints and role-leave
+names are historical snapshots, not current
 identity attributes. Report position preserves source order independently of IDs.
 Voice record variant columns use CHECKs; payload JSON is not the fact store.
 
@@ -93,62 +87,17 @@ does not invalidate this scope unless it contains a shared fact.
 
 Profile materialization reads relevant guild and shared envelopes/states in one
 snapshot transaction. Connection release precedes decoding/replay/XP/rendering.
-The raw query is bounded by scope, not by a claim that full-history replay is O(1).
-Cold admission is limited and cached timelines reuse an unchanged read revision.
-No per-participant SQL queries are added for profile colors or levels.
+Queries read full retained scope history. Cold admission is limited; cached
+timelines reuse unchanged read revisions.
 
-`EXPLAIN QUERY PLAN` examples below are recorded against a freshly migrated
-SQLite database on Windows. Planner choices can vary with statistics/version;
-these are access-path evidence, not latency promises.
+| Index | Lookup |
+| --- | --- |
+| `ix_members_user_guild` | Guild memberships by user |
+| `block_events` unique key | One member's events ordered by action and ordinal |
+| `role_snapshot_roles` primary key | Roles ordered by position within a snapshot |
+| `ix_voice_scope_cursor` | Guild voice facts in ingestion order |
+| `ix_voice_replay` | Facts by boot and sequence |
+| `ix_voice_state_user_record` | Voice states by user and record |
 
-```sql
-SELECT guild_id FROM guild_members WHERE user_id = 42;
-```
-
-```text
-SEARCH guild_members USING COVERING INDEX ix_members_user_guild (user_id=?)
-```
-
-```sql
-SELECT * FROM block_events WHERE guild_id = 1 AND user_id = 42 ORDER BY action, ordinal;
-```
-
-```text
-SEARCH block_events USING INDEX sqlite_autoindex_block_events_1 (guild_id=? AND user_id=?)
-```
-
-```sql
-SELECT role_id FROM role_snapshot_roles WHERE snapshot_id = 1 ORDER BY position;
-```
-
-```text
-SEARCH role_snapshot_roles USING INDEX sqlite_autoindex_role_snapshot_roles_1 (snapshot_id=?)
-```
-
-```sql
-SELECT record_id FROM voice_records WHERE guild_id = 1 ORDER BY record_id;
-```
-
-```text
-SEARCH voice_records USING COVERING INDEX ix_voice_scope_cursor (guild_id=?)
-```
-
-```sql
-SELECT record_id FROM voice_records WHERE boot_id = 'boot' AND sequence = 1 ORDER BY kind, record_id;
-```
-
-```text
-SEARCH voice_records USING COVERING INDEX ix_voice_replay (boot_id=? AND sequence=?)
-```
-
-```sql
-SELECT record_id FROM voice_record_states WHERE user_id = 42 ORDER BY record_id;
-```
-
-```text
-SEARCH voice_record_states USING COVERING INDEX ix_voice_state_user_record (user_id=?)
-```
-
-These are index range lookups. Ordered per-scope scans grow with retained history.
-The composite child keys index parent lookup; dedicated user/channel/admin indexes
-support reverse lookup and FK checks without indexing every nullable flag.
+Ordered scope scans grow with retained history. Child keys support parent lookup;
+user/channel/admin indexes support reverse lookup and foreign-key checks.
