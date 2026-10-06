@@ -20,6 +20,48 @@ from utils.asyncio_utils import run_in_thread
 
 
 class TestUptimeShutdown(unittest.IsolatedAsyncioTestCase):
+    async def test_storage_closes_after_voice_or_final_uptime_failure(self) -> None:
+        for failing_step in ("voice", "uptime"):
+            with self.subTest(failing_step=failing_step):
+                path, reader = await temporary_database(self)
+                bot = StupidBot(
+                    database_path=path, cog_loader=MagicMock(spec=CogLoader)
+                )
+                await bot.restore_state()
+                journal = bot.create_voice_journal()
+                failure = RuntimeError(f"{failing_step} failure")
+                with (
+                    patch.object(
+                        journal,
+                        "close",
+                        new=AsyncMock(
+                            side_effect=failure if failing_step == "voice" else None
+                        ),
+                    ),
+                    patch.object(
+                        bot.uptime_manager,
+                        "save_state",
+                        new=AsyncMock(
+                            wraps=bot.uptime_manager.save_state,
+                            side_effect=failure if failing_step == "uptime" else None,
+                        ),
+                    ) as save,
+                    self.assertRaises(RuntimeError) as raised,
+                ):
+                    await bot.close()
+                self.assertIs(raised.exception, failure)
+                save.assert_awaited_once_with(final=True)
+                self.assertTrue(bot.is_closed())
+                with self.assertRaisesRegex(RuntimeError, "closing"):
+                    await bot.volume_repository.get_volume(1)
+                async with reader.transaction() as connection:
+                    origin = await connection.scalar(
+                        select(runtime_checkpoint.c.origin)
+                    )
+                self.assertEqual(
+                    origin, "shutdown" if failing_step == "voice" else "startup"
+                )
+
     async def test_close_waits_for_admitted_operation_and_saves_final_checkpoint(
         self,
     ) -> None:

@@ -41,10 +41,14 @@ async def _read(
         query = query.where(birthday_settings.c.guild_id == key)
     rows = await connection.execute(query.order_by(birthday_settings.c.guild_id))
     configs = {
-        gid: BirthdayGuildConfig(
-            gid, name, channel, birthday_role_id=role, version=version
+        guild_id: BirthdayGuildConfig(
+            guild_id,
+            name,
+            channel_id,
+            birthday_role_id=role_id,
+            version=version,
         )
-        for gid, name, channel, role, version in rows
+        for guild_id, name, channel_id, role_id, version in rows
     }
     if not configs:
         return []
@@ -59,13 +63,15 @@ async def _read(
         .where(member_birthdays.c.guild_id.in_(configs))
         .order_by(member_birthdays.c.guild_id, member_birthdays.c.position)
     )
-    for gid, uid, name, birthday, version in members:
-        formatted = (
+    for guild_id, user_id, name, birthday, version in members:
+        formatted_birthday = (
             date.fromisoformat(birthday).strftime(config.DATE_FORMAT)
             if birthday
             else ""
         )
-        configs[gid].users[uid] = BirthdayUser(uid, name, formatted, version=version)
+        configs[guild_id].users[user_id] = BirthdayUser(
+            user_id, name, formatted_birthday, version=version
+        )
     history = await connection.execute(
         select(
             birthday_history.c.guild_id,
@@ -79,8 +85,8 @@ async def _read(
             birthday_history.c.position,
         )
     )
-    for gid, uid, value in history:
-        configs[gid].users[uid].was_congrats.append(value)
+    for guild_id, user_id, value in history:
+        configs[guild_id].users[user_id].was_congrats.append(value)
     return list(configs.values())
 
 

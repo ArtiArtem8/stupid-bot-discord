@@ -154,19 +154,21 @@ class StupidBot(commands.Bot):
             try:
                 await super().close()
             finally:
-                try:
-                    try:
-                        if self._voice_journal is not None:
-                            await self._voice_journal.close()
-                    finally:
-                        async with self._prepare_lock:
-                            if self._prepared:
-                                uptime = await self.uptime_manager.save_state(
-                                    final=True
-                                )
-                                logger.info("Final saved uptime: %.0f seconds", uptime)
-                finally:
-                    await self._database.close()
+                await self._close_storage()
+
+    async def _close_storage(self) -> None:
+        """Drain voice, save final uptime and close the database despite failures."""
+        try:
+            try:
+                if self._voice_journal is not None:
+                    await self._voice_journal.close()
+            finally:
+                async with self._prepare_lock:
+                    if self._prepared:
+                        uptime = await self.uptime_manager.save_state(final=True)
+                        logger.info("Final saved uptime: %.0f seconds", uptime)
+        finally:
+            await self._database.close()
 
     async def _stop_background_loops(self) -> None:
         pending: list[tuple[str, asyncio.Task[None]]] = []

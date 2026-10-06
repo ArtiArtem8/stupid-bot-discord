@@ -39,7 +39,7 @@ class UptimeRepository:
                 "Uptime requires a positive threshold and process identity"
             )
         async with self._database.transaction() as connection:
-            previous = (
+            row = (
                 await connection.execute(
                     select(
                         runtime_checkpoint.c.period_id,
@@ -48,9 +48,18 @@ class UptimeRepository:
                     ).where(runtime_checkpoint.c.singleton == 1)
                 )
             ).one_or_none()
+            previous: UptimeCheckpoint | None = None
+            if row is not None:
+                saved_period_id, saved_checkpoint_us, saved_accumulated_us = row
+                previous = UptimeCheckpoint(
+                    period_id=saved_period_id,
+                    checkpoint_us=saved_checkpoint_us,
+                    accumulated_us=saved_accumulated_us,
+                )
             accumulated = 0
-            if previous is not None and now_us - previous[1] < threshold_us:
-                period_id, _, accumulated = previous
+            if previous is not None and now_us - previous.checkpoint_us < threshold_us:
+                period_id = previous.period_id
+                accumulated = previous.accumulated_us
                 await connection.execute(
                     uptime_periods.update()
                     .where(uptime_periods.c.period_id == period_id)
@@ -60,7 +69,7 @@ class UptimeRepository:
                 if previous is not None:
                     await connection.execute(
                         uptime_periods.update()
-                        .where(uptime_periods.c.period_id == previous[0])
+                        .where(uptime_periods.c.period_id == previous.period_id)
                         .values(archived_us=now_us, reset_reason="offline_threshold")
                     )
                 period_id = (

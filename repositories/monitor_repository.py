@@ -20,6 +20,8 @@ from repositories.sqlite.schema import (
     role_snapshots,
 )
 
+_MICROSECONDS_PER_DAY = 86_400_000_000
+
 
 class MonitorRepository:
     """Own settings, snapshot replacement and compare-and-delete transactions."""
@@ -135,24 +137,28 @@ class MonitorRepository:
                 )
             )
             snapshots = {
-                sid: MemberSnapshot(
-                    uid, name, [], from_microseconds(left), sid, version
+                snapshot_id: MemberSnapshot(
+                    user_id=member_id,
+                    username=name,
+                    roles=[],
+                    left_at=from_microseconds(left_us),
+                    snapshot_id=snapshot_id,
+                    version=version,
                 )
-                for sid, uid, name, left, version in rows
+                for snapshot_id, member_id, name, left_us, version in rows
             }
-            if snapshots:
-                role_rows = await connection.execute(
-                    select(
-                        role_snapshot_roles.c.snapshot_id, role_snapshot_roles.c.role_id
-                    )
-                    .where(role_snapshot_roles.c.snapshot_id.in_(snapshots))
-                    .order_by(
-                        role_snapshot_roles.c.snapshot_id,
-                        role_snapshot_roles.c.position,
-                    )
+            if not snapshots:
+                return []
+            role_rows = await connection.execute(
+                select(role_snapshot_roles.c.snapshot_id, role_snapshot_roles.c.role_id)
+                .where(role_snapshot_roles.c.snapshot_id.in_(snapshots))
+                .order_by(
+                    role_snapshot_roles.c.snapshot_id,
+                    role_snapshot_roles.c.position,
                 )
-                for sid, rid in role_rows:
-                    snapshots[sid].roles.append(rid)
+            )
+            for snapshot_id, role_id in role_rows:
+                snapshots[snapshot_id].roles.append(role_id)
             return list(snapshots.values())
 
     async def is_current(
@@ -161,44 +167,40 @@ class MonitorRepository:
         """Recheck identity and current retention before another remote role request."""
         moment = utc_microseconds(now)
         async with self._database.transaction() as connection:
-            return (
-                await connection.scalar(
-                    select(role_snapshots.c.snapshot_id)
-                    .join(
-                        monitor_settings,
-                        monitor_settings.c.guild_id == role_snapshots.c.guild_id,
-                    )
-                    .where(
-                        role_snapshots.c.guild_id == guild_id,
-                        role_snapshots.c.user_id == snapshot.user_id,
-                        role_snapshots.c.snapshot_id == snapshot.snapshot_id,
-                        role_snapshots.c.version == snapshot.version,
-                        (monitor_settings.c.ttl_days.is_(None))
-                        | (
-                            role_snapshots.c.left_us
-                            >= moment - monitor_settings.c.ttl_days * 86_400_000_000
-                        ),
-                    )
+            current_id = await connection.scalar(
+                select(role_snapshots.c.snapshot_id)
+                .join(
+                    monitor_settings,
+                    monitor_settings.c.guild_id == role_snapshots.c.guild_id,
                 )
-                is not None
+                .where(
+                    role_snapshots.c.guild_id == guild_id,
+                    role_snapshots.c.user_id == snapshot.user_id,
+                    role_snapshots.c.snapshot_id == snapshot.snapshot_id,
+                    role_snapshots.c.version == snapshot.version,
+                    (monitor_settings.c.ttl_days.is_(None))
+                    | (
+                        role_snapshots.c.left_us
+                        >= moment - monitor_settings.c.ttl_days * _MICROSECONDS_PER_DAY
+                    ),
+                )
             )
+            return current_id is not None
 
     async def delete(self, guild_id: int, snapshot: MemberSnapshot) -> bool:
         """Protect replacements even when they have the same leave timestamp."""
         async with self._database.transaction() as connection:
-            return (
-                await connection.scalar(
-                    role_snapshots.delete()
-                    .where(
-                        role_snapshots.c.guild_id == guild_id,
-                        role_snapshots.c.user_id == snapshot.user_id,
-                        role_snapshots.c.snapshot_id == snapshot.snapshot_id,
-                        role_snapshots.c.version == snapshot.version,
-                    )
-                    .returning(role_snapshots.c.snapshot_id)
+            deleted_id = await connection.scalar(
+                role_snapshots.delete()
+                .where(
+                    role_snapshots.c.guild_id == guild_id,
+                    role_snapshots.c.user_id == snapshot.user_id,
+                    role_snapshots.c.snapshot_id == snapshot.snapshot_id,
+                    role_snapshots.c.version == snapshot.version,
                 )
-                is not None
+                .returning(role_snapshots.c.snapshot_id)
             )
+            return deleted_id is not None
 
     async def cleanup_expired(self, guild_id: int, now: datetime) -> int:
         """Apply the current TTL to committed snapshots within one transaction."""
@@ -215,7 +217,7 @@ class MonitorRepository:
                 role_snapshots.delete()
                 .where(
                     role_snapshots.c.guild_id == guild_id,
-                    role_snapshots.c.left_us < moment - ttl * 86_400_000_000,
+                    role_snapshots.c.left_us < moment - ttl * _MICROSECONDS_PER_DAY,
                 )
                 .returning(role_snapshots.c.snapshot_id)
             )
