@@ -314,9 +314,9 @@ class BirthdayCog(BaseCog):
         claim = BirthdayDelivery(
             uuid4().hex, guild.id, user.user_id, today, settings_version, user.version
         )
-        if not await self.manager.repo.claim_delivery(claim):
-            return
         try:
+            if not await self.manager.repo.claim_delivery(claim):
+                return
             wish = secrets.choice(BIRTHDAY_WISHES or ["С днём рождения!"])
             embed = SafeEmbed(
                 title=f"🎉 ПОЗДРАВЛЕНИЯ {user.name}",
@@ -347,6 +347,16 @@ class BirthdayCog(BaseCog):
                 claim.operation_id,
                 today,
             )
+        finally:
+            try:
+                await self.manager.repo.release_delivery(claim)
+            except Exception:
+                logger.exception(
+                    "Failed to release birthday claim: guild=%s user=%s operation=%s",
+                    guild.id,
+                    user.user_id,
+                    claim.operation_id,
+                )
 
     @app_commands.command(
         name="set-birthday",

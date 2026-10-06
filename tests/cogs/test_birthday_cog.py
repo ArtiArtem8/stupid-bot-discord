@@ -7,11 +7,16 @@ from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
+from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
 from api.birthday import BirthdayManager
 from api.birthday_models import BirthdayDelivery, BirthdayGuildConfig, BirthdayUser
+from cogs import birthday_cog as birthday_module
 from cogs.birthday_cog import BirthdayCog
+from repositories.birthday_repository import BirthdayRepository
+from repositories.sqlite.schema import birthday_deliveries
+from tests.storage import temporary_database
 
 
 class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
@@ -81,6 +86,7 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
 
         self.manager.repo.claim_delivery = AsyncMock(side_effect=claim)
         self.manager.repo.begin_delivery = AsyncMock(return_value=True)
+        self.manager.repo.release_delivery = AsyncMock()
         self.cog = BirthdayCog(self.bot, self.manager)
 
         async def add(role: discord.Role, **_kwargs: object) -> None:
@@ -171,4 +177,113 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self.channel.send.side_effect = None
         await self.cog._process_guild(42, today)
         self.record.assert_not_awaited()
+        self.channel.send.assert_awaited_once()
+
+
+class TestBirthdayDeliveryRecovery(unittest.IsolatedAsyncioTestCase):
+    @override
+    async def asyncSetUp(self) -> None:
+        _, self.database = await temporary_database(self)
+        self.repo = BirthdayRepository(self.database)
+        await self.repo.set_user_birthday(42, "Guild", 8, 10, "User", "06-10-2000")
+        self.bot = MagicMock()
+        self.guild = MagicMock(spec=discord.Guild, id=42)
+        self.member = MagicMock(spec=discord.Member, id=10)
+        self.guild.get_member.return_value = self.member
+        self.channel = MagicMock(spec=discord.TextChannel, id=8)
+        self.channel.send.return_value = MagicMock(id=99)
+        self.user = BirthdayUser(10, "User", "06-10-2000")
+        self.cog = BirthdayCog(self.bot, BirthdayManager(self.repo))
+
+    async def _attempt(self) -> None:
+        await self.cog._handle_birthday(
+            self.guild, self.channel, self.user, date(2026, 10, 6), 1
+        )
+
+    async def _status(self) -> str | None:
+        async with self.database.transaction() as connection:
+            return await connection.scalar(select(birthday_deliveries.c.status))
+
+    async def test_pre_send_exception_allows_next_attempt(self) -> None:
+        with (
+            patch.object(
+                birthday_module, "SafeEmbed", side_effect=RuntimeError("prepare")
+            ),
+            self.assertLogs("cogs.birthday_cog", level="ERROR"),
+        ):
+            await self._attempt()
+        self.assertEqual(await self._status(), "obsolete")
+        self.channel.send.assert_not_awaited()
+        await self._attempt()
+        self.channel.send.assert_awaited_once()
+        self.assertEqual(await self._status(), "sent")
+
+    async def test_cancellation_before_begin_releases_claim(self) -> None:
+        entered = asyncio.Event()
+        hold = asyncio.Event()
+
+        async def begin(_claim: BirthdayDelivery) -> bool:
+            entered.set()
+            await hold.wait()
+            return False
+
+        with patch.object(self.repo, "begin_delivery", side_effect=begin):
+            task = asyncio.create_task(self._attempt())
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+        self.assertEqual(await self._status(), "obsolete")
+        self.channel.send.assert_not_awaited()
+        await self._attempt()
+        self.channel.send.assert_awaited_once()
+
+    async def test_cancelled_claim_acknowledgement_releases_committed_claim(
+        self,
+    ) -> None:
+        original = self.repo.claim_delivery
+
+        async def claim(value: BirthdayDelivery) -> bool:
+            await original(value)
+            raise asyncio.CancelledError
+
+        with patch.object(self.repo, "claim_delivery", side_effect=claim):
+            with self.assertRaises(asyncio.CancelledError):
+                await self._attempt()
+        self.assertEqual(await self._status(), "obsolete")
+        await self._attempt()
+        self.channel.send.assert_awaited_once()
+
+    async def test_lost_begin_acknowledgement_remains_uncertain(self) -> None:
+        original = self.repo.begin_delivery
+
+        async def begin(value: BirthdayDelivery) -> bool:
+            await original(value)
+            raise RuntimeError("commit acknowledgement lost")
+
+        with (
+            patch.object(self.repo, "begin_delivery", side_effect=begin),
+            self.assertLogs("cogs.birthday_cog", level="ERROR"),
+        ):
+            await self._attempt()
+        self.assertEqual(await self._status(), "uncertain")
+        await self._attempt()
+        self.channel.send.assert_not_awaited()
+
+    async def test_cancelled_send_remains_uncertain(self) -> None:
+        entered = asyncio.Event()
+        hold = asyncio.Event()
+
+        async def send(**_kwargs: object) -> None:
+            entered.set()
+            await hold.wait()
+
+        self.channel.send.side_effect = send
+        task = asyncio.create_task(self._attempt())
+        await entered.wait()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual(await self._status(), "uncertain")
+        await self._attempt()
         self.channel.send.assert_awaited_once()

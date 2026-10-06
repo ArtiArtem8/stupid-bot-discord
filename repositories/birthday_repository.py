@@ -378,19 +378,45 @@ class BirthdayRepository:
                 )
             )
 
-    async def recover_deliveries(self) -> None:
-        """Keep interrupted claims uncertain; do not guess the remote outcome."""
+    async def release_delivery(self, claim: BirthdayDelivery) -> None:
+        """Release only this operation's claim if sending has not begun.
+
+        The stored state decides whether retry is safe, including when a caller
+        did not receive confirmation of a claim or begin transaction's commit.
+        An old operation cannot release a replacement claim or an uncertain send.
+        """
         async with self._database.transaction() as connection:
             await connection.execute(
                 birthday_deliveries.update()
-                .where(birthday_deliveries.c.status == "claimed")
-                .values(status="uncertain", updated_us=time.time_ns() // 1000)
+                .where(
+                    birthday_deliveries.c.operation_id == claim.operation_id,
+                    birthday_deliveries.c.status == "claimed",
+                )
+                .values(status="obsolete", updated_us=time.time_ns() // 1000)
+            )
+
+    async def recover_deliveries(self) -> None:
+        """Release pre-send claims at startup before any delivery producers run.
+
+        Uncertain and sent operations remain closed to automatic retries.
+        Recovery requires exclusive application ownership of the database.
+        """
+        async with self._database.transaction() as connection:
+            released = list(
+                await connection.scalars(
+                    birthday_deliveries.update()
+                    .where(birthday_deliveries.c.status == "claimed")
+                    .values(status="obsolete", updated_us=time.time_ns() // 1000)
+                    .returning(birthday_deliveries.c.operation_id)
+                )
             )
             uncertain = await connection.scalar(
                 select(func.count())
                 .select_from(birthday_deliveries)
                 .where(birthday_deliveries.c.status == "uncertain")
             )
+        if released:
+            logger.info("Birthday recovery: %d pre-send claims released", len(released))
         if uncertain:
             logger.warning(
                 "Birthday recovery: %d uncertain deliveries retained; automatic "

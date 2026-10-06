@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from api.birthday_models import BirthdayDelivery
 from repositories.birthday_repository import BirthdayRepository
+from repositories.sqlite.database import Database, open_engine
 from repositories.sqlite.identity import ensure_channel
 from repositories.sqlite.schema import (
     birthday_deliveries,
@@ -80,19 +81,64 @@ class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):
                 await connection.scalar(select(music_settings.c.volume)), 50
             )
 
-    async def test_recovery_logs_existing_and_interrupted_uncertain_deliveries(
+    async def test_restart_releases_only_claimed_and_preserves_delivery_states(
         self,
     ) -> None:
-        await self.repo.set_user_birthday(1, "Guild", 10, 2, "Member", "06-10-2000")
-        claim = BirthdayDelivery("interrupted", 1, 2, date(2026, 10, 6), 1, 1)
-        self.assertTrue(await self.repo.claim_delivery(claim))
+        claims: list[BirthdayDelivery] = []
+        for uid in (2, 3, 4):
+            await self.repo.set_user_birthday(
+                1, "Guild", 10, uid, "Member", "06-10-2000"
+            )
+            claim = BirthdayDelivery(str(uid), 1, uid, date(2026, 10, 6), 1, 1)
+            self.assertTrue(await self.repo.claim_delivery(claim))
+            claims.append(claim)
+        self.assertTrue(await self.repo.begin_delivery(claims[1]))
+        self.assertTrue(await self.repo.begin_delivery(claims[2]))
+        await self.repo.finish_delivery(claims[2], 100)
+        await self.database.close()
+        self.database = Database(open_engine(self.path))
+        self.addAsyncCleanup(self.database.close)
+        self.repo = BirthdayRepository(self.database)
         for _ in range(2):
             with self.assertLogs(
                 "repositories.birthday_repository", level="WARNING"
             ) as logs:
                 await self.repo.recover_deliveries()
             self.assertIn("1 uncertain deliveries", logs.output[0])
-            self.assertFalse(await self.repo.claim_delivery(claim))
+        async with self.database.transaction() as connection:
+            states = list(
+                await connection.scalars(
+                    select(birthday_deliveries.c.status).order_by(
+                        birthday_deliveries.c.user_id
+                    )
+                )
+            )
+        self.assertEqual(states, ["obsolete", "uncertain", "sent"])
+        for uid, expected in ((2, True), (3, False), (4, False)):
+            fresh = BirthdayDelivery(f"retry-{uid}", 1, uid, claims[0].today, 1, 1)
+            self.assertEqual(await self.repo.claim_delivery(fresh), expected)
+        self.assertFalse(await self.repo.begin_delivery(claims[0]))
+
+    async def test_release_cannot_change_newer_claim_uncertain_or_sent(self) -> None:
+        await self.repo.set_user_birthday(1, "Guild", 10, 2, "Member", "06-10-2000")
+        old = BirthdayDelivery("old", 1, 2, date(2026, 10, 6), 1, 1)
+        self.assertTrue(await self.repo.claim_delivery(old))
+        await self.repo.release_delivery(old)
+        fresh = BirthdayDelivery("fresh", 1, 2, old.today, 1, 1)
+        self.assertTrue(await self.repo.claim_delivery(fresh))
+        await self.repo.release_delivery(old)
+        self.assertTrue(await self.repo.begin_delivery(fresh))
+        await self.repo.release_delivery(fresh)
+        await self.repo.recover_deliveries()
+        blocked = BirthdayDelivery("blocked", 1, 2, old.today, 1, 1)
+        self.assertFalse(await self.repo.claim_delivery(blocked))
+        await self.repo.finish_delivery(fresh, 100)
+        await self.repo.release_delivery(fresh)
+        self.assertFalse(await self.repo.claim_delivery(blocked))
+        async with self.database.transaction() as connection:
+            self.assertEqual(
+                await connection.scalar(select(birthday_deliveries.c.status)), "sent"
+            )
 
     async def test_only_one_claim_and_uncertain_send_is_not_repeated(self) -> None:
         await self.repo.set_user_birthday(1, "Guild", 10, 2, "Member", "06-10-2000")

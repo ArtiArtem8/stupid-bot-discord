@@ -97,7 +97,9 @@ Discord calls, voice replay or rendering. Changing pool size requires reviewing
 read-modify-write concurrency.
 
 Birthday delivery claims are unique per member/day. `obsolete` means delivery
-never started and can be reclaimed with a new operation ID. `uncertain` and
+never started and can be reclaimed with a new operation ID. Pre-send failures
+release only their own `claimed` operation; startup releases remaining `claimed`
+rows before producers run. `uncertain` and
 `sent` prevent automatic resend, including after restart. Logs identify failed
 operations; inspect `birthday_deliveries` to resolve ambiguous outcomes.
 
