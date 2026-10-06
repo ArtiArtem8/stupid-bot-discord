@@ -234,8 +234,8 @@ class ConnectionManager:
         status = status or self._player_status(player, guild_id=guild_id)
         message_format = (
             "%s guild=%s context=%s error=%s player_type=%s player_stale=%s "
-            + "guild_present=%s is_current_voice_client=%s player_connected=%s "
-            + "node_assigned=%s node_label=%s node_in_pool=%s node_available=%s"
+            "guild_present=%s is_current_voice_client=%s player_connected=%s "
+            "node_assigned=%s node_label=%s node_in_pool=%s node_available=%s"
         )
         logger.warning(
             message_format,
@@ -376,7 +376,7 @@ class ConnectionManager:
         if now < self._next_connect_retry_at:
             message_format = (
                 "Lavalink connection retry cooldown active "
-                + "last_connect_error=%s retry_in_seconds=%.1f"
+                "last_connect_error=%s retry_in_seconds=%.1f"
             )
             logger.debug(
                 message_format,

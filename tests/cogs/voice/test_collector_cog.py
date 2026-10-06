@@ -28,7 +28,7 @@ from cogs.voice.collector_cog import (
 from framework.bot import StupidBot
 from framework.cog_loader import CogLoader
 from repositories.voice_journal import VoiceJournal
-from repositories.voice_store import VoiceStore
+from repositories.voice_repository import VoiceRepository
 from tests.api.voice.examples import START, at
 from tests.storage import temporary_database
 from utils.json_types import JsonObject
@@ -131,7 +131,7 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
         self.database_path, self.database = await temporary_database(self)
         self.bot = StupidBot(database_path=self.database_path)
         await self.bot.__aenter__()
-        self.journal = VoiceJournal(VoiceStore(self.bot._database))
+        self.journal = VoiceJournal(VoiceRepository(self.bot._database))
         self.clock = Clock()
         self.cog = VoiceCollectorCog(
             self.bot,
@@ -349,7 +349,7 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
         )
         await self.bot.unload_extension("cogs.voice.collector_cog")
         self.assertIsNone(self.bot.get_cog("VoiceCollectorCog"))
-        journal = VoiceJournal(VoiceStore(self.bot._database))
+        journal = VoiceJournal(VoiceRepository(self.bot._database))
         day = datetime.now(UTC).date()
         observations = await journal.read_day(1, day)
         self.assertEqual(len(observations), 1)
@@ -365,7 +365,7 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
 
     async def test_disabled_collector_does_not_collect(self) -> None:
         await self.cog.cog_unload()
-        journal = VoiceJournal(VoiceStore(self.bot._database))
+        journal = VoiceJournal(VoiceRepository(self.bot._database))
         disabled = VoiceCollectorCog(self.bot, journal=journal)
         with patch.object(config, "VOICE_PROBE_ENABLED", False):
             await disabled.cog_load()

@@ -282,7 +282,7 @@ class WolframCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description="No displayable results found.\n"
-                + "All results were filtered out.",
+                "All results were filtered out.",
                 title=f"Query: `{query}`",
                 ephemeral=True,
             )
@@ -378,7 +378,7 @@ class WolframCog(BaseCog):
                 return await channel.send(
                     content=(
                         f"{interaction.user.mention} [Wolfram]({result_url}) "
-                        + f"**Plot:** `{query}`"
+                        f"**Plot:** `{query}`"
                     ),
                     file=file,
                     suppress_embeds=True,

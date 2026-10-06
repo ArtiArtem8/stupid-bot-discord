@@ -1,5 +1,6 @@
 """SQLite voice facts preserve replay, nullable flags and batch idempotency."""
 
+import asyncio
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -18,14 +19,19 @@ from api.voice.model import (
 )
 from api.voice.timeline import build_timeline
 from repositories.sqlite.database import Database, migrate, open_engine
-from repositories.sqlite.schema import voice_batches
+from repositories.sqlite.schema import voice_batches, voice_record_states, voice_records
 from repositories.voice_journal import Submission, VoiceJournal
-from repositories.voice_store import VoiceStore
+from repositories.voice_repository import (
+    VoiceRepository,
+    _decode_records,
+    _read_record_values,
+    _read_state_values,
+)
 from tests.api.voice.examples import at, human, record
 from utils.asyncio_utils import run_in_thread
 
 
-class TestVoiceStore(unittest.IsolatedAsyncioTestCase):
+class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncSetUp(self) -> None:
         directory = TemporaryDirectory()
@@ -34,7 +40,7 @@ class TestVoiceStore(unittest.IsolatedAsyncioTestCase):
         await run_in_thread(lambda: migrate(self.path))
         self.database = Database(open_engine(self.path))
         self.addAsyncCleanup(self.database.close)
-        self.store = VoiceStore(self.database)
+        self.store = VoiceRepository(self.database)
 
     async def test_round_trip_and_equal_sequence_gap_preserve_timeline(self) -> None:
         state = VoiceStateSnapshot(
@@ -117,3 +123,90 @@ class TestVoiceStore(unittest.IsolatedAsyncioTestCase):
         self.assertCountEqual(
             (*snapshot.guild_records, *snapshot.session_records), facts
         )
+
+    async def test_named_columns_preserve_facts_when_select_order_changes(self) -> None:
+        states = (
+            VoiceStateSnapshot(
+                7,
+                10,
+                is_bot=True,
+                self_mute=False,
+                self_deaf=None,
+                server_mute=True,
+                server_deaf=False,
+                self_stream=None,
+                self_video=True,
+                suppress=None,
+                afk=False,
+                requested_to_speak_at=at(2),
+                session_id="first",
+            ),
+            VoiceStateSnapshot(
+                3,
+                None,
+                channel_known=False,
+                is_bot=False,
+                self_mute=None,
+                self_deaf=True,
+                server_mute=False,
+                server_deaf=None,
+                self_stream=True,
+                self_video=False,
+                suppress=True,
+                afk=None,
+            ),
+        )
+        fact = record(5, VoiceSnapshot(states, authoritative=False))
+        await self.store.append("named", [fact])
+        async with self.database.transaction() as connection:
+            record_row = (
+                (await connection.execute(select(*reversed(tuple(voice_records.c)))))
+                .mappings()
+                .one()
+            )
+            state_rows = (
+                (
+                    await connection.execute(
+                        select(*reversed(tuple(voice_record_states.c))).order_by(
+                            voice_record_states.c.position
+                        )
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        decoded = _decode_records(
+            [
+                (
+                    _read_record_values(record_row),
+                    [_read_state_values(row) for row in state_rows],
+                )
+            ]
+        )
+        self.assertEqual(decoded, (fact,))
+        self.assertEqual(await self.store.read_all(1), decoded)
+
+    async def test_concurrent_batch_retries_publish_one_revision(self) -> None:
+        facts = [record(0, VoiceSnapshot((human(),))), record(1, VoiceCheckpoint())]
+        revisions = await asyncio.gather(
+            *(self.store.append("same", facts) for _ in range(5))
+        )
+        self.assertEqual(len(set(revisions)), 1)
+        self.assertEqual(await self.store.read_all(1), tuple(facts))
+
+    async def test_cancelled_pool_reader_does_not_block_next_write(self) -> None:
+        queued = asyncio.Event()
+
+        async def read() -> None:
+            queued.set()
+            await self.store.snapshot_for_guild(1)
+
+        async with self.database.transaction():
+            task = asyncio.create_task(read())
+            await queued.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+        facts = [record(0, VoiceSnapshot(()))]
+        await self.store.append("after-read", facts)
+        self.assertEqual(await self.store.read_all(1), tuple(facts))

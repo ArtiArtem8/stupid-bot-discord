@@ -22,7 +22,7 @@ from api.voice.model import VoiceObservation, VoiceSnapshot
 from repositories.sqlite.database import Database, migrate, open_engine
 from repositories.sqlite.identity import discord_id
 from repositories.sqlite.schema import migration_sources, storage_state
-from repositories.voice_store import VoiceStore
+from repositories.voice_repository import VoiceRepository
 from tools.storage_legacy.import_features import (
     birth_date,
     import_features,
@@ -63,7 +63,7 @@ def _hashes(source: Path, partial: Path | None, policy: Path | None) -> dict[Pat
             paths.extend(scope.glob("events_*.jsonl"))
             paths.extend(scope.glob("events_*.jsonl.gz"))
     if partial is not None:
-        if Path(str(partial) + "-wal").exists():
+        if Path(f"{partial}-wal").exists():
             raise ValueError(
                 "Use a closed, checkpointed backup of the partial source database"
             )
@@ -196,7 +196,7 @@ async def migrate_snapshot(args: Arguments) -> JsonObject:
     source, destination = args.source.resolve(), args.destination.resolve()
     if not source.is_dir():
         raise ValueError("Source must be an explicit offline data directory")
-    building = destination.with_name(destination.name + ".building.sqlite")
+    building = destination.with_name(f"{destination.name}.building.sqlite")
     if destination.exists() or building.exists():
         raise FileExistsError(
             "Destination or its unfinished building file already exists"
@@ -225,7 +225,7 @@ async def migrate_snapshot(args: Arguments) -> JsonObject:
                 .values(status="BUILDING", manifest_hash=digest, origin="legacy_import")
             )
         await import_features(database, data, timezone)
-        voice = VoiceStore(database)
+        voice = VoiceRepository(database)
         for offset in range(0, len(data.voice), 500):
             await voice.append(
                 f"import:{digest}:{offset}", data.voice[offset : offset + 500]

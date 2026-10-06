@@ -5,14 +5,14 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from api.music.volume import VolumeSettings
-from repositories.sqlite_volume_repository import SQLiteVolumeRepository
+from repositories.volume_repository import VolumeRepository
 from tests.storage import temporary_database
 
 
 class TestVolumeOrdering(unittest.IsolatedAsyncioTestCase):
     async def test_second_command_waits_for_first_remote_application(self) -> None:
         _, database = await temporary_database(self)
-        repository = SQLiteVolumeRepository(database)
+        repository = VolumeRepository(database)
         settings = VolumeSettings(repository)
         entered, release, second_started = (
             asyncio.Event(),
@@ -46,7 +46,7 @@ class TestVolumeOrdering(unittest.IsolatedAsyncioTestCase):
 
     async def test_failed_persistence_does_not_admit_remote_application(self) -> None:
         _, database = await temporary_database(self)
-        repository = SQLiteVolumeRepository(database)
+        repository = VolumeRepository(database)
         settings = VolumeSettings(repository)
         remote = AsyncMock()
         with patch.object(repository, "save", side_effect=OSError("disk full")):

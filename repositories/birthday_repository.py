@@ -84,7 +84,7 @@ async def _read(
     return list(configs.values())
 
 
-class SQLiteBirthdayRepository:
+class BirthdayRepository:
     """Return detached aggregates on reads; mutations target only affected rows.
 
     The shared database owns transaction admission. Version checks protect stale

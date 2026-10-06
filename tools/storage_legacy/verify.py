@@ -15,7 +15,8 @@ from api.voice.profile.details import (
 )
 from api.voice.scope import VoiceScope
 from api.voice.timeline import VoiceTimeline, build_timeline
-from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
+from repositories.birthday_repository import BirthdayRepository
+from repositories.blocking_repository import BlockingRepository
 from repositories.monitor_repository import MonitorRepository
 from repositories.sqlite.database import SCHEMA_REVISION, Database
 from repositories.sqlite.schema import (
@@ -24,16 +25,15 @@ from repositories.sqlite.schema import (
     reports,
     runtime_checkpoint,
 )
-from repositories.sqlite_blocking_repository import SQLiteBlockingRepository
-from repositories.sqlite_volume_repository import SQLiteVolumeRepository
-from repositories.voice_store import VoiceStore
+from repositories.voice_repository import VoiceRepository
+from repositories.volume_repository import VolumeRepository
 from tools.storage_legacy.sources import LegacyData
 from utils.asyncio_utils import run_in_thread
 
 
 async def verify_import(database: Database, data: LegacyData) -> None:
     """Compare detached domain values, list ordering and confirmed voice semantics."""
-    birthdays = SQLiteBirthdayRepository(database)
+    birthdays = BirthdayRepository(database)
     for expected in data.birthdays:
         actual = await birthdays.get(expected.guild_id)
         if (
@@ -43,10 +43,10 @@ async def verify_import(database: Database, data: LegacyData) -> None:
         ):
             raise ValueError("Birthday migration equivalence failed")
     if sorted(
-        await SQLiteVolumeRepository(database).get_all(), key=lambda item: item.guild_id
+        await VolumeRepository(database).get_all(), key=lambda item: item.guild_id
     ) != sorted(data.volumes, key=lambda item: item.guild_id):
         raise ValueError("Volume migration equivalence failed")
-    blocks = SQLiteBlockingRepository(database)
+    blocks = BlockingRepository(database)
     for gid, expected in data.blocks:
         if await blocks.get((gid, expected.user_id)) != expected:
             raise ValueError("Block state/audit migration equivalence failed")
@@ -165,7 +165,7 @@ async def _verify_misc(database: Database, data: LegacyData) -> None:
 
 
 async def _verify_voice(database: Database, data: LegacyData) -> None:
-    store = VoiceStore(database)
+    store = VoiceRepository(database)
     scopes = {record.guild_id for record in data.voice}
     restored: list[VoiceJournalRecord] = []
     for scope in scopes:

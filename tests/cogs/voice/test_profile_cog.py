@@ -30,7 +30,7 @@ from cogs.voice.profile_cog import ProfileSnapshot, VoiceProfileCog
 from framework.bot import StupidBot
 from framework.feedback_ui import FeedbackUI
 from repositories.voice_journal import VoiceJournal
-from repositories.voice_store import VoiceStore
+from repositories.voice_repository import VoiceRepository
 from tests.api.voice.examples import human, record
 from tests.cogs.voice.profile.test_details_support import profile_request
 from tests.cogs.voice.profile.test_media import profile_at
@@ -269,7 +269,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         bot = MagicMock()
-        journal = VoiceJournal(VoiceStore((await temporary_database(self))[1]))
+        journal = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
         bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
             bot, journal=journal
         )
@@ -292,7 +292,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
 
     async def test_timeline_cache_evicts_least_recent_guild(self) -> None:
         bot = MagicMock()
-        journal = VoiceJournal(VoiceStore((await temporary_database(self))[1]))
+        journal = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
         bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
             bot, journal=journal
         )
@@ -506,8 +506,8 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
 
     async def test_collector_replacement_changes_snapshot_epoch(self) -> None:
         bot = MagicMock()
-        old = VoiceJournal(VoiceStore((await temporary_database(self))[1]))
-        new = VoiceJournal(VoiceStore((await temporary_database(self))[1]))
+        old = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
+        new = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
         cog = VoiceProfileCog(bot)
         bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
             bot, journal=old
@@ -750,7 +750,7 @@ class TestColdReadBudget(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         _, database = await temporary_database(self)
         bot = MagicMock()
-        bot.get_cog.return_value.journal = VoiceJournal(VoiceStore(database))
+        bot.get_cog.return_value.journal = VoiceJournal(VoiceRepository(database))
         cog = VoiceProfileCog(bot)
         entered, release = threading.Event(), threading.Event()
 

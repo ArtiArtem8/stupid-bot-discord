@@ -13,7 +13,7 @@ from api.voice.model import VoiceSnapshot
 from repositories.sqlite.database import Database, migrate, open_engine
 from repositories.sqlite.identity import ensure_guild
 from repositories.sqlite.schema import music_settings
-from repositories.voice_store import VoiceStore
+from repositories.voice_repository import VoiceRepository
 from tests.api.voice.examples import record
 from tests.storage import temporary_database
 
@@ -21,7 +21,9 @@ from tests.storage import temporary_database
 def _crash_writer(path: str) -> None:
     async def write() -> None:
         database = Database(open_engine(Path(path)))
-        await VoiceStore(database).append("committed", [record(0, VoiceSnapshot(()))])
+        await VoiceRepository(database).append(
+            "committed", [record(0, VoiceSnapshot(()))]
+        )
         async with database.transaction() as connection:
             await ensure_guild(connection, 2)
             await connection.execute(
@@ -37,7 +39,7 @@ class TestStorageCrash(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         _, database = await temporary_database(self)
-        store = VoiceStore(database)
+        store = VoiceRepository(database)
         task = asyncio.current_task()
         if task is None:
             self.fail("Missing test task")
@@ -74,7 +76,7 @@ class TestStorageCrash(unittest.IsolatedAsyncioTestCase):
                 process.close()
             database = Database(open_engine(path))
             try:
-                store = VoiceStore(database)
+                store = VoiceRepository(database)
                 facts = [record(0, VoiceSnapshot(()))]
                 self.assertEqual(await store.read_all(1), tuple(facts))
                 await store.append("committed", facts)

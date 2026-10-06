@@ -16,7 +16,7 @@ from enum import StrEnum
 from uuid import uuid4
 
 from api.voice.model import GapReason, ObservationGap, VoiceJournalRecord
-from repositories.voice_store import VoiceJournalSnapshot, VoiceStore
+from repositories.voice_repository import VoiceJournalSnapshot, VoiceRepository
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class VoiceJournal:
     """Own queue admission, write-failure gaps and writer shutdown."""
 
     def __init__(
-        self, store: VoiceStore, *, queue_size: int = 10_000, batch_size: int = 500
+        self, store: VoiceRepository, *, queue_size: int = 10_000, batch_size: int = 500
     ) -> None:
         if queue_size < 1 or batch_size < 1:
             raise ValueError("Queue and batch sizes must be positive")

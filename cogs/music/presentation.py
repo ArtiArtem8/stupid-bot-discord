@@ -48,7 +48,7 @@ def format_duration(ms: float) -> str:
     if total.days >= MAX_TIMEDELTA_DAYS - 1_000_000:
         return "∞"
     if total.days >= 14:
-        return str(total.days) + " days"
+        return f"{total.days} days"
     return str(total)
 
 

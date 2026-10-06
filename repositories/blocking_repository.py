@@ -70,7 +70,7 @@ async def _read(
     return user
 
 
-class SQLiteBlockingRepository:
+class BlockingRepository:
     """Change access state and its audit on one connection; reads never fail open."""
 
     def __init__(self, database: Database) -> None:

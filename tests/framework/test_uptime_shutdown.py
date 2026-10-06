@@ -13,7 +13,7 @@ from framework.bot import StupidBot
 from framework.cog_loader import CogLoader
 from repositories.sqlite.database import Database, migrate, open_engine
 from repositories.sqlite.schema import runtime_checkpoint
-from repositories.voice_store import VoiceStore
+from repositories.voice_repository import VoiceRepository
 from tests.api.voice.examples import record
 from tests.storage import temporary_database
 from utils.asyncio_utils import run_in_thread
@@ -84,7 +84,7 @@ class TestUptimeShutdown(unittest.IsolatedAsyncioTestCase):
         await bot.close()
         reader = Database(open_engine(path))
         try:
-            snapshot = await VoiceStore(reader).snapshot_for_guild(1)
+            snapshot = await VoiceRepository(reader).snapshot_for_guild(1)
             self.assertCountEqual(
                 (*snapshot.guild_records, *snapshot.session_records), facts
             )

@@ -168,7 +168,7 @@ def copy_database(source: Path, destination: Path) -> None:
     database. Call outside the event loop; errors propagate to the operator.
     """
     with closing(
-        sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True)
+        sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True)
     ) as reader:
         # Exclusive creation also rejects accidentally using the source as target.
         with destination.open("xb"):

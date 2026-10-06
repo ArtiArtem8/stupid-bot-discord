@@ -120,7 +120,7 @@ class NativeRasterizer:
         ):
             raise RuntimeError(
                 "Required Inter fonts are missing; check resources/fonts "
-                + "or PROFILE_FONT_DIR"
+                "or PROFILE_FONT_DIR"
             )
         for name in ("Inter.ttf", "Inter-600.ttf", "Inter-750.ttf"):
             ImageFont.truetype(str(self.font_dir / name), 16)

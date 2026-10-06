@@ -4,13 +4,13 @@ import discord
 from discord.utils import utcnow
 
 from api.blocking_models import BlockedUser
-from repositories.sqlite_blocking_repository import SQLiteBlockingRepository
+from repositories.blocking_repository import BlockingRepository
 
 
 class BlockManager:
     """Apply observed member details without splitting a block transaction."""
 
-    def __init__(self, repository: SQLiteBlockingRepository) -> None:
+    def __init__(self, repository: BlockingRepository) -> None:
         self.repo = repository
 
     async def is_user_blocked(self, guild_id: int, user_id: int) -> bool:

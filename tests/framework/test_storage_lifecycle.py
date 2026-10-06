@@ -22,7 +22,7 @@ from repositories.volume_repository import VolumeData
 from utils.asyncio_utils import run_in_thread
 
 
-class TestBirthdayStorage(unittest.IsolatedAsyncioTestCase):
+class TestStorageLifecycle(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncSetUp(self) -> None:
         directory = TemporaryDirectory()

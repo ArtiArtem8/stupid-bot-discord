@@ -172,7 +172,7 @@ class PrefixBlockerCog(commands.Cog):
             dt = utcnow() + timedelta(seconds=delete_after)
             timer = f"-# Удалится {format_dt(dt, 'R')}"
             await message.reply(
-                response + "\n\n" + timer,
+                f"{response}\n\n{timer}",
                 mention_author=False,
                 delete_after=delete_after,
                 silent=True,

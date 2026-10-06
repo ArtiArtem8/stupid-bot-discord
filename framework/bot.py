@@ -17,16 +17,16 @@ from framework.cog_loader import CogLoader
 from framework.error_handler import handle_app_command_error
 from framework.feedback_ui import FeedbackUI
 from framework.uptime_manager import UptimeManager
-from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
+from repositories.birthday_repository import BirthdayRepository
+from repositories.blocking_repository import BlockingRepository
 from repositories.monitor_repository import MonitorRepository
 from repositories.question_repository import QuestionRepository
 from repositories.report_repository import ReportRepository
 from repositories.sqlite.database import Database, open_engine, validate_schema
-from repositories.sqlite_blocking_repository import SQLiteBlockingRepository
-from repositories.sqlite_volume_repository import SQLiteVolumeRepository
 from repositories.uptime_repository import UptimeRepository
 from repositories.voice_journal import VoiceJournal
-from repositories.voice_store import VoiceStore
+from repositories.voice_repository import VoiceRepository
+from repositories.volume_repository import VolumeRepository
 from utils.russian_time_utils import format_duration_ru
 
 logger = logging.getLogger(__name__)
@@ -73,17 +73,15 @@ class StupidBot(commands.Bot):
         self.uptime_manager = uptime_manager or UptimeManager(
             UptimeRepository(self._database)
         )
-        self.birthday_manager = BirthdayManager(
-            SQLiteBirthdayRepository(self._database)
-        )
-        self.volume_repository = SQLiteVolumeRepository(self._database)
-        self.block_manager = BlockManager(SQLiteBlockingRepository(self._database))
+        self.birthday_manager = BirthdayManager(BirthdayRepository(self._database))
+        self.volume_repository = VolumeRepository(self._database)
+        self.block_manager = BlockManager(BlockingRepository(self._database))
         self.question_repository = QuestionRepository(self._database)
         self.report_repository = ReportRepository(self._database)
         self.monitor_manager = ServerMonitoringManager(
             MonitorRepository(self._database)
         )
-        self._voice_store = VoiceStore(self._database)
+        self._voice_repository = VoiceRepository(self._database)
         self._voice_journal: VoiceJournal | None = None
         self._prepared = False
         self._prepare_lock = asyncio.Lock()
@@ -97,7 +95,7 @@ class StupidBot(commands.Bot):
         if self._voice_journal is not None and not self._voice_journal.closed:
             raise RuntimeError("Previous voice collector has not drained")
         self._voice_journal = VoiceJournal(
-            self._voice_store,
+            self._voice_repository,
             queue_size=config.VOICE_PROBE_EVENT_QUEUE_MAX,
             batch_size=config.VOICE_PROBE_WRITER_BATCH_MAX,
         )

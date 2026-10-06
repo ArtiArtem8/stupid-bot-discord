@@ -15,8 +15,8 @@ from sqlalchemy import select
 from api.voice.model import VoiceCheckpoint, VoiceSnapshot
 from repositories.sqlite.database import Database, migrate, open_engine, validate_schema
 from repositories.sqlite.schema import reports, uptime_periods, users
-from repositories.sqlite_volume_repository import SQLiteVolumeRepository
-from repositories.voice_store import VoiceStore
+from repositories.voice_repository import VoiceRepository
+from repositories.volume_repository import VolumeRepository
 from tests.api.voice.examples import human, record
 from tools import migrate_storage_once
 from tools.migrate_storage_once import Arguments, migrate_snapshot
@@ -218,7 +218,7 @@ class TestStorageMigration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sha256(partial.read_bytes()).hexdigest(), before)
         database = Database(open_engine(self.args.destination))
         try:
-            self.assertEqual(await SQLiteVolumeRepository(database).get_volume(1), 80)
+            self.assertEqual(await VolumeRepository(database).get_volume(1), 80)
         finally:
             await database.close()
 
@@ -291,7 +291,7 @@ class TestStorageMigration(unittest.IsolatedAsyncioTestCase):
         try:
             await validate_schema(database)
             self.assertEqual(
-                await VoiceStore(database).read_all(1), (first, last, last)
+                await VoiceRepository(database).read_all(1), (first, last, last)
             )
         finally:
             await database.close()

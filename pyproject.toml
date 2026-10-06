@@ -165,6 +165,8 @@ markers = [
 
 [tool.basedpyright]
 exclude = ["**/.venv/**"]
+# Allow compile-time concatenation of adjacent string literals.
+reportImplicitStringConcatenation = "none"
 reportUnannotatedClassAttribute = "none"
 reportUnusedCallResult = "none"
 reportUnknownMemberType = "none"

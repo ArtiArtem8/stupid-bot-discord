@@ -177,8 +177,8 @@ member_birthdays = Table(
     CheckConstraint("position >= 0"),
     CheckConstraint(
         "birth_date IS NULL OR (length(birth_date) = 10 AND "
-        + "date(birth_date, '+0 days') IS NOT NULL AND "
-        + "date(birth_date, '+0 days') = birth_date)"
+        "date(birth_date, '+0 days') IS NOT NULL AND "
+        "date(birth_date, '+0 days') = birth_date)"
     ),
 )
 Index(
@@ -505,24 +505,6 @@ voice_batches = Table(
 
 
 class VoiceRecordsColumns(TypedColumns):
-    # SQLAlchemy requires an instance annotation on this never-instantiated class.
-    __row_pos__: tuple[  # pyright: ignore[reportUninitializedInstanceVariable]
-        int,
-        str,
-        int,
-        str,
-        int,
-        int,
-        float,
-        str,
-        int | None,
-        bool | None,
-        bool | None,
-        int | None,
-        int | None,
-        str | None,
-        bool | None,
-    ]
     record_id = Column(Integer, primary_key=True, autoincrement=True)
     batch_id = Column(String, nullable=False)
     ordinal = Column(Integer, nullable=False)
@@ -556,7 +538,7 @@ voice_records = Table(
     CheckConstraint("(kind = 'lifecycle') = (stopped IS NOT NULL)"),
     CheckConstraint(
         "(kind = 'gap') = (gap_start_us IS NOT NULL AND gap_reason IS "
-        + "NOT NULL AND known_bounds IS NOT NULL)"
+        "NOT NULL AND known_bounds IS NOT NULL)"
     ),
     CheckConstraint("kind NOT IN ('observation','snapshot') OR guild_id IS NOT NULL"),
     CheckConstraint("gap_end_us IS NULL OR gap_end_us >= gap_start_us"),
@@ -576,27 +558,6 @@ Index(
 
 
 class VoiceRecordStatesColumns(TypedColumns):
-    # SQLAlchemy requires an instance annotation on this never-instantiated class.
-    __row_pos__: tuple[  # pyright: ignore[reportUninitializedInstanceVariable]
-        int,
-        int,
-        int,
-        int,
-        int | None,
-        bool,
-        bool | None,
-        bool | None,
-        bool | None,
-        bool | None,
-        bool | None,
-        bool | None,
-        bool | None,
-        bool | None,
-        bool | None,
-        bool | None,
-        int | None,
-        str | None,
-    ]
     record_id = Column(Integer, primary_key=True, autoincrement=False)
     position = Column(Integer, primary_key=True, autoincrement=False)
     guild_id = Column(Integer, nullable=False)

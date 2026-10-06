@@ -6,9 +6,9 @@ the bot was offline or disconnected.
 ## Collection and storage
 
 `VoiceCollectorCog` converts raw Discord observations and snapshots into facts.
-`VoiceJournal` owns their queue and writer; `VoiceStore` commits typed facts through
-the shared application Database. `build_timeline()`
-reconstructs history without Discord or storage I/O; scoped queries calculate
+`VoiceJournal` owns their queue and writer; `VoiceRepository` commits typed facts
+through the shared application Database. `build_timeline()` reconstructs history
+without Discord or storage I/O; scoped queries calculate
 presence, companions, activity and XP from that timeline.
 
 One queue owner feeds the shared database. Received, accepted and persisted counts

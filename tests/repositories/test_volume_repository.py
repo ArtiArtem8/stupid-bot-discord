@@ -8,7 +8,7 @@ from typing import override
 from sqlalchemy import insert, select
 
 import config
-from repositories.birthday_sqlite.repository import SQLiteBirthdayRepository
+from repositories.birthday_repository import BirthdayRepository
 from repositories.sqlite.database import (
     Database,
     copy_database,
@@ -17,18 +17,17 @@ from repositories.sqlite.database import (
     validate_schema,
 )
 from repositories.sqlite.schema import music_settings
-from repositories.sqlite_volume_repository import SQLiteVolumeRepository
-from repositories.volume_repository import VolumeData
+from repositories.volume_repository import VolumeData, VolumeRepository
 from tests.storage import temporary_database
 from tools.storage_legacy.partial_schema import congratulations, guilds, users, volumes
 from utils.asyncio_utils import run_in_thread
 
 
-class TestSQLiteVolume(unittest.IsolatedAsyncioTestCase):
+class TestVolumeRepository(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncSetUp(self) -> None:
         self.path, self.database = await temporary_database(self)
-        self.repo = SQLiteVolumeRepository(self.database)
+        self.repo = VolumeRepository(self.database)
 
     async def test_missing_default_zero_and_independent_guilds(self) -> None:
         self.assertIsNone(await self.repo.get(1))
@@ -94,11 +93,11 @@ class TestSQLiteVolume(unittest.IsolatedAsyncioTestCase):
                 upgraded = Database(open_engine(old_path))
                 try:
                     await validate_schema(upgraded)
-                    birthday = await SQLiteBirthdayRepository(upgraded).get(1)
+                    birthday = await BirthdayRepository(upgraded).get(1)
                     if birthday is None:
                         self.fail("Birthday lost during upgrade")
                     self.assertEqual(birthday.users[2].was_congrats, ["old", "old"])
-                    volume = await SQLiteVolumeRepository(upgraded).get_volume(1)
+                    volume = await VolumeRepository(upgraded).get_volume(1)
                     self.assertEqual(
                         volume,
                         33
@@ -111,7 +110,7 @@ class TestSQLiteVolume(unittest.IsolatedAsyncioTestCase):
                     try:
                         await validate_schema(restored)
                         self.assertEqual(
-                            await SQLiteBirthdayRepository(restored).get(1), birthday
+                            await BirthdayRepository(restored).get(1), birthday
                         )
                     finally:
                         await restored.close()

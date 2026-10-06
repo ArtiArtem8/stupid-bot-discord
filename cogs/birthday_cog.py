@@ -139,7 +139,7 @@ class ConfirmDeleteView(discord.ui.View):
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description=(
-                    "Дата уже изменена или удалена. " + "Откройте подтверждение заново."
+                    "Дата уже изменена или удалена. Откройте подтверждение заново."
                 ),
                 ephemeral=True,
             )

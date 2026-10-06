@@ -17,7 +17,7 @@ from api.voice.model import (
 )
 from api.voice.timeline import build_timeline
 from repositories.voice_journal import JournalWriteError, Submission, VoiceJournal
-from repositories.voice_store import VoiceStore
+from repositories.voice_repository import VoiceRepository
 from tests.api.voice.examples import START, at, human, record
 from tests.storage import temporary_database
 
@@ -26,7 +26,7 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncSetUp(self) -> None:
         _, database = await temporary_database(self)
-        self.store = VoiceStore(database)
+        self.store = VoiceRepository(database)
         self.journal = VoiceJournal(self.store, batch_size=2)
 
     async def test_acceptance_is_not_persistence_and_shutdown_drains_batch(

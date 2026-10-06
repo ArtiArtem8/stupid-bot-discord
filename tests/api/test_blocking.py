@@ -6,14 +6,14 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 
 from api.blocking import BlockManager
-from repositories.sqlite_blocking_repository import SQLiteBlockingRepository
+from repositories.blocking_repository import BlockingRepository
 
 
 class TestBlockManager(unittest.IsolatedAsyncioTestCase):
     async def test_access_uses_committed_state_and_propagates_unavailability(
         self,
     ) -> None:
-        repository = MagicMock(spec=SQLiteBlockingRepository)
+        repository = MagicMock(spec=BlockingRepository)
         repository.is_blocked = AsyncMock(return_value=False)
         manager = BlockManager(repository)
         self.assertFalse(await manager.is_user_blocked(1, 2))
@@ -23,7 +23,7 @@ class TestBlockManager(unittest.IsolatedAsyncioTestCase):
             await manager.is_user_blocked(1, 2)
 
     async def test_block_and_unblock_each_use_atomic_change(self) -> None:
-        repository = MagicMock(spec=SQLiteBlockingRepository)
+        repository = MagicMock(spec=BlockingRepository)
         repository.change = AsyncMock(return_value=True)
         manager = BlockManager(repository)
         member = MagicMock(spec=discord.Member, id=2, display_name="Nick", name="Name")

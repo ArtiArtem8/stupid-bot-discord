@@ -5,9 +5,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
-from typing import TypedDict
+from typing import TypedDict, cast
 
-from sqlalchemy import select
+from sqlalchemy import Column, RowMapping, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -169,7 +169,7 @@ async def _revision(connection: AsyncConnection, guild_id: int) -> int:
     return max(shared, scoped or 0)
 
 
-class VoiceStore:
+class VoiceRepository:
     """Own atomic batches and scoped snapshots, releasing SQL before replay.
 
     A caller chooses a stable batch ID before attempting persistence. Repeating
@@ -311,40 +311,9 @@ async def _read_records(
     query = select(voice_records).where(scope).order_by(voice_records.c.record_id)
     rows = await connection.execute(query)
     records: dict[int, tuple[RecordValues, list[StateValues]]] = {}
-    for (
-        rid,
-        _batch,
-        _ordinal,
-        boot,
-        seq,
-        observed,
-        mono,
-        kind,
-        gid,
-        authority,
-        stopped,
-        start_us,
-        end_us,
-        reason,
-        bounds,
-    ) in rows:
-        records[rid] = (
-            RecordValues(
-                boot_id=boot,
-                sequence=seq,
-                observed_us=observed,
-                monotonic=mono,
-                kind=kind,
-                guild_id=gid,
-                authoritative=authority,
-                stopped=stopped,
-                gap_start_us=start_us,
-                gap_end_us=end_us,
-                gap_reason=reason,
-                known_bounds=bounds,
-            ),
-            [],
-        )
+    for row in rows.mappings():
+        record_id = _column_value(row, voice_records.c.record_id)
+        records[record_id] = (_read_record_values(row), [])
     states = await connection.execute(
         select(voice_record_states)
         .join(
@@ -353,46 +322,55 @@ async def _read_records(
         .where(scope)
         .order_by(voice_record_states.c.record_id, voice_record_states.c.position)
     )
-    for (
-        rid,
-        _position,
-        _guild_id,
-        uid,
-        channel,
-        known,
-        bot,
-        mute,
-        deaf,
-        server_mute,
-        server_deaf,
-        stream,
-        video,
-        suppress,
-        afk,
-        requested,
-        requested_us,
-        session,
-    ) in states:
-        records[rid][1].append(
-            StateValues(
-                user_id=uid,
-                channel_id=channel,
-                channel_known=known,
-                is_bot=bot,
-                self_mute=mute,
-                self_deaf=deaf,
-                server_mute=server_mute,
-                server_deaf=server_deaf,
-                self_stream=stream,
-                self_video=video,
-                suppress=suppress,
-                afk=afk,
-                requested_to_speak=requested,
-                requested_us=requested_us,
-                session_id=session,
-            )
-        )
+    for row in states.mappings():
+        record_id = _column_value(row, voice_record_states.c.record_id)
+        records[record_id][1].append(_read_state_values(row))
     return list(records.values())
+
+
+def _column_value[T](row: RowMapping, column: Column[T]) -> T:
+    # SQLAlchemy's mapping API returns Any even for Column[T]. Keep that typing
+    # gap here: lookups use actual selected columns, never positional offsets.
+    return cast(T, row[column])
+
+
+def _read_record_values(row: RowMapping) -> RecordValues:
+    columns = voice_records.c
+    return RecordValues(
+        boot_id=_column_value(row, columns.boot_id),
+        sequence=_column_value(row, columns.sequence),
+        observed_us=_column_value(row, columns.observed_us),
+        monotonic=_column_value(row, columns.monotonic),
+        kind=_column_value(row, columns.kind),
+        guild_id=_column_value(row, columns.guild_id),
+        authoritative=_column_value(row, columns.authoritative),
+        stopped=_column_value(row, columns.stopped),
+        gap_start_us=_column_value(row, columns.gap_start_us),
+        gap_end_us=_column_value(row, columns.gap_end_us),
+        gap_reason=_column_value(row, columns.gap_reason),
+        known_bounds=_column_value(row, columns.known_bounds),
+    )
+
+
+def _read_state_values(row: RowMapping) -> StateValues:
+    columns = voice_record_states.c
+    return StateValues(
+        user_id=_column_value(row, columns.user_id),
+        channel_id=_column_value(row, columns.channel_id),
+        channel_known=_column_value(row, columns.channel_known),
+        is_bot=_column_value(row, columns.is_bot),
+        self_mute=_column_value(row, columns.self_mute),
+        self_deaf=_column_value(row, columns.self_deaf),
+        server_mute=_column_value(row, columns.server_mute),
+        server_deaf=_column_value(row, columns.server_deaf),
+        self_stream=_column_value(row, columns.self_stream),
+        self_video=_column_value(row, columns.self_video),
+        suppress=_column_value(row, columns.suppress),
+        afk=_column_value(row, columns.afk),
+        requested_to_speak=_column_value(row, columns.requested_to_speak),
+        requested_us=_column_value(row, columns.requested_us),
+        session_id=_column_value(row, columns.session_id),
+    )
 
 
 def _decode_state(state: StateValues) -> VoiceStateSnapshot:

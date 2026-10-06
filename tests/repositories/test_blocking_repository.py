@@ -7,7 +7,7 @@ from typing import override
 
 from sqlalchemy import event
 
-from repositories.sqlite_blocking_repository import SQLiteBlockingRepository
+from repositories.blocking_repository import BlockingRepository
 from tests.storage import temporary_database
 
 
@@ -15,7 +15,7 @@ class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncSetUp(self) -> None:
         _, self.database = await temporary_database(self)
-        self.repo = SQLiteBlockingRepository(self.database)
+        self.repo = BlockingRepository(self.database)
         self.now = datetime(2026, 10, 6, tzinfo=UTC)
 
     async def change(

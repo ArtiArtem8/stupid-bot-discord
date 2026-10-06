@@ -251,8 +251,8 @@ class AdminCog(BaseCog):
                 )
                 history_lines.append(
                     f"{icon} **{action}** {format_dt(timestamp, 'R')}\n"
-                    + f"• Админ: <@{entry.admin_id}>\n"
-                    + f"• Причина: {truncated_reason}"
+                    f"• Админ: <@{entry.admin_id}>\n"
+                    f"• Причина: {truncated_reason}"
                 )
 
             history_value = truncate_sequence(

@@ -67,7 +67,7 @@ def _format_voice_result_message(
         VoiceCheckResult.CONNECTION_FAILED: "Ошибка подключения к {0}",
         VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE: MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
         VoiceCheckResult.TIMEOUT: "Время подключения к {0} **истекло**"
-        + "\n*Попробуйте сменить регион этого канала!*",
+        "\n*Попробуйте сменить регион этого канала!*",
         VoiceCheckResult.MOVED_CHANNELS: "Переместился {1} -> {0}",
         VoiceCheckResult.SUCCESS: "Успешно подключился к {0}",
         VoiceCheckResult.USER_NOT_IN_VOICE: "Вы должны быть в голосовом канале!",

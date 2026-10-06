@@ -358,8 +358,7 @@ class CoreMusicService:
             message = compact_external_log_text(exc.message)
             cause = compact_external_log_text(exc.cause)
             message_format = (
-                "Track load failure guild=%s query=%r severity=%s "
-                + "message=%r cause=%r"
+                "Track load failure guild=%s query=%r severity=%s message=%r cause=%r"
             )
             logger.warning(
                 message_format,

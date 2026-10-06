@@ -6,6 +6,13 @@ facts. `--database PATH` selects the file; default is `data/app.sqlite`. There a
 no feature backend flags, JSON fallback, automatic migrations or startup imports.
 SQLAlchemy Core, aiosqlite and Alembic remain the pinned runtime stack.
 
+Feature implementations live in `repositories/<feature>_repository.py` and use
+`<Feature>Repository` names. This `sqlite/` package owns only shared connections,
+schema, identity operations and maintenance. `VoiceJournal` separately owns the
+bounded ingestion queue; Music's `VolumeStore` protocol is its testable capability
+boundary. Offline legacy codecs remain necessary for explicit imports. Completed
+experimental backends are not part of the application tree.
+
 ## Prepare a local Windows copy
 
 The following commands are maintenance only and do not start Discord. Use a

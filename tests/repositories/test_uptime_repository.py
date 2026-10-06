@@ -15,7 +15,7 @@ from repositories.uptime_repository import UptimeCheckpoint, UptimeRepository
 from utils.asyncio_utils import run_in_thread
 
 
-class TestUptimeSQLite(unittest.IsolatedAsyncioTestCase):
+class TestUptimeRepository(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncSetUp(self) -> None:
         directory = TemporaryDirectory()
