@@ -6,9 +6,9 @@ from sqlalchemy import Row, RowMapping, Select, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from api.birthday_models import BirthdayGuildConfig
+from repositories.sqlite.rows import column_value
 from repositories.sqlite.schema import birthday_settings as guilds
-from repositories.sqlite.schema import voice_record_states, voice_records
-from repositories.voice_repository import _column_value
+from repositories.sqlite.schema import reports, voice_record_states, voice_records
 
 
 async def read_config(connection: AsyncConnection) -> BirthdayGuildConfig:
@@ -32,10 +32,16 @@ async def read_config(connection: AsyncConnection) -> BirthdayGuildConfig:
 
 
 def check_voice_columns(row: RowMapping) -> None:
-    assert_type(_column_value(row, voice_records.c.record_id), int)
-    assert_type(_column_value(row, voice_records.c.boot_id), str)
-    assert_type(_column_value(row, voice_records.c.monotonic), float)
-    assert_type(_column_value(row, voice_records.c.authoritative), bool | None)
-    assert_type(_column_value(row, voice_record_states.c.channel_id), int | None)
-    assert_type(_column_value(row, voice_record_states.c.channel_known), bool)
-    assert_type(_column_value(row, voice_record_states.c.session_id), str | None)
+    assert_type(column_value(row, voice_records.c.record_id), int)
+    assert_type(column_value(row, voice_records.c.boot_id), str)
+    assert_type(column_value(row, voice_records.c.monotonic), float)
+    assert_type(column_value(row, voice_records.c.authoritative), bool | None)
+    assert_type(column_value(row, voice_record_states.c.channel_id), int | None)
+    assert_type(column_value(row, voice_record_states.c.channel_known), bool)
+    assert_type(column_value(row, voice_record_states.c.session_id), str | None)
+
+
+def check_report_columns(row: RowMapping) -> None:
+    assert_type(column_value(row, reports.c.report_id), str)
+    assert_type(column_value(row, reports.c.guild_id), int | None)
+    assert_type(column_value(row, reports.c.user_name_at_event), str)

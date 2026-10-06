@@ -1,7 +1,4 @@
-"""Prefix blocker that suggests slash commands. Unnecessary *complicated*.
-
-Detects old-style prefix commands and suggests modern slash command alternatives.
-"""
+"""Redirect legacy prefix commands to visible slash-command suggestions."""
 
 import asyncio
 import logging
@@ -83,32 +80,26 @@ class PrefixBlockerCog(commands.Cog):
                 c.name: c for c in global_cmds
             }
 
-            if guild_id is not None and self.bot.get_guild(guild_id) is not None:
-                guild = self.bot.get_guild(guild_id)
-                if guild is not None:
-                    guild_cmds = await self.bot.tree.fetch_commands(guild=guild)
-                    for c in guild_cmds:
-                        mapping[c.name] = c
+            guild = self.bot.get_guild(guild_id) if guild_id is not None else None
+            if guild is not None:
+                guild_cmds = await self.bot.tree.fetch_commands(guild=guild)
+                for command in guild_cmds:
+                    mapping[command.name] = command
 
             self._app_cmd_cache[guild_id] = (now + ttl, mapping)
             return mapping
 
-    async def _format_clickable(
-        self, *, key: str, root_name: str, message: Message
-    ) -> str:
-        """Prefer AppCommand mention formatting (clickable).
-
-        For subcommands, Discord uses the root command ID: </root sub:ID>.
-        """
+    async def _format_suggestion(self, message: Message, suggestion: Suggestion) -> str:
+        """Link the root command, falling back to the full local command name."""
         guild_id = message.guild.id if message.guild else None
         try:
             app_map = await self._get_app_command_map(guild_id)
-            root = app_map.get(root_name)
+            root = app_map.get(suggestion.root_name)
             if root is None:
-                return f"`/{key}`"
+                return f"`/{suggestion.key}`"
             return root.mention
         except discord.HTTPException:
-            return f"`/{key}`"
+            return f"`/{suggestion.key}`"
 
     @commands.Cog.listener()
     async def on_message(self, message: Message) -> None:
@@ -153,18 +144,11 @@ class PrefixBlockerCog(commands.Cog):
                 message, suggestions.alternative
             )
             return (
-                response + f"\n-# возможно, вы искали {primary_text} или {alternative}"
+                f"{response}\n-# возможно, вы искали {primary_text} или {alternative}"
             )
         if primary.score >= 90.0:
-            return response + f"\n-# попробуйте {primary_text}"
-        return response + f"\n-# возможно {primary_text}"
-
-    async def _format_suggestion(self, message: Message, suggestion: Suggestion) -> str:
-        return await self._format_clickable(
-            key=suggestion.key,
-            root_name=suggestion.root_name,
-            message=message,
-        )
+            return f"{response}\n-# попробуйте {primary_text}"
+        return f"{response}\n-# возможно {primary_text}"
 
     async def _send_prefix_warning(self, message: Message, response: str) -> None:
         try:

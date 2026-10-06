@@ -9,6 +9,7 @@ Provides:
 """
 
 import logging
+from collections.abc import Sequence
 from enum import StrEnum
 from typing import TYPE_CHECKING, NoReturn, override
 
@@ -19,6 +20,7 @@ from discord.utils import format_dt
 
 import config
 from api.blocking import BlockManager
+from api.blocking_models import BlockedUser, NameHistoryEntry
 from framework.base_cog import BaseCog
 from framework.checks import is_owner_app
 from framework.feedback_ui import FeedbackType, FeedbackUI
@@ -92,6 +94,44 @@ def format_danger_level(block_count: int) -> str:
     if block_count <= 4:
         return "🟠 Средний"
     return "🔴 Высокий"
+
+
+def _format_recent_block_events(user: BlockedUser) -> str:
+    events = sorted(
+        [(entry.timestamp, "BLOCK", entry) for entry in user.block_history]
+        + [(entry.timestamp, "UNBLOCK", entry) for entry in user.unblock_history],
+        key=lambda event: event[0],
+        reverse=True,
+    )[:5]
+    lines: list[str] = []
+    for timestamp, action, entry in events:
+        icon = "🔒" if action == "BLOCK" else "🔓"
+        reason = truncate_text(entry.reason or "Не указана", width=200, mode="middle")
+        lines.append(
+            f"{icon} **{action}** {format_dt(timestamp, 'R')}\n"
+            f"• Админ: <@{entry.admin_id}>\n"
+            f"• Причина: {reason}"
+        )
+    return truncate_sequence(
+        lines,
+        max_length=config.MAX_EMBED_FIELD_LENGTH,
+        separator="\n",
+        placeholder="...",
+    )
+
+
+def _format_name_history(history: Sequence[NameHistoryEntry]) -> str:
+    lines: list[str] = []
+    for entry in sorted(history, key=lambda entry: entry.timestamp, reverse=True)[:3]:
+        timestamp = format_dt(entry.timestamp, "D")
+        name = truncate_text(entry.username, width=200)
+        lines.append(f"{timestamp}:\n• Имя: {name}")
+    return truncate_sequence(
+        lines,
+        max_length=config.MAX_EMBED_FIELD_LENGTH,
+        separator="\n",
+        placeholder="...",
+    )
 
 
 class AdminCog(BaseCog):
@@ -235,58 +275,15 @@ class AdminCog(BaseCog):
             inline=False,
         )
 
-        all_events = sorted(
-            [(e.timestamp, "BLOCK", e) for e in user_entry.block_history]
-            + [(e.timestamp, "UNBLOCK", e) for e in user_entry.unblock_history],
-            key=lambda x: x[0],
-            reverse=True,
-        )[:5]
-
-        if all_events:
-            history_lines: list[str] = []
-            for timestamp, action, entry in all_events:
-                icon = ("🔓", "🔒")[action == "BLOCK"]
-                truncated_reason = truncate_text(
-                    entry.reason or "Не указана", width=200, mode="middle"
-                )
-                history_lines.append(
-                    f"{icon} **{action}** {format_dt(timestamp, 'R')}\n"
-                    f"• Админ: <@{entry.admin_id}>\n"
-                    f"• Причина: {truncated_reason}"
-                )
-
-            history_value = truncate_sequence(
-                history_lines,
-                max_length=config.MAX_EMBED_FIELD_LENGTH,
-                separator="\n",
-                placeholder="...",
-            )
-            embed.safe_add_field(
-                name="Последние события",
-                value=history_value,
-                inline=False,
-            )
-
-        if user_entry.name_history[:21]:
-            name_changes: list[str] = []
-            for name_entry in sorted(
-                user_entry.name_history,
-                key=lambda x: x.timestamp,
-                reverse=True,
-            )[:3]:
-                ts = format_dt(name_entry.timestamp, "D")
-                username_text = truncate_text(name_entry.username, width=200)
-                name_changes.append(f"{ts}:\n• Имя: {username_text}")
-
-            names_value = truncate_sequence(
-                name_changes,
-                max_length=config.MAX_EMBED_FIELD_LENGTH,
-                separator="\n",
-                placeholder="...",
-            )
+        embed.safe_add_field(
+            name="Последние события",
+            value=_format_recent_block_events(user_entry),
+            inline=False,
+        )
+        if user_entry.name_history:
             embed.safe_add_field(
                 name="История имён",
-                value=names_value,
+                value=_format_name_history(user_entry.name_history),
             )
 
         first_block_ts = format_dt(user_entry.block_history[0].timestamp, "D")

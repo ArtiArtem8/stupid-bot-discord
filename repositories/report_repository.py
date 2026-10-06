@@ -16,49 +16,47 @@ from repositories.sqlite.identity import (
     observe_username,
     utc_microseconds,
 )
+from repositories.sqlite.rows import column_value
 from repositories.sqlite.schema import report_settings, reports
 
 
 async def _existing(
     connection: AsyncConnection, request_key: str
 ) -> ReportDataDict | None:
-    row = (
-        await connection.execute(
-            select(
-                reports.c.report_id,
-                reports.c.user_id,
-                reports.c.guild_id,
-                reports.c.channel_id,
-                reports.c.reason,
-                reports.c.created_text,
-                reports.c.user_name_at_event,
-                reports.c.avatar_at_event,
-                reports.c.guild_name_at_event,
-                reports.c.channel_name_at_event,
-            ).where(reports.c.request_key == request_key)
-        )
-    ).one_or_none()
+    columns = reports.c
+    query = select(
+        columns.report_id,
+        columns.user_id,
+        columns.guild_id,
+        columns.channel_id,
+        columns.reason,
+        columns.created_text,
+        columns.user_name_at_event,
+        columns.avatar_at_event,
+        columns.guild_name_at_event,
+        columns.channel_name_at_event,
+    ).where(columns.request_key == request_key)
+    result = await connection.execute(query)
+    row = result.mappings().one_or_none()
     if row is None:
         return None
-    (
-        report_id,
-        user,
-        guild,
-        channel,
-        reason,
-        created,
-        name,
-        avatar,
-        guild_name,
-        channel_name,
-    ) = row
     return {
-        "report_id": report_id,
-        "reason": reason,
-        "created_at": created or "",
-        "user": {"id": user, "name": name, "avatar": avatar},
-        "guild": {"id": guild, "name": guild_name},
-        "channel": {"id": channel, "name": channel_name},
+        "report_id": column_value(row, columns.report_id),
+        "reason": column_value(row, columns.reason),
+        "created_at": column_value(row, columns.created_text) or "",
+        "user": {
+            "id": column_value(row, columns.user_id),
+            "name": column_value(row, columns.user_name_at_event),
+            "avatar": column_value(row, columns.avatar_at_event),
+        },
+        "guild": {
+            "id": column_value(row, columns.guild_id),
+            "name": column_value(row, columns.guild_name_at_event),
+        },
+        "channel": {
+            "id": column_value(row, columns.channel_id),
+            "name": column_value(row, columns.channel_name_at_event),
+        },
     }
 
 

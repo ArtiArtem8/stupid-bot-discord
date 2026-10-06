@@ -600,7 +600,7 @@ def format_breakdown_ru(
     if not parts:
         return f"0 {FORMS[TimeUnit.SECOND].many}"
 
-    text = parts[0] if len(parts) == 1 else (", ".join(parts[:-1]) + " и " + parts[-1])
+    text = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} и {parts[-1]}"
 
     prefix = ""
     if breakdown.is_negative and not breakdown.is_zero:

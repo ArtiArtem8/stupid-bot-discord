@@ -219,7 +219,7 @@ def check_template(
         _check_resources(element)
     missing = required - nodes.keys()
     if missing:
-        raise ValueError("Missing SVG IDs: " + ", ".join(sorted(missing)))
+        raise ValueError(f"Missing SVG IDs: {', '.join(sorted(missing))}")
     return root, nodes
 
 
@@ -289,7 +289,7 @@ def fit_texts(
                         len(clusters) - 2, int(len(clusters) * maximum / box.width) - 2
                     ),
                 )
-                replace_text(node, "".join(clusters[:keep]).rstrip("…") + "…")
+                replace_text(node, f"{''.join(clusters[:keep]).rstrip('…')}…")
             changed = True
         if not changed:
             return boxes
@@ -402,7 +402,7 @@ def _bind_images(nodes: dict[str, Element], identity: CardIdentity) -> tuple[str
         if png:
             nodes[identifier].set(
                 f"{{{XLINK}}}href",
-                "data:image/png;base64," + base64.b64encode(png).decode(),
+                f"data:image/png;base64,{base64.b64encode(png).decode()}",
             )
             style(nodes[fallback], "display", "none")
         else:

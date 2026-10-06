@@ -64,22 +64,21 @@ def format_list(strlist: list[str], cut: int, theme: bool = True) -> list[str]:
     Returns:
         The same list instance after separator insertion.
     """
-    jolen = 0
-    char = " "
-    last = len(strlist) - 1
-    for v, i in enumerate(strlist):
-        jolen += len(i)
-        if v == 0 and theme:
-            if v + 1 < len(strlist) and jolen + len(strlist[v + 1]) > cut:
-                strlist[v] += "\n"
-                jolen = 0
-        elif v == last:
+    line_width = 0
+    last_index = len(strlist) - 1
+    for index, fragment in enumerate(strlist):
+        line_width += len(fragment)
+        if index == 0 and theme:
+            if last_index > 0 and line_width + len(strlist[1]) > cut:
+                strlist[index] += "\n"
+                line_width = 0
+        elif index == last_index:
             break
-        elif jolen > cut:
-            jolen = 0
-            strlist[v] += ",\n"
+        elif line_width > cut:
+            line_width = 0
+            strlist[index] += ",\n"
         else:
-            strlist[v] += "," + char
+            strlist[index] += ", "
     return strlist
 
 
