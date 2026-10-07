@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import warnings
 from bisect import bisect_right
+from contextlib import ExitStack, closing
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Literal
@@ -118,25 +119,37 @@ def _decode_frames(
     ends: list[int] = []
     elapsed = 0
     source_pixels = 0
-    for index in range(1 if mode == "static" else 201):
-        try:
-            source.seek(index)
-        except EOFError:
-            break
-        source_pixels += source.width * source.height
-        if index == 200 or source_pixels > 32_000_000:
-            raise ValueError("Animated avatar exceeds 200 frames or 32 megapixels")
-        if (index + 1) * size[0] * size[1] * 4 > 8 * 1024 * 1024:
-            raise ValueError("Animated avatar exceeds 8 MiB of decoded frames")
-        metadata: dict[str | tuple[int, int], object] = source.info
-        duration = metadata.get("duration", 100)
-        if isinstance(duration, bool) or not isinstance(duration, int) or duration <= 0:
-            duration = 100
-        elapsed += duration
-        # Sequential seek/convert applies GIF disposal before resizing.
-        with source.convert("RGBA") as rgba:
-            frame = ImageOps.fit(rgba, size, method=Image.Resampling.LANCZOS)
-        frame.putalpha(ImageChops.multiply(frame.getchannel("A"), mask))
-        frames.append(frame)
-        ends.append(elapsed)
+    with ExitStack() as resources:
+        for index in range(1 if mode == "static" else 201):
+            try:
+                source.seek(index)
+            except EOFError:
+                break
+            source_pixels += source.width * source.height
+            if index == 200 or source_pixels > 32_000_000:
+                raise ValueError("Animated avatar exceeds 200 frames or 32 megapixels")
+            if (index + 1) * size[0] * size[1] * 4 > 8 * 1024 * 1024:
+                raise ValueError("Animated avatar exceeds 8 MiB of decoded frames")
+            metadata: dict[str | tuple[int, int], object] = source.info
+            duration = metadata.get("duration", 100)
+            if (
+                isinstance(duration, bool)
+                or not isinstance(duration, int)
+                or duration <= 0
+            ):
+                duration = 100
+            elapsed += duration
+            # Sequential seek/convert applies GIF disposal before resizing.
+            with closing(source.convert("RGBA")) as rgba:
+                frame = ImageOps.fit(rgba, size, method=Image.Resampling.LANCZOS)
+            resources.callback(frame.close)
+            with (
+                closing(frame.getchannel("A")) as alpha,
+                closing(ImageChops.multiply(alpha, mask)) as masked_alpha,
+            ):
+                frame.putalpha(masked_alpha)
+            frames.append(frame)
+            ends.append(elapsed)
+        # Completed frames belong to the caller; only failed decodes roll back.
+        resources.pop_all()
     return frames, ends

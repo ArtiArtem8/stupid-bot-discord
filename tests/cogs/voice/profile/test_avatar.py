@@ -3,8 +3,9 @@
 import unittest
 from io import BytesIO
 from struct import pack
+from unittest.mock import patch
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from cogs.voice.profile.avatar import load_avatar
 from cogs.voice.profile.raster import Box
@@ -60,6 +61,32 @@ class TestAvatarFrames(unittest.TestCase):
         self.assertEqual(len(static.frames), 1)
         with self.assertRaisesRegex(ValueError, "200 frames"):
             load_avatar(data, Box(0, 0, 16, 16))
+
+    def test_failed_decode_closes_frames_already_allocated(self) -> None:
+        cases = (
+            ("damaged pixels", gif()[:-8], 1, False),
+            ("frame limit", gif(201), 200, False),
+            ("mask failure", gif(), 1, True),
+        )
+        for name, data, count, fail_mask in cases:
+            with self.subTest(name=name):
+                frames = [Image.new("RGBA", (16, 16), "blue") for _ in range(count)]
+                for frame in frames:
+                    self.addCleanup(frame.close)
+                with patch.object(ImageOps, "fit", side_effect=frames) as resize:
+                    if fail_mask:
+                        with patch.object(
+                            Image.Image, "putalpha", side_effect=OSError("mask")
+                        ):
+                            with self.assertRaises(ValueError):
+                                load_avatar(data, Box(0, 0, 16, 16))
+                    else:
+                        with self.assertRaises(ValueError):
+                            load_avatar(data, Box(0, 0, 16, 16))
+                self.assertEqual(resize.call_count, count)
+                for frame in frames:
+                    with self.assertRaises(ValueError):
+                        frame.getpixel((0, 0))
 
     def test_static_rejects_invalid_first_frame_and_compressed_or_pixel_overflow(
         self,
