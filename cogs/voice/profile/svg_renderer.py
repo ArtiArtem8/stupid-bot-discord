@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
 from time import perf_counter
+from xml.etree.ElementTree import Element
 
 from defusedxml.ElementTree import fromstring, tostring
 from PIL import Image
@@ -91,32 +92,12 @@ class SvgProfileRenderer:
         avatar = None
         static_svg = design.static_svg
         root = fromstring(design.svg)
-        image_node = next(
-            node for node in root.iter() if node.get("id") == "user-avatar"
-        )
         box = design.boxes.get("user-avatar")
         if box is not None:
             try:
                 avatar = load_avatar(identity.avatar_bytes, box, mode=avatar_mode)
                 if avatar is not None:
-                    clips = {
-                        f"url(#{node.get('id')})"
-                        for node in root.iter()
-                        if node.tag.rsplit("}", 1)[-1] == "clipPath"
-                        and len(node) == 1
-                        and node[0].tag.rsplit("}", 1)[-1] in ("circle", "ellipse")
-                    }
-                    if property_value(image_node, "clip-path", "") not in clips:
-                        raise ValueError(
-                            "Animated avatar requires a circular or elliptical clip"
-                        )
-                    # Remove frame zero from the base so transparent later frames
-                    # reveal the panel, never leave the previous portrait behind.
-                    static_root = fromstring(static_svg)
-                    for node in static_root.iter():
-                        if node.get("id") == "user-avatar":
-                            style(node, "display", "none")
-                    static_svg = tostring(static_root)
+                    static_svg = _avatar_background(root, static_svg)
             except ValueError as error:
                 avatar = None
                 design = replace(
@@ -139,3 +120,24 @@ class SvgProfileRenderer:
         animation.authored = load_clips(self.template.parent, design)
         animation.avatar = avatar
         return PreparedCard(design, animation, perf_counter() - started)
+
+
+def _avatar_background(root: Element, static_svg: bytes) -> bytes:
+    """Validate the avatar clip and remove its baked frame from the base layer."""
+    image_node = next(node for node in root.iter() if node.get("id") == "user-avatar")
+    clips = {
+        f"url(#{node.get('id')})"
+        for node in root.iter()
+        if node.tag.rsplit("}", 1)[-1] == "clipPath"
+        and len(node) == 1
+        and node[0].tag.rsplit("}", 1)[-1] in ("circle", "ellipse")
+    }
+    if property_value(image_node, "clip-path", "") not in clips:
+        raise ValueError("Animated avatar requires a circular or elliptical clip")
+    # Remove frame zero from the base so transparent later frames
+    # reveal the panel, never leave the previous portrait behind.
+    static_root = fromstring(static_svg)
+    for node in static_root.iter():
+        if node.get("id") == "user-avatar":
+            style(node, "display", "none")
+    return tostring(static_root)
