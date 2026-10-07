@@ -193,6 +193,7 @@ def _winning_intervals(
             else:
                 active.pop(index)
         if active:
+            # A sole context needs no Fraction-based ranking.
             winner = (
                 next(iter(active.values()))
                 if len(active) == 1
