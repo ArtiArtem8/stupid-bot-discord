@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from contextlib import closing
 from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
@@ -41,7 +42,8 @@ class PreparedCard:
 
     def png(self, phase: float = 0) -> bytes:
         output = BytesIO()
-        self.frame(phase).save(output, "PNG", compress_level=3)
+        with closing(self.frame(phase)) as frame:
+            frame.save(output, "PNG", compress_level=3)
         return output.getvalue()
 
 

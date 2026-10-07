@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass
 from io import BytesIO
 from time import perf_counter
 from typing import Literal
 
-from PIL import features
+from PIL import Image, features
 
 from api.progression.appearance import LevelTier
 from api.voice.profile.details import ActivityDetail, XpDetail
@@ -65,25 +66,30 @@ def encode_webp(prepared: PreparedCard) -> bytes:
         raise ValueError("Animation exceeds the 42-megapixel frame buffer budget")
     if not features.check("webp"):
         raise RuntimeError("This Pillow/libwebp build cannot encode animations")
-    frames = [prepared.frame(index / count) for index in range(count)]
-    output = BytesIO()
-    frames[0].save(
-        output,
-        "WEBP",
-        save_all=True,
-        append_images=frames[1:],
-        duration=1000 // fps,
-        loop=0,
-        lossless=True,
-        quality=75,
-        # A four-second sequential card does not need periodic
-        # independent keyframes. This is not a lossy or FPS change.
-        method=method,
-        allow_mixed=False,
-        minimize_size=False,
-        kmax=0,
-    )
-    return output.getvalue()
+    with ExitStack() as resources:
+        frames: list[Image.Image] = []
+        for index in range(count):
+            frame = prepared.frame(index / count)
+            resources.callback(frame.close)
+            frames.append(frame)
+        output = BytesIO()
+        frames[0].save(
+            output,
+            "WEBP",
+            save_all=True,
+            append_images=frames[1:],
+            duration=1000 // fps,
+            loop=0,
+            lossless=True,
+            quality=75,
+            # A four-second sequential card does not need periodic
+            # independent keyframes. This is not a lossy or FPS change.
+            method=method,
+            allow_mixed=False,
+            minimize_size=False,
+            kmax=0,
+        )
+        return output.getvalue()
 
 
 class ProfileMediaRenderer:
