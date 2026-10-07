@@ -63,7 +63,6 @@ def load_avatar(
         warnings.simplefilter("error", Image.DecompressionBombWarning)
         try:
             with Image.open(BytesIO(data)) as source:
-                # Only GIF is enabled here; other formats retain their static path.
                 if not isinstance(source, GifImagePlugin.GifImageFile):
                     return None
                 if size[0] * size[1] * 4 > 8 * 1024 * 1024:
@@ -100,7 +99,7 @@ def _masked_frames(
     if mode == "static":
         try:
             # Pillow inspects the next GIF header without decoding its pixels.
-            # Keep single-frame GIFs on the existing SVG antialiasing path.
+            # Keep single-frame GIFs on the SVG antialiasing path.
             single_frame = not source.is_animated
         except (OSError, ValueError, EOFError):
             # Frame zero is already valid; damaged later metadata is irrelevant.

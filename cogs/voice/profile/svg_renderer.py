@@ -1,4 +1,4 @@
-"""Public profile rendering boundary: editable SVG -> prepared raster -> frames."""
+"""Prepare SVG layers and compose profile frames."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ class PreparedCard:
 
 
 class SvgProfileRenderer:
-    """One layout, same core coordinates for every tier and output format."""
+    """Prepare shared card layers for static and animated output."""
 
     version = "profile-card-editable-2"
 
@@ -67,7 +67,7 @@ class SvgProfileRenderer:
             self.raster.close()
 
     def source_revision(self) -> str:
-        """Invalidate caches when designer-owned source files change."""
+        """Hash the renderer version, fonts, template and referenced asset directory."""
         digest = hashlib.sha256(self.version.encode())
         for font in sorted(self.raster.font_dir.glob("*.ttf")):
             digest.update(font.name.encode())

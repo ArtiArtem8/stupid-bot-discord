@@ -178,9 +178,7 @@ def _rank(interval: _RatedInterval) -> tuple[Fraction, int, int]:
 def _winning_intervals(
     intervals: Sequence[_RatedInterval],
 ) -> Iterator[tuple[timedelta, VoiceXpBreakdown]]:
-    # Sweep boundaries rather than seconds. Removing and adding at one boundary
-    # happens before awarding [boundary, next_boundary), so touching intervals
-    # never overlap. Active contexts per user are normally few.
+    # Apply all changes before awarding [start, end); touching intervals do not overlap.
     changes: dict[datetime, list[tuple[int, bool]]] = {}
     for index, interval in enumerate(intervals):
         changes.setdefault(interval.started_at, []).append((index, True))
@@ -205,8 +203,7 @@ def _winning_intervals(
 def _sum_awards(
     intervals: Iterator[tuple[timedelta, VoiceXpBreakdown]],
 ) -> VoiceXpBreakdown:
-    # Combine exact microseconds at equal rates before multiplying fractions.
-    # Splitting an observation into more checkpoints must not add arithmetic work.
+    # Aggregate equal rates to limit Fraction arithmetic to distinct rates.
     durations: dict[VoiceXpBreakdown, int] = {}
     for duration, rate in intervals:
         durations[rate] = durations.get(rate, 0) + duration // _MICROSECOND

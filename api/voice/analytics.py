@@ -69,8 +69,7 @@ class VoiceAnalytics:
         history = await self._repository.history()
         state = await run_in_thread(partial(VoiceReplayState, history.records))
         async with self._lock:
-            # Fix the final cutoff while runtime commits are excluded. There is
-            # no loop chasing an indefinitely advancing observation horizon.
+            # Exclude commits while catching up and publishing one consistent cutoff.
             tail = await self._repository.history(
                 after_record_id=history.cutoff.last_record_id
             )

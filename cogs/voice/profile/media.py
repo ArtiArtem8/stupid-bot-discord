@@ -39,7 +39,7 @@ MEDIA_BYTE_LIMIT = 5 * 1024 * 1024
 
 
 class RenderBusyError(RuntimeError):
-    """The bounded rendering queue has no free slots."""
+    """Profile preparation or rendering cannot admit this request."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +59,7 @@ class ProfileMedia:
 
 
 def encode_webp(prepared: PreparedCard) -> bytes:
-    """Encode four seconds at 20 FPS with the approved lossless settings."""
+    """Encode four seconds of lossless WebP at 20 FPS."""
     fps, method = 20, 1
     count = fps * 4
     if prepared.design.width * prepared.design.height * count > 42_000_000:
@@ -82,12 +82,10 @@ def encode_webp(prepared: PreparedCard) -> bytes:
             loop=0,
             lossless=True,
             quality=75,
-            # A four-second sequential card does not need periodic
-            # independent keyframes. This is not a lossy or FPS change.
             method=method,
             allow_mixed=False,
             minimize_size=False,
-            kmax=0,
+            kmax=0,  # Sequential playback needs no keyframes for random access.
         )
         return output.getvalue()
 
@@ -225,8 +223,7 @@ class ProfileMediaRenderer:
         await asyncio.shield(self._close_task)
 
     async def _drain(self) -> None:
-        # A running native thread cannot be safely cancelled. Keep ownership and
-        # wait for the bounded queue instead of releasing its slot prematurely.
+        # Join native threads before closing resources they may still use.
         if self._start_task is not None:
             await asyncio.gather(self._start_task, return_exceptions=True)
         if self._tasks:

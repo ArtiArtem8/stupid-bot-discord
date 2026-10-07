@@ -443,7 +443,6 @@ class VoiceProfileCog(BaseCog):
 def _companion_colors(
     timeline: VoiceTimeline, ids: list[int], guild_id: int, timezone_label: str
 ) -> dict[int, int]:
-    # Reuse canonical lifetime progression; no rates or tier boundaries in the Cog.
     return {
         user_id: build_profile(
             timeline, user_id, guild_id, timezone_label

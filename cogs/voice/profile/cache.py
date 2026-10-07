@@ -18,7 +18,7 @@ from cogs.voice.profile.media import ProfileMedia, RenderBusyError
 
 @dataclass(frozen=True, slots=True)
 class MediaKey:
-    """Pixel inputs plus the persisted snapshot and deployment revision."""
+    """Pixel inputs, committed voice generation and renderer source revision."""
 
     guild_id: int
     user_id: int
