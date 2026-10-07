@@ -130,7 +130,7 @@ def rounded_path(box: Box, radius: float) -> tuple[tuple[float, float], ...]:
 
 
 class CardAnimation:
-    """Reuse a base and star atlas. Static text is never rerasterized per frame."""
+    """Compose frames from a prepared base, effect masks and star sprites."""
 
     def __init__(
         self,
@@ -142,15 +142,14 @@ class CardAnimation:
         progress_ratio: float,
         corner_radius: float,
     ) -> None:
-        self.design, self.base, self.atlas, self.motion = design, base, atlas, motion
+        self.design = design
+        self.base = base
+        self.motion = motion
         self.progress_ratio = progress_ratio
         self.authored: tuple[AuthoredClip, ...] = ()
         self.avatar: AnimatedAvatar | None = None
-        # Animated artwork stays on the fully opaque interior. The antialiased
-        # outside edge is owned only by the static layer, not stabilized post-hoc.
+        # Keep effects inside the opaque interior; the base owns antialiased edges.
         self.clip = base.getchannel("A").point([0] * 255 + [255])
-        # Rasterize antialiased geometry once. Only packet masks and satellites
-        # change per frame; there is no full-canvas supersampling in that loop.
         self.colors = [design.tokens["bright"]]
         if motion.prismatic:
             self.colors.extend(("#9687ff", "#ee74d6"))
