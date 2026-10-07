@@ -2,6 +2,7 @@
 
 import asyncio
 import unittest
+from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import override
@@ -19,14 +20,9 @@ from api.voice.model import (
 )
 from api.voice.timeline import build_timeline
 from repositories.sqlite.database import Database, migrate, open_engine
-from repositories.sqlite.schema import voice_batches, voice_record_states, voice_records
+from repositories.sqlite.schema import voice_batches
 from repositories.voice_journal import Submission, VoiceJournal
-from repositories.voice_repository import (
-    VoiceRepository,
-    _decode_records,
-    _read_record_values,
-    _read_state_values,
-)
+from repositories.voice_repository import VoiceRepository
 from tests.api.voice.examples import at, human, record
 from utils.asyncio_utils import run_in_thread
 
@@ -124,7 +120,7 @@ class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
             (*snapshot.guild_records, *snapshot.session_records), facts
         )
 
-    async def test_named_columns_preserve_facts_when_select_order_changes(self) -> None:
+    async def test_round_trip_preserves_member_order_and_asymmetric_flags(self) -> None:
         states = (
             VoiceStateSnapshot(
                 7,
@@ -158,33 +154,31 @@ class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
         )
         fact = record(5, VoiceSnapshot(states, authoritative=False))
         await self.store.append("named", [fact])
-        async with self.database.transaction() as connection:
-            record_row = (
-                (await connection.execute(select(*reversed(tuple(voice_records.c)))))
-                .mappings()
-                .one()
-            )
-            state_rows = (
-                (
-                    await connection.execute(
-                        select(*reversed(tuple(voice_record_states.c))).order_by(
-                            voice_record_states.c.position
-                        )
-                    )
-                )
-                .mappings()
-                .all()
-            )
-        decoded = _decode_records(
-            [
-                (
-                    _read_record_values(record_row),
-                    [_read_state_values(row) for row in state_rows],
-                )
-            ]
+        self.assertEqual(await self.store.read_all(1), (fact,))
+
+    async def test_scope_and_day_filters_retain_order_duplicates_and_states(
+        self,
+    ) -> None:
+        facts = (
+            record(0, VoiceCheckpoint(), guild=None),
+            record(1, VoiceObservation(human(1))),
+            record(1, VoiceObservation(human(1))),
+            record(2, VoiceSnapshot((human(2, 20),)), guild=2),
+            record(86400, VoiceSnapshot((human(3),))),
+            record(86401, VoiceCheckpoint(), guild=None),
         )
-        self.assertEqual(decoded, (fact,))
-        self.assertEqual(await self.store.read_all(1), decoded)
+        await self.store.append("days", facts)
+        self.assertEqual(await self.store.read_all(None), (facts[0], facts[5]))
+        self.assertEqual(await self.store.read_all(1, at(0).date()), facts[1:3])
+        self.assertEqual(
+            await self.store.read_all(1, at(0).date() + timedelta(days=1)),
+            (facts[4],),
+        )
+        snapshot = await self.store.snapshot_for_guild(1)
+        self.assertEqual(snapshot.guild_records, (facts[1], facts[2], facts[4]))
+        self.assertEqual(snapshot.session_records, (facts[0], facts[5]))
+        self.assertEqual(await self.store.read_all(2), (facts[3],))
+        self.assertEqual(await self.store.read_all(99), ())
 
     async def test_concurrent_batch_retries_publish_one_revision(self) -> None:
         facts = [record(0, VoiceSnapshot((human(),))), record(1, VoiceCheckpoint())]

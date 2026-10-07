@@ -8,6 +8,7 @@ from itertools import pairwise
 from api.voice.model import (
     GapReason,
     ObservationGap,
+    VoiceCheckpoint,
     VoiceJournalRecord,
     VoiceLifecycle,
     VoiceObservation,
@@ -123,19 +124,28 @@ class _GuildReplay:
     pending: list[ObservationGap] = field(default_factory=list)
     previous: VoiceJournalRecord | None = None
     cursor: datetime | None = None
+    emitted_through: datetime | None = None
+    last_room: dict[int, int] = field(default_factory=dict)
     history_started_at: datetime | None = None
     last_snapshot_at: datetime | None = None
     boot_started_at: datetime | None = None
 
     def apply(self, record: VoiceJournalRecord) -> None:
         moment = record.observed_at
+        checkpoint = isinstance(record.fact, VoiceCheckpoint)
         if self.history_started_at is None:
             self.history_started_at = moment
         if self.cursor is not None:
             moment = max(moment, self.cursor)
-            self._emit(self.cursor, moment)
+        if self.emitted_through is None:
+            self.emitted_through = moment
+        elif not checkpoint:
+            # Checkpoints advance clock/gap detection but cannot change occupants.
+            self._emit(self.emitted_through, moment)
+            self.emitted_through = moment
         self._boundaries(record)
-        self._apply_fact(record, moment)
+        if not checkpoint:
+            self._apply_fact(record, moment)
         self.previous = record
         self.cursor = moment
 
@@ -255,17 +265,21 @@ class _GuildReplay:
             if state.channel_known and state.channel_id is not None:
                 channels.setdefault(state.channel_id, []).append(state)
         for channel_id, states in channels.items():
+            ordered = tuple(sorted(states, key=lambda s: s.user_id))
+            previous_index = self.last_room.get(channel_id)
+            if previous_index is not None:
+                previous = self.rooms[previous_index]
+                if previous.ended_at == start and previous.states == ordered:
+                    self.rooms[previous_index] = replace(previous, ended_at=end)
+                    continue
+            self.last_room[channel_id] = len(self.rooms)
             self.rooms.append(
-                RoomInterval(
-                    self.guild_id,
-                    channel_id,
-                    start,
-                    end,
-                    tuple(sorted(states, key=lambda s: s.user_id)),
-                )
+                RoomInterval(self.guild_id, channel_id, start, end, ordered)
             )
 
     def finish(self) -> None:
+        if self.emitted_through is not None and self.cursor is not None:
+            self._emit(self.emitted_through, self.cursor)
         self.gaps.extend(self.pending)
 
     def observed_coverage(self) -> list[ObservationInterval]:
@@ -300,6 +314,8 @@ def _split_at_gaps(
         if gap.started_at < room.ended_at
         and (gap.ended_at is None or gap.ended_at > room.started_at)
     ]
+    if not relevant:
+        return [room]
     boundaries = {room.started_at, room.ended_at}
     for gap in relevant:
         boundaries.add(max(room.started_at, gap.started_at))

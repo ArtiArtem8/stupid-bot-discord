@@ -193,17 +193,26 @@ def _winning_intervals(
             else:
                 active.pop(index)
         if active:
-            winner = min(active.values(), key=_rank)
+            winner = (
+                next(iter(active.values()))
+                if len(active) == 1
+                else min(active.values(), key=_rank)
+            )
             yield end - start, winner.award
 
 
 def _sum_awards(
     intervals: Iterator[tuple[timedelta, VoiceXpBreakdown]],
 ) -> VoiceXpBreakdown:
+    # Combine exact microseconds at equal rates before multiplying fractions.
+    # Splitting an observation into more checkpoints must not add arithmetic work.
+    durations: dict[VoiceXpBreakdown, int] = {}
+    for duration, rate in intervals:
+        durations[rate] = durations.get(rate, 0) + duration // _MICROSECOND
     solo = social = large = stream = video = cap = Fraction()
     mute = deaf = Fraction()
-    for duration, rate in intervals:
-        hours = Fraction(duration // _MICROSECOND, _MICROSECONDS_PER_HOUR)
+    for rate, microseconds in durations.items():
+        hours = Fraction(microseconds, _MICROSECONDS_PER_HOUR)
         solo += rate.solo_base * hours
         social += rate.social_base * hours
         large += rate.large_group_bonus * hours

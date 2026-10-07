@@ -17,6 +17,50 @@ from tests.api.voice.examples import at, human, record
 
 
 class TestVoiceTimeline(unittest.TestCase):
+    def test_checkpoints_extend_unchanged_rooms_without_splitting_states(self) -> None:
+        timeline = build_timeline(
+            [record(0, VoiceSnapshot((human(), human(2, 20))))]
+            + [record(t, VoiceCheckpoint(), guild=None) for t in range(1, 100)]
+            + [record(100, VoiceSnapshot((human(2, 20), human())))]
+            + [record(101, VoiceCheckpoint(), guild=None)]
+        )
+        self.assertEqual(len(timeline.rooms), 2)
+        for room in timeline.rooms:
+            self.assertEqual((room.started_at, room.ended_at), (at(0), at(101)))
+        self.assertEqual(timeline.coverage, (ObservationInterval(1, at(0), at(101)),))
+
+    def test_clock_change_at_checkpoint_still_invalidates_delayed_interval(
+        self,
+    ) -> None:
+        timeline = build_timeline(
+            [
+                record(0, VoiceSnapshot((human(),))),
+                replace(record(20, VoiceCheckpoint(), guild=None), monotonic=10),
+                replace(record(30, VoiceSnapshot((human(),))), monotonic=20),
+                replace(record(40, VoiceCheckpoint(), guild=None), monotonic=30),
+            ]
+        )
+        self.assertEqual(presence(timeline, 1).total_seconds, 10)
+        self.assertEqual(timeline.coverage, (ObservationInterval(1, at(30), at(40)),))
+        self.assertEqual(timeline.gaps[0].reason, GapReason.CLOCK_DISCONTINUITY)
+
+    def test_retrospective_gap_splits_coalesced_room_at_exact_bounds(self) -> None:
+        timeline = build_timeline(
+            [
+                record(0, VoiceSnapshot((human(),))),
+                record(10, VoiceCheckpoint()),
+                record(20, VoiceCheckpoint()),
+                record(30, ObservationGap(at(5), at(15), GapReason.WRITE_FAILURE, 1)),
+                record(40, VoiceSnapshot((human(),))),
+                record(50, VoiceCheckpoint()),
+            ]
+        )
+        self.assertEqual(presence(timeline, 1).total_seconds, 15)
+        self.assertEqual(
+            [(r.started_at, r.ended_at) for r in timeline.rooms if not r.gaps],
+            [(at(0), at(5)), (at(40), at(50))],
+        )
+
     def test_stale_snapshot_session_id_does_not_invalidate_guild_presence(self) -> None:
         initial = replace(human(), session_id="old", self_mute=True)
         unmuted = replace(initial, self_mute=False)
@@ -95,7 +139,11 @@ class TestVoiceTimeline(unittest.TestCase):
         self.assertEqual(presence(timeline, 1).session_count, 1)
         self.assertEqual(presence(timeline, 2).total_seconds, 25)
         self.assertEqual(presence(timeline, 1, VoiceScope(1, 10)).total_seconds, 10)
-        self.assertIn(flags, timeline.rooms[-2].states)
+        flagged = [room for room in timeline.rooms if flags in room.states]
+        self.assertEqual(
+            [(room.started_at, room.ended_at) for room in flagged],
+            [(at(15), at(20))],
+        )
         for room in timeline.rooms:
             self.assertGreater(room.ended_at, room.started_at)
 

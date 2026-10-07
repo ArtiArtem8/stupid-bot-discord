@@ -52,6 +52,11 @@ full snapshot opens or restores coverage for its guild. An empty snapshot also
 establishes coverage; a checkpoint does not. A cache snapshot is authoritative
 only when all channel identities are resolved.
 
+Replay retains every checkpoint for clock and coverage checks but does not split
+unchanged rooms at each heartbeat. Adjacent intervals with the same complete
+member states are coalesced; finalized gaps still split them at their exact
+bounds. This analytical representation does not remove any stored facts.
+
 Voice changes split intervals at their observation timestamps. Disconnects,
 clock changes, boot changes and lost writes interrupt coverage. A full snapshot
 that disagrees with replay invalidates time since the preceding authoritative

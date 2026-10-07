@@ -5,9 +5,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
-from sqlalchemy import RowMapping, select
+from sqlalchemy import select, union_all
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -31,7 +31,6 @@ from repositories.sqlite.identity import (
     from_microseconds,
     utc_microseconds,
 )
-from repositories.sqlite.rows import column_value
 from repositories.sqlite.schema import (
     voice_batches,
     voice_record_states,
@@ -73,6 +72,80 @@ class StateValues(TypedDict):
     requested_to_speak: bool | None
     requested_us: int | None
     session_id: str | None
+
+
+class _StoredRecord(NamedTuple):
+    """Typed detached event fields in projection order."""
+
+    record_id: int
+    boot_id: str
+    sequence: int
+    observed_us: int
+    monotonic: float
+    kind: str
+    guild_id: int | None
+    authoritative: bool | None
+    stopped: bool | None
+    gap_start_us: int | None
+    gap_end_us: int | None
+    gap_reason: str | None
+    known_bounds: bool | None
+
+
+class _StoredState(NamedTuple):
+    """Detached member state belonging to one ordered event."""
+
+    record_id: int
+    user_id: int
+    channel_id: int | None
+    channel_known: bool
+    is_bot: bool | None
+    self_mute: bool | None
+    self_deaf: bool | None
+    server_mute: bool | None
+    server_deaf: bool | None
+    self_stream: bool | None
+    self_video: bool | None
+    suppress: bool | None
+    afk: bool | None
+    requested_to_speak: bool | None
+    requested_us: int | None
+    session_id: str | None
+
+
+_RECORD_FIELDS = select(
+    voice_records.c.record_id,
+    voice_records.c.boot_id,
+    voice_records.c.sequence,
+    voice_records.c.observed_us,
+    voice_records.c.monotonic,
+    voice_records.c.kind,
+    voice_records.c.guild_id,
+    voice_records.c.authoritative,
+    voice_records.c.stopped,
+    voice_records.c.gap_start_us,
+    voice_records.c.gap_end_us,
+    voice_records.c.gap_reason,
+    voice_records.c.known_bounds,
+)
+_STATE_FIELDS = select(
+    voice_record_states.c.record_id,
+    voice_record_states.c.user_id,
+    voice_record_states.c.channel_id,
+    voice_record_states.c.channel_known,
+    voice_record_states.c.is_bot,
+    voice_record_states.c.self_mute,
+    voice_record_states.c.self_deaf,
+    voice_record_states.c.server_mute,
+    voice_record_states.c.server_deaf,
+    voice_record_states.c.self_stream,
+    voice_record_states.c.self_video,
+    voice_record_states.c.suppress,
+    voice_record_states.c.afk,
+    voice_record_states.c.requested_to_speak,
+    voice_record_states.c.requested_us,
+    voice_record_states.c.session_id,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,123 +366,84 @@ async def _read_records(
     *,
     include_shared: bool = False,
     day: date | None = None,
-) -> list[tuple[RecordValues, list[StateValues]]]:
-    scope = (
-        voice_records.c.guild_id.is_(None)
-        if guild_id is None
-        else voice_records.c.guild_id == guild_id
-    )
-    if include_shared:
-        scope = scope | voice_records.c.guild_id.is_(None)
+) -> tuple[list[_StoredRecord], list[_StoredState]]:
+    events = _RECORD_FIELDS
     if day is not None:
         start = utc_microseconds(datetime.combine(day, time(), UTC))
         end = utc_microseconds(datetime.combine(day + timedelta(days=1), time(), UTC))
-        scope = (
-            scope
-            & (voice_records.c.observed_us >= start)
-            & (voice_records.c.observed_us < end)
+        events = events.where(
+            voice_records.c.observed_us >= start, voice_records.c.observed_us < end
         )
-    query = select(voice_records).where(scope).order_by(voice_records.c.record_id)
+    scoped = events.where(voice_records.c.guild_id == guild_id)
+    # Disjoint guild/shared branches let SQLite merge the scope index in order,
+    # instead of sorting the entire OR result. UNION ALL retains repeated facts.
+    query = (
+        union_all(scoped, events.where(voice_records.c.guild_id.is_(None)))
+        if include_shared and guild_id is not None
+        else scoped
+    ).order_by(voice_records.c.record_id)
     rows = await connection.execute(query)
-    records: dict[int, tuple[RecordValues, list[StateValues]]] = {}
-    for row in rows.mappings():
-        record_id = column_value(row, voice_records.c.record_id)
-        records[record_id] = (_read_record_values(row), [])
-    states = await connection.execute(
-        select(voice_record_states)
-        .join(
-            voice_records, voice_records.c.record_id == voice_record_states.c.record_id
+    records = [_StoredRecord(*row) for row in rows]
+    if guild_id is None:
+        return records, []
+    states = _STATE_FIELDS.where(voice_record_states.c.guild_id == guild_id)
+    if day is not None:
+        states = states.where(
+            voice_record_states.c.record_id.in_(
+                scoped.with_only_columns(voice_records.c.record_id)
+            )
         )
-        .where(scope)
-        .order_by(voice_record_states.c.record_id, voice_record_states.c.position)
+    # Composite foreign keys already guarantee the state/event guild agrees.
+    state_rows = await connection.execute(
+        states.order_by(voice_record_states.c.record_id, voice_record_states.c.position)
     )
-    for row in states.mappings():
-        record_id = column_value(row, voice_record_states.c.record_id)
-        records[record_id][1].append(_read_state_values(row))
-    return list(records.values())
+    return records, [_StoredState(*row) for row in state_rows]
 
 
-def _read_record_values(row: RowMapping) -> RecordValues:
-    columns = voice_records.c
-    return RecordValues(
-        boot_id=column_value(row, columns.boot_id),
-        sequence=column_value(row, columns.sequence),
-        observed_us=column_value(row, columns.observed_us),
-        monotonic=column_value(row, columns.monotonic),
-        kind=column_value(row, columns.kind),
-        guild_id=column_value(row, columns.guild_id),
-        authoritative=column_value(row, columns.authoritative),
-        stopped=column_value(row, columns.stopped),
-        gap_start_us=column_value(row, columns.gap_start_us),
-        gap_end_us=column_value(row, columns.gap_end_us),
-        gap_reason=column_value(row, columns.gap_reason),
-        known_bounds=column_value(row, columns.known_bounds),
-    )
-
-
-def _read_state_values(row: RowMapping) -> StateValues:
-    columns = voice_record_states.c
-    return StateValues(
-        user_id=column_value(row, columns.user_id),
-        channel_id=column_value(row, columns.channel_id),
-        channel_known=column_value(row, columns.channel_known),
-        is_bot=column_value(row, columns.is_bot),
-        self_mute=column_value(row, columns.self_mute),
-        self_deaf=column_value(row, columns.self_deaf),
-        server_mute=column_value(row, columns.server_mute),
-        server_deaf=column_value(row, columns.server_deaf),
-        self_stream=column_value(row, columns.self_stream),
-        self_video=column_value(row, columns.self_video),
-        suppress=column_value(row, columns.suppress),
-        afk=column_value(row, columns.afk),
-        requested_to_speak=column_value(row, columns.requested_to_speak),
-        requested_us=column_value(row, columns.requested_us),
-        session_id=column_value(row, columns.session_id),
-    )
-
-
-def _decode_state(state: StateValues) -> VoiceStateSnapshot:
-    requested = state["requested_us"]
+def _decode_state(state: _StoredState) -> VoiceStateSnapshot:
+    requested = state.requested_us
     return VoiceStateSnapshot(
-        user_id=state["user_id"],
-        channel_id=state["channel_id"],
-        channel_known=state["channel_known"],
-        is_bot=state["is_bot"],
-        self_mute=state["self_mute"],
-        self_deaf=state["self_deaf"],
-        server_mute=state["server_mute"],
-        server_deaf=state["server_deaf"],
-        self_stream=state["self_stream"],
-        self_video=state["self_video"],
-        suppress=state["suppress"],
-        afk=state["afk"],
-        requested_to_speak=state["requested_to_speak"],
+        user_id=state.user_id,
+        channel_id=state.channel_id,
+        channel_known=state.channel_known,
+        is_bot=state.is_bot,
+        self_mute=state.self_mute,
+        self_deaf=state.self_deaf,
+        server_mute=state.server_mute,
+        server_deaf=state.server_deaf,
+        self_stream=state.self_stream,
+        self_video=state.self_video,
+        suppress=state.suppress,
+        afk=state.afk,
+        requested_to_speak=state.requested_to_speak,
         requested_to_speak_at=from_microseconds(requested)
         if requested is not None
         else None,
-        session_id=state["session_id"],
+        session_id=state.session_id,
     )
 
 
-def _decode_snapshot(value: RecordValues, states: list[StateValues]) -> VoiceSnapshot:
-    authoritative = value["authoritative"]
+def _decode_snapshot(
+    value: _StoredRecord, states: list[VoiceStateSnapshot]
+) -> VoiceSnapshot:
+    authoritative = value.authoritative
     if authoritative is None:
         raise ValueError("Snapshot lacks authority")
-    return VoiceSnapshot(tuple(_decode_state(state) for state in states), authoritative)
+    return VoiceSnapshot(tuple(states), authoritative)
 
 
-def _decode_fact(value: RecordValues, states: list[StateValues]) -> VoiceFact:
-    match value["kind"]:
+def _decode_fact(value: _StoredRecord, states: list[VoiceStateSnapshot]) -> VoiceFact:
+    match value.kind:
         case "observation":
             if len(states) != 1:
                 raise ValueError("Voice observation needs exactly one state")
-            return VoiceObservation(_decode_state(states[0]))
+            return VoiceObservation(states[0])
         case "snapshot":
             return _decode_snapshot(value, states)
         case "checkpoint":
             return VoiceCheckpoint()
         case "lifecycle":
-            stopped = value["stopped"]
+            stopped = value.stopped
             if stopped is None:
                 raise ValueError("Lifecycle lacks boundary type")
             return VoiceLifecycle(stopped)
@@ -420,27 +454,31 @@ def _decode_fact(value: RecordValues, states: list[StateValues]) -> VoiceFact:
 
 
 def _decode_records(
-    raw: list[tuple[RecordValues, list[StateValues]]],
+    raw: tuple[list[_StoredRecord], list[_StoredState]],
 ) -> tuple[VoiceJournalRecord, ...]:
+    records, state_rows = raw
+    states: dict[int, list[VoiceStateSnapshot]] = {}
+    for state in state_rows:
+        states.setdefault(state.record_id, []).append(_decode_state(state))
     return tuple(
         VoiceJournalRecord(
-            value["sequence"],
-            value["boot_id"],
-            from_microseconds(value["observed_us"]),
-            value["monotonic"],
-            _decode_fact(value, states),
-            value["guild_id"],
+            value.sequence,
+            value.boot_id,
+            from_microseconds(value.observed_us),
+            value.monotonic,
+            _decode_fact(value, states.get(value.record_id, [])),
+            value.guild_id,
         )
-        for value, states in raw
+        for value in records
     )
 
 
-def _decode_gap(value: RecordValues) -> ObservationGap:
+def _decode_gap(value: _StoredRecord) -> ObservationGap:
     start, end, reason, bounds = (
-        value["gap_start_us"],
-        value["gap_end_us"],
-        value["gap_reason"],
-        value["known_bounds"],
+        value.gap_start_us,
+        value.gap_end_us,
+        value.gap_reason,
+        value.known_bounds,
     )
     if start is None or reason is None or bounds is None:
         raise ValueError("Incomplete gap metadata")
@@ -448,6 +486,6 @@ def _decode_gap(value: RecordValues) -> ObservationGap:
         from_microseconds(start),
         from_microseconds(end) if end is not None else None,
         GapReason(reason),
-        value["guild_id"],
+        value.guild_id,
         bounds,
     )
