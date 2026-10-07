@@ -68,36 +68,40 @@ class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
             record(5, VoiceLifecycle(stopped=True), guild=None),
         )
         revision = await self.store.append("one", facts)
-        snapshot = await self.store.snapshot_for_guild(1)
-        restored = (*snapshot.session_records, *snapshot.guild_records)
-        self.assertCountEqual(restored, facts)
-        self.assertEqual(snapshot.guild_records[1:3], facts[2:4])
+        snapshot = await self.store.history()
+        restored = snapshot.records
+        self.assertEqual(restored, facts)
         self.assertEqual(build_timeline(restored), build_timeline(facts))
         self.assertEqual(await self.store.append("one", facts), revision)
         with self.assertRaisesRegex(ValueError, "different content"):
             await self.store.append("one", facts[:-1])
-        self.assertEqual(await self.store.snapshot_for_guild(1), snapshot)
+        self.assertEqual(await self.store.history(), snapshot)
 
     async def test_revision_changes_only_for_relevant_guild_and_shared_facts(
         self,
     ) -> None:
         await self.store.append("a", [record(0, VoiceSnapshot((human(),)))])
-        before = await self.store.revision(1)
+        before = await self.store.history()
         await self.store.append("b", [record(0, VoiceSnapshot(()), guild=2)])
-        self.assertEqual(await self.store.revision(1), before)
+        unrelated = await self.store.history()
+        self.assertEqual(unrelated.guild_revisions[1], before.guild_revisions[1])
+        self.assertEqual(unrelated.shared_revision, before.shared_revision)
+        self.assertGreater(unrelated.cutoff.revision, before.cutoff.revision)
         await self.store.append("c", [record(5, VoiceCheckpoint(), guild=None)])
-        self.assertGreater(await self.store.revision(1), before)
+        shared = await self.store.history()
+        self.assertGreater(shared.shared_revision, unrelated.cutoff.revision)
+        self.assertEqual(shared.guild_revisions, unrelated.guild_revisions)
 
     async def test_failed_states_roll_back_envelopes_batch_and_revision(self) -> None:
         # First establish channel 10 in guild 1, then reject reuse by guild 2.
         await self.store.append("good", [record(0, VoiceSnapshot((human(),)))])
-        before = await self.store.revision(2)
+        before = await self.store.history()
         with self.assertRaises(ValueError):
             await self.store.append(
                 "bad", [record(1, VoiceSnapshot((human(),)), guild=2)]
             )
         self.assertEqual(await self.store.read_all(2), ())
-        self.assertEqual(await self.store.revision(2), before)
+        self.assertEqual(await self.store.history(), before)
         async with self.database.transaction() as connection:
             self.assertIsNone(
                 await connection.scalar(
@@ -119,10 +123,8 @@ class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
         await journal.close()
         self.assertEqual(journal.counts.persisted, 2)
         self.assertEqual(journal.submit(facts[0]), Submission.CLOSED)
-        snapshot = await self.store.snapshot_for_guild(1)
-        self.assertCountEqual(
-            (*snapshot.guild_records, *snapshot.session_records), facts
-        )
+        snapshot = await self.store.history()
+        self.assertEqual(snapshot.records, tuple(facts))
 
     async def test_round_trip_preserves_member_order_and_asymmetric_flags(self) -> None:
         states = (
@@ -178,9 +180,8 @@ class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
             await self.store.read_all(1, at(0).date() + timedelta(days=1)),
             (facts[4],),
         )
-        snapshot = await self.store.snapshot_for_guild(1)
-        self.assertEqual(snapshot.guild_records, (facts[1], facts[2], facts[4]))
-        self.assertEqual(snapshot.session_records, (facts[0], facts[5]))
+        self.assertEqual(await self.store.read_all(1), (facts[1], facts[2], facts[4]))
+        self.assertEqual((await self.store.history()).records, facts)
         self.assertEqual(await self.store.read_all(2), (facts[3],))
         self.assertEqual(await self.store.read_all(99), ())
 
@@ -197,7 +198,7 @@ class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
 
         async def read() -> None:
             queued.set()
-            await self.store.snapshot_for_guild(1)
+            await self.store.history()
 
         async with self.database.transaction():
             task = asyncio.create_task(read())

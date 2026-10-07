@@ -82,8 +82,7 @@ class StupidBot(commands.Bot):
         self.monitor_manager = ServerMonitoringManager(
             MonitorRepository(self._database)
         )
-        self._voice_repository = VoiceRepository(self._database)
-        self.voice_analytics = VoiceAnalytics(self._voice_repository)
+        self.voice_analytics = VoiceAnalytics(VoiceRepository(self._database))
         self._voice_journal: VoiceJournal | None = None
         self._prepared = False
         self._prepare_lock = asyncio.Lock()

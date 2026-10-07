@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
 from typing import NamedTuple, TypedDict
 
-from sqlalchemy import func, select, union_all
+from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -149,15 +149,6 @@ _STATE_FIELDS = select(
 
 
 @dataclass(frozen=True, slots=True)
-class VoiceJournalSnapshot:
-    """One committed guild/shared revision, independent of admission telemetry."""
-
-    guild_records: tuple[VoiceJournalRecord, ...]
-    session_records: tuple[VoiceJournalRecord, ...]
-    generation: int
-
-
-@dataclass(frozen=True, slots=True)
 class VoiceCommit:
     """Identity of a confirmed batch; record IDs need not be contiguous."""
 
@@ -247,22 +238,8 @@ def _batch_values(
     return values, sha256(encoded.encode("utf-8")).hexdigest()
 
 
-async def _revision(connection: AsyncConnection, guild_id: int) -> int:
-    shared = await connection.scalar(
-        select(voice_shared_revision.c.revision).where(
-            voice_shared_revision.c.singleton == 1
-        )
-    )
-    scoped = await connection.scalar(
-        select(voice_revisions.c.revision).where(voice_revisions.c.guild_id == guild_id)
-    )
-    if shared is None:
-        raise RuntimeError("Missing voice revision state")
-    return max(shared, scoped or 0)
-
-
 class VoiceRepository:
-    """Own atomic batches and scoped snapshots, releasing SQL before replay.
+    """Own atomic batches and consistent history, releasing SQL before replay.
 
     A caller chooses a stable batch ID before attempting persistence. Repeating
     its exact ordered content resolves an ambiguous commit; differing reuse fails.
@@ -389,21 +366,6 @@ class VoiceRepository:
             guild_revisions,
         )
 
-    async def revision(self, guild_id: int) -> int:
-        async with self._database.transaction() as connection:
-            return await _revision(connection, guild_id)
-
-    async def snapshot_for_guild(self, guild_id: int) -> VoiceJournalSnapshot:
-        async with self._database.transaction() as connection:
-            revision = await _revision(connection, guild_id)
-            raw = await _read_records(connection, guild_id, include_shared=True)
-        records = await run_in_thread(lambda: _decode_records(raw))
-        return VoiceJournalSnapshot(
-            tuple(r for r in records if r.guild_id == guild_id),
-            tuple(r for r in records if r.guild_id is None),
-            revision,
-        )
-
     async def read_all(
         self, guild_id: int | None, day: date | None = None
     ) -> tuple[VoiceJournalRecord, ...]:
@@ -447,7 +409,6 @@ async def _read_records(
     connection: AsyncConnection,
     guild_id: int | None,
     *,
-    include_shared: bool = False,
     day: date | None = None,
 ) -> tuple[list[_StoredRecord], list[_StoredState]]:
     events = _RECORD_FIELDS
@@ -458,13 +419,7 @@ async def _read_records(
             voice_records.c.observed_us >= start, voice_records.c.observed_us < end
         )
     scoped = events.where(voice_records.c.guild_id == guild_id)
-    # Disjoint guild/shared branches let SQLite merge the scope index in order,
-    # instead of sorting the entire OR result. UNION ALL retains repeated facts.
-    query = (
-        union_all(scoped, events.where(voice_records.c.guild_id.is_(None)))
-        if include_shared and guild_id is not None
-        else scoped
-    ).order_by(voice_records.c.record_id)
+    query = scoped.order_by(voice_records.c.record_id)
     rows = await connection.execute(query)
     records = [_StoredRecord(*row) for row in rows]
     if guild_id is None:
