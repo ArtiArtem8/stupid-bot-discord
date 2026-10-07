@@ -126,10 +126,8 @@ class TestUptimeShutdown(unittest.IsolatedAsyncioTestCase):
         await bot.close()
         reader = Database(open_engine(path))
         try:
-            snapshot = await VoiceRepository(reader).snapshot_for_guild(1)
-            self.assertCountEqual(
-                (*snapshot.guild_records, *snapshot.session_records), facts
-            )
+            history = await VoiceRepository(reader).history()
+            self.assertEqual(history.records, tuple(facts))
             async with reader.transaction() as connection:
                 self.assertEqual(
                     await connection.scalar(select(runtime_checkpoint.c.origin)),

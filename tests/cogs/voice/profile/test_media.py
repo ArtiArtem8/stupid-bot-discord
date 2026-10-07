@@ -92,10 +92,16 @@ class TestMedia(unittest.IsolatedAsyncioTestCase):
                     (await renderer.render(profile_at(level), identity)).extension,
                     "png",
                 )
+            svg.prepare.assert_called_with(
+                profile_at(10), identity, avatar_mode="static"
+            )
             encode.assert_not_called()
             for level in (20, 35, 50, 75, 100):
                 result = await renderer.render(profile_at(level), identity)
                 self.assertEqual(result, ProfileMedia(b"webp", "webp", b"png"))
+        svg.prepare.assert_called_with(
+            profile_at(100), identity, avatar_mode="animated"
+        )
         svg.prepare.reset_mock()
         with patch.object(media_module, "encode_webp", side_effect=OSError("encoder")):
             with self.assertLogs(media_module.logger, level="WARNING"):
@@ -166,6 +172,62 @@ class TestMediaBytes(unittest.TestCase):
         self.assertTrue(options["lossless"])
         self.assertEqual(options["kmax"], 0)
         self.assertEqual(options["method"], 1)
+
+    def test_webp_closes_frames_after_success_or_encoding_failure(self) -> None:
+        for fail in (False, True):
+            with self.subTest(fail=fail):
+                prepared = MagicMock(spec=PreparedCard)
+                prepared.design.width, prepared.design.height = 2, 2
+                frames = [Image.new("RGBA", (2, 2), "red") for _ in range(80)]
+                for frame in frames:
+                    self.addCleanup(frame.close)
+                prepared.frame.side_effect = frames
+                if fail:
+                    with patch.object(
+                        Image.Image, "save", side_effect=OSError("encode")
+                    ):
+                        with self.assertRaisesRegex(OSError, "encode"):
+                            encode_webp(prepared)
+                else:
+                    data = encode_webp(prepared)
+                    with Image.open(BytesIO(data)) as result:
+                        self.assertEqual(
+                            result.convert("RGBA").getpixel((0, 0)), (255, 0, 0, 255)
+                        )
+                for frame in frames:
+                    with self.assertRaises(ValueError):
+                        frame.getpixel((0, 0))
+
+    def test_webp_closes_partial_frames_when_composition_fails(self) -> None:
+        prepared = MagicMock(spec=PreparedCard)
+        prepared.design.width, prepared.design.height = 2, 2
+        frame = Image.new("RGBA", (2, 2), "red")
+        self.addCleanup(frame.close)
+        prepared.frame.side_effect = [frame, RuntimeError("composition")]
+        with self.assertRaisesRegex(RuntimeError, "composition"):
+            encode_webp(prepared)
+        with self.assertRaises(ValueError):
+            frame.getpixel((0, 0))
+
+    def test_png_closes_temporary_frame_after_success_or_encoding_failure(self) -> None:
+        for fail in (False, True):
+            with self.subTest(fail=fail):
+                prepared = MagicMock(spec=PreparedCard)
+                frame = Image.new("RGBA", (2, 2), "blue")
+                self.addCleanup(frame.close)
+                prepared.frame.return_value = frame
+                if fail:
+                    with patch.object(
+                        Image.Image, "save", side_effect=OSError("encode")
+                    ):
+                        with self.assertRaisesRegex(OSError, "encode"):
+                            PreparedCard.png(prepared)
+                else:
+                    data = PreparedCard.png(prepared)
+                    with Image.open(BytesIO(data)) as result:
+                        self.assertEqual(result.getpixel((0, 0)), (0, 0, 255, 255))
+                with self.assertRaises(ValueError):
+                    frame.getpixel((0, 0))
 
     def test_animated_avatar_decoder_and_corruption_limits(self) -> None:
         output = BytesIO()

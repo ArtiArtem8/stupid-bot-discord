@@ -131,7 +131,8 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
         self.database_path, self.database = await temporary_database(self)
         self.bot = StupidBot(database_path=self.database_path)
         await self.bot.__aenter__()
-        self.journal = VoiceJournal(VoiceRepository(self.bot._database))
+        self.store = VoiceRepository(self.bot._database)
+        self.journal = VoiceJournal(self.bot.voice_analytics)
         self.clock = Clock()
         self.cog = VoiceCollectorCog(
             self.bot,
@@ -149,8 +150,8 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
     async def records(self) -> tuple[VoiceJournalRecord, ...]:
         await self.cog.cog_unload()
         return (
-            *await self.journal.read_day(1, START.date()),
-            *await self.journal.read_day(None, START.date()),
+            *await self.store.read_all(1, START.date()),
+            *await self.store.read_all(None, START.date()),
         )
 
     async def send_state(self, payload: JsonObject) -> None:
@@ -349,15 +350,14 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
         )
         await self.bot.unload_extension("cogs.voice.collector_cog")
         self.assertIsNone(self.bot.get_cog("VoiceCollectorCog"))
-        journal = VoiceJournal(VoiceRepository(self.bot._database))
         day = datetime.now(UTC).date()
-        observations = await journal.read_day(1, day)
+        observations = await self.store.read_all(1, day)
         self.assertEqual(len(observations), 1)
         self.assertEqual(
             observations[0].fact,
             VoiceObservation(normalize_voice_state(gateway_state())),
         )
-        lifecycle = await journal.read_day(None, day)
+        lifecycle = await self.store.read_all(None, day)
         self.assertEqual(
             [record.fact for record in lifecycle],
             [VoiceLifecycle(), VoiceLifecycle(stopped=True)],
@@ -365,7 +365,7 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
 
     async def test_disabled_collector_does_not_collect(self) -> None:
         await self.cog.cog_unload()
-        journal = VoiceJournal(VoiceRepository(self.bot._database))
+        journal = VoiceJournal(self.bot.voice_analytics)
         disabled = VoiceCollectorCog(self.bot, journal=journal)
         with patch.object(config, "VOICE_PROBE_ENABLED", False):
             await disabled.cog_load()

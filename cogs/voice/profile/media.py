@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass
 from io import BytesIO
 from time import perf_counter
 from typing import Literal
 
-from PIL import features
+from PIL import Image, features
 
 from api.progression.appearance import LevelTier
 from api.voice.profile.details import ActivityDetail, XpDetail
@@ -38,7 +39,7 @@ MEDIA_BYTE_LIMIT = 5 * 1024 * 1024
 
 
 class RenderBusyError(RuntimeError):
-    """The bounded rendering queue has no free slots."""
+    """Profile preparation or rendering cannot admit this request."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,32 +59,35 @@ class ProfileMedia:
 
 
 def encode_webp(prepared: PreparedCard) -> bytes:
-    """Encode four seconds at 20 FPS with the approved lossless settings."""
+    """Encode four seconds of lossless WebP at 20 FPS."""
     fps, method = 20, 1
     count = fps * 4
     if prepared.design.width * prepared.design.height * count > 42_000_000:
         raise ValueError("Animation exceeds the 42-megapixel frame buffer budget")
     if not features.check("webp"):
         raise RuntimeError("This Pillow/libwebp build cannot encode animations")
-    frames = [prepared.frame(index / count) for index in range(count)]
-    output = BytesIO()
-    frames[0].save(
-        output,
-        "WEBP",
-        save_all=True,
-        append_images=frames[1:],
-        duration=1000 // fps,
-        loop=0,
-        lossless=True,
-        quality=75,
-        # A four-second sequential card does not need periodic
-        # independent keyframes. This is not a lossy or FPS change.
-        method=method,
-        allow_mixed=False,
-        minimize_size=False,
-        kmax=0,
-    )
-    return output.getvalue()
+    with ExitStack() as resources:
+        frames: list[Image.Image] = []
+        for index in range(count):
+            frame = prepared.frame(index / count)
+            resources.callback(frame.close)
+            frames.append(frame)
+        output = BytesIO()
+        frames[0].save(
+            output,
+            "WEBP",
+            save_all=True,
+            append_images=frames[1:],
+            duration=1000 // fps,
+            loop=0,
+            lossless=True,
+            quality=75,
+            method=method,
+            allow_mixed=False,
+            minimize_size=False,
+            kmax=0,  # Sequential playback needs no keyframes for random access.
+        )
+        return output.getvalue()
 
 
 class ProfileMediaRenderer:
@@ -104,9 +108,12 @@ class ProfileMediaRenderer:
         started = perf_counter()
         if self.svg is None:
             raise RuntimeError("Profile renderer is unavailable")
-        prepared = self.svg.prepare(profile, identity)
+        animated = profile.appearance.tier in ANIMATED_TIERS
+        prepared = self.svg.prepare(
+            profile, identity, avatar_mode="animated" if animated else "static"
+        )
         png = prepared.png()
-        if profile.appearance.tier not in ANIMATED_TIERS:
+        if not animated:
             return ProfileMedia(png, "png")
         try:
             data = encode_webp(prepared)
@@ -216,8 +223,7 @@ class ProfileMediaRenderer:
         await asyncio.shield(self._close_task)
 
     async def _drain(self) -> None:
-        # A running native thread cannot be safely cancelled. Keep ownership and
-        # wait for the bounded queue instead of releasing its slot prematurely.
+        # Join native threads before closing resources they may still use.
         if self._start_task is not None:
             await asyncio.gather(self._start_task, return_exceptions=True)
         if self._tasks:

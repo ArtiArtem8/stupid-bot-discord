@@ -178,9 +178,7 @@ def _rank(interval: _RatedInterval) -> tuple[Fraction, int, int]:
 def _winning_intervals(
     intervals: Sequence[_RatedInterval],
 ) -> Iterator[tuple[timedelta, VoiceXpBreakdown]]:
-    # Sweep boundaries rather than seconds. Removing and adding at one boundary
-    # happens before awarding [boundary, next_boundary), so touching intervals
-    # never overlap. Active contexts per user are normally few.
+    # Apply all changes before awarding [start, end); touching intervals do not overlap.
     changes: dict[datetime, list[tuple[int, bool]]] = {}
     for index, interval in enumerate(intervals):
         changes.setdefault(interval.started_at, []).append((index, True))
@@ -193,17 +191,26 @@ def _winning_intervals(
             else:
                 active.pop(index)
         if active:
-            winner = min(active.values(), key=_rank)
+            # A sole context needs no Fraction-based ranking.
+            winner = (
+                next(iter(active.values()))
+                if len(active) == 1
+                else min(active.values(), key=_rank)
+            )
             yield end - start, winner.award
 
 
 def _sum_awards(
     intervals: Iterator[tuple[timedelta, VoiceXpBreakdown]],
 ) -> VoiceXpBreakdown:
+    # Aggregate equal rates to limit Fraction arithmetic to distinct rates.
+    durations: dict[VoiceXpBreakdown, int] = {}
+    for duration, rate in intervals:
+        durations[rate] = durations.get(rate, 0) + duration // _MICROSECOND
     solo = social = large = stream = video = cap = Fraction()
     mute = deaf = Fraction()
-    for duration, rate in intervals:
-        hours = Fraction(duration // _MICROSECOND, _MICROSECONDS_PER_HOUR)
+    for rate, microseconds in durations.items():
+        hours = Fraction(microseconds, _MICROSECONDS_PER_HOUR)
         solo += rate.solo_base * hours
         social += rate.social_base * hours
         large += rate.large_group_bonus * hours

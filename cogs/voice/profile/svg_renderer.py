@@ -1,19 +1,21 @@
-"""Public profile rendering boundary: editable SVG -> prepared raster -> frames."""
+"""Prepare SVG layers and compose profile frames."""
 
 from __future__ import annotations
 
 import hashlib
+from contextlib import closing
 from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
 from time import perf_counter
+from xml.etree.ElementTree import Element
 
 from defusedxml.ElementTree import fromstring, tostring
 from PIL import Image
 
 from api.voice.profile.model import VoiceProfile
 from cogs.voice.profile.animation import CardAnimation, Motion
-from cogs.voice.profile.avatar import load_avatar
+from cogs.voice.profile.avatar import AvatarMode, load_avatar
 from cogs.voice.profile.clips import load_clips
 from cogs.voice.profile.design import (
     ASSETS,
@@ -41,12 +43,13 @@ class PreparedCard:
 
     def png(self, phase: float = 0) -> bytes:
         output = BytesIO()
-        self.frame(phase).save(output, "PNG", compress_level=3)
+        with closing(self.frame(phase)) as frame:
+            frame.save(output, "PNG", compress_level=3)
         return output.getvalue()
 
 
 class SvgProfileRenderer:
-    """One layout, same core coordinates for every tier and output format."""
+    """Prepare shared card layers for static and animated output."""
 
     version = "profile-card-editable-2"
 
@@ -65,7 +68,7 @@ class SvgProfileRenderer:
             self.raster.close()
 
     def source_revision(self) -> str:
-        """Invalidate caches when designer-owned source files change."""
+        """Hash the renderer version, fonts, template and referenced asset directory."""
         digest = hashlib.sha256(self.version.encode())
         for font in sorted(self.raster.font_dir.glob("*.ttf")):
             digest.update(font.name.encode())
@@ -77,38 +80,24 @@ class SvgProfileRenderer:
                 digest.update(path.read_bytes())
         return digest.hexdigest()
 
-    def prepare(self, profile: VoiceProfile, identity: CardIdentity) -> PreparedCard:
+    def prepare(
+        self,
+        profile: VoiceProfile,
+        identity: CardIdentity,
+        *,
+        avatar_mode: AvatarMode = "animated",
+    ) -> PreparedCard:
         started = perf_counter()
         design = bind_design(profile, identity, self.template, self.raster)
         avatar = None
         static_svg = design.static_svg
         root = fromstring(design.svg)
-        image_node = next(
-            node for node in root.iter() if node.get("id") == "user-avatar"
-        )
         box = design.boxes.get("user-avatar")
         if box is not None:
             try:
-                avatar = load_avatar(identity.avatar_bytes, box)
+                avatar = load_avatar(identity.avatar_bytes, box, mode=avatar_mode)
                 if avatar is not None:
-                    clips = {
-                        f"url(#{node.get('id')})"
-                        for node in root.iter()
-                        if node.tag.rsplit("}", 1)[-1] == "clipPath"
-                        and len(node) == 1
-                        and node[0].tag.rsplit("}", 1)[-1] in ("circle", "ellipse")
-                    }
-                    if property_value(image_node, "clip-path", "") not in clips:
-                        raise ValueError(
-                            "Animated avatar requires a circular or elliptical clip"
-                        )
-                    # Remove frame zero from the base so transparent later frames
-                    # reveal the panel, never leave the previous portrait behind.
-                    static_root = fromstring(static_svg)
-                    for node in static_root.iter():
-                        if node.get("id") == "user-avatar":
-                            style(node, "display", "none")
-                    static_svg = tostring(static_root)
+                    static_svg = _avatar_background(root, static_svg)
             except ValueError as error:
                 avatar = None
                 design = replace(
@@ -131,3 +120,24 @@ class SvgProfileRenderer:
         animation.authored = load_clips(self.template.parent, design)
         animation.avatar = avatar
         return PreparedCard(design, animation, perf_counter() - started)
+
+
+def _avatar_background(root: Element, static_svg: bytes) -> bytes:
+    """Validate the avatar clip and remove its baked frame from the base layer."""
+    image_node = next(node for node in root.iter() if node.get("id") == "user-avatar")
+    clips = {
+        f"url(#{node.get('id')})"
+        for node in root.iter()
+        if node.tag.rsplit("}", 1)[-1] == "clipPath"
+        and len(node) == 1
+        and node[0].tag.rsplit("}", 1)[-1] in ("circle", "ellipse")
+    }
+    if property_value(image_node, "clip-path", "") not in clips:
+        raise ValueError("Animated avatar requires a circular or elliptical clip")
+    # Remove frame zero from the base so transparent later frames
+    # reveal the panel, never leave the previous portrait behind.
+    static_root = fromstring(static_svg)
+    for node in static_root.iter():
+        if node.get("id") == "user-avatar":
+            style(node, "display", "none")
+    return tostring(static_root)

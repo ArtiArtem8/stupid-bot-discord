@@ -36,6 +36,34 @@ def timeline(*rooms: RoomInterval) -> VoiceTimeline:
 
 
 class TestXpRates(unittest.TestCase):
+    def test_fragmenting_repeated_fractional_rates_preserves_every_component(
+        self,
+    ) -> None:
+        policy = VoiceXpPolicy(
+            solo_per_hour=Fraction(13, 7),
+            social_per_hour=Fraction(29, 11),
+            large_group_bonus=Fraction(19, 13),
+            stream_bonus=Fraction(17, 3),
+            video_bonus=Fraction(23, 5),
+            contribution_cap=Fraction(31, 7),
+        )
+        state = replace(human(), self_stream=True, self_video=True, self_mute=True)
+        whole = replace(
+            room(humans=5, state=state), ended_at=at(0) + timedelta(microseconds=997)
+        )
+        fragments = tuple(
+            replace(
+                whole,
+                started_at=at(0) + timedelta(microseconds=start),
+                ended_at=at(0) + timedelta(microseconds=min(start + 7, 997)),
+            )
+            for start in range(0, 997, 7)
+        )
+        self.assertEqual(
+            policy.explain(timeline(*fragments), 1),
+            policy.explain(timeline(whole), 1),
+        )
+
     def test_context_and_flag_rate_table(self) -> None:
         cases = (
             (room(humans=1), Fraction(300)),

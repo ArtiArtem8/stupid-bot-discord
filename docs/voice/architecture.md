@@ -52,6 +52,11 @@ full snapshot opens or restores coverage for its guild. An empty snapshot also
 establishes coverage; a checkpoint does not. A cache snapshot is authoritative
 only when all channel identities are resolved.
 
+Replay retains every checkpoint for clock and coverage checks but does not split
+unchanged rooms at each heartbeat. Adjacent intervals with the same complete
+member states are coalesced; finalized gaps still split them at their exact
+bounds. This analytical representation does not remove any stored facts.
+
 Voice changes split intervals at their observation timestamps. Disconnects,
 clock changes, boot changes and lost writes interrupt coverage. A full snapshot
 that disagrees with replay invalidates time since the preceding authoritative
@@ -118,3 +123,20 @@ snapshots. Unresolved channel IDs make a snapshot non-authoritative.
 The ordinary Cog loader discovers the collector and profile command. Collector
 shutdown drains the journal; profile shutdown drains media work and closes its
 native renderer. See [profile cards](profile-card.md) for host setup and caching.
+
+## Process-local analytics
+
+`StupidBot` owns `VoiceAnalytics` across collector reloads. It restores all scopes
+before producers start. `VoiceJournal` submits runtime writes through this owner;
+confirmed commits update `VoiceReplayState`, while unsafe ordering requests a
+canonical rebuild. Raw facts remain in SQLite; no derived SQL tables are added.
+
+A single lock excludes readers during commit/apply and snapshot creation.
+Recovery first builds from a consistent SQL cutoff outside the lock, then catches
+up to a fixed cutoff under it. An unsafe tail causes a full rebuild while writers
+wait in the existing journal queue. Dirty state is never published as current.
+A derived failure cannot turn a successful commit into a failed journal write.
+
+Snapshots finish detached containers. Gap candidate windows restrict intersection
+work while retaining source metadata order; long or open gaps can still require
+broad scans. Shutdown drains the journal and analytics workers before closing SQL.

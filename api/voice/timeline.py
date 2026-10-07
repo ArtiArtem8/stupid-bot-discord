@@ -1,13 +1,15 @@
 """Pure journal replay into room intervals and explicit observation gaps."""
 
-from collections.abc import Iterable
+from bisect import bisect_left, bisect_right
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from itertools import pairwise
 
 from api.voice.model import (
     GapReason,
     ObservationGap,
+    VoiceCheckpoint,
     VoiceJournalRecord,
     VoiceLifecycle,
     VoiceObservation,
@@ -72,30 +74,107 @@ def build_timeline(records: Iterable[VoiceJournalRecord]) -> VoiceTimeline:
     wins over wall-clock order. Readers should include the preceding snapshot
     and session markers. Missing initial coverage is never invented.
     """
-    ordered = _ordered_records(records)
-    guild_ids = sorted({r.guild_id for r in ordered if r.guild_id is not None})
-    rooms: list[RoomInterval] = []
-    gaps: list[ObservationGap] = []
-    coverage: list[ObservationInterval] = []
-    for guild_id in guild_ids:
-        replay = _GuildReplay(guild_id)
+    return VoiceReplayState(records).snapshot()
+
+
+class VoiceReplayState:
+    """Retain replay state, without raw history or persistence concerns.
+
+    The owner serializes mutation and snapshots. Unsupported append ordering
+    returns False without mutation; recover by constructing from full history.
+    Snapshots finish detached containers and never finalize the live tail.
+    """
+
+    def __init__(self, records: Iterable[VoiceJournalRecord]) -> None:
+        ordered = _ordered_records(records)
+        guilds = sorted({r.guild_id for r in ordered if r.guild_id is not None})
+        self._guilds = {guild: _GuildReplay(guild) for guild in guilds}
         for record in ordered:
+            self._apply(record)
+        self._last = ordered[-1] if ordered else None
+        self._boot_start = min(
+            (
+                r.observed_at
+                for r in ordered
+                if self._last and r.boot_id == self._last.boot_id
+            ),
+            default=None,
+        )
+
+    def apply_many(self, records: Sequence[VoiceJournalRecord]) -> bool:
+        """Apply an ordered continuation, or require a canonical rebuild."""
+        last = self._last
+        for record in records:
+            if not self._safe_after(last, record):
+                return False
+            last = record
+        for record in records:
+            self._apply(record)
+        self._last = last
+        return True
+
+    def _safe_after(
+        self, previous: VoiceJournalRecord | None, record: VoiceJournalRecord
+    ) -> bool:
+        return (
+            previous is not None
+            and record.boot_id == previous.boot_id
+            and record.sequence > previous.sequence
+            and self._boot_start is not None
+            and record.observed_at >= self._boot_start
+            and not isinstance(record.fact, ObservationGap)
+            and (record.guild_id is None or record.guild_id in self._guilds)
+        )
+
+    def _apply(self, record: VoiceJournalRecord) -> None:
+        for guild_id, replay in self._guilds.items():
             if record.guild_id in (None, guild_id):
                 replay.apply(record)
-        replay.finish()
-        gaps.extend(replay.gaps)
-        coverage.extend(replay.observed_coverage())
-        for room in replay.rooms:
-            rooms.extend(_split_at_gaps(room, replay.gaps))
-    return VoiceTimeline(
-        tuple(sorted(rooms, key=lambda r: (r.started_at, r.guild_id, r.channel_id))),
-        tuple(sorted(gaps, key=lambda g: (g.started_at, g.guild_id or 0))),
-        tuple(
-            sorted(
-                coverage, key=lambda interval: (interval.started_at, interval.guild_id)
+
+    def snapshot(self, guild_id: int | None = None) -> VoiceTimeline:
+        """Return immutable intervals at the recorded horizon, optionally scoped."""
+        rooms: list[RoomInterval] = []
+        gaps: list[ObservationGap] = []
+        coverage: list[ObservationInterval] = []
+        for guild, replay in self._guilds.items():
+            if guild_id is not None and guild != guild_id:
+                continue
+            detached = replace(
+                replay,
+                rooms=replay.rooms.copy(),
+                gaps=replay.gaps.copy(),
+                pending=replay.pending.copy(),
+                last_room=replay.last_room.copy(),
             )
-        ),
-    )
+            detached.finish()
+            gaps.extend(detached.gaps)
+            coverage.extend(detached.observed_coverage())
+            rooms.extend(_split_rooms(detached.rooms, detached.gaps))
+        return VoiceTimeline(
+            tuple(
+                sorted(rooms, key=lambda r: (r.started_at, r.guild_id, r.channel_id))
+            ),
+            tuple(sorted(gaps, key=lambda g: (g.started_at, g.guild_id or 0))),
+            tuple(sorted(coverage, key=lambda c: (c.started_at, c.guild_id))),
+        )
+
+
+def _split_rooms(
+    rooms: list[RoomInterval], gaps: list[ObservationGap]
+) -> Iterable[RoomInterval]:
+    ordered = sorted(enumerate(gaps), key=lambda item: item[1].started_at)
+    starts = [gap.started_at for _, gap in ordered]
+    max_ends: list[datetime] = []
+    end = datetime.min.replace(tzinfo=UTC)
+    for _, gap in ordered:
+        end = max(end, gap.ended_at or datetime.max.replace(tzinfo=UTC))
+        max_ends.append(end)
+    for room in rooms:
+        first = bisect_right(max_ends, room.started_at)
+        last = bisect_left(starts, room.ended_at)
+        # Restore source order: gap metadata ordering is observable to readers.
+        candidates = [gap for _, gap in sorted(ordered[first:last])]
+        yield from _split_at_gaps(room, candidates)
 
 
 def _ordered_records(records: Iterable[VoiceJournalRecord]) -> list[VoiceJournalRecord]:
@@ -123,19 +202,28 @@ class _GuildReplay:
     pending: list[ObservationGap] = field(default_factory=list)
     previous: VoiceJournalRecord | None = None
     cursor: datetime | None = None
+    emitted_through: datetime | None = None
+    last_room: dict[int, int] = field(default_factory=dict)
     history_started_at: datetime | None = None
     last_snapshot_at: datetime | None = None
     boot_started_at: datetime | None = None
 
     def apply(self, record: VoiceJournalRecord) -> None:
         moment = record.observed_at
+        checkpoint = isinstance(record.fact, VoiceCheckpoint)
         if self.history_started_at is None:
             self.history_started_at = moment
         if self.cursor is not None:
             moment = max(moment, self.cursor)
-            self._emit(self.cursor, moment)
+        if self.emitted_through is None:
+            self.emitted_through = moment
+        elif not checkpoint:
+            # Checkpoints advance clock/gap detection but cannot change occupants.
+            self._emit(self.emitted_through, moment)
+            self.emitted_through = moment
         self._boundaries(record)
-        self._apply_fact(record, moment)
+        if not checkpoint:
+            self._apply_fact(record, moment)
         self.previous = record
         self.cursor = moment
 
@@ -255,17 +343,21 @@ class _GuildReplay:
             if state.channel_known and state.channel_id is not None:
                 channels.setdefault(state.channel_id, []).append(state)
         for channel_id, states in channels.items():
+            ordered = tuple(sorted(states, key=lambda s: s.user_id))
+            previous_index = self.last_room.get(channel_id)
+            if previous_index is not None:
+                previous = self.rooms[previous_index]
+                if previous.ended_at == start and previous.states == ordered:
+                    self.rooms[previous_index] = replace(previous, ended_at=end)
+                    continue
+            self.last_room[channel_id] = len(self.rooms)
             self.rooms.append(
-                RoomInterval(
-                    self.guild_id,
-                    channel_id,
-                    start,
-                    end,
-                    tuple(sorted(states, key=lambda s: s.user_id)),
-                )
+                RoomInterval(self.guild_id, channel_id, start, end, ordered)
             )
 
     def finish(self) -> None:
+        if self.emitted_through is not None and self.cursor is not None:
+            self._emit(self.emitted_through, self.cursor)
         self.gaps.extend(self.pending)
 
     def observed_coverage(self) -> list[ObservationInterval]:
@@ -300,6 +392,8 @@ def _split_at_gaps(
         if gap.started_at < room.ended_at
         and (gap.ended_at is None or gap.ended_at > room.started_at)
     ]
+    if not relevant:
+        return [room]
     boundaries = {room.started_at, room.ended_at}
     for gap in relevant:
         boundaries.add(max(room.started_at, gap.started_at))

@@ -5,12 +5,23 @@ from __future__ import annotations
 import math
 import warnings
 from bisect import bisect_right
+from contextlib import ExitStack, closing
 from dataclasses import dataclass
 from io import BytesIO
+from typing import Literal
 
-from PIL import Image, ImageChops, ImageDraw, ImageOps, UnidentifiedImageError
+from PIL import (
+    GifImagePlugin,
+    Image,
+    ImageChops,
+    ImageDraw,
+    ImageOps,
+    UnidentifiedImageError,
+)
 
 from cogs.voice.profile.raster import Box
+
+type AvatarMode = Literal["static", "animated"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,8 +45,15 @@ class AnimatedAvatar:
         return self.frames[index]
 
 
-def load_avatar(data: bytes | None, box: Box) -> AnimatedAvatar | None:
-    """Decode GIF frames within byte/pixel budgets; return None for static input."""
+def load_avatar(
+    data: bytes | None, box: Box, *, mode: AvatarMode = "animated"
+) -> AnimatedAvatar | None:
+    """Decode the requested GIF frames within byte/pixel budgets.
+
+    Static output only validates and decodes frame zero; later damaged pixels
+    do not reject it. Non-GIF and single-frame images retain the SVG path.
+    Animated output validates the whole sequence and preserves its timing.
+    """
     if data is None:
         return None
     if len(data) > 4 * 1024 * 1024:
@@ -45,17 +63,11 @@ def load_avatar(data: bytes | None, box: Box) -> AnimatedAvatar | None:
         warnings.simplefilter("error", Image.DecompressionBombWarning)
         try:
             with Image.open(BytesIO(data)) as source:
-                # Only GIF is enabled here; other formats retain their static path.
-                if source.format != "GIF":
+                if not isinstance(source, GifImagePlugin.GifImageFile):
                     return None
                 if size[0] * size[1] * 4 > 8 * 1024 * 1024:
                     raise ValueError("Animated avatar target exceeds 8 MiB")
-                mask = Image.new("L", (size[0] * 4, size[1] * 4))
-                ImageDraw.Draw(mask).ellipse(
-                    (0, 0, mask.width - 1, mask.height - 1), fill=255
-                )
-                mask = mask.resize(size, Image.Resampling.LANCZOS)
-                frames, ends = _decode_frames(source, size, mask)
+                frames, ends = _masked_frames(source, size, mode)
         except (
             OSError,
             UnidentifiedImageError,
@@ -63,7 +75,7 @@ def load_avatar(data: bytes | None, box: Box) -> AnimatedAvatar | None:
             Image.DecompressionBombWarning,
         ) as error:
             raise ValueError("Unsupported or damaged animated avatar") from error
-    if len(frames) < 2:
+    if not frames:
         return None
     return AnimatedAvatar(
         tuple(frames),
@@ -74,33 +86,69 @@ def load_avatar(data: bytes | None, box: Box) -> AnimatedAvatar | None:
     )
 
 
+def _masked_frames(
+    source: GifImagePlugin.GifImageFile, size: tuple[int, int], mode: AvatarMode
+) -> tuple[list[Image.Image], list[int]]:
+    with Image.new("L", (size[0] * 4, size[1] * 4)) as large_mask:
+        ImageDraw.Draw(large_mask).ellipse(
+            (0, 0, large_mask.width - 1, large_mask.height - 1), fill=255
+        )
+        with large_mask.resize(size, Image.Resampling.LANCZOS) as mask:
+            frames, ends = _decode_frames(source, size, mask, mode)
+    single_frame = len(frames) < 2
+    if mode == "static":
+        try:
+            # Pillow inspects the next GIF header without decoding its pixels.
+            # Keep single-frame GIFs on the SVG antialiasing path.
+            single_frame = not source.is_animated
+        except (OSError, ValueError, EOFError):
+            # Frame zero is already valid; damaged later metadata is irrelevant.
+            single_frame = False
+    if single_frame:
+        for frame in frames:
+            frame.close()
+        return [], []
+    return frames, ends
+
+
 def _decode_frames(
-    source: Image.Image, size: tuple[int, int], mask: Image.Image
+    source: Image.Image, size: tuple[int, int], mask: Image.Image, mode: AvatarMode
 ) -> tuple[list[Image.Image], list[int]]:
     frames: list[Image.Image] = []
     ends: list[int] = []
     elapsed = 0
     source_pixels = 0
-    for index in range(201):
-        try:
-            source.seek(index)
-        except EOFError:
-            break
-        source_pixels += source.width * source.height
-        if index == 200 or source_pixels > 32_000_000:
-            raise ValueError("Animated avatar exceeds 200 frames or 32 megapixels")
-        if (index + 1) * size[0] * size[1] * 4 > 8 * 1024 * 1024:
-            raise ValueError("Animated avatar exceeds 8 MiB of decoded frames")
-        metadata: dict[str | tuple[int, int], object] = source.info
-        duration = metadata.get("duration", 100)
-        if isinstance(duration, bool) or not isinstance(duration, int) or duration <= 0:
-            duration = 100
-        elapsed += duration
-        # Sequential seek/convert applies GIF disposal before resizing.
-        frame = ImageOps.fit(
-            source.convert("RGBA"), size, method=Image.Resampling.LANCZOS
-        )
-        frame.putalpha(ImageChops.multiply(frame.getchannel("A"), mask))
-        frames.append(frame)
-        ends.append(elapsed)
+    with ExitStack() as resources:
+        for index in range(1 if mode == "static" else 201):
+            try:
+                source.seek(index)
+            except EOFError:
+                break
+            source_pixels += source.width * source.height
+            if index == 200 or source_pixels > 32_000_000:
+                raise ValueError("Animated avatar exceeds 200 frames or 32 megapixels")
+            if (index + 1) * size[0] * size[1] * 4 > 8 * 1024 * 1024:
+                raise ValueError("Animated avatar exceeds 8 MiB of decoded frames")
+            metadata: dict[str | tuple[int, int], object] = source.info
+            duration = metadata.get("duration", 100)
+            if (
+                isinstance(duration, bool)
+                or not isinstance(duration, int)
+                or duration <= 0
+            ):
+                duration = 100
+            elapsed += duration
+            # Sequential seek/convert applies GIF disposal before resizing.
+            with closing(source.convert("RGBA")) as rgba:
+                frame = ImageOps.fit(rgba, size, method=Image.Resampling.LANCZOS)
+            resources.callback(frame.close)
+            with (
+                closing(frame.getchannel("A")) as alpha,
+                closing(ImageChops.multiply(alpha, mask)) as masked_alpha,
+            ):
+                frame.putalpha(masked_alpha)
+            frames.append(frame)
+            ends.append(elapsed)
+        # Completed frames belong to the caller; only failed decodes roll back.
+        resources.pop_all()
     return frames, ends

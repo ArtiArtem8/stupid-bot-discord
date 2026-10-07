@@ -18,8 +18,9 @@ from PIL import Image
 
 import cogs.voice.collector_cog
 import config
+from api.voice.analytics import VoiceAnalytics
 from api.voice.model import VoiceCheckpoint, VoiceSnapshot
-from api.voice.timeline import VoiceTimeline
+from api.voice.timeline import VoiceReplayState, VoiceTimeline
 from cogs.voice import profile_cog as cog_module
 from cogs.voice.profile import view as view_module
 from cogs.voice.profile.avatar import load_avatar
@@ -29,7 +30,6 @@ from cogs.voice.profile.view import ProfileAction, VoiceProfileView
 from cogs.voice.profile_cog import ProfileSnapshot, VoiceProfileCog
 from framework.bot import StupidBot
 from framework.feedback_ui import FeedbackUI
-from repositories.voice_journal import VoiceJournal
 from repositories.voice_repository import VoiceRepository
 from tests.api.voice.examples import human, record
 from tests.cogs.voice.profile.test_details_support import profile_request
@@ -265,53 +265,27 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         await cog.cog_unload()
         self.assertIsNone(cog._asset_cache.get(str(asset)))
 
-    async def test_timeline_cache_reuses_and_invalidates_on_read_revision(
+    async def test_ram_snapshot_updates_without_querying_sql_on_ready_reads(
         self,
     ) -> None:
         bot = MagicMock()
-        journal = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
-        bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
-            bot, journal=journal
-        )
+        store = VoiceRepository((await temporary_database(self))[1])
+        analytics = VoiceAnalytics(store)
+        self.addAsyncCleanup(analytics.close)
+        await analytics.start()
+        bot.voice_analytics = analytics
         cog = VoiceProfileCog(bot)
+        await analytics.append("initial", [record(0, VoiceSnapshot((human(),)))])
+        await analytics.start()
+        await analytics.append("next", [record(3600, VoiceCheckpoint())])
         with patch.object(
-            journal, "snapshot_for_guild", wraps=journal.snapshot_for_guild
-        ) as reading:
-            empty = await cog._timeline(1)
-            self.assertEqual(empty.timeline.rooms, ())
-            await cog._timeline(1)
-            self.assertEqual(reading.await_count, 1)
-            journal.start()
-            journal.submit(record(0, VoiceSnapshot((human(),))))
-            journal.submit(record(3600, VoiceCheckpoint()))
-            await journal.close()
-            updated = await cog._timeline(1)
-            self.assertEqual(len(updated.timeline.rooms), 1)
-            await cog._timeline(1)
-            self.assertEqual(reading.await_count, 2)
-
-    async def test_timeline_cache_evicts_least_recent_guild(self) -> None:
-        bot = MagicMock()
-        journal = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
-        bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
-            bot, journal=journal
-        )
-        cog = VoiceProfileCog(bot)
-        with (
-            patch.object(cog_module, "_TIMELINE_CACHE_ENTRIES", 2),
-            patch.object(
-                journal, "snapshot_for_guild", wraps=journal.snapshot_for_guild
-            ) as reading,
+            store, "history", side_effect=AssertionError("Unexpected SQL")
         ):
-            await cog._timeline(1)
-            await cog._timeline(2)
-            await cog._timeline(1)
-            await cog._timeline(3)
-            await cog._timeline(1)
-            self.assertEqual(reading.await_count, 3)
-            await cog._timeline(2)
-            self.assertEqual(reading.await_count, 4)
-            self.assertEqual(len(cog._timeline_cache), 2)
+            first = await cog._timeline(1)
+            second = await cog._timeline(1)
+            self.assertEqual(first, second)
+            self.assertEqual(len(first.timeline.rooms), 1)
+            self.assertEqual((await cog._timeline(2)).timeline.rooms, ())
 
     async def test_guild_only_failure_is_ephemeral_without_defer(self) -> None:
         bot = MagicMock()
@@ -504,21 +478,20 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         second.close()
         await cog.cog_unload()
 
-    async def test_collector_replacement_changes_snapshot_epoch(self) -> None:
+    async def test_analysis_owner_replacement_changes_snapshot_epoch(self) -> None:
         bot = MagicMock()
-        old = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
-        new = VoiceJournal(VoiceRepository((await temporary_database(self))[1]))
         cog = VoiceProfileCog(bot)
-        bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
-            bot, journal=old
-        )
-        first = await cog._timeline(42)
-        bot.get_cog.return_value = cogs.voice.collector_cog.VoiceCollectorCog(
-            bot, journal=new
-        )
-        second = await cog._timeline(42)
-        self.assertNotEqual(first.epoch, second.epoch)
-        self.assertEqual(first.generation, second.generation)
+        snapshots = []
+        for _ in range(2):
+            analytics = VoiceAnalytics(
+                VoiceRepository((await temporary_database(self))[1])
+            )
+            self.addAsyncCleanup(analytics.close)
+            await analytics.start()
+            bot.voice_analytics = analytics
+            snapshots.append(await cog._timeline(42))
+        self.assertNotEqual(snapshots[0].epoch, snapshots[1].epoch)
+        self.assertEqual(snapshots[0].generation, snapshots[1].generation)
 
     async def test_real_collector_reload_preserves_profile_access(self) -> None:
         # Extension loading replaces sys.modules entries and the package's
@@ -530,12 +503,13 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         ):
             database_path, _ = await temporary_database(self)
             async with StupidBot(database_path=database_path) as bot:
+                await bot.restore_state()
                 cog = VoiceProfileCog(bot)
                 await bot.load_extension("cogs.voice.collector_cog")
                 first = await cog._timeline(42)
                 await bot.reload_extension("cogs.voice.collector_cog")
                 second = await cog._timeline(42)
-                self.assertGreater(second.epoch, first.epoch)
+                self.assertEqual(second.epoch, first.epoch)
                 self.assertEqual(second.timeline, first.timeline)
 
     def test_command_exposes_only_private(self) -> None:
@@ -749,14 +723,14 @@ class TestColdReadBudget(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         bot = MagicMock()
-        bot.get_cog.return_value.journal = MagicMock(spec=VoiceJournal)
+        bot.voice_analytics = MagicMock(spec=VoiceAnalytics)
         cog = VoiceProfileCog(bot)
         self.addAsyncCleanup(cog.cog_unload)
         release = asyncio.Event()
         started = [asyncio.Event() for _ in range(4)]
         snapshot = ProfileSnapshot(VoiceTimeline((), (), ()), 1, 1)
 
-        async def read(_journal: VoiceJournal, _guild_id: int) -> ProfileSnapshot:
+        async def read(_analytics: VoiceAnalytics, _guild_id: int) -> ProfileSnapshot:
             await release.wait()
             return snapshot
 
@@ -780,7 +754,9 @@ class TestColdReadBudget(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         _, database = await temporary_database(self)
         bot = MagicMock()
-        bot.get_cog.return_value.journal = VoiceJournal(VoiceRepository(database))
+        bot.voice_analytics = VoiceAnalytics(VoiceRepository(database))
+        self.addAsyncCleanup(bot.voice_analytics.close)
+        await bot.voice_analytics.start()
         cog = VoiceProfileCog(bot)
         entered, release = threading.Event(), threading.Event()
 
@@ -791,7 +767,7 @@ class TestColdReadBudget(unittest.IsolatedAsyncioTestCase):
             return VoiceTimeline((), (), ())
 
         with (
-            patch.object(cog_module, "build_timeline", side_effect=replay),
+            patch.object(VoiceReplayState, "snapshot", side_effect=replay),
             patch.object(cog_module, "_TIMELINE_REQUEST_LIMIT", 1),
         ):
             reader = asyncio.create_task(cog._timeline(1))

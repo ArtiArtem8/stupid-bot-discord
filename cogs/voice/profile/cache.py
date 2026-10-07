@@ -18,7 +18,7 @@ from cogs.voice.profile.media import ProfileMedia, RenderBusyError
 
 @dataclass(frozen=True, slots=True)
 class MediaKey:
-    """Pixel inputs plus the persisted snapshot and deployment revision."""
+    """Pixel inputs, committed voice generation and renderer source revision."""
 
     guild_id: int
     user_id: int
@@ -71,7 +71,7 @@ class ProfileMediaCache:
         self._close_task: asyncio.Task[None] | None = None
 
     def invalidate(self, epoch: int) -> None:
-        """Prevent old-owner jobs from publishing after collector replacement."""
+        """Prevent old-owner jobs from publishing after analytics owner replacement."""
         self._epoch = epoch
         self._cache.clear()
         self._bytes = 0

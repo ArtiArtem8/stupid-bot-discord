@@ -148,7 +148,10 @@ request 64 pixels as PNG. Their original compressed bytes stay in memory only:
 at most 64 entries and 16 MiB, keyed by the full CDN URL including hash, format
 and size. Unchanged images are reused across card updates and members' cards.
 Failed downloads are retried; missing or corrupt images use placeholders.
-Animated avatars retain their frames and timing, but lower tiers still use PNG.
+Animated cards retain GIF frames and timing. Static PNG cards decode only the
+first GIF frame; later damaged frames do not reject an otherwise valid still.
+Byte and pixel limits still apply to the processed image. Other formats retain
+their existing static path.
 
 Rendered media has a separate memory cache: 32 entries, 64 MiB and a five-minute
 TTL. Each cached main card includes the immutable progression and identity that
@@ -160,11 +163,12 @@ does not release a slot until its work finishes. One persistent `Inkscape --shel
 process prepares the layers, then Pillow composes the animation. The 80 RGBA
 frames alone need about 140.6 MiB, before encoder overhead.
 
-Timelines are cached for at most four guilds. A miss reads all retained guild and
-shared session history from SQLite. Guild/shared commit watermarks invalidate
-only relevant scopes. Cold reads/replay have bounded admission, and cancellation
-retains the slot until physical replay finishes. Reload clears caches and closes
-the owned shell after admitted work completes.
+Voice analytics is restored into RAM before collection starts. Confirmed batches
+update it sequentially; unsupported ordering triggers a full rebuild. Requests
+receive immutable snapshots without SQL reads. During recovery they receive the
+existing busy response. Admission remains bounded, and cancellation retains its
+slot until snapshot work physically finishes. Collector reload preserves the
+application-owned analytics; profile reload closes its media resources.
 
 ## Editing artwork
 
