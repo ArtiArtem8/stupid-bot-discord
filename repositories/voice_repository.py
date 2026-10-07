@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
 from typing import NamedTuple, TypedDict
 
-from sqlalchemy import select, union_all
+from sqlalchemy import func, select, union_all
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -157,6 +157,24 @@ class VoiceJournalSnapshot:
     generation: int
 
 
+@dataclass(frozen=True, slots=True)
+class VoiceCommit:
+    """Identity of a confirmed batch; record IDs need not be contiguous."""
+
+    revision: int
+    last_record_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class VoiceHistory:
+    """Detached full history or tail with metadata from the same SQL snapshot."""
+
+    records: tuple[VoiceJournalRecord, ...]
+    cutoff: VoiceCommit
+    shared_revision: int
+    guild_revisions: dict[int, int]
+
+
 def _state_values(state: VoiceStateSnapshot) -> StateValues:
     return StateValues(
         user_id=discord_id(state.user_id),
@@ -255,6 +273,13 @@ class VoiceRepository:
         self._database = database
 
     async def append(self, batch_id: str, records: Sequence[VoiceJournalRecord]) -> int:
+        """Append offline facts, returning their idempotent batch revision."""
+        return (await self.append_batch(batch_id, records)).revision
+
+    async def append_batch(
+        self, batch_id: str, records: Sequence[VoiceJournalRecord]
+    ) -> VoiceCommit:
+        """Commit a batch and return its actual final record ID and revision."""
         if not batch_id or not records:
             raise ValueError("A voice batch requires identity and content")
         values, fingerprint = await run_in_thread(lambda: _batch_values(records))
@@ -269,7 +294,14 @@ class VoiceRepository:
             if existing is not None:
                 if existing[0] != fingerprint:
                     raise ValueError("Voice batch ID reused with different content")
-                return existing[1]
+                last_id = await connection.scalar(
+                    select(func.max(voice_records.c.record_id)).where(
+                        voice_records.c.batch_id == batch_id
+                    )
+                )
+                if last_id is None:
+                    raise RuntimeError("Persisted voice batch has no records")
+                return VoiceCommit(existing[1], last_id)
             revision = (
                 await connection.execute(
                     voice_shared_revision.update()
@@ -287,8 +319,11 @@ class VoiceRepository:
                 )
             )
             scopes = {record.guild_id for record in records}
+            last_id = 0
             for ordinal, (envelope, states) in enumerate(values):
-                await _insert_record(connection, batch_id, ordinal, envelope, states)
+                last_id = await _insert_record(
+                    connection, batch_id, ordinal, envelope, states
+                )
             for scope in scopes:
                 if scope is None:
                     await connection.execute(
@@ -305,7 +340,54 @@ class VoiceRepository:
                             set_={"revision": revision},
                         )
                     )
-            return revision
+            return VoiceCommit(revision, last_id)
+
+    async def history(self, *, after_record_id: int = 0) -> VoiceHistory:
+        """Read all scopes after a real ID, with a transaction-consistent cutoff.
+
+        Runtime writes pass through the analytics owner. This API also supports
+        offline replay; decoding never retains a SQL connection.
+        """
+        async with self._database.transaction() as connection:
+            global_revision, shared_revision = (
+                await connection.execute(
+                    select(
+                        voice_shared_revision.c.global_revision,
+                        voice_shared_revision.c.revision,
+                    ).where(voice_shared_revision.c.singleton == 1)
+                )
+            ).one()
+            revision_rows = await connection.execute(
+                select(voice_revisions.c.guild_id, voice_revisions.c.revision)
+            )
+            guild_revisions = dict(iter(revision_rows))
+            last_id = (
+                await connection.scalar(select(func.max(voice_records.c.record_id)))
+                or 0
+            )
+            rows = await connection.execute(
+                _RECORD_FIELDS.where(
+                    voice_records.c.record_id > after_record_id,
+                    voice_records.c.record_id <= last_id,
+                ).order_by(voice_records.c.record_id)
+            )
+            records = [_StoredRecord(*row) for row in rows]
+            states = await connection.execute(
+                _STATE_FIELDS.where(
+                    voice_record_states.c.record_id > after_record_id,
+                    voice_record_states.c.record_id <= last_id,
+                ).order_by(
+                    voice_record_states.c.record_id, voice_record_states.c.position
+                )
+            )
+            raw = records, [_StoredState(*row) for row in states]
+        decoded = await run_in_thread(lambda: _decode_records(raw))
+        return VoiceHistory(
+            decoded,
+            VoiceCommit(global_revision, last_id),
+            shared_revision,
+            guild_revisions,
+        )
 
     async def revision(self, guild_id: int) -> int:
         async with self._database.transaction() as connection:
@@ -336,7 +418,7 @@ async def _insert_record(
     ordinal: int,
     envelope: RecordValues,
     states: list[StateValues],
-) -> None:
+) -> int:
     guild_id = envelope["guild_id"]
     if guild_id is not None:
         await ensure_guild(connection, guild_id)
@@ -358,6 +440,7 @@ async def _insert_record(
                 record_id=record_id, position=position, guild_id=guild_id, **state
             )
         )
+    return record_id
 
 
 async def _read_records(

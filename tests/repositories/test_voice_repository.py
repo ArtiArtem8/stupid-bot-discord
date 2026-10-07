@@ -9,6 +9,7 @@ from typing import override
 
 from sqlalchemy import select
 
+from api.voice.analytics import VoiceAnalytics
 from api.voice.model import (
     GapReason,
     ObservationGap,
@@ -37,6 +38,9 @@ class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
         self.database = Database(open_engine(self.path))
         self.addAsyncCleanup(self.database.close)
         self.store = VoiceRepository(self.database)
+        self.analytics = VoiceAnalytics(self.store)
+        self.addAsyncCleanup(self.analytics.close)
+        await self.analytics.start()
 
     async def test_round_trip_and_equal_sequence_gap_preserve_timeline(self) -> None:
         state = VoiceStateSnapshot(
@@ -104,7 +108,7 @@ class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_queue_close_drains_before_database_disposal(self) -> None:
-        journal = VoiceJournal(self.store, batch_size=2)
+        journal = VoiceJournal(self.store, analytics=self.analytics, batch_size=2)
         journal.start()
         facts = [
             record(0, VoiceSnapshot(())),

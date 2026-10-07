@@ -131,7 +131,9 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
         self.database_path, self.database = await temporary_database(self)
         self.bot = StupidBot(database_path=self.database_path)
         await self.bot.__aenter__()
-        self.journal = VoiceJournal(VoiceRepository(self.bot._database))
+        self.journal = VoiceJournal(
+            VoiceRepository(self.bot._database), analytics=self.bot.voice_analytics
+        )
         self.clock = Clock()
         self.cog = VoiceCollectorCog(
             self.bot,
@@ -349,7 +351,9 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
         )
         await self.bot.unload_extension("cogs.voice.collector_cog")
         self.assertIsNone(self.bot.get_cog("VoiceCollectorCog"))
-        journal = VoiceJournal(VoiceRepository(self.bot._database))
+        journal = VoiceJournal(
+            VoiceRepository(self.bot._database), analytics=self.bot.voice_analytics
+        )
         day = datetime.now(UTC).date()
         observations = await journal.read_day(1, day)
         self.assertEqual(len(observations), 1)
@@ -365,7 +369,9 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
 
     async def test_disabled_collector_does_not_collect(self) -> None:
         await self.cog.cog_unload()
-        journal = VoiceJournal(VoiceRepository(self.bot._database))
+        journal = VoiceJournal(
+            VoiceRepository(self.bot._database), analytics=self.bot.voice_analytics
+        )
         disabled = VoiceCollectorCog(self.bot, journal=journal)
         with patch.object(config, "VOICE_PROBE_ENABLED", False):
             await disabled.cog_load()

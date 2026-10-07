@@ -123,3 +123,20 @@ snapshots. Unresolved channel IDs make a snapshot non-authoritative.
 The ordinary Cog loader discovers the collector and profile command. Collector
 shutdown drains the journal; profile shutdown drains media work and closes its
 native renderer. See [profile cards](profile-card.md) for host setup and caching.
+
+## Process-local analytics
+
+`StupidBot` owns `VoiceAnalytics` across collector reloads. It restores all scopes
+before producers start. `VoiceJournal` submits runtime writes through this owner;
+confirmed commits update `VoiceReplayState`, while unsafe ordering requests a
+canonical rebuild. Raw facts remain in SQLite; no derived SQL tables are added.
+
+A single lock excludes readers during commit/apply and snapshot creation.
+Recovery first builds from a consistent SQL cutoff outside the lock, then catches
+up to a fixed cutoff under it. An unsafe tail causes a full rebuild while writers
+wait in the existing journal queue. Dirty state is never published as current.
+A derived failure cannot turn a successful commit into a failed journal write.
+
+Snapshots finish detached containers. Gap candidate windows restrict intersection
+work while retaining source metadata order; long or open gaps can still require
+broad scans. Shutdown drains the journal and analytics workers before closing SQL.

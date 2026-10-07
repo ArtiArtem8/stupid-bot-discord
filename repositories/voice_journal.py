@@ -15,6 +15,7 @@ from datetime import date
 from enum import StrEnum
 from uuid import uuid4
 
+from api.voice.analytics import VoiceAnalytics
 from api.voice.model import GapReason, ObservationGap, VoiceJournalRecord
 from repositories.voice_repository import VoiceJournalSnapshot, VoiceRepository
 
@@ -48,11 +49,17 @@ class VoiceJournal:
     """Own queue admission, write-failure gaps and writer shutdown."""
 
     def __init__(
-        self, store: VoiceRepository, *, queue_size: int = 10_000, batch_size: int = 500
+        self,
+        store: VoiceRepository,
+        *,
+        analytics: VoiceAnalytics,
+        queue_size: int = 10_000,
+        batch_size: int = 500,
     ) -> None:
         if queue_size < 1 or batch_size < 1:
             raise ValueError("Queue and batch sizes must be positive")
         self.store = store
+        self.analytics = analytics
         self._queue: asyncio.Queue[VoiceJournalRecord | None] = asyncio.Queue(
             queue_size
         )
@@ -181,7 +188,7 @@ class VoiceJournal:
         if not records:
             return
         try:
-            await self.store.append(uuid4().hex, records)
+            await self.analytics.append(uuid4().hex, records)
         except Exception as exc:
             self._write_error = exc
             self._failed += len(batch)

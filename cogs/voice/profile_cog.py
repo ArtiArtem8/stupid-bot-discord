@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from functools import partial
 from io import BytesIO
 from typing import override
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -17,6 +15,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import config
+from api.voice.analytics import AnalyticsUnavailableError, VoiceAnalytics
 from api.voice.profile.build import build_profile
 from api.voice.profile.details import (
     build_activity_detail,
@@ -24,7 +23,7 @@ from api.voice.profile.details import (
     build_xp_detail,
 )
 from api.voice.profile.model import VoiceProfile
-from api.voice.timeline import VoiceTimeline, build_timeline
+from api.voice.timeline import VoiceTimeline
 from cogs.voice.profile.asset_cache import ProfileAssetCache
 from cogs.voice.profile.attachments import detail_embed
 from cogs.voice.profile.cache import MediaKey, ProfileMediaCache, RenderedProfile
@@ -43,11 +42,8 @@ from cogs.voice.profile.media import (
 from cogs.voice.profile.view import ProfileDetail, VoiceProfileView
 from framework.base_cog import BaseCog
 from framework.feedback_ui import FeedbackType, FeedbackUI
-from repositories.voice_journal import VoiceJournal
-from utils.asyncio_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
-_TIMELINE_CACHE_ENTRIES = 4
 _TIMELINE_REQUEST_LIMIT = 4
 _DATA_TIMEOUT = 10
 _ASSET_TIMEOUT = 5
@@ -75,16 +71,13 @@ class ProfileRequest:
 
 
 class VoiceProfileCog(BaseCog):
-    """Own one media runtime/cache; collector replacement advances the epoch."""
+    """Own one media runtime/cache; analytics replacement advances the epoch."""
 
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
-        self._timeline_cache: OrderedDict[int, tuple[int, VoiceTimeline]] = (
-            OrderedDict()
-        )
         self._cache_lock = asyncio.Lock()
         self._timeline_admitted = 0
-        self._journal_owner: VoiceJournal | None = None
+        self._analytics_owner: VoiceAnalytics | None = None
         self._epoch = 0
         self._media_renderer = ProfileMediaRenderer()
         self._media_cache = ProfileMediaCache()
@@ -328,38 +321,25 @@ class VoiceProfileCog(BaseCog):
         self._timeline_admitted += 1
         try:
             async with self._cache_lock:
-                collector = self.bot.get_cog("VoiceCollectorCog")
-                # Extension reload replaces the Cog class, but not the journal type.
-                journal: object = getattr(collector, "journal", None)
-                if not isinstance(journal, VoiceJournal):
-                    raise RuntimeError("Voice collector is unavailable")
-                if self._journal_owner is not journal:
-                    self._timeline_cache.clear()
-                    self._journal_owner = journal
+                analytics: object = getattr(self.bot, "voice_analytics", None)
+                if not isinstance(analytics, VoiceAnalytics):
+                    raise RenderBusyError("Voice analytics is unavailable")
+                if self._analytics_owner is not analytics:
+                    self._analytics_owner = analytics
                     self._epoch += 1
                     self._media_cache.invalidate(self._epoch)
-                return await self._read_snapshot(journal, guild_id)
+                return await self._read_snapshot(analytics, guild_id)
         finally:
             self._timeline_admitted -= 1
 
     async def _read_snapshot(
-        self, journal: VoiceJournal, guild_id: int
+        self, analytics: VoiceAnalytics, guild_id: int
     ) -> ProfileSnapshot:
-        cached = self._timeline_cache.get(guild_id)
-        if cached is not None and cached[0] == await journal.revision(guild_id):
-            self._timeline_cache.move_to_end(guild_id)
-            return ProfileSnapshot(cached[1], self._epoch, cached[0])
-        snapshot = await journal.snapshot_for_guild(guild_id)
-        timeline = await run_in_thread(
-            partial(
-                build_timeline, (*snapshot.guild_records, *snapshot.session_records)
-            )
-        )
-        self._timeline_cache[guild_id] = (snapshot.generation, timeline)
-        self._timeline_cache.move_to_end(guild_id)
-        while len(self._timeline_cache) > _TIMELINE_CACHE_ENTRIES:
-            self._timeline_cache.popitem(last=False)
-        return ProfileSnapshot(timeline, self._epoch, snapshot.generation)
+        try:
+            snapshot = await analytics.snapshot(guild_id)
+        except AnalyticsUnavailableError as error:
+            raise RenderBusyError("Voice analytics is recovering") from error
+        return ProfileSnapshot(snapshot.timeline, self._epoch, snapshot.generation)
 
     async def _prepare(
         self, guild: discord.Guild, user: discord.Member

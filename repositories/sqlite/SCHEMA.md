@@ -78,17 +78,18 @@ Voice record variant columns use CHECKs; payload JSON is not the fact store.
 Uptime's current accumulated total appears in the checkpoint and active period;
 one repository updates both in the same transaction. Voice revisions and birthday
 delivery status are explicit publication/delivery state, not recomputed account
-balances. `received/accepted/persisted/failed` remain queue telemetry. Voice cache
+balances. `received/accepted/persisted/failed` remain queue telemetry. Voice snapshot
 revision is max(shared watermark, guild watermark), each allocated from the same
 monotonically increasing global commit counter. A batch affecting another guild
 does not invalidate this scope unless it contains a shared fact.
 
 ## Queries and indexes
 
-Profile materialization reads relevant guild and shared envelopes/states in one
-snapshot transaction. Connection release precedes decoding/replay/XP/rendering.
-Queries read full retained scope history. Cold admission is limited; cached
-timelines reuse unchanged read revisions.
+Startup and recovery read facts, states, revisions and a record-ID cutoff in
+one snapshot transaction. Connection release precedes decoding and replay.
+The application retains rebuildable analytical state in RAM. Normal profile
+requests read immutable RAM snapshots without SQL; media uses scoped revisions.
+Runtime voice writes pass through the single analytics owner and journal.
 
 | Index | Lookup |
 | --- | --- |

@@ -13,6 +13,7 @@ from api.birthday import BirthdayManager
 from api.blocking import BlockManager
 from api.guild_monitoring import ServerMonitoringManager
 from api.reporting import handle_report_button
+from api.voice.analytics import VoiceAnalytics
 from framework.cog_loader import CogLoader
 from framework.error_handler import handle_app_command_error
 from framework.feedback_ui import FeedbackUI
@@ -82,6 +83,7 @@ class StupidBot(commands.Bot):
             MonitorRepository(self._database)
         )
         self._voice_repository = VoiceRepository(self._database)
+        self.voice_analytics = VoiceAnalytics(self._voice_repository)
         self._voice_journal: VoiceJournal | None = None
         self._prepared = False
         self._prepare_lock = asyncio.Lock()
@@ -96,6 +98,7 @@ class StupidBot(commands.Bot):
             raise RuntimeError("Previous voice collector has not drained")
         self._voice_journal = VoiceJournal(
             self._voice_repository,
+            analytics=self.voice_analytics,
             queue_size=config.VOICE_PROBE_EVENT_QUEUE_MAX,
             batch_size=config.VOICE_PROBE_WRITER_BATCH_MAX,
         )
@@ -115,6 +118,7 @@ class StupidBot(commands.Bot):
             logger.info("SQLite schema validated; storage is COMPLETE")
             await self.birthday_manager.repo.recover_deliveries()
             await self.uptime_manager.restore_uptime()
+            await self.voice_analytics.start()
             self._prepared = True
 
     async def save_state(self) -> float:
@@ -167,10 +171,13 @@ class StupidBot(commands.Bot):
                 if self._voice_journal is not None:
                     await self._voice_journal.close()
             finally:
-                async with self._prepare_lock:
-                    if self._prepared:
-                        uptime = await self.uptime_manager.save_state(final=True)
-                        logger.info("Final saved uptime: %.0f seconds", uptime)
+                try:
+                    await self.voice_analytics.close()
+                finally:
+                    async with self._prepare_lock:
+                        if self._prepared:
+                            uptime = await self.uptime_manager.save_state(final=True)
+                            logger.info("Final saved uptime: %.0f seconds", uptime)
         finally:
             await self._database.close()
 

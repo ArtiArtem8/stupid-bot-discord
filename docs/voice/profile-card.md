@@ -160,11 +160,12 @@ does not release a slot until its work finishes. One persistent `Inkscape --shel
 process prepares the layers, then Pillow composes the animation. The 80 RGBA
 frames alone need about 140.6 MiB, before encoder overhead.
 
-Timelines are cached for at most four guilds. A miss reads all retained guild and
-shared session history from SQLite. Guild/shared commit watermarks invalidate
-only relevant scopes. Cold reads/replay have bounded admission, and cancellation
-retains the slot until physical replay finishes. Reload clears caches and closes
-the owned shell after admitted work completes.
+Voice analytics is restored into RAM before collection starts. Confirmed batches
+update it sequentially; unsupported ordering triggers a full rebuild. Requests
+receive immutable snapshots without SQL reads. During recovery they receive the
+existing busy response. Admission remains bounded, and cancellation retains its
+slot until snapshot work physically finishes. Collector reload preserves the
+application-owned analytics; profile reload closes its media resources.
 
 ## Editing artwork
 
