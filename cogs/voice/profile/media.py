@@ -104,9 +104,12 @@ class ProfileMediaRenderer:
         started = perf_counter()
         if self.svg is None:
             raise RuntimeError("Profile renderer is unavailable")
-        prepared = self.svg.prepare(profile, identity)
+        animated = profile.appearance.tier in ANIMATED_TIERS
+        prepared = self.svg.prepare(
+            profile, identity, avatar_mode="animated" if animated else "static"
+        )
         png = prepared.png()
-        if profile.appearance.tier not in ANIMATED_TIERS:
+        if not animated:
             return ProfileMedia(png, "png")
         try:
             data = encode_webp(prepared)

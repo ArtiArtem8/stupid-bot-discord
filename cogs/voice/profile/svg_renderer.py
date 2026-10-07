@@ -13,7 +13,7 @@ from PIL import Image
 
 from api.voice.profile.model import VoiceProfile
 from cogs.voice.profile.animation import CardAnimation, Motion
-from cogs.voice.profile.avatar import load_avatar
+from cogs.voice.profile.avatar import AvatarMode, load_avatar
 from cogs.voice.profile.clips import load_clips
 from cogs.voice.profile.design import (
     ASSETS,
@@ -77,7 +77,13 @@ class SvgProfileRenderer:
                 digest.update(path.read_bytes())
         return digest.hexdigest()
 
-    def prepare(self, profile: VoiceProfile, identity: CardIdentity) -> PreparedCard:
+    def prepare(
+        self,
+        profile: VoiceProfile,
+        identity: CardIdentity,
+        *,
+        avatar_mode: AvatarMode = "animated",
+    ) -> PreparedCard:
         started = perf_counter()
         design = bind_design(profile, identity, self.template, self.raster)
         avatar = None
@@ -89,7 +95,7 @@ class SvgProfileRenderer:
         box = design.boxes.get("user-avatar")
         if box is not None:
             try:
-                avatar = load_avatar(identity.avatar_bytes, box)
+                avatar = load_avatar(identity.avatar_bytes, box, mode=avatar_mode)
                 if avatar is not None:
                     clips = {
                         f"url(#{node.get('id')})"

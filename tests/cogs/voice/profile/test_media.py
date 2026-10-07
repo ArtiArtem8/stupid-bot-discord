@@ -92,10 +92,16 @@ class TestMedia(unittest.IsolatedAsyncioTestCase):
                     (await renderer.render(profile_at(level), identity)).extension,
                     "png",
                 )
+            svg.prepare.assert_called_with(
+                profile_at(10), identity, avatar_mode="static"
+            )
             encode.assert_not_called()
             for level in (20, 35, 50, 75, 100):
                 result = await renderer.render(profile_at(level), identity)
                 self.assertEqual(result, ProfileMedia(b"webp", "webp", b"png"))
+        svg.prepare.assert_called_with(
+            profile_at(100), identity, avatar_mode="animated"
+        )
         svg.prepare.reset_mock()
         with patch.object(media_module, "encode_webp", side_effect=OSError("encoder")):
             with self.assertLogs(media_module.logger, level="WARNING"):

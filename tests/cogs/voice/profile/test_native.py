@@ -30,6 +30,45 @@ from tests.cogs.voice.profile.test_media import profile_at
     "Set VOICE_PROFILE_NATIVE=1 with Inkscape installed to run native integration",
 )
 class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
+    async def test_static_avatar_matches_full_decoder_pixels(self) -> None:
+        renderer = ProfileMediaRenderer()
+        try:
+            await renderer.astart()
+            if renderer.svg is None:
+                self.fail("Native renderer did not initialize")
+            for frames in (1, 2):
+                output = BytesIO()
+                with Image.new("RGBA", (32, 32), (255, 0, 0, 0)) as first:
+                    with Image.new("RGBA", (32, 32), "blue") as second:
+                        first.save(
+                            output,
+                            "GIF",
+                            save_all=True,
+                            append_images=[second] if frames == 2 else [],
+                            duration=100,
+                            loop=0,
+                        )
+                identity = CardIdentity("Name", "Guild", output.getvalue())
+
+                def render_pair(
+                    identity: CardIdentity = identity,
+                ) -> tuple[bytes, bytes]:
+                    svg = renderer.svg
+                    if svg is None:
+                        raise RuntimeError("Missing renderer")
+                    expected = svg.prepare(
+                        profile_at(1), identity, avatar_mode="animated"
+                    ).png()
+                    actual = svg.prepare(
+                        profile_at(1), identity, avatar_mode="static"
+                    ).png()
+                    return expected, actual
+
+                expected, actual = await asyncio.to_thread(render_pair)
+                self.assertEqual(actual, expected)
+        finally:
+            await renderer.aclose()
+
     async def test_static_details_share_native_shell_and_handle_empty_and_large_labels(
         self,
     ) -> None:

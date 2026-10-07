@@ -148,7 +148,10 @@ request 64 pixels as PNG. Their original compressed bytes stay in memory only:
 at most 64 entries and 16 MiB, keyed by the full CDN URL including hash, format
 and size. Unchanged images are reused across card updates and members' cards.
 Failed downloads are retried; missing or corrupt images use placeholders.
-Animated avatars retain their frames and timing, but lower tiers still use PNG.
+Animated cards retain GIF frames and timing. Static PNG cards decode only the
+first GIF frame; later damaged frames do not reject an otherwise valid still.
+Byte and pixel limits still apply to the processed image. Other formats retain
+their existing static path.
 
 Rendered media has a separate memory cache: 32 entries, 64 MiB and a five-minute
 TTL. Each cached main card includes the immutable progression and identity that
