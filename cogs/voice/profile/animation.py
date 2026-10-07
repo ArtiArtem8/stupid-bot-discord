@@ -149,41 +149,46 @@ class CardAnimation:
         # Animated artwork stays on the fully opaque interior. The antialiased
         # outside edge is owned only by the static layer, not stabilized post-hoc.
         self.clip = base.getchannel("A").point([0] * 255 + [255])
-        shell = design.boxes["card-shell"]
-        self.path = rounded_path(
-            Box(shell.x + 3, shell.y + 3, shell.width - 6, shell.height - 6),
-            max(1, corner_radius - 3),
-        )
         # Rasterize antialiased geometry once. Only packet masks and satellites
         # change per frame; there is no full-canvas supersampling in that loop.
         self.colors = [design.tokens["bright"]]
         if motion.prismatic:
             self.colors.extend(("#9687ff", "#ee74d6"))
         self.diamonds: list[Image.Image] = []
-        for color in self.colors:
-            sprite = Image.new("RGBA", (32, 32))
-            ImageDraw.Draw(sprite).polygon(
-                [(16, 7), (25, 16), (16, 25), (7, 16)], fill=color
+        if motion.avatar_orbits or motion.emblem_orbits:
+            for color in self.colors:
+                sprite = Image.new("RGBA", (32, 32))
+                ImageDraw.Draw(sprite).polygon(
+                    [(16, 7), (25, 16), (16, 25), (7, 16)], fill=color
+                )
+                self.diamonds.append(sprite.resize((16, 16), Image.Resampling.LANCZOS))
+        self.path: tuple[tuple[float, float], ...] = ()
+        self.border_alpha: Image.Image | None = None
+        if motion.border_copies:
+            shell = design.boxes["card-shell"]
+            self.path = rounded_path(
+                Box(shell.x + 3, shell.y + 3, shell.width - 6, shell.height - 6),
+                max(1, corner_radius - 3),
             )
-            self.diamonds.append(sprite.resize((16, 16), Image.Resampling.LANCZOS))
-        border = Image.new("L", (base.width * 2, base.height * 2))
-        ImageDraw.Draw(border).line(
-            [(round(x * 2), round(y * 2)) for x, y in (*self.path, self.path[0])],
-            fill=255,
-            width=4,
-            joint="curve",
-        )
-        self.border_alpha = border.resize(base.size, Image.Resampling.LANCZOS)
+            border = Image.new("L", (base.width * 2, base.height * 2))
+            ImageDraw.Draw(border).line(
+                [(round(x * 2), round(y * 2)) for x, y in (*self.path, self.path[0])],
+                fill=255,
+                width=4,
+                joint="curve",
+            )
+            self.border_alpha = border.resize(base.size, Image.Resampling.LANCZOS)
         self._prepare_ornaments()
         self._protect_content()
         self.star_sprites: list[tuple[Image.Image, int, int, float]] = []
-        for star in design.stars:
-            x, y = math.floor(star.box.x) - 1, math.floor(star.box.y) - 1
-            right = math.ceil(star.box.x + star.box.width) + 1
-            bottom = math.ceil(star.box.y + star.box.height) + 1
-            self.star_sprites.append(
-                (atlas.crop((x, y, right, bottom)), x, y, star.offset)
-            )
+        if motion.stars:
+            for star in design.stars:
+                x, y = math.floor(star.box.x) - 1, math.floor(star.box.y) - 1
+                right = math.ceil(star.box.x + star.box.width) + 1
+                bottom = math.ceil(star.box.y + star.box.height) + 1
+                self.star_sprites.append(
+                    (atlas.crop((x, y, right, bottom)), x, y, star.offset)
+                )
 
     def frame(self, phase: float) -> Image.Image:
         if not math.isfinite(phase) or not 0 <= phase <= 1:
@@ -298,6 +303,8 @@ class CardAnimation:
                         protect.rectangle(bounds, fill=0)
 
     def _prepare_ornaments(self) -> None:
+        if not (self.motion.avatar_orbits or self.motion.emblem_orbits):
+            return
         ornaments = Image.new("RGBA", (self.base.width * 2, self.base.height * 2))
         pen = ImageDraw.Draw(ornaments)
         for key, number in (
@@ -326,6 +333,8 @@ class CardAnimation:
         self.base.alpha_composite(fixed)
 
     def _draw_border(self, overlay: Image.Image, phase: float) -> None:
+        if self.border_alpha is None:
+            return
         cfg = self.motion
         count = len(self.path)
         for copy_index in range(cfg.border_copies):
