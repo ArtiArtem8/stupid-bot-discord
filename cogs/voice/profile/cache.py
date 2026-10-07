@@ -71,7 +71,7 @@ class ProfileMediaCache:
         self._close_task: asyncio.Task[None] | None = None
 
     def invalidate(self, epoch: int) -> None:
-        """Prevent old-owner jobs from publishing after collector replacement."""
+        """Prevent old-owner jobs from publishing after analytics owner replacement."""
         self._epoch = epoch
         self._cache.clear()
         self._bytes = 0

@@ -71,7 +71,7 @@ class TestVoiceAnalytics(unittest.IsolatedAsyncioTestCase):
                 raise ValueError("derived state failure")
             return original(state, records)
 
-        journal = VoiceJournal(self.store, analytics=self.analytics)
+        journal = VoiceJournal(self.analytics)
         with patch.object(VoiceReplayState, "apply_many", new=fail_nonempty):
             with self.assertLogs("api.voice.analytics", level="WARNING"):
                 journal.start()

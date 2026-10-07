@@ -97,8 +97,7 @@ class StupidBot(commands.Bot):
         if self._voice_journal is not None and not self._voice_journal.closed:
             raise RuntimeError("Previous voice collector has not drained")
         self._voice_journal = VoiceJournal(
-            self._voice_repository,
-            analytics=self.voice_analytics,
+            self.voice_analytics,
             queue_size=config.VOICE_PROBE_EVENT_QUEUE_MAX,
             batch_size=config.VOICE_PROBE_WRITER_BATCH_MAX,
         )

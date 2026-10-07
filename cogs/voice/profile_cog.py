@@ -75,7 +75,7 @@ class VoiceProfileCog(BaseCog):
 
     def __init__(self, bot: commands.Bot) -> None:
         super().__init__(bot)
-        self._cache_lock = asyncio.Lock()
+        self._snapshot_lock = asyncio.Lock()
         self._timeline_admitted = 0
         self._analytics_owner: VoiceAnalytics | None = None
         self._epoch = 0
@@ -320,7 +320,7 @@ class VoiceProfileCog(BaseCog):
             raise RenderBusyError("Voice history is busy")
         self._timeline_admitted += 1
         try:
-            async with self._cache_lock:
+            async with self._snapshot_lock:
                 analytics: object = getattr(self.bot, "voice_analytics", None)
                 if not isinstance(analytics, VoiceAnalytics):
                     raise RenderBusyError("Voice analytics is unavailable")

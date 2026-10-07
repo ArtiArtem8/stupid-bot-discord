@@ -11,13 +11,11 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import date
 from enum import StrEnum
 from uuid import uuid4
 
 from api.voice.analytics import VoiceAnalytics
 from api.voice.model import GapReason, ObservationGap, VoiceJournalRecord
-from repositories.voice_repository import VoiceJournalSnapshot, VoiceRepository
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +48,13 @@ class VoiceJournal:
 
     def __init__(
         self,
-        store: VoiceRepository,
-        *,
         analytics: VoiceAnalytics,
+        *,
         queue_size: int = 10_000,
         batch_size: int = 500,
     ) -> None:
         if queue_size < 1 or batch_size < 1:
             raise ValueError("Queue and batch sizes must be positive")
-        self.store = store
         self.analytics = analytics
         self._queue: asyncio.Queue[VoiceJournalRecord | None] = asyncio.Queue(
             queue_size
@@ -216,21 +212,3 @@ class VoiceJournal:
             logger.debug("Voice journal write traceback", exc_info=True)
         else:
             self._persisted += len(batch)
-
-    async def read_day(
-        self, guild_id: int | None, day: date
-    ) -> tuple[VoiceJournalRecord, ...]:
-        """Read a UTC day without flushing the queue or inventing preceding coverage."""
-        return await self.store.read_all(guild_id, day)
-
-    async def read_all(self, guild_id: int | None) -> tuple[VoiceJournalRecord, ...]:
-        """Read committed scope history; pending queue entries remain unconfirmed."""
-        return await self.store.read_all(guild_id)
-
-    async def snapshot_for_guild(self, guild_id: int) -> VoiceJournalSnapshot:
-        """Read guild/shared facts and their revision in one SQL snapshot."""
-        return await self.store.snapshot_for_guild(guild_id)
-
-    async def revision(self, guild_id: int) -> int:
-        """Return a committed scoped revision, independent of queue telemetry."""
-        return await self.store.revision(guild_id)

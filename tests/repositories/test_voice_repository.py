@@ -108,7 +108,7 @@ class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_queue_close_drains_before_database_disposal(self) -> None:
-        journal = VoiceJournal(self.store, analytics=self.analytics, batch_size=2)
+        journal = VoiceJournal(self.analytics, batch_size=2)
         journal.start()
         facts = [
             record(0, VoiceSnapshot(())),
