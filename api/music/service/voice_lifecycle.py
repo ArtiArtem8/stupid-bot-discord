@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
+from collections.abc import AsyncGenerator
 
 import discord
 import mafic
@@ -40,6 +42,7 @@ class VoiceLifecycleHandlers:
         self.ui = ui_orchestrator
         self.healer = healer
         self._healing_tasks: dict[int, asyncio.Task[object]] = {}
+        self._leaving_guilds: dict[int, int] = {}
         self._recent_voice_transitions: dict[int, float] = {}
         self._voice_transition_validation_tasks: dict[int, asyncio.Task[None]] = {}
         # Superseded validators still belong to us until cancellation completes.
@@ -294,7 +297,11 @@ class VoiceLifecycleHandlers:
                     self._recent_voice_transitions.pop(guild_id, None)
 
     async def heal(self, guild_id: int) -> bool:
-        if self._closing or self.is_healing(guild_id):
+        if (
+            self._closing
+            or guild_id in self._leaving_guilds
+            or self.is_healing(guild_id)
+        ):
             return False
 
         task = asyncio.current_task()
@@ -317,6 +324,24 @@ class VoiceLifecycleHandlers:
         if task is not None and task is not asyncio.current_task():
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+
+    @contextlib.asynccontextmanager
+    async def leaving(self, guild_id: int) -> AsyncGenerator[None]:
+        """Reject new healing until every overlapping leave has finished.
+
+        Close admission before cancelling accepted healing, including its UI work.
+        Cancellation or failure releases only this caller's reservation.
+        """
+        self._leaving_guilds[guild_id] = self._leaving_guilds.get(guild_id, 0) + 1
+        try:
+            await self.cancel_heal(guild_id)
+            yield
+        finally:
+            remaining = self._leaving_guilds[guild_id] - 1
+            if remaining:
+                self._leaving_guilds[guild_id] = remaining
+            else:
+                del self._leaving_guilds[guild_id]
 
     def is_healing(self, guild_id: int) -> bool:
         """Return whether reconstructive recovery owns this guild."""

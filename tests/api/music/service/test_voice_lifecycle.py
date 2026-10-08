@@ -10,6 +10,48 @@ from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 
 
 class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
+    async def test_overlapping_leaves_keep_healing_closed_when_one_is_cancelled(
+        self,
+    ) -> None:
+        entered = [asyncio.Event(), asyncio.Event()]
+        release = asyncio.Event()
+
+        async def leave(index: int) -> None:
+            async with self.handlers.leaving(123):
+                entered[index].set()
+                await release.wait()
+
+        first = asyncio.create_task(leave(0))
+        second = asyncio.create_task(leave(1))
+        await entered[0].wait()
+        await entered[1].wait()
+        first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
+        self.assertFalse(await self.handlers.heal(123))
+        release.set()
+        await second
+        self.healer.capture_and_heal = AsyncMock(return_value=True)
+        self.assertTrue(await self.handlers.heal(123))
+
+    async def test_leaving_drains_accepted_healing_before_disconnecting(self) -> None:
+        entered, cancelled = asyncio.Event(), asyncio.Event()
+
+        async def heal(_guild_id: int) -> bool:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+            return True
+
+        self.healer.capture_and_heal = AsyncMock(side_effect=heal)
+        healing = asyncio.create_task(self.handlers.heal(123))
+        await entered.wait()
+        async with self.handlers.leaving(123):
+            self.assertTrue(cancelled.is_set())
+            self.assertTrue(healing.cancelled())
+            self.assertFalse(await self.handlers.heal(123))
+
     async def test_cleanup_drains_healing_despite_cancelled_waiter(self) -> None:
         entered = asyncio.Event()
         cancelling = asyncio.Event()

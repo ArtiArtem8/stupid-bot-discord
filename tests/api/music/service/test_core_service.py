@@ -23,11 +23,49 @@ from api.music.models import (
 )
 from api.music.player import MusicPlayer
 from api.music.service.core_service import CoreMusicService
+from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 from api.music.volume import VolumeSettings
 from tests.api.music.helpers import make_entry, make_playlist, make_track
 
 
 class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
+    async def test_leave_rejects_new_healing_through_ui_cleanup_and_disconnect(
+        self,
+    ) -> None:
+        ui_entered, release_ui = asyncio.Event(), asyncio.Event()
+        disconnect_entered, release_disconnect = asyncio.Event(), asyncio.Event()
+        guild = MagicMock(id=123, voice_client=MagicMock())
+        healer = MagicMock(capture_and_heal=AsyncMock(return_value=True))
+        self.service.voice_lifecycle = VoiceLifecycleHandlers(
+            self.bot, self.connection, self.state, self.ui, healer
+        )
+
+        async def destroy(*_args: object) -> None:
+            ui_entered.set()
+            await release_ui.wait()
+
+        async def disconnect(*_args: object, **_kwargs: object) -> bool:
+            disconnect_entered.set()
+            await release_disconnect.wait()
+            guild.voice_client = None
+            return True
+
+        self.ui.controller.destroy_for_guild.side_effect = destroy
+        self.connection.disconnect = AsyncMock(side_effect=disconnect)
+        leaving = asyncio.create_task(self.service.leave(guild))
+        await ui_entered.wait()
+        self.assertFalse(await self.service.heal(123))
+        release_ui.set()
+        await disconnect_entered.wait()
+        self.assertFalse(await self.service.heal(123))
+        healer.capture_and_heal.assert_not_awaited()
+        release_disconnect.set()
+        self.assertTrue((await leaving).is_success)
+        self.assertIsNone(guild.voice_client)
+        # A later explicit recovery belongs to a new user operation.
+        self.assertTrue(await self.service.heal(123))
+        healer.capture_and_heal.assert_awaited_once_with(123)
+
     async def test_cleanup_drains_recovery_before_disconnecting(self) -> None:
         entered = asyncio.Event()
         release = asyncio.Event()

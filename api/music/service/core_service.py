@@ -138,30 +138,30 @@ class CoreMusicService:
         `connection.get_player()` is intentionally stricter than `guild.voice_client`,
         so do not use it as the only source of truth for whether the bot is in voice.
         """
-        await self.voice_lifecycle.cancel_heal(guild.id)
-        await self.connection.cancel_recovery(guild.id)
-        raw_voice_client = guild.voice_client
+        async with self.voice_lifecycle.leaving(guild.id):
+            await self.connection.cancel_recovery(guild.id)
+            raw_voice_client = guild.voice_client
 
-        await self.ui.controller.destroy_for_guild(
-            guild.id, ControllerDestroyReason.VOICE_DISCONNECT
-        )
-        await self.end_session(guild.id)
-        self.state.cancel_timer(guild.id)
+            await self.ui.controller.destroy_for_guild(
+                guild.id, ControllerDestroyReason.VOICE_DISCONNECT
+            )
+            await self.end_session(guild.id)
+            self.state.cancel_timer(guild.id)
 
-        if isinstance(raw_voice_client, MusicPlayer):
-            raw_voice_client.clear_queue()
+            if isinstance(raw_voice_client, MusicPlayer):
+                raw_voice_client.clear_queue()
 
-        if raw_voice_client is None:
-            return MusicResult(MusicResultStatus.FAILURE, "Not connected")
+            if raw_voice_client is None:
+                return MusicResult(MusicResultStatus.FAILURE, "Not connected")
 
-        disconnected = await self.connection.disconnect(guild, force=True)
+            disconnected = await self.connection.disconnect(guild, force=True)
 
-        if disconnected:
-            return MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
-        return MusicResult(
-            MusicResultStatus.ERROR,
-            "Не удалось отключиться от голосового канала.",
-        )
+            if disconnected:
+                return MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
+            return MusicResult(
+                MusicResultStatus.ERROR,
+                "Не удалось отключиться от голосового канала.",
+            )
 
     async def play(
         self,
