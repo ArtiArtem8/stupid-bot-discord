@@ -146,7 +146,7 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
 
     @override
     async def on_submit(self, interaction: Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
         report, report_channel_id = await submit_report(
             self._repository, interaction, self.reason.value
         )

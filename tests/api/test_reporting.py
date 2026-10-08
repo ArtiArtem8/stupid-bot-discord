@@ -5,6 +5,7 @@ from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
+from discord.webhook.async_ import async_context
 from sqlalchemy import select
 
 from api.reporting import ReportModal, _build_report_data, _notify_report, submit_report
@@ -14,6 +15,28 @@ from tests.storage import temporary_database
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):
+    async def test_modal_defers_a_separate_private_confirmation(self) -> None:
+        self.interaction.type = discord.InteractionType.modal_submit
+        self.interaction.response = discord.InteractionResponse(self.interaction)
+        self.interaction.message = MagicMock(edit=AsyncMock())
+        adapter = MagicMock()
+        adapter.create_interaction_response = AsyncMock(
+            return_value={"interaction": {"id": "777"}}
+        )
+        modal = ReportModal(self.repository)
+        modal.reason._value = "a useful report"
+        token = async_context.set(adapter)
+        try:
+            await modal.on_submit(self.interaction)
+        finally:
+            async_context.reset(token)
+        self.assertEqual(
+            adapter.create_interaction_response.call_args.kwargs["params"].payload,
+            {"type": 5, "data": {"flags": 64}},
+        )
+        self.interaction.message.edit.assert_awaited_once_with(view=None)
+        self.interaction.edit_original_response.assert_awaited_once()
+
     async def test_failed_final_response_still_notifies_committed_report(self) -> None:
         modal = ReportModal(self.repository)
         modal.reason._value = "a useful report"
@@ -23,7 +46,9 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         with patch("api.reporting._notify_report", new_callable=AsyncMock) as notify:
             with self.assertRaisesRegex(RuntimeError, "lost reply"):
                 await modal.on_submit(self.interaction)
-        self.interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+        self.interaction.response.defer.assert_awaited_once_with(
+            ephemeral=True, thinking=True
+        )
         notify.assert_awaited_once()
         async with self.database.transaction() as connection:
             self.assertIsNotNone(await connection.scalar(select(reports.c.report_id)))
