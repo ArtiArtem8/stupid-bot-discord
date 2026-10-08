@@ -197,11 +197,6 @@ class PlaybackEventHandlers:
                 "threshold_ms": event.threshold_ms,
             },
         )
-        await self.ui.controller.destroy_for_guild(
-            player.guild.id,
-            ControllerDestroyReason.TRACK_STUCK,
-            expected_attempt_id=attempt.attempt_id,
-        )
 
     async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
         if not self._should_handle_player_event(event.player, "track_end"):

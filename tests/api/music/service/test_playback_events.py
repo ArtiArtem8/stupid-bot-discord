@@ -209,11 +209,7 @@ class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
             ControllerDestroyReason.TRACK_EXCEPTION,
             expected_attempt_id=1,
         )
-        self.ui.controller.destroy_for_guild.assert_any_await(
-            123,
-            ControllerDestroyReason.TRACK_STUCK,
-            expected_attempt_id=2,
-        )
+        self.assertEqual(self.ui.controller.destroy_for_guild.await_count, 1)
 
     async def test_untagged_event_is_rejected_without_fallback(self) -> None:
         player = self._player()
