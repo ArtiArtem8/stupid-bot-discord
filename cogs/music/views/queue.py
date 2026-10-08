@@ -10,7 +10,13 @@ import discord
 from discord import Interaction
 
 import config
-from api.music.models import MusicResult, QueueEntry, QueueSnapshot, RepeatMode
+from api.music.models import (
+    MUSIC_RECOVERING_MESSAGE,
+    MusicResult,
+    QueueEntry,
+    QueueSnapshot,
+    RepeatMode,
+)
 from framework.authorization import check_component_access
 from framework.feedback_ui import FeedbackType, FeedbackUI
 from framework.interaction_flow import ack_component
@@ -89,6 +95,9 @@ class QueueUndoView(discord.ui.View):
             self.expected_entries,
             self.requester_id,
         )
+        if not result.is_success and result.message == MUSIC_RECOVERING_MESSAGE:
+            await interaction.followup.send(MUSIC_RECOVERING_MESSAGE, ephemeral=True)
+            return
         if not result.is_success or not result.data:
             self.stop()
             await message.edit(view=None)

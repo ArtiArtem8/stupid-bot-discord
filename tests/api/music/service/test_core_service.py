@@ -28,6 +28,18 @@ from tests.api.music.helpers import make_entry, make_playlist, make_track
 
 
 class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
+    async def test_healing_blocks_mutation_before_recovery_connection_is_created(
+        self,
+    ) -> None:
+        self.voice_lifecycle.is_healing.return_value = True
+        self.connection.join = AsyncMock()
+        result = await self.service.join(MagicMock(id=123), MagicMock())
+        self.assertEqual(result, (VoiceCheckResult.RECOVERING, None))
+        self.connection.join.assert_not_awaited()
+        stopped = await self.service.stop(123)
+        self.assertEqual(stopped.status, MusicResultStatus.FAILURE)
+        self.connection.get_player.assert_not_called()
+
     @override
     def setUp(self) -> None:
         self.bot = MagicMock()
@@ -51,6 +63,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.volume_repo.save = AsyncMock()
         self.playback_events = MagicMock()
         self.voice_lifecycle = MagicMock()
+        self.voice_lifecycle.is_healing.return_value = False
         self.voice_lifecycle.cancel_heal = AsyncMock()
         self.ui = MagicMock()
         self.service = CoreMusicService(

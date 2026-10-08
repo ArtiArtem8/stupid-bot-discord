@@ -10,6 +10,23 @@ from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 
 
 class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
+    async def test_leave_can_cancel_healing_during_initial_controller_cleanup(
+        self,
+    ) -> None:
+        entered = asyncio.Event()
+
+        async def cleanup(*_args: object) -> None:
+            entered.set()
+            await asyncio.Event().wait()
+
+        self.ui.controller.destroy_for_guild.side_effect = cleanup
+        task = asyncio.create_task(self.handlers.heal(123))
+        await entered.wait()
+        await self.handlers.cancel_heal(123)
+        self.assertTrue(task.cancelled())
+        self.assertFalse(self.handlers.is_healing(123))
+        self.healer.capture_and_heal.assert_not_called()
+
     async def test_cancelled_validator_preserves_new_transition_marker(self) -> None:
         entered = asyncio.Event()
         release = asyncio.Event()
@@ -194,7 +211,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
             await self.handlers._validate_voice_transition_recovery(1, player)
 
         self.ui.controller.destroy_for_guild.assert_awaited_once_with(
-            1, ControllerDestroyReason.VOICE_DISCONNECT
+            1, ControllerDestroyReason.VOICE_DISCONNECT, expected_player=player
         )
 
     async def test_delayed_validation_logs_unexpected_background_failure(self) -> None:
@@ -306,7 +323,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
             await self.handlers._validate_voice_transition_recovery(1, player)
 
         self.ui.controller.destroy_for_guild.assert_awaited_once_with(
-            1, ControllerDestroyReason.VOICE_DISCONNECT
+            1, ControllerDestroyReason.VOICE_DISCONNECT, expected_player=player
         )
         self.connection.invalidate_player.assert_awaited_once_with(
             player,

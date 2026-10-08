@@ -224,7 +224,9 @@ class VoiceLifecycleHandlers:
                 guild_id,
             )
             await self.ui.controller.destroy_for_guild(
-                guild_id, ControllerDestroyReason.VOICE_DISCONNECT
+                guild_id,
+                ControllerDestroyReason.VOICE_DISCONNECT,
+                expected_player=event_player,
             )
 
             if not self.connection.is_player_usable(event_player):

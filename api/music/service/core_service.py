@@ -98,6 +98,11 @@ class CoreMusicService:
         """Get the music player for a guild."""
         return self.connection.get_player(guild_id)
 
+    def _is_recovering(self, guild_id: int) -> bool:
+        return self.voice_lifecycle.is_healing(
+            guild_id
+        ) or self.connection.is_recovering(guild_id)
+
     async def heal(self, guild_id: int) -> bool:
         """Attempt to heal the session for the given guild."""
         return await self.voice_lifecycle.heal(guild_id)
@@ -106,6 +111,8 @@ class CoreMusicService:
         self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
     ) -> VoiceJoinResult:
         """Join a voice channel."""
+        if self._is_recovering(guild.id):
+            return VoiceCheckResult.RECOVERING, None
         result, old_channel = await self.connection.join(guild, channel)
 
         if result.status == MusicResultStatus.SUCCESS:
@@ -221,7 +228,7 @@ class CoreMusicService:
         placement: QueuePlacement,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         result = await player.fetch_tracks(query)
-        if self.connection.is_recovering(
+        if self._is_recovering(
             player.guild.id
         ) or not self.connection.is_current_player(player):
             return MusicResult(
@@ -333,7 +340,10 @@ class CoreMusicService:
         placement: QueuePlacement,
     ) -> EnqueueOutcome:
         requester = TrackRequester(requester_id, text_channel_id)
-        return await player.enqueue_tracks(tracks, requester, placement=placement)
+        outcome = await player.enqueue_tracks(tracks, requester, placement=placement)
+        if not self.connection.is_current_player(player):
+            raise mafic.PlayerNotConnected
+        return outcome
 
     async def remove_queued_entries(
         self,
@@ -341,9 +351,9 @@ class CoreMusicService:
         expected: Sequence[QueueEntry],
         requester_id: int,
     ) -> MusicResult[tuple[QueueEntry, ...]]:
-        if self.connection.is_recovering(guild_id):
-            return MusicResult(MusicResultStatus.FAILURE, MUSIC_RECOVERING_MESSAGE)
         """Remove exact waiting entries from the active guild player."""
+        if self._is_recovering(guild_id):
+            return MusicResult(MusicResultStatus.FAILURE, MUSIC_RECOVERING_MESSAGE)
         player = self.connection.get_player(guild_id)
         if player is None:
             return self._missing_player_result(
@@ -403,7 +413,7 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
-        if self.connection.is_recovering(guild_id):
+        if self._is_recovering(guild_id):
             return MusicResult(
                 MusicResultStatus.FAILURE,
                 MUSIC_RECOVERING_MESSAGE,
@@ -429,7 +439,7 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[SkipTrackData]:
-        if self.connection.is_recovering(guild_id):
+        if self._is_recovering(guild_id):
             return MusicResult(
                 MusicResultStatus.FAILURE,
                 MUSIC_RECOVERING_MESSAGE,
@@ -460,7 +470,7 @@ class CoreMusicService:
         )
 
     async def pause(self, guild_id: int) -> MusicResult[None]:
-        if self.connection.is_recovering(guild_id):
+        if self._is_recovering(guild_id):
             return MusicResult(
                 MusicResultStatus.FAILURE,
                 MUSIC_RECOVERING_MESSAGE,
@@ -474,7 +484,7 @@ class CoreMusicService:
         return MusicResult(MusicResultStatus.SUCCESS, "Paused")
 
     async def resume(self, guild_id: int) -> MusicResult[None]:
-        if self.connection.is_recovering(guild_id):
+        if self._is_recovering(guild_id):
             return MusicResult(
                 MusicResultStatus.FAILURE,
                 MUSIC_RECOVERING_MESSAGE,
@@ -493,7 +503,7 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
-        if self.connection.is_recovering(guild_id):
+        if self._is_recovering(guild_id):
             return MusicResult(
                 MusicResultStatus.FAILURE,
                 MUSIC_RECOVERING_MESSAGE,
@@ -512,7 +522,7 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RotateTrackData]:
-        if self.connection.is_recovering(guild_id):
+        if self._is_recovering(guild_id):
             return MusicResult(
                 MusicResultStatus.FAILURE,
                 MUSIC_RECOVERING_MESSAGE,
@@ -541,7 +551,7 @@ class CoreMusicService:
         )
 
     async def set_volume(self, guild_id: int, volume: int) -> MusicResult[int]:
-        if self.connection.is_recovering(guild_id):
+        if self._is_recovering(guild_id):
             return MusicResult(
                 MusicResultStatus.FAILURE,
                 MUSIC_RECOVERING_MESSAGE,
@@ -565,7 +575,7 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RepeatModeData]:
-        if self.connection.is_recovering(guild_id):
+        if self._is_recovering(guild_id):
             return MusicResult(
                 MusicResultStatus.FAILURE,
                 MUSIC_RECOVERING_MESSAGE,
@@ -665,7 +675,7 @@ class CoreMusicService:
         if (
             self.state.empty_channel_timers.get(guild_id) is not timer
             or not self.connection.is_current_player(player)
-            or self.connection.is_recovering(guild_id)
+            or self._is_recovering(guild_id)
             or not isinstance(channel, (discord.VoiceChannel, discord.StageChannel))
             or self.voice_lifecycle.empty_channel_reason(channel) is None
         ):
