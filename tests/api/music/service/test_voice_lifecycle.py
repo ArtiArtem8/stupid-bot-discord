@@ -6,10 +6,163 @@ from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from api.music.models import ControllerDestroyReason
+from api.music.player import MusicPlayer
+from api.music.service import voice_lifecycle as lifecycle_module
 from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 
 
 class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
+    async def test_websocket_before_move_recovered_successor_preserves_controller(
+        self,
+    ) -> None:
+        await self._assert_websocket_before_move_hands_over_validation(readiness=True)
+
+    async def test_websocket_before_move_failed_successor_invalidates_player(
+        self,
+    ) -> None:
+        await self._assert_websocket_before_move_hands_over_validation(readiness=False)
+
+    async def test_move_successor_uses_only_remaining_marker_budget(self) -> None:
+        first_entered = asyncio.Event()
+        release_first = asyncio.Event()
+        successor_delay_entered = asyncio.Event()
+        release_successor_delay = asyncio.Event()
+        clock = MagicMock(monotonic=MagicMock(return_value=100.0))
+        player = MagicMock(spec=MusicPlayer)
+        player.guild = MagicMock(id=123, voice_client=player)
+        self.bot.user.id = 99
+        member = MagicMock(id=99, guild=player.guild)
+        before = MagicMock(channel=MagicMock())
+        after = MagicMock(channel=MagicMock())
+
+        async def delay(_seconds: float) -> None:
+            if first_entered.is_set():
+                successor_delay_entered.set()
+                await release_successor_delay.wait()
+
+        async def wait_ready(_player: object, **_kwargs: object) -> bool:
+            if not first_entered.is_set():
+                first_entered.set()
+                await release_first.wait()
+                return False
+            return True
+
+        sleep = AsyncMock(side_effect=delay)
+        self.connection.wait_voice_ready.side_effect = wait_ready
+        with (
+            patch.object(lifecycle_module, "time", clock),
+            patch.object(asyncio, "sleep", sleep),
+        ):
+            try:
+                await self.handlers._on_websocket_closed(
+                    MagicMock(
+                        player=player,
+                        code=4022,
+                        reason="Call terminated",
+                        by_discord=False,
+                    )
+                )
+                first = self.handlers._voice_transition_validation_tasks[123]
+                await first_entered.wait()
+                clock.monotonic.return_value = 101.0
+                await self.handlers._handle_bot_voice_state_update(
+                    member, before, after
+                )
+                successor = self.handlers._voice_transition_validation_tasks[123]
+                self.assertIsNot(successor, first)
+                clock.monotonic.return_value = 105.5
+                await successor_delay_entered.wait()
+                sleep.assert_awaited_with(0.5)
+                clock.monotonic.return_value = 105.75
+                release_successor_delay.set()
+                await asyncio.gather(first, successor, return_exceptions=True)
+                self.connection.wait_voice_ready.assert_awaited_with(
+                    player, timeout=0.25
+                )
+            finally:
+                release_first.set()
+                release_successor_delay.set()
+                await self.handlers.cleanup()
+
+    async def _assert_websocket_before_move_hands_over_validation(
+        self, *, readiness: bool
+    ) -> None:
+        first_entered = asyncio.Event()
+        release_first = asyncio.Event()
+        successor_entered = asyncio.Event()
+        release_successor = asyncio.Event()
+        player = MagicMock(spec=MusicPlayer)
+        player.guild = MagicMock(id=123, voice_client=player)
+        self.bot.user.id = 99
+        member = MagicMock(id=99, guild=player.guild)
+        before = MagicMock(channel=MagicMock())
+        after = MagicMock(channel=MagicMock())
+        calls = 0
+
+        async def wait_ready(_player: object, **_kwargs: object) -> bool:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                first_entered.set()
+                await release_first.wait()
+                return False
+            successor_entered.set()
+            await release_successor.wait()
+            return readiness
+
+        self.connection.wait_voice_ready.side_effect = wait_ready
+        self.connection.is_player_usable.return_value = readiness
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            try:
+                await self.handlers._on_websocket_closed(
+                    MagicMock(
+                        player=player,
+                        code=4022,
+                        reason="Call terminated",
+                        by_discord=False,
+                    )
+                )
+                first = self.handlers._voice_transition_validation_tasks[123]
+                await first_entered.wait()
+                self.assertNotIn(123, self.handlers._recent_voice_transitions)
+                self.assertTrue(
+                    await self.handlers._handle_bot_voice_state_update(
+                        member, before, after
+                    )
+                )
+                marker = self.handlers._recent_voice_transitions[123]
+                release_first.set()
+                await asyncio.gather(first, return_exceptions=True)
+                successor = self.handlers._voice_transition_validation_tasks.get(123)
+                if successor is None:
+                    self.fail("The move lost its pending validation")
+                self.assertIsNot(successor, first)
+                await successor_entered.wait()
+                self.assertEqual(self.handlers._recent_voice_transitions[123], marker)
+                self.ui.controller.destroy_for_guild.assert_not_awaited()
+                self.connection.invalidate_player.assert_not_awaited()
+                release_successor.set()
+                await successor
+            finally:
+                release_first.set()
+                release_successor.set()
+                await self.handlers.cleanup()
+
+        self.assertEqual(self.connection.wait_voice_ready.await_count, 2)
+        if readiness:
+            self.ui.controller.destroy_for_guild.assert_not_awaited()
+            self.connection.invalidate_player.assert_not_awaited()
+        else:
+            self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+                123,
+                ControllerDestroyReason.VOICE_DISCONNECT,
+                expected_player=player,
+            )
+            self.connection.invalidate_player.assert_awaited_once_with(
+                player,
+                context="voice_transition_validation",
+            )
+
     async def test_cancelled_leave_retains_admission_until_healing_cleanup_finishes(
         self,
     ) -> None:
@@ -418,26 +571,21 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
     async def test_node_unavailable_marks_connection_and_cleans_music_state(
         self,
     ) -> None:
-        node = MagicMock()
-        node.label = "MAIN"
-        node.players = []
-        player = MagicMock()
-        player.disconnect = AsyncMock()
-        player.guild.id = 123
+        node = MagicMock(label="MAIN")
+        player = MagicMock(spec=MusicPlayer)
         node.players = [player]
-        guild = MagicMock()
-        guild.id = 123
-        guild.voice_client = player
+        guild = MagicMock(id=123, voice_client=player)
+        player.guild = guild
         self.bot.guilds = [guild]
 
         self.connection.handle_node_unavailable.return_value = {123}
-        with patch("api.music.service.voice_lifecycle.MusicPlayer", object):
-            await self.handlers.on_node_unavailable(node)
+        await self.handlers.on_node_unavailable(node)
 
         self.connection.handle_node_unavailable.assert_awaited_once_with(node)
         self.ui.controller.destroy_for_guild.assert_awaited_once_with(
             123,
             ControllerDestroyReason.PLAYER_ERROR,
+            expected_player=player,
         )
         self.state.cancel_timer.assert_called_once_with(123)
         self.connection.detach_stale_voice_client.assert_not_awaited()
@@ -446,22 +594,22 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
     async def test_node_unavailable_only_cleans_guilds_on_affected_node(self) -> None:
         node_a = MagicMock(label="A")
         node_b = MagicMock(label="B")
-        player_a = MagicMock(is_stale=False, assigned_node=node_a)
-        player_a.guild.id = 1
-        player_b = MagicMock(is_stale=False, assigned_node=node_b)
-        player_b.guild.id = 2
+        player_a = MagicMock(spec=MusicPlayer, is_stale=False, assigned_node=node_a)
+        player_a.guild = MagicMock(id=1, voice_client=player_a)
+        player_b = MagicMock(spec=MusicPlayer, is_stale=False, assigned_node=node_b)
+        player_b.guild = MagicMock(id=2, voice_client=player_b)
         node_a.players = [player_a]
         node_b.players = [player_b]
         self.connection.handle_node_unavailable.return_value = {1}
 
-        with patch("api.music.service.voice_lifecycle.MusicPlayer", object):
-            await self.handlers.on_node_unavailable(node_a)
+        await self.handlers.on_node_unavailable(node_a)
 
         self.connection.handle_node_unavailable.assert_awaited_once_with(node_a)
         self.assertFalse(player_b.is_stale)
         self.ui.controller.destroy_for_guild.assert_awaited_once_with(
             1,
             ControllerDestroyReason.PLAYER_ERROR,
+            expected_player=player_a,
         )
         self.state.cancel_timer.assert_called_once_with(1)
 

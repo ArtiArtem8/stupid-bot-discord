@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 
 import discord
 import mafic
@@ -133,20 +133,28 @@ class VoiceLifecycleHandlers:
                 self._unavailable_node_labels.add(node.label)
 
             invalidated_guild_ids = await self.connection.handle_node_unavailable(node)
-            await self._cleanup_after_node_unavailable(invalidated_guild_ids)
+            invalidated_players = [
+                player for player in players if player.guild.id in invalidated_guild_ids
+            ]
+            await self._cleanup_after_node_unavailable(invalidated_players)
         finally:
             self._active_recovery_tasks.discard(task)
 
     async def _cleanup_after_node_unavailable(
         self,
-        affected_guild_ids: set[int],
+        players: Sequence[MusicPlayer],
     ) -> None:
-        for guild_id in affected_guild_ids:
+        for player in players:
+            guild_id = player.guild.id
+            voice_client = player.guild.voice_client
+            if voice_client is not None and voice_client is not player:
+                continue
+            self.state.cancel_timer(guild_id)
             await self.ui.controller.destroy_for_guild(
                 guild_id,
                 ControllerDestroyReason.PLAYER_ERROR,
+                expected_player=player,
             )
-            self.state.cancel_timer(guild_id)
 
     async def _on_websocket_closed(
         self, event: mafic.WebSocketClosedEvent[MusicPlayer]
@@ -250,9 +258,13 @@ class VoiceLifecycleHandlers:
         self, guild_id: int, event_player: MusicPlayer
     ) -> None:
         transition_at = self._recent_voice_transitions.get(guild_id)
-        deadline = time.monotonic() + VOICE_TRANSITION_WINDOW_SECONDS
+        started_at = transition_at if transition_at is not None else time.monotonic()
+        deadline = started_at + VOICE_TRANSITION_WINDOW_SECONDS
         try:
-            await asyncio.sleep(VOICE_TRANSITION_VALIDATION_DELAY_SECONDS)
+            remaining = max(0.0, deadline - time.monotonic())
+            await asyncio.sleep(
+                min(VOICE_TRANSITION_VALIDATION_DELAY_SECONDS, remaining)
+            )
             if await self.connection.wait_voice_ready(
                 event_player, timeout=max(0.0, deadline - time.monotonic())
             ):
@@ -368,6 +380,9 @@ class VoiceLifecycleHandlers:
 
         guild_id = member.guild.id
         if after.channel is None:
+            current_voice = member.voice
+            if current_voice is not None and current_voice.channel is not None:
+                return True
             logger.info("Bot was disconnected from guild %s. Cleaning up.", guild_id)
             await self._cleanup_after_disconnect(
                 guild_id,
@@ -381,6 +396,14 @@ class VoiceLifecycleHandlers:
 
         if before.channel is not None and before.channel != after.channel:
             self._recent_voice_transitions[guild_id] = time.monotonic()
+            validation_task = self._voice_transition_validation_tasks.get(guild_id)
+            voice_client = member.guild.voice_client
+            if (
+                validation_task is not None
+                and not validation_task.done()
+                and isinstance(voice_client, MusicPlayer)
+            ):
+                self._schedule_voice_transition_validation(guild_id, voice_client)
             logger.info(
                 "Bot moved from %s to %s in guild %s. Continuing playback.",
                 before.channel.name,
@@ -399,18 +422,27 @@ class VoiceLifecycleHandlers:
         *,
         player: MusicPlayer | None = None,
     ) -> None:
-        """Finalize application state after a real Discord voice disconnect."""
-        await self.ui.controller.destroy_for_guild(
-            guild_id, ControllerDestroyReason.VOICE_DISCONNECT
-        )
-        self.state.cancel_timer(guild_id)
-        if self.is_healing(guild_id):
+        """Finalize local state before waiting on controller I/O.
+
+        A disconnect from a replaced player cannot end the current session.
+        """
+        guild = player.guild if player is not None else self.bot.get_guild(guild_id)
+        voice_client = guild.voice_client if guild is not None else None
+        if voice_client is not None and voice_client is not player:
             return
 
-        session = self.state.end_session(guild_id)
-        dispatch_music_session_end(self.bot, guild_id, session)
-        if player is not None:
-            player.clear_queue()
+        self.state.cancel_timer(guild_id)
+        if not self.is_healing(guild_id):
+            session = self.state.end_session(guild_id)
+            dispatch_music_session_end(self.bot, guild_id, session)
+            if player is not None:
+                player.clear_queue()
+
+        await self.ui.controller.destroy_for_guild(
+            guild_id,
+            ControllerDestroyReason.VOICE_DISCONNECT,
+            expected_player=player,
+        )
 
     def _is_relevant_voice_state_update(
         self,

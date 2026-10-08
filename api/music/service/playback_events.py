@@ -124,6 +124,8 @@ class PlaybackEventHandlers:
 
             if outcome.is_stale or outcome.ended_attempt is None:
                 return
+            if not self._should_handle_player_event(player, "track_end"):
+                return
 
             ended = outcome.ended_attempt
             logger.debug("Track ended: attempt=%s reason=%s", ended.attempt_id, reason)
@@ -184,6 +186,8 @@ class PlaybackEventHandlers:
                     player.guild.id,
                     token,
                 )
+                return
+            if not self._should_handle_player_event(player, "track_exception"):
                 return
 
             reason, severity = self._extract_exception_details(event.exception)

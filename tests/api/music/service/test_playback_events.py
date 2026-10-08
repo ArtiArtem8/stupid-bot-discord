@@ -6,6 +6,7 @@ from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
+import discord
 import mafic
 
 from api.music.models import (
@@ -17,7 +18,9 @@ from api.music.models import (
     TrackExceptionPayload,
     TrackRequester,
 )
+from api.music.player import MusicPlayer
 from api.music.service.playback_events import PlaybackEventHandlers
+from api.music.service.state_manager import StateManager
 from cogs.music.views.controller import TrackControllerManager, TrackControllerView
 from tests.api.music.helpers import make_track
 
@@ -174,6 +177,150 @@ class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
         )
         self.state.record_track_start.assert_not_called()
         self.ui.spawn_controller.assert_not_awaited()
+
+    async def test_player_replaced_during_end_transition_preserves_new_history(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        channel = MagicMock(spec=discord.VoiceChannel, guild=guild)
+        old_player = MusicPlayer(self.bot, channel)
+        new_player = MusicPlayer(self.bot, channel)
+        guild.voice_client = old_player
+
+        def is_current_player(player: object) -> bool:
+            return guild.voice_client is player
+
+        self.connection.is_current_player.side_effect = is_current_player
+        state = StateManager()
+        self.handlers.state = state
+        requester = TrackRequester(456, 789)
+        with patch.object(old_player, "play", new=AsyncMock()):
+            result = await old_player.enqueue_tracks(
+                [make_track("old"), make_track("next")], requester, placement="end"
+            )
+        old_attempt = result.started_attempt
+        if old_attempt is None:
+            self.fail("The old player did not start playback")
+        await self.handlers._on_track_start(
+            MagicMock(
+                player=old_player,
+                track=_event_track("old", old_attempt.event_token),
+            )
+        )
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def play(_track: mafic.Track, **_kwargs: object) -> None:
+            entered.set()
+            await release.wait()
+
+        with patch.object(old_player, "play", new=AsyncMock(side_effect=play)):
+            callback = asyncio.create_task(
+                self.handlers._on_track_end(
+                    MagicMock(
+                        player=old_player,
+                        track=_event_track("old", old_attempt.event_token),
+                        reason=mafic.EndReason.FINISHED,
+                    )
+                )
+            )
+            try:
+                await entered.wait()
+                state.end_session(123)
+                guild.voice_client = new_player
+                with patch.object(new_player, "play", new=AsyncMock()):
+                    result = await new_player.enqueue_tracks(
+                        [make_track("new")], requester, placement="end"
+                    )
+                new_attempt = result.started_attempt
+                if new_attempt is None:
+                    self.fail("The replacement player did not start playback")
+                self.assertEqual(old_attempt.attempt_id, new_attempt.attempt_id)
+                new_track = _event_track("new", new_attempt.event_token)
+                await self.handlers._on_track_start(
+                    MagicMock(player=new_player, track=new_track)
+                )
+                new_session = state.get_session(123)
+                if new_session is None:
+                    self.fail("The replacement track did not create a session")
+                release.set()
+                await callback
+
+                self.assertEqual(new_session.tracks, [])
+                await self.handlers._on_track_end(
+                    MagicMock(
+                        player=new_player,
+                        track=new_track,
+                        reason=mafic.EndReason.FINISHED,
+                    )
+                )
+                self.assertEqual(
+                    [track.title for track in new_session.tracks], ["Track new"]
+                )
+            finally:
+                release.set()
+                await asyncio.gather(callback, return_exceptions=True)
+
+    async def test_player_replaced_while_exception_waits_does_not_notify(
+        self,
+    ) -> None:
+        guild = MagicMock(id=123)
+        channel = MagicMock(spec=discord.VoiceChannel, guild=guild)
+        old_player = MusicPlayer(self.bot, channel)
+        new_player = MusicPlayer(self.bot, channel)
+        guild.voice_client = old_player
+
+        def is_current_player(player: object) -> bool:
+            return guild.voice_client is player
+
+        self.connection.is_current_player.side_effect = is_current_player
+        requester = TrackRequester(456, 789)
+        with patch.object(old_player, "play", new=AsyncMock()):
+            result = await old_player.enqueue_tracks(
+                [make_track("old"), make_track("next")], requester, placement="end"
+            )
+        old_attempt = result.started_attempt
+        if old_attempt is None:
+            self.fail("The old player did not start playback")
+        entered = asyncio.Event()
+        admitted = asyncio.Event()
+        release = asyncio.Event()
+
+        async def play(_track: mafic.Track, **_kwargs: object) -> None:
+            entered.set()
+            await release.wait()
+
+        async def report_exception() -> None:
+            admitted.set()
+            await self.handlers._on_track_exception(
+                MagicMock(
+                    player=old_player,
+                    track=_event_track("old", old_attempt.event_token),
+                    exception={"message": "failed", "severity": "common"},
+                )
+            )
+
+        with patch.object(old_player, "play", new=AsyncMock(side_effect=play)):
+            transition = asyncio.create_task(old_player.skip())
+            await entered.wait()
+            callback = asyncio.create_task(report_exception())
+            try:
+                await admitted.wait()
+                self.assertFalse(callback.done())
+                guild.voice_client = new_player
+                with patch.object(new_player, "play", new=AsyncMock()):
+                    await new_player.enqueue_tracks(
+                        [make_track("new")], requester, placement="end"
+                    )
+                release.set()
+                await transition
+                await callback
+
+                self.bot.dispatch.assert_not_called()
+                self.ui.controller.destroy_for_guild.assert_not_awaited()
+            finally:
+                release.set()
+                await asyncio.gather(transition, callback, return_exceptions=True)
 
     @override
     def setUp(self) -> None:
