@@ -137,7 +137,11 @@ class VoiceLifecycleHandlers:
             await self.heal(guild_id)
             return
 
-        if self._has_recent_voice_transition(guild_id):
+        if (
+            self._has_recent_voice_transition(guild_id)
+            or self.connection.is_transitioning(event.player)
+            or event.code == 4022
+        ):
             msg = (
                 "Deferring websocket cleanup during voice transition for guild %s "
                 "(code=%s, reason=%s, by_discord=%s)."
@@ -201,15 +205,17 @@ class VoiceLifecycleHandlers:
     async def _validate_voice_transition_recovery(
         self, guild_id: int, event_player: MusicPlayer
     ) -> None:
+        transition_at = self._recent_voice_transitions.get(guild_id)
         try:
             await asyncio.sleep(VOICE_TRANSITION_VALIDATION_DELAY_SECONDS)
-
-            player = self.connection.get_player(guild_id)
-            if player and player.connected and player.channel and player.current:
+            if await self.connection.wait_voice_ready(event_player):
                 logger.debug(
                     "Voice transition recovered in guild %s; preserving controller.",
                     guild_id,
                 )
+                return
+
+            if not self.connection.is_current_player(event_player):
                 return
 
             logger.warning(
@@ -238,10 +244,11 @@ class VoiceLifecycleHandlers:
                 guild_id,
             )
         finally:
-            self._recent_voice_transitions.pop(guild_id, None)
             current_task = asyncio.current_task()
             if self._voice_transition_validation_tasks.get(guild_id) is current_task:
                 self._voice_transition_validation_tasks.pop(guild_id, None)
+                if self._recent_voice_transitions.get(guild_id) == transition_at:
+                    self._recent_voice_transitions.pop(guild_id, None)
 
     async def heal(self, guild_id: int) -> bool:
         if guild_id in self._healing_guilds:

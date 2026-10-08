@@ -1,5 +1,6 @@
 """Tests for voice and node lifecycle orchestration."""
 
+import asyncio
 import unittest
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,11 +10,36 @@ from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 
 
 class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
+    async def test_cancelled_validator_preserves_new_transition_marker(self) -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def wait(_delay: float) -> None:
+            entered.set()
+            await release.wait()
+
+        player = self._make_player()
+        self.handlers._recent_voice_transitions[123] = 1.0
+        with patch("api.music.service.voice_lifecycle.asyncio.sleep", wait):
+            self.handlers._schedule_voice_transition_validation(123, player)
+            old = self.handlers._voice_transition_validation_tasks[123]
+            await entered.wait()
+            self.handlers._recent_voice_transitions[123] = 2.0
+            self.handlers._schedule_voice_transition_validation(123, player)
+            new = self.handlers._voice_transition_validation_tasks[123]
+            await asyncio.gather(old, return_exceptions=True)
+            self.assertEqual(self.handlers._recent_voice_transitions[123], 2.0)
+            self.assertIs(self.handlers._voice_transition_validation_tasks[123], new)
+            new.cancel()
+            await asyncio.gather(new, return_exceptions=True)
+
     @override
     def setUp(self) -> None:
         self.bot = MagicMock()
         self.connection = MagicMock()
         self.connection.is_current_player.return_value = True
+        self.connection.is_transitioning.return_value = False
+        self.connection.wait_voice_ready = AsyncMock(return_value=True)
         self.connection.handle_node_unavailable = AsyncMock(return_value=set())
         self.connection.mark_node_unavailable = AsyncMock()
         self.connection.detach_stale_voice_client = AsyncMock()
@@ -160,6 +186,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
         self.ui.controller.destroy_for_guild.assert_not_awaited()
 
     async def test_delayed_validation_requires_recovered_voice_channel(self) -> None:
+        self.connection.wait_voice_ready.return_value = False
         player = MagicMock(connected=True, channel=None, current=MagicMock())
         self.connection.get_player.return_value = player
 
@@ -171,6 +198,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_delayed_validation_logs_unexpected_background_failure(self) -> None:
+        self.connection.wait_voice_ready.return_value = False
         player = MagicMock(connected=False, current=None)
         self.connection.get_player.return_value = player
         self.ui.controller.destroy_for_guild.side_effect = RuntimeError(
@@ -269,6 +297,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
     async def test_delayed_transition_validation_destroys_disconnected_controller(
         self,
     ) -> None:
+        self.connection.wait_voice_ready.return_value = False
         player = MagicMock(connected=False, current=None)
         self.connection.get_player.return_value = player
         self.connection.is_player_usable.return_value = False

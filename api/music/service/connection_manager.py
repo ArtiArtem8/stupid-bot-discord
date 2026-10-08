@@ -98,6 +98,24 @@ class ConnectionManager:
         self._last_connect_error: str | None = None
         self._lazy_connect_task: asyncio.Task[None] | None = None
         self._join_locks: dict[int, asyncio.Lock] = {}
+        self._voice_transitions: dict[int, tuple[MusicPlayer, object]] = {}
+
+    def is_transitioning(self, player: MusicPlayer) -> bool:
+        """Return whether a move still owns this exact player."""
+        transition = self._voice_transitions.get(player.guild.id)
+        return transition is not None and transition[0] is player
+
+    async def wait_voice_ready(self, player: MusicPlayer) -> bool:
+        """Wait at most five seconds for current transport readiness."""
+        deadline = time.monotonic() + 5.0
+        while self.is_current_player(player):
+            if self.is_player_usable(player) and player.channel is not None:
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            await asyncio.sleep(min(0.05, remaining))
+        return False
 
     async def initialize(self) -> None:
         """Initialize Lavalink node connection."""
@@ -650,7 +668,14 @@ class ConnectionManager:
             await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         try:
-            await player.move_to(channel, timeout=5.0)
+            token = object()
+            self._voice_transitions[player.guild.id] = (player, token)
+            try:
+                await player.move_to(channel, timeout=5.0)
+                ready = await self.wait_voice_ready(player)
+            finally:
+                if self._voice_transitions.get(player.guild.id) == (player, token):
+                    self._voice_transitions.pop(player.guild.id, None)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             await self.invalidate_player(
                 player,
@@ -658,7 +683,7 @@ class ConnectionManager:
                 error=type(exc).__name__,
             )
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
-        if not self.is_player_usable(player):
+        if not ready:
             status = self._player_status(player)
             self._log_player_state(
                 player,

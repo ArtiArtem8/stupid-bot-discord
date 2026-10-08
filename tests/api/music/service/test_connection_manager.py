@@ -51,6 +51,16 @@ def _as_music_player(player: _FakeMusicPlayer) -> MusicPlayer:
 
 
 class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
+    async def test_readiness_can_recover_after_transient_false(self) -> None:
+        player = MagicMock()
+        with (
+            patch.object(self.manager, "is_current_player", return_value=True),
+            patch.object(self.manager, "is_player_usable", side_effect=[False, True]),
+            patch.object(asyncio, "sleep", new_callable=AsyncMock) as wait,
+        ):
+            self.assertTrue(await self.manager.wait_voice_ready(player))
+        wait.assert_awaited_once()
+
     @override
     def setUp(self) -> None:
         self.bot = MagicMock()
@@ -760,12 +770,15 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         invalidate_player = AsyncMock()
 
         with (
+            patch.object(
+                self.manager, "wait_voice_ready", new=AsyncMock(return_value=False)
+            ),
             patch.object(player, "channel", old_channel, create=True),
             patch.object(player, "move_to", move_to, create=True),
             patch.object(
                 self.manager,
                 "is_player_usable",
-                side_effect=(True, False),
+                return_value=True,
             ),
             patch.object(
                 self.manager,
