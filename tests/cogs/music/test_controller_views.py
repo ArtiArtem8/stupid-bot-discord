@@ -73,7 +73,10 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
                 cancelling.set()
                 await release.wait()
 
-        manager = TrackControllerManager(MagicMock(), MagicMock())
+        message = MagicMock(delete=AsyncMock())
+        bot = MagicMock()
+        bot.get_channel.return_value.get_partial_message.return_value = message
+        manager = TrackControllerManager(bot, MagicMock())
         view = TrackControllerView(
             user_id=2,
             player=MagicMock(),
@@ -95,31 +98,56 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
             await cleanup
         self.assertEqual(manager.controllers, {})
         self.assertEqual(manager._active_messages, {})
+        message.delete.assert_awaited_once_with()
 
     async def test_cleanup_during_send_prevents_late_controller_registration(
         self,
     ) -> None:
-        manager = TrackControllerManager(MagicMock(), MagicMock())
+        entered, release = asyncio.Event(), asyncio.Event()
+        bot = MagicMock()
+        channel = MagicMock(spec=discord.TextChannel, id=10)
+        message = MagicMock(id=12, channel=channel, delete=AsyncMock())
+        channel.get_partial_message.return_value = message
+        bot.get_channel.return_value = channel
+        manager = TrackControllerManager(bot, MagicMock())
         attempt = PlaybackAttempt(1, make_entry("playing"))
         player = MagicMock(current_attempt=attempt)
 
         async def send(**_kwargs: object) -> MagicMock:
-            await manager.cleanup()
-            return MagicMock()
+            entered.set()
+            await release.wait()
+            return message
 
-        channel = MagicMock(send=AsyncMock(side_effect=send))
+        channel.send = AsyncMock(side_effect=send)
         view = MagicMock()
         with patch.object(controller_module, "TrackControllerView", return_value=view):
-            await manager.create_for_user(
-                guild_id=1, user_id=2, channel=channel, player=player, attempt=attempt
+            creation = asyncio.create_task(
+                manager.create_for_user(
+                    guild_id=1,
+                    user_id=2,
+                    channel=channel,
+                    player=player,
+                    attempt=attempt,
+                )
             )
+            try:
+                await asyncio.wait_for(entered.wait(), 5)
+                await manager.cleanup()
+                release.set()
+                await creation
+            finally:
+                release.set()
+                await asyncio.gather(creation, return_exceptions=True)
             await manager.create_for_user(
                 guild_id=1, user_id=2, channel=channel, player=player, attempt=attempt
             )
         self.assertEqual(manager.controllers, {})
+        self.assertEqual(manager._active_messages, {})
+        self.assertEqual(manager._message_delete_tasks, {})
         view.stop.assert_called_once()
         view.start_updater.assert_not_called()
         channel.send.assert_awaited_once()
+        message.delete.assert_awaited_once_with()
 
     async def test_player_replaced_during_send_does_not_register_controller(
         self,
@@ -246,6 +274,24 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncTearDown(self) -> None:
         await self.manager.cleanup()
+
+    async def test_cleanup_deletes_active_controller_message(self) -> None:
+        await self.manager.cleanup()
+
+        self.old_view.close.assert_awaited_once_with()
+        self.message.delete.assert_awaited_once_with()
+        self.assertEqual(self.manager.controllers, {})
+        self.assertEqual(self.manager._active_messages, {})
+        self.assertEqual(self.manager._message_delete_tasks, {})
+
+    async def test_cleanup_delete_failure_does_not_start_retry(self) -> None:
+        self.message.delete.side_effect = TimeoutError()
+
+        await self.manager.cleanup()
+        await self.manager.cleanup()
+
+        self.message.delete.assert_awaited_once_with()
+        self.assertEqual(self.manager._message_delete_tasks, {})
 
     async def test_successful_delete_does_not_schedule_retry(self) -> None:
         await self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
@@ -449,7 +495,8 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.manager._message_delete_tasks, {})
         self.message.delete.assert_awaited_once_with()
         await self.manager._safe_delete_message(10, 20)
-        self.message.delete.assert_awaited_once_with()
+        self.assertEqual(self.message.delete.await_count, 2)
+        self.assertEqual(self.manager._message_delete_tasks, {})
 
     async def test_cleanup_before_retry_starts_releases_registry(self) -> None:
         self.message.delete.side_effect = TimeoutError()
@@ -480,7 +527,9 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
 
         self.message.delete.side_effect = fail_after_cleanup
         async with asyncio.TaskGroup() as group:
-            group.create_task(self.manager._safe_delete_message(10, 20))
+            group.create_task(
+                self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
+            )
             await deleting.wait()
             await self.manager.cleanup()
             resume.set()

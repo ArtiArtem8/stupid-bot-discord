@@ -75,9 +75,9 @@ class TrackControllerManager(ControllerManagerProtocol):
         self._closing = False
 
     async def _safe_delete_message(self, channel_id: int, message_id: int) -> None:
-        """Try cleanup now and own any bounded retries for these exact IDs."""
+        """Try deletion immediately; schedule bounded retries only while open."""
         key = (channel_id, message_id)
-        if self._closing or key in self._message_delete_tasks:
+        if key in self._message_delete_tasks:
             return
         result = await self._delete_message_once(channel_id, message_id)
         if result != "retry" or self._closing or key in self._message_delete_tasks:
@@ -118,12 +118,12 @@ class TrackControllerManager(ControllerManagerProtocol):
                 channel_id,
                 exc.status,
                 exc.code,
-                "retry pending" if retryable else "abandoned",
+                "retryable" if retryable else "abandoned",
             )
             return "retry" if retryable else "failed"
         except (aiohttp.ClientError, TimeoutError) as exc:
             logger.debug(
-                "Controller message %s cleanup in channel %s will retry (%s)",
+                "Controller message %s cleanup in channel %s failed transiently (%s)",
                 message_id,
                 channel_id,
                 type(exc).__name__,
