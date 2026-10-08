@@ -62,6 +62,8 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
 
         client.query = AsyncMock(side_effect=query)
         interactions = [self._make_interaction()[0] for _ in range(3)]
+        close = AsyncMock()
+        cog.client_session = MagicMock(spec=aiohttp.ClientSession, close=close)
         with (
             patch.object(cog, "_handle_admitted_query", side_effect=handle),
             patch.object(FeedbackUI, "send", new_callable=AsyncMock) as feedback,
@@ -72,12 +74,11 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
             ]
             await admitted.wait()
             await active.wait()
-            session = cog.client_session
             await cog.cog_unload()
         self.assertEqual(feedback.await_count, 3)
         self.assertTrue(all(task.cancelled() for task in requests))
         self.assertEqual(cog._requests, set())
-        session.close.assert_awaited_once()
+        close.assert_awaited_once()
 
     def _make_cog(self) -> tuple[WolframCog, MagicMock]:
         cog = object.__new__(WolframCog)

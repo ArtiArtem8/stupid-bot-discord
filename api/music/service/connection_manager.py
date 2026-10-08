@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TypeGuard, cast
@@ -107,7 +107,7 @@ class ConnectionManager:
         return guild_id in self._recovery_tasks
 
     @contextlib.asynccontextmanager
-    async def recovery(self, guild_id: int) -> AsyncIterator[None]:
+    async def recovery(self, guild_id: int) -> AsyncGenerator[None]:
         """Exclude new joins and drain an accepted join before taking a snapshot."""
         task = asyncio.current_task()
         if task is None or guild_id in self._recovery_tasks:
@@ -137,7 +137,7 @@ class ConnectionManager:
         """Wait at most five seconds for current transport readiness."""
         deadline = time.monotonic() + 5.0
         while self.is_current_player(player):
-            if self.is_player_usable(player) and player.channel is not None:
+            if self.is_player_usable(player) and bool(player.channel):
                 return True
             remaining = deadline - time.monotonic()
             if remaining <= 0:

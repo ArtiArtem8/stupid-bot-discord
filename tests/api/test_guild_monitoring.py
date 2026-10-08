@@ -80,7 +80,8 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         member.roles = [make_role(10, default=True)]
         self.assertEqual(await self.manager.save_snapshot(member), 0)
         current = await self.manager.get_snapshot(10, 20)
-        self.assertIsNotNone(current)
+        if current is None:
+            self.fail("Missing replacement snapshot")
         self.assertNotEqual(current, previous)
         self.assertEqual(current.roles, [])
 
