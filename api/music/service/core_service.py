@@ -457,6 +457,7 @@ class CoreMusicService:
                     guild_id,
                     ControllerDestroyReason.SKIP,
                     expected_attempt_id=skipped_attempt.attempt_id,
+                    expected_player=player,
                 )
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
@@ -683,15 +684,18 @@ class CoreMusicService:
             or self.voice_lifecycle.empty_channel_reason(channel) is None
         ):
             return
-        if not await self.connection.disconnect(player.guild, force=True):
-            return
-        if player.guild.voice_client is not None:
-            return
-        self.state.cancel_timer_if_current(guild_id, timer)
-        await self.end_session(guild_id)
-        await self.ui.controller.destroy_for_guild(
-            guild_id, ControllerDestroyReason.VOICE_DISCONNECT, expected_player=player
-        )
+        async with self.voice_lifecycle.leaving(guild_id):
+            if not await self.connection.disconnect(player.guild, force=True):
+                return
+            if player.guild.voice_client is not None:
+                return
+            self.state.cancel_timer_if_current(guild_id, timer)
+            await self.end_session(guild_id)
+            await self.ui.controller.destroy_for_guild(
+                guild_id,
+                ControllerDestroyReason.VOICE_DISCONNECT,
+                expected_player=player,
+            )
 
     async def end_session(self, guild_id: int) -> None:
         """End the music session and dispatch the event."""
@@ -701,7 +705,7 @@ class CoreMusicService:
     async def cleanup(self) -> None:
         """Stop recovery producers before disconnecting and disposing voice I/O."""
         self._closing = True
-        self.playback_events.cleanup()
+        await self.playback_events.cleanup()
         await self.voice_lifecycle.cleanup()
         await self.connection.stop_connecting()
         try:

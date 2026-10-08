@@ -41,6 +41,74 @@ def _event_track(identifier: str, token: str) -> mafic.Track:
 
 
 class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
+    async def test_cleanup_rejects_late_callbacks_and_removes_listeners_once(
+        self,
+    ) -> None:
+        self.handlers.setup()
+        await self.handlers.cleanup()
+        await self.handlers.cleanup()
+        self.handlers.setup()
+        player = self._player()
+        event = MagicMock(player=player, track=_event_track("late", "late-token"))
+
+        await self.handlers._on_track_start(event)
+        await self.handlers._on_track_end(event)
+        await self.handlers._on_track_exception(event)
+        await self.handlers._on_track_stuck(event)
+
+        self.assertEqual(self.bot.add_listener.call_count, 4)
+        self.assertEqual(self.bot.remove_listener.call_count, 4)
+        player.resolve_track_start.assert_not_awaited()
+        player.handle_track_end.assert_not_awaited()
+        player.claim_track_exception.assert_not_awaited()
+        player.resolve_exception_attempt.assert_not_awaited()
+        self.bot.dispatch.assert_not_called()
+        self.ui.spawn_controller.assert_not_awaited()
+        self.ui.controller.destroy_for_guild.assert_not_awaited()
+        self.ui.controller.refresh_for_attempt.assert_not_awaited()
+
+    async def test_cancelled_cleanup_waiter_preserves_accepted_callback_drain(
+        self,
+    ) -> None:
+        entered = asyncio.Event()
+        cancelling = asyncio.Event()
+        release = asyncio.Event()
+        player = self._player()
+        attempt = _attempt(1, "ending", "attempt-a")
+
+        async def end(_token: str, _reason: mafic.EndReason) -> TrackEndOutcome:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelling.set()
+                await release.wait()
+            return TrackEndOutcome(attempt, None, False)
+
+        player.handle_track_end.side_effect = end
+        event = MagicMock(
+            player=player,
+            track=_event_track("ending", "attempt-a"),
+            reason=mafic.EndReason.FINISHED,
+        )
+        callback = asyncio.create_task(self.handlers._on_track_end(event))
+        await entered.wait()
+        cleanup = asyncio.create_task(self.handlers.cleanup())
+        try:
+            await cancelling.wait()
+            cleanup.cancel()
+            await asyncio.gather(cleanup, return_exceptions=True)
+            self.assertFalse(callback.done())
+            release.set()
+            await self.handlers.cleanup()
+            self.assertTrue(callback.cancelled())
+            self.state.record_history.assert_not_called()
+        finally:
+            release.set()
+            if not callback.done():
+                callback.cancel()
+            await asyncio.gather(callback, cleanup, return_exceptions=True)
+
     async def test_old_player_events_preserve_replacement_controller(self) -> None:
         attempt = _attempt(1, "old", "old-token")
         correlated = asyncio.Event()
@@ -491,7 +559,7 @@ class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
         await self.handlers._on_track_exception(event)
         self.assertEqual(self.handlers._load_failures, {123: {"attempt-a"}})
 
-        self.handlers.cleanup()
+        await self.handlers.cleanup()
 
         self.assertEqual(self.handlers._load_failures, {})
         self.assertEqual(self.bot.remove_listener.call_count, 4)
