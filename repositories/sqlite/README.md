@@ -60,8 +60,8 @@ a manifest digest. It writes a new `.building.sqlite`, compares feature models,
 ordered raw facts, timeline/coverage/gaps, guild/global exact XP and four read
 models at the source horizon (UTC, 30-date detail windows), checks integrity/FKs,
 marks COMPLETE, closes handles and checkpoints WAL before publication.
-A failure leaves an unpublished file which startup rejects. Choose a new staging
-path after diagnosing failure. Existing destinations are never overwritten.
+Failures retain staging for diagnosis. Choose a new staging path after diagnosing
+failure. Existing destinations are never overwritten.
 Publication requires same-filesystem hard links and fails explicitly if unsupported.
 If interrupted after linking, both names may reference the verified database;
 after confirming they are the same file, remove only the staging name. A failed
