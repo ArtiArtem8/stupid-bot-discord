@@ -406,6 +406,7 @@ class AdminCog(BaseCog):
             )
             return
 
+        await interaction.response.defer(ephemeral=True)
         try:
             msg = await channel.fetch_message(int(message_id))
             await msg.delete()

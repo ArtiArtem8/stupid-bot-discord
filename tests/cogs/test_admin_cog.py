@@ -16,6 +16,7 @@ class TestDeleteMessage(unittest.IsolatedAsyncioTestCase):
     def _make_context(self) -> tuple[AdminCog, MagicMock, MagicMock]:
         cog = AdminCog(MagicMock(), MagicMock())
         interaction = MagicMock(spec=discord.Interaction)
+        interaction.response = MagicMock(spec=discord.InteractionResponse)
         channel = MagicMock(spec=discord.TextChannel)
         channel.fetch_message = AsyncMock()
         interaction.channel = channel

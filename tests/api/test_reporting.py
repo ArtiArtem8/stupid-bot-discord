@@ -14,6 +14,20 @@ from tests.storage import temporary_database
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_final_response_still_notifies_committed_report(self) -> None:
+        modal = ReportModal(self.repository)
+        modal.reason._value = "a useful report"
+        self.interaction.edit_original_response = AsyncMock(
+            side_effect=RuntimeError("lost reply")
+        )
+        with patch("api.reporting._notify_report", new_callable=AsyncMock) as notify:
+            with self.assertRaisesRegex(RuntimeError, "lost reply"):
+                await modal.on_submit(self.interaction)
+        self.interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+        notify.assert_awaited_once()
+        async with self.database.transaction() as connection:
+            self.assertIsNotNone(await connection.scalar(select(reports.c.report_id)))
+
     @override
     async def asyncSetUp(self) -> None:
         _, self.database = await temporary_database(self)
@@ -78,7 +92,7 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
 
         modal = ReportModal(self.repository)
         modal.reason._value = "a useful report"
-        self.interaction.response.send_message = AsyncMock(side_effect=response)
+        self.interaction.edit_original_response = AsyncMock(side_effect=response)
         with patch(
             "api.reporting._notify_report", new=AsyncMock(side_effect=notification)
         ):
@@ -95,7 +109,7 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(OSError):
                 await modal.on_submit(self.interaction)
-        self.interaction.response.send_message.assert_not_awaited()
+        self.interaction.edit_original_response.assert_not_awaited()
 
     def test_new_report_time_is_aware(self) -> None:
         from datetime import datetime

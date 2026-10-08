@@ -146,6 +146,7 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
 
     @override
     async def on_submit(self, interaction: Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
         report, report_channel_id = await submit_report(
             self._repository, interaction, self.reason.value
         )
@@ -154,17 +155,19 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
             description=f"-# Ваш персональный ID: `{report['report_id']}`",
             color=config.Color.SUCCESS,
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        try:
+            await interaction.edit_original_response(embed=embed)
 
-        if interaction.message:
-            try:
-                await interaction.message.edit(view=None)
-            except discord.HTTPException:
-                logger.warning(
-                    "Failed to remove report button from message %s",
-                    interaction.message.id,
-                )
-        await _notify_report(interaction, report, report_channel_id)
+            if interaction.message:
+                try:
+                    await interaction.message.edit(view=None)
+                except discord.HTTPException:
+                    logger.warning(
+                        "Failed to remove report button from message %s",
+                        interaction.message.id,
+                    )
+        finally:
+            await _notify_report(interaction, report, report_channel_id)
 
 
 async def handle_report_button(
