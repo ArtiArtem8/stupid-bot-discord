@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-from cogs.admin_cog import AdminCog
+from cogs.admin_cog import AdminCog, BlockedListPages
 from framework.feedback_ui import FeedbackUI
 
 
@@ -57,3 +57,15 @@ class TestDeleteMessage(unittest.IsolatedAsyncioTestCase):
             self.fail("expected feedback to be sent")
         self.assertEqual(call.kwargs["description"], "Нет прав.")
         self.assertTrue(call.kwargs["ephemeral"])
+
+
+class TestBlockedPages(unittest.TestCase):
+    def test_large_list_retains_every_entry_in_bounded_messages(self) -> None:
+        entries = [f"USER-{index}: " + "x" * 450 for index in range(100)]
+        pages = BlockedListPages(entries, show_details=True)
+        self.assertGreater(len(pages.pages), 1)
+        self.assertEqual("\n".join(pages.pages), "\n".join(entries))
+        for index in range(len(pages.pages)):
+            embed = pages.make_embed(index)
+            self.assertLessEqual(len(embed), 6000)
+            self.assertLessEqual(len(embed.description or ""), 4096)
