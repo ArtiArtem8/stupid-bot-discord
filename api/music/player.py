@@ -6,10 +6,11 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import discord
 import mafic
+from mafic.typings.incoming import PlayerUpdateState
 
 from .models import (
     PLAYBACK_USER_DATA_KEY,
@@ -32,6 +33,35 @@ logger = logging.getLogger(__name__)
 
 class MusicPlayer(mafic.Player[discord.Client]):
     """Mafic player owning queue-entry and playback-attempt transitions."""
+
+    _stuck_attempt: PlaybackAttempt | None = None
+    _stuck_position: int = 0
+
+    @property
+    def stuck_attempt(self) -> PlaybackAttempt | None:
+        """Return the stalled current attempt until real Lavalink progress resumes."""
+        if self._is_stale or self._stuck_attempt is not self._current_attempt:
+            return None
+        return self._stuck_attempt
+
+    def mark_stuck(self, expected: PlaybackAttempt) -> bool:
+        """Mark a live current attempt at its last reported Lavalink position."""
+        if self._is_stale or self._current_attempt is not expected:
+            return False
+        self._stuck_attempt = expected
+        self._stuck_position = self._position
+        return True
+
+    @override
+    def update_state(self, state: PlayerUpdateState) -> None:
+        super().update_state(state)
+        if (
+            self.stuck_attempt is not None
+            and state["connected"]
+            and not self.paused
+            and self._position > self._stuck_position
+        ):
+            self._stuck_attempt = None
 
     def __init__(self, client: discord.Client, channel: Connectable) -> None:
         super().__init__(client, channel)

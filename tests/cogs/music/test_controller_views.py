@@ -412,6 +412,20 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
 
 
 class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
+    def test_stuck_footer_retains_requester_and_clears_after_recovery(self) -> None:
+        attempt = PlaybackAttempt(1, make_entry("track"))
+        view, player, _ = self._make_view(attempt)
+        player.guild.get_member.return_value = None
+        player.stuck_attempt = attempt
+        self.assertEqual(
+            view.make_embed().footer.text,
+            "Трек застрял, жду продолжения • Запросил: 10",
+        )
+        player.stuck_attempt = None
+        self.assertEqual(view.make_embed().footer.text, "Запросил: 10")
+        self.assertFalse(view.is_finished())
+        view.stop()
+
     def _make_view(
         self,
         attempt: PlaybackAttempt,

@@ -233,6 +233,20 @@ class TrackControllerManager(ControllerManagerProtocol):
         )
 
     @override
+    async def refresh_for_attempt(
+        self, player: MusicPlayer, attempt: PlaybackAttempt
+    ) -> None:
+        async with self._locks[player.guild.id]:
+            view = self.controllers.get(player.guild.id)
+            if (
+                view
+                and view.player is player
+                and view.attempt is attempt
+                and self._owns_attempt(player, attempt)
+            ):
+                await view.refresh_status()
+
+    @override
     async def destroy_for_guild(
         self,
         guild_id: int,
@@ -417,11 +431,18 @@ class TrackControllerView(ui.View):
         member = self.player.guild.get_member(self.user_id)
         avatar = member.display_avatar if member else None
 
+        footer = f"Запросил: {member.display_name if member else self.user_id}"
+        if self.player.stuck_attempt is attempt:
+            footer = f"Трек застрял, жду продолжения • {footer}"
         embed.set_footer(
-            text=f"Запросил: {member.display_name if member else self.user_id}",
+            text=footer,
             icon_url=avatar.url if avatar else None,
         )
         return embed
+
+    async def refresh_status(self) -> None:
+        """Show a status change immediately, preserving the live controls."""
+        await self._safe_update(force=True)
 
     def _make_bar(self, pos: int, length: int, width: int = 10) -> str:
         if length <= 0:

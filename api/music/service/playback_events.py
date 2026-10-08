@@ -197,6 +197,10 @@ class PlaybackEventHandlers:
                 "threshold_ms": event.threshold_ms,
             },
         )
+        if self._should_handle_player_event(
+            player, "track_stuck"
+        ) and player.mark_stuck(attempt):
+            await self.ui.controller.refresh_for_attempt(player, attempt)
 
     async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
         if not self._should_handle_player_event(event.player, "track_end"):

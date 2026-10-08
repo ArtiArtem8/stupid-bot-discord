@@ -65,6 +65,7 @@ class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
         self.ui = MagicMock()
         self.ui.spawn_controller = AsyncMock()
         self.ui.controller.destroy_for_guild = AsyncMock()
+        self.ui.controller.refresh_for_attempt = AsyncMock()
         self.handlers = PlaybackEventHandlers(
             self.bot,
             self.connection,
@@ -204,6 +205,10 @@ class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
 
         player.claim_track_exception.assert_awaited_once_with("attempt-a")
         player.resolve_exception_attempt.assert_awaited_once_with("attempt-b")
+        player.mark_stuck.assert_called_once_with(stuck_attempt)
+        self.ui.controller.refresh_for_attempt.assert_awaited_once_with(
+            player, stuck_attempt
+        )
         self.ui.controller.destroy_for_guild.assert_any_await(
             123,
             ControllerDestroyReason.TRACK_EXCEPTION,

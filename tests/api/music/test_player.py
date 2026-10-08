@@ -67,6 +67,24 @@ def _require_requester(entry: QueueEntry) -> TrackRequester:
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
+    def test_stuck_status_requires_reported_progress_from_the_current_attempt(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current", length=60_000))
+        player._node_player_ready_event = asyncio.Event()
+        player._position = 1000
+        attempt = _require_attempt(player.current_attempt)
+        self.assertTrue(player.mark_stuck(attempt))
+        player.update_state(
+            {"time": 100, "position": 1000, "connected": True, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+        self.assertFalse(player.mark_stuck(PlaybackAttempt(2, make_entry("old"))))
+        player.update_state(
+            {"time": 200, "position": 1100, "connected": True, "ping": 1}
+        )
+        self.assertIsNone(player.stuck_attempt)
+
     async def test_enqueue_waiting_on_transition_rejects_detached_player(self) -> None:
         player = _make_player(current=make_entry("current"))
         await player._transition_lock.acquire()
