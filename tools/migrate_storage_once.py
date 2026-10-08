@@ -257,8 +257,10 @@ def _publish(building: Path, destination: Path) -> None:
             (0, 0, 0)
         ]:
             raise RuntimeError("Cannot publish while WAL checkpoint is busy")
-    # Windows rename refuses an existing destination. All SQLite handles are closed.
-    building.rename(destination)
+    # Link creation atomically refuses an existing name on every supported host.
+    # A crash before unlink leaves two names for the same verified database.
+    destination.hardlink_to(building)
+    building.unlink()
 
 
 def main() -> None:

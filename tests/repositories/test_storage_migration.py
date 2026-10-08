@@ -43,6 +43,33 @@ class TestStorageMigration(unittest.IsolatedAsyncioTestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(value), encoding="utf-8")
 
+    async def test_publication_preserves_racing_destination_and_staging(self) -> None:
+        async def verify_and_race(database: Database, data: LegacyData) -> None:
+            await verify_import(database, data)
+            self.args.destination.write_bytes(b"another writer")
+
+        with patch.object(migrate_storage_once, "verify_import", verify_and_race):
+            with self.assertRaises(FileExistsError):
+                await migrate_snapshot(self.args)
+
+        self.assertEqual(self.args.destination.read_bytes(), b"another writer")
+        self.assertTrue(
+            self.args.destination.with_name(
+                "application.sqlite.building.sqlite"
+            ).is_file()
+        )
+
+    async def test_unsupported_publication_keeps_verified_staging(self) -> None:
+        with patch.object(Path, "hardlink_to", side_effect=OSError("unsupported")):
+            with self.assertRaises(OSError):
+                await migrate_snapshot(self.args)
+        self.assertFalse(self.args.destination.exists())
+        self.assertTrue(
+            self.args.destination.with_name(
+                "application.sqlite.building.sqlite"
+            ).is_file()
+        )
+
     async def test_every_store_imports_and_uptime_retains_only_known_checkpoint(
         self,
     ) -> None:
