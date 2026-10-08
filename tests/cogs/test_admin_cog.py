@@ -74,6 +74,31 @@ class TestBlockedPages(unittest.TestCase):
 
 
 class TestBlockedList(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_block_history_keeps_user_and_current_name(self) -> None:
+        user = BlockedUser(1, "Imported name", None, blocked=True)
+        manager = MagicMock(get_guild_users=AsyncMock(return_value=[user]))
+        cog = AdminCog(MagicMock(), manager)
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.response = MagicMock(spec=discord.InteractionResponse)
+        interaction.guild.get_member.return_value = None
+
+        await cog.listblocked._do_call(
+            interaction, {"show_details": True, "ephemeral": True}
+        )
+
+        interaction.response.send_message.assert_awaited_once()
+        sent = interaction.response.send_message.await_args
+        if sent is None:
+            self.fail("Expected the blocked-user list")
+        embed = sent.kwargs["embed"]
+        self.assertEqual(embed.title, "Заблокированные пользователи (1)")
+        self.assertIn("Пользователь покинул сервер `1`", embed.description)
+        self.assertIn("• Текущее имя: Imported name", embed.description)
+        self.assertIn("История блокировок отсутствует.", embed.description)
+        self.assertNotIn("Последняя блокировка:", embed.description)
+        self.assertNotIn("Администратор:", embed.description)
+        self.assertTrue(sent.kwargs["ephemeral"])
+
     async def test_sends_blocked_members_and_departed_users_with_details(self) -> None:
         present = BlockedUser(1, "Stored name", None)
         present.add_block_entry(99, "Present reason")

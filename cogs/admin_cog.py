@@ -176,19 +176,25 @@ def _format_blocked_user(
         current_username = member.display_name
 
     lines = [f"**Пользователь:** {user_info}"]
-    if show_details:
-        last_block = user_entry.block_history[-1]
-        username = truncate_text(current_username, width=80)
-        reason = truncate_text(last_block.reason or "Не указана", width=200)
-        timestamp = format_dt(last_block.timestamp, "R")
-        lines.extend(
-            [
-                f"• Текущее имя: {username}",
-                f"• Последняя блокировка: {timestamp}",
-                f"• Причина: {reason}",
-                f"• Администратор: <@{last_block.admin_id}>",
-            ]
-        )
+    if not show_details:
+        return "\n".join(lines)
+
+    username = truncate_text(current_username, width=80)
+    lines.append(f"• Текущее имя: {username}")
+    if not user_entry.block_history:
+        lines.append("• История блокировок отсутствует.")
+        return "\n".join(lines)
+
+    last_block = user_entry.block_history[-1]
+    reason = truncate_text(last_block.reason or "Не указана", width=200)
+    timestamp = format_dt(last_block.timestamp, "R")
+    lines.extend(
+        [
+            f"• Последняя блокировка: {timestamp}",
+            f"• Причина: {reason}",
+            f"• Администратор: <@{last_block.admin_id}>",
+        ]
+    )
     return "\n".join(lines)
 
 
