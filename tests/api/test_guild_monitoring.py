@@ -69,6 +69,21 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await self.manager.is_enabled(10))
         self.assertIsNone(await self.manager.get_ttl(10))
 
+    async def test_empty_leave_replaces_previously_retained_roles(self) -> None:
+        previous = await self._store_snapshot(
+            SnapshotInput(20, "member", [7], datetime.now(UTC))
+        )
+        member = MagicMock(spec=discord.Member)
+        member.bot = False
+        member.guild.id = 10
+        member.id = 20
+        member.roles = [make_role(10, default=True)]
+        self.assertEqual(await self.manager.save_snapshot(member), 0)
+        current = await self.manager.get_snapshot(10, 20)
+        self.assertIsNotNone(current)
+        self.assertNotEqual(current, previous)
+        self.assertEqual(current.roles, [])
+
     async def test_disable_preserves_ttl_for_truthful_status(self) -> None:
         await self.manager.set_enabled(10, True, 3)
 
