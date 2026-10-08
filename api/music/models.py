@@ -163,11 +163,12 @@ class TrackRequester:
 
 @dataclass(frozen=True, slots=True)
 class QueueEntry:
-    """One concrete request for a source track."""
+    """One request whose UUID survives healing and never aliases another player."""
 
     entry_id: int
     track: Track
     requester: TrackRequester | None
+    request_id: str = field(default_factory=lambda: uuid4().hex)
 
 
 @dataclass(frozen=True, slots=True)

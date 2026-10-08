@@ -189,12 +189,16 @@ class MusicPlayer(mafic.Player[discord.Client]):
         async with self._transition_lock:
             if self._is_stale or not expected:
                 return ()
+            expected_ids = {entry.request_id for entry in expected}
+            live_entries = tuple(
+                entry for entry in self.queue if entry.request_id in expected_ids
+            )
             if any(
                 entry.requester is None or entry.requester.user_id != requester_id
-                for entry in expected
+                for entry in live_entries
             ):
                 return ()
-            return self.queue.remove_entries(expected)
+            return self.queue.remove_entries(live_entries)
 
     async def skip(
         self,

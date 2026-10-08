@@ -3,6 +3,7 @@
 import asyncio
 import unittest
 from collections import deque
+from dataclasses import replace
 from typing import cast
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
@@ -66,6 +67,16 @@ def _require_requester(entry: QueueEntry) -> TrackRequester:
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
+    async def test_old_undo_cannot_remove_replacement_players_request(self) -> None:
+        old = make_entry("old", entry_id=1, requester_id=10)
+        live = make_entry("new", entry_id=1, requester_id=20)
+        player = _make_player()
+        player.queue.append(live)
+        self.assertEqual(
+            await player.remove_queued_entries((old,), requester_id=10), ()
+        )
+        self.assertEqual(player.queue_snapshot(), (live,))
+
     async def test_shuffle_waits_for_skip_commit_or_rollback(self) -> None:
         for cancel_skip in (False, True):
             with self.subTest(cancel_skip=cancel_skip):
@@ -655,8 +666,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             make_entry("old-two", entry_id=2, requester_id=42),
         )
         replacements = (
-            make_entry("new-one", entry_id=1, requester_id=42),
-            make_entry("new-two", entry_id=2, requester_id=42),
+            replace(old_entries[0], track=make_track("new-one")),
+            replace(old_entries[1], track=make_track("new-two")),
         )
         new_player = _make_player(current=make_entry("current", entry_id=3))
         new_player.queue.extend(replacements)

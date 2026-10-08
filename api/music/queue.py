@@ -69,11 +69,11 @@ class QueueManager:
         if not expected:
             return ()
 
-        expected_ids = {entry.entry_id for entry in expected}
+        expected_ids = {entry.request_id for entry in expected}
         remaining: deque[QueueEntry] = deque()
         removed: list[QueueEntry] = []
         for queued_entry in self._queue:
-            if queued_entry.entry_id in expected_ids:
+            if queued_entry.request_id in expected_ids:
                 removed.append(queued_entry)
             else:
                 remaining.append(queued_entry)
