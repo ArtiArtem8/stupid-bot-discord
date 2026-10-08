@@ -72,6 +72,56 @@ def _runtime_player(current: PlaybackAttempt) -> MusicPlayer:
 
 
 class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_snapshot_prerequisite_does_not_seal_player(self) -> None:
+        healer, _, _ = self._make_warm_restore_healer()
+        player = _runtime_player(PlaybackAttempt(1, make_entry("playing")))
+        with (
+            patch.object(
+                healer.volume_repo, "get_volume", side_effect=RuntimeError("storage")
+            ),
+            self.assertRaisesRegex(RuntimeError, "storage"),
+        ):
+            await healer._seal_and_snapshot(player)
+        self.assertFalse(player.is_stale)
+
+    async def test_snapshot_without_voice_channel_does_not_seal_player(self) -> None:
+        healer, _, _ = self._make_warm_restore_healer()
+        player = _runtime_player(PlaybackAttempt(1, make_entry("playing")))
+        player.channel = MagicMock()
+        player.guild = MagicMock(id=1, voice_client=None)
+        with self.assertRaisesRegex(ValueError, "no active voice channel"):
+            await healer._seal_and_snapshot(player)
+        self.assertFalse(player.is_stale)
+
+    async def test_snapshot_waits_for_accepted_transition_before_sampling_queue(
+        self,
+    ) -> None:
+        healer, _, _ = self._make_warm_restore_healer()
+        player = _runtime_player(PlaybackAttempt(1, make_entry("playing")))
+        player.channel = MagicMock(spec=VoiceChannel, id=2)
+        player._position = 0
+        player._paused = True
+        player._connected = False
+        volume_read = asyncio.Event()
+
+        async def volume(*, guild_id: int) -> int:
+            self.assertEqual(guild_id, 1)
+            volume_read.set()
+            return 50
+
+        queued = make_entry("queued")
+        with patch.object(healer.volume_repo, "get_volume", side_effect=volume):
+            async with player._transition_lock:
+                capturing = asyncio.create_task(healer._seal_and_snapshot(player))
+                await volume_read.wait()
+                self.assertFalse(capturing.done())
+                self.assertFalse(player.is_stale)
+                player.queue.append(queued)
+            snapshot = await capturing
+        self.assertTrue(player.is_stale)
+        self.assertEqual(snapshot.queue, (queued,))
+        self.assertEqual(snapshot.current_entry, player.current_entry)
+
     def _make_warm_restore_healer(self) -> tuple[SessionHealer, MagicMock, MagicMock]:
         connection = MagicMock()
         _route_player_invalidation(connection)
