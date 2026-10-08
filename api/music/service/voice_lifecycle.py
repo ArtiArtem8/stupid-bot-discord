@@ -379,7 +379,7 @@ class VoiceLifecycleHandlers:
     async def _update_channel_timer(
         self, guild_id: int, channel: discord.VoiceChannel | discord.StageChannel
     ) -> None:
-        empty_reason = self._empty_channel_reason(channel)
+        empty_reason = self.empty_channel_reason(channel)
         if empty_reason is not None:
             if not self.state.is_timer_active(guild_id):
                 logger.info(
@@ -397,7 +397,7 @@ class VoiceLifecycleHandlers:
             )
             self.state.cancel_timer(guild_id)
 
-    def _empty_channel_reason(
+    def empty_channel_reason(
         self, channel: discord.VoiceChannel | discord.StageChannel
     ) -> str | None:
         human_members = [member for member in channel.members if not member.bot]

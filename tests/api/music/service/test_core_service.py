@@ -699,26 +699,19 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(raised.exception, error)
 
-    async def test_auto_leave_isolates_each_expired_guild(self) -> None:
-        first = MagicMock(id=1)
-        second = MagicMock(id=2)
-        self.state.check_auto_leave = MagicMock(return_value=[1, 2])
-        self.bot.get_guild.side_effect = [first, second]
-        self.service.leave = AsyncMock(
-            side_effect=[
-                RuntimeError("first guild failed"),
-                MusicResult(MusicResultStatus.SUCCESS, "Disconnected"),
-            ]
-        )
+    async def test_cancelled_expiry_is_not_disconnected(self) -> None:
+        from api.music.service.state_manager import StateManager
 
-        with self.assertLogs(
-            "api.music.service.core_service",
-            level="ERROR",
-        ):
-            await self.service.check_auto_leave()
-
-        self.assertEqual(self.service.leave.await_count, 2)
-        self.state.clear_expired_timers.assert_called_once_with([2])
+        self.service.state = StateManager()
+        self.service.state.start_timer(1, "empty")
+        timer = self.service.state.empty_channel_timers[1]
+        player = MagicMock()
+        self.connection.disconnect = AsyncMock()
+        self.service.state.cancel_timer(1)
+        self.service.state.start_timer(1, "empty")
+        await self.service._leave_expired(1, timer, player)
+        self.connection.disconnect.assert_not_awaited()
+        self.assertIsNot(self.service.state.empty_channel_timers[1], timer)
 
     async def test_skip_uses_atomic_player_result_without_pre_reading_queue(
         self,

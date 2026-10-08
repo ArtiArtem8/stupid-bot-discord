@@ -240,6 +240,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         requesting_view: TrackControllerView | None = None,
         *,
         expected_attempt_id: int | None = None,
+        expected_player: MusicPlayer | None = None,
     ) -> None:
         """Destroys the controller for a guild.
 
@@ -247,6 +248,12 @@ class TrackControllerManager(ControllerManagerProtocol):
         """
         async with self._locks[guild_id]:
             current_view = self.controllers.get(guild_id)
+            if (
+                expected_player is not None
+                and current_view
+                and current_view.player is not expected_player
+            ):
+                return
 
             if requesting_view and current_view != requesting_view:
                 logger.debug(

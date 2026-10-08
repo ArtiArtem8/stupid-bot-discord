@@ -39,7 +39,7 @@ from api.music.models import (
 from api.music.player import MusicPlayer
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.playback_events import PlaybackEventHandlers
-from api.music.service.state_manager import StateManager
+from api.music.service.state_manager import EmptyTimerInfo, StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 from api.music.session_events import dispatch_music_session_end
@@ -642,16 +642,43 @@ class CoreMusicService:
 
     async def check_auto_leave(self) -> None:
         """Check for guilds that have been empty for too long."""
-        expired_guild_ids = self.state.check_auto_leave()
-        for guild_id in expired_guild_ids:
+        candidates = [
+            (
+                guild_id,
+                self.state.empty_channel_timers.get(guild_id),
+                self.connection.get_player(guild_id),
+            )
+            for guild_id in self.state.check_auto_leave()
+        ]
+        for guild_id, timer, player in candidates:
+            if timer is None or player is None:
+                continue
             try:
-                guild = self.bot.get_guild(guild_id)
-                if guild:
-                    await self.leave(guild)
+                await self._leave_expired(guild_id, timer, player)
             except Exception:
                 logger.exception("Failed to auto-leave guild %s", guild_id)
-                continue
-            self.state.clear_expired_timers([guild_id])
+
+    async def _leave_expired(
+        self, guild_id: int, timer: EmptyTimerInfo, player: MusicPlayer
+    ) -> None:
+        channel = player.channel
+        if (
+            self.state.empty_channel_timers.get(guild_id) is not timer
+            or not self.connection.is_current_player(player)
+            or self.connection.is_recovering(guild_id)
+            or not isinstance(channel, (discord.VoiceChannel, discord.StageChannel))
+            or self.voice_lifecycle.empty_channel_reason(channel) is None
+        ):
+            return
+        if not await self.connection.disconnect(player.guild, force=True):
+            return
+        if player.guild.voice_client is not None:
+            return
+        self.state.cancel_timer_if_current(guild_id, timer)
+        await self.end_session(guild_id)
+        await self.ui.controller.destroy_for_guild(
+            guild_id, ControllerDestroyReason.VOICE_DISCONNECT, expected_player=player
+        )
 
     async def end_session(self, guild_id: int) -> None:
         """End the music session and dispatch the event."""

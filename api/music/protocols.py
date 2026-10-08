@@ -32,6 +32,7 @@ class ControllerManagerProtocol(Protocol):
         reason: ControllerDestroyReason,
         *,
         expected_attempt_id: int | None = None,
+        expected_player: MusicPlayer | None = None,
     ) -> None:
         """Destroy controller for a guild."""
         ...
