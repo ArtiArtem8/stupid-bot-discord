@@ -90,6 +90,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     async def resolve_track_start(self, event_token: str) -> PlaybackAttempt | None:
         """Classify a track-start event while holding the transition lock."""
         async with self._transition_lock:
+            if self._is_stale:
+                return None
             return self.resolve_current_attempt(event_token)
 
     async def resolve_exception_attempt(

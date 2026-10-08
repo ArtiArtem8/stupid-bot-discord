@@ -39,6 +39,22 @@ def _event_track(identifier: str, token: str) -> mafic.Track:
 
 
 class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
+    async def test_player_detached_during_start_resolution_does_not_revive_session(
+        self,
+    ) -> None:
+        player = self._player()
+
+        async def resolve(_token: str) -> PlaybackAttempt:
+            self.connection.is_current_player.return_value = False
+            return _attempt(1, "old", "old-token")
+
+        player.resolve_track_start.side_effect = resolve
+        await self.handlers._on_track_start(
+            MagicMock(player=player, track=_event_track("old", "old-token"))
+        )
+        self.state.record_track_start.assert_not_called()
+        self.ui.spawn_controller.assert_not_awaited()
+
     @override
     def setUp(self) -> None:
         self.bot = MagicMock()

@@ -25,6 +25,36 @@ def _interaction() -> MagicMock:
 
 
 class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
+    async def test_player_replaced_during_send_does_not_register_controller(
+        self,
+    ) -> None:
+        connection = MagicMock()
+        connection.is_current_player.return_value = True
+        manager = TrackControllerManager(MagicMock(), connection)
+        attempt = PlaybackAttempt(1, make_entry("old"))
+        player = MagicMock(current_attempt=attempt)
+        message = MagicMock(id=12)
+        message.channel.id = 10
+
+        async def send(**_kwargs: object) -> MagicMock:
+            connection.is_current_player.return_value = False
+            return message
+
+        channel = MagicMock(send=AsyncMock(side_effect=send))
+        view = MagicMock()
+        with (
+            patch.object(controller_module, "TrackControllerView", return_value=view),
+            patch.object(
+                manager, "_safe_delete_message", new_callable=AsyncMock
+            ) as delete,
+        ):
+            await manager.create_for_user(
+                guild_id=1, user_id=2, channel=channel, player=player, attempt=attempt
+            )
+        delete.assert_awaited_once_with(10, 12)
+        self.assertEqual(manager.controllers, {})
+        view.start_updater.assert_not_called()
+
     async def test_stale_view_stop_does_not_remove_new_controller(self) -> None:
         manager = TrackControllerManager(MagicMock(), MagicMock())
         stale_view = MagicMock()

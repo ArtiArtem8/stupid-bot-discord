@@ -179,13 +179,15 @@ class TrackControllerManager(ControllerManagerProtocol):
         """Replace any existing guild controller with one for the current attempt."""
         async with self._locks[guild_id]:
             logger.debug("Manager: Setup controller for guild %s", guild_id)
-            if player.current_attempt is not attempt:
+            if not self._owns_attempt(player, attempt):
                 logger.debug("Manager: Aborting stale controller creation")
                 return
 
             await self._cleanup_existing(
                 guild_id, ControllerDestroyReason.TRACK_CHANGED
             )
+            if not self._owns_attempt(player, attempt):
+                return
 
             async def on_view_stop_callback(
                 view_ref: TrackControllerView, reason: ControllerDestroyReason
@@ -206,6 +208,10 @@ class TrackControllerManager(ControllerManagerProtocol):
                 msg = await channel.send(
                     embed=view.make_embed(), view=view, silent=True
                 )
+                if not self._owns_attempt(player, attempt):
+                    view.stop()
+                    await self._safe_delete_message(msg.channel.id, msg.id)
+                    return
 
                 view.message = msg
                 self.controllers[guild_id] = view
@@ -219,6 +225,12 @@ class TrackControllerManager(ControllerManagerProtocol):
             except Exception:
                 logger.exception("Failed to send controller")
                 view.stop()
+
+    def _owns_attempt(self, player: MusicPlayer, attempt: PlaybackAttempt) -> bool:
+        return (
+            self.connection.is_current_player(player)
+            and player.current_attempt is attempt
+        )
 
     @override
     async def destroy_for_guild(

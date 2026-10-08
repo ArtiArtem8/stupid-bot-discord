@@ -105,7 +105,9 @@ class PlaybackEventHandlers:
 
         player = event.player
         attempt = await player.resolve_track_start(token)
-        if attempt is None:
+        if attempt is None or not self._should_handle_player_event(
+            player, "track_start"
+        ):
             return
 
         self.state.record_track_start(player.guild.id, attempt)
