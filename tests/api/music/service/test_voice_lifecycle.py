@@ -10,6 +10,22 @@ from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 
 
 class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
+    async def test_new_move_supersedes_pending_failed_validation(self) -> None:
+        player = self._make_player()
+        self.handlers._recent_voice_transitions[123] = 1.0
+
+        async def wait_ready(*_args: object, **_kwargs: object) -> bool:
+            self.handlers._recent_voice_transitions[123] = 2.0
+            return False
+
+        self.connection.wait_voice_ready.side_effect = wait_ready
+        with patch(
+            "api.music.service.voice_lifecycle.asyncio.sleep", new_callable=AsyncMock
+        ):
+            await self.handlers._validate_voice_transition_recovery(123, player)
+        self.ui.controller.destroy_for_guild.assert_not_awaited()
+        self.connection.invalidate_player.assert_not_awaited()
+
     async def test_leave_can_cancel_healing_during_initial_controller_cleanup(
         self,
     ) -> None:

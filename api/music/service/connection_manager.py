@@ -133,9 +133,11 @@ class ConnectionManager:
         transition = self._voice_transitions.get(player.guild.id)
         return transition is not None and transition[0] is player
 
-    async def wait_voice_ready(self, player: MusicPlayer) -> bool:
-        """Wait at most five seconds for current transport readiness."""
-        deadline = time.monotonic() + 5.0
+    async def wait_voice_ready(
+        self, player: MusicPlayer, *, timeout: float = 5.0
+    ) -> bool:
+        """Wait within the remaining transition budget for transport readiness."""
+        deadline = time.monotonic() + timeout
         while self.is_current_player(player):
             if self.is_player_usable(player) and bool(player.channel):
                 return True

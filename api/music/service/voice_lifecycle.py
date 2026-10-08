@@ -207,16 +207,23 @@ class VoiceLifecycleHandlers:
         self, guild_id: int, event_player: MusicPlayer
     ) -> None:
         transition_at = self._recent_voice_transitions.get(guild_id)
+        deadline = time.monotonic() + VOICE_TRANSITION_WINDOW_SECONDS
         try:
             await asyncio.sleep(VOICE_TRANSITION_VALIDATION_DELAY_SECONDS)
-            if await self.connection.wait_voice_ready(event_player):
+            if await self.connection.wait_voice_ready(
+                event_player, timeout=max(0.0, deadline - time.monotonic())
+            ):
                 logger.debug(
                     "Voice transition recovered in guild %s; preserving controller.",
                     guild_id,
                 )
                 return
 
-            if not self.connection.is_current_player(event_player):
+            if (
+                not self.connection.is_current_player(event_player)
+                or self.connection.is_transitioning(event_player)
+                or self._recent_voice_transitions.get(guild_id) != transition_at
+            ):
                 return
 
             logger.warning(

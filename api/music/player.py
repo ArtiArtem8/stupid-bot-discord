@@ -473,6 +473,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     ) -> PlaybackAttempt:
         """Create a fresh runtime attempt for a restored queue entry."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             previous = self._current_attempt
             self._current_attempt = None
             try:

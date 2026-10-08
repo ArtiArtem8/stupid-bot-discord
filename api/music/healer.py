@@ -621,6 +621,8 @@ class SessionHealer(HealerProtocol):
             restored_track = await self._resolve_fresh_track_for_restore(
                 player, snapshot.current_entry.track
             )
+            if not self.connection.is_current_player(player):
+                return False
             restored_entry = replace(snapshot.current_entry, track=restored_track)
 
             restore_position = max(0, snapshot.position)
@@ -657,6 +659,8 @@ class SessionHealer(HealerProtocol):
 
             self.state.record_track_start(snapshot.guild_id, restored)
             await self.ui.spawn_controller(player, restored)
+            if not self._is_expected_restore_attempt_active(player, restored):
+                return False
 
         if snapshot.session is not None:
             session = snapshot.session
