@@ -11,10 +11,25 @@ from unittest.mock import AsyncMock, patch
 import discord
 
 import config
-from api.birthday import BirthdayManager, parse_birthday, safe_fetch_member
+from api.birthday import (
+    BirthdayManager,
+    create_birthday_list_embed,
+    parse_birthday,
+    safe_fetch_member,
+)
+from api.birthday_models import BirthdayListEntry
 
 
 class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
+    def test_large_birthday_embed_includes_footer_in_total_budget(self) -> None:
+        entries: list[BirthdayListEntry] = [
+            {"date": "01-01-2000", "name": "x" * 128, "days_until": 1, "user_id": 1}
+            for _ in range(100)
+        ]
+        embed = create_birthday_list_embed("g" * 256, entries)
+        self.assertLessEqual(len(embed), 6000)
+        self.assertIn("100", embed.footer.text or "")
+
     def test_parse_birthday_accepts_config_format(self) -> None:
         dt = datetime(2000, 1, 2)
         src = dt.strftime(config.DATE_FORMAT)

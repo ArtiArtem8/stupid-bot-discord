@@ -101,6 +101,9 @@ def create_birthday_list_embed(
         embed.set_footer(text="Всего дней рождений: 0")
         return embed
 
+    footer = f"Всего дней рождений: {len(entries)}"
+    embed.set_footer(text=truncate_text(footer, width=2048))
+
     lines: list[str] = []
     for i, entry in enumerate(entries, 1):
         days_until = entry["days_until"]
@@ -139,8 +142,6 @@ def create_birthday_list_embed(
 
         embed.add_field(name=field_name, value=page_text, inline=False)
 
-    footer = f"Всего дней рождений: {len(entries)}"
-    embed.set_footer(text=truncate_text(footer, width=2048))
     return embed
 
 
