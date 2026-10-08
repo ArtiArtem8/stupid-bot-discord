@@ -218,6 +218,11 @@ class CoreMusicService:
         placement: QueuePlacement,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         result = await player.fetch_tracks(query)
+        if not self.connection.is_current_player(player):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                "Плеер изменился во время поиска. Попробуй запустить трек ещё раз.",
+            )
         if not result:
             query_text = compact_external_log_text(query)
             logger.debug(

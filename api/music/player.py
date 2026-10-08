@@ -161,6 +161,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
         if not tracks:
             return EnqueueOutcome((), None)
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             entries = tuple(self._new_entry(track, requester) for track in tracks)
             if placement == "end":
                 self.queue.extend(entries)

@@ -67,6 +67,18 @@ def _require_requester(entry: QueueEntry) -> TrackRequester:
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
+    async def test_enqueue_waiting_on_transition_rejects_detached_player(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        await player._transition_lock.acquire()
+        task = asyncio.create_task(
+            player.enqueue_tracks([make_track("late")], None, placement="end")
+        )
+        player.mark_stale()
+        player._transition_lock.release()
+        with self.assertRaises(mafic.PlayerNotConnected):
+            await task
+        self.assertEqual(player.queue_snapshot(), ())
+
     async def test_old_undo_cannot_remove_replacement_players_request(self) -> None:
         old = make_entry("old", entry_id=1, requester_id=10)
         live = make_entry("new", entry_id=1, requester_id=20)

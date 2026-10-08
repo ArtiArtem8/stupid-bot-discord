@@ -70,6 +70,22 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, MusicResultStatus.SUCCESS)
         player.shuffle_queue.assert_awaited_once_with()
 
+    async def test_late_load_does_not_enqueue_into_detached_player(self) -> None:
+        player = MagicMock(spec=MusicPlayer)
+        player.fetch_tracks = AsyncMock(return_value=[make_track("late")])
+        player.enqueue_tracks = AsyncMock()
+        self.connection.is_current_player.return_value = False
+        result = await self.service._load_and_enqueue(
+            player,
+            "query",
+            42,
+            None,
+            (VoiceCheckResult.SUCCESS, None),
+            placement="end",
+        )
+        self.assertEqual(result.status, MusicResultStatus.FAILURE)
+        player.enqueue_tracks.assert_not_awaited()
+
     async def _assert_apply_volume_error_is_soft_failure(
         self,
         error: Exception,
