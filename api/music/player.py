@@ -113,8 +113,6 @@ class MusicPlayer(mafic.Player[discord.Client]):
         async with self._transition_lock:
             if self._is_stale:
                 raise mafic.PlayerNotConnected
-            if self._is_stale:
-                raise mafic.PlayerNotConnected
             self.queue.shuffle()
 
     def resolve_current_attempt(self, event_token: str) -> PlaybackAttempt | None:
@@ -252,12 +250,10 @@ class MusicPlayer(mafic.Player[discord.Client]):
         async with self._transition_lock:
             if self._is_stale:
                 raise mafic.PlayerNotConnected
-            if self._is_stale:
-                raise mafic.PlayerNotConnected
             ended = self._current_attempt
             if ended is None:
                 return None, None
-            if expected is not None and (self._is_stale or ended is not expected):
+            if expected is not None and ended is not expected:
                 return None, None
             old_queue = self.queue.snapshot()
             old_pending = self._pending_end_attempts.copy()
@@ -281,8 +277,6 @@ class MusicPlayer(mafic.Player[discord.Client]):
     ) -> tuple[PlaybackAttempt | None, PlaybackAttempt | None]:
         """Move the current entry to the queue tail and start the next entry."""
         async with self._transition_lock:
-            if self._is_stale:
-                raise mafic.PlayerNotConnected
             if self._is_stale:
                 raise mafic.PlayerNotConnected
             ended = self._current_attempt
@@ -310,8 +304,6 @@ class MusicPlayer(mafic.Player[discord.Client]):
         async with self._transition_lock:
             if self._is_stale:
                 raise mafic.PlayerNotConnected
-            if self._is_stale:
-                raise mafic.PlayerNotConnected
             old_queue = self.queue.snapshot()
             old_pending = self._pending_end_attempts.copy()
             ended = self._current_attempt
@@ -330,8 +322,6 @@ class MusicPlayer(mafic.Player[discord.Client]):
     async def start_queued_if_idle(self) -> PlaybackAttempt | None:
         """Start one queued entry if no attempt is active."""
         async with self._transition_lock:
-            if self._is_stale:
-                raise mafic.PlayerNotConnected
             if self._is_stale:
                 raise mafic.PlayerNotConnected
             return await self._start_queued_if_idle_unlocked()
