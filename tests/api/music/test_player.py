@@ -67,6 +67,45 @@ def _require_requester(entry: QueueEntry) -> TrackRequester:
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
+    async def test_stuck_status_clears_after_backward_seek_and_reported_progress(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current", length=120_000))
+        player._node_player_ready_event = asyncio.Event()
+        player._position = 60_000
+        attempt = _require_attempt(player.current_attempt)
+        player.mark_stuck(attempt)
+        with patch.object(player, "seek", new_callable=AsyncMock):
+            self.assertTrue(await player.seek_attempt(attempt, 10_000))
+        self.assertIs(player.stuck_attempt, attempt)
+        player.update_state(
+            {"time": 100, "position": 10_000, "connected": True, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+        player.update_state(
+            {"time": 200, "position": 11_000, "connected": True, "ping": 1}
+        )
+        self.assertIsNone(player.stuck_attempt)
+
+    def test_stuck_status_does_not_clear_on_paused_or_disconnected_progress(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current"))
+        player._node_player_ready_event = asyncio.Event()
+        player._position = 1000
+        attempt = _require_attempt(player.current_attempt)
+        player.mark_stuck(attempt)
+        player._paused = True
+        player.update_state(
+            {"time": 100, "position": 2000, "connected": True, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+        player._paused = False
+        player.update_state(
+            {"time": 200, "position": 3000, "connected": False, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+
     def test_stuck_status_requires_reported_progress_from_the_current_attempt(
         self,
     ) -> None:

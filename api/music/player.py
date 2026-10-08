@@ -55,13 +55,11 @@ class MusicPlayer(mafic.Player[discord.Client]):
     @override
     def update_state(self, state: PlayerUpdateState) -> None:
         super().update_state(state)
-        if (
-            self.stuck_attempt is not None
-            and state["connected"]
-            and not self.paused
-            and self._position > self._stuck_position
-        ):
-            self._stuck_attempt = None
+        if self.stuck_attempt is not None and state["connected"]:
+            if not self.paused and self._position > self._stuck_position:
+                self._stuck_attempt = None
+            # A backward seek establishes a new baseline for reported progress.
+            self._stuck_position = self._position
 
     def __init__(self, client: discord.Client, channel: Connectable) -> None:
         super().__init__(client, channel)
