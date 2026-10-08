@@ -9,6 +9,17 @@ from utils.logging_setup import CredentialSafeFormatter, setup_logging
 
 
 class TestLoggingSetup(unittest.TestCase):
+    def test_chat_payload_and_application_logs_remain_verbatim(self) -> None:
+        content = (
+            "секрет: мой пароль; token: chat-token; Authorization: Bearer chat-auth"
+        )
+        for logger_name in ("cogs.on_message_cog", "api.reporting", "mafication.app"):
+            with self.subTest(logger=logger_name):
+                record = logging.LogRecord(
+                    logger_name, logging.INFO, "", 1, "%s", (content,), None
+                )
+                self.assertEqual(CredentialSafeFormatter().format(record), content)
+
     def test_redacts_unquoted_headers_and_secret_key_arrays(self) -> None:
         record = logging.LogRecord(
             "mafic.node",

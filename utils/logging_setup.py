@@ -5,11 +5,22 @@ from typing import override
 
 
 class CredentialSafeFormatter(logging.Formatter):
-    """Redact transport credentials from rendered messages and exception chains.
+    """Redact credentials only in known transport loggers and their exceptions.
 
     Sanitize the formatted copy so logging arguments and network payloads remain
     untouched, and cached exception text cannot bypass another handler's policy.
+    Application message/audit logs retain their complete original content.
     """
+
+    _transport_loggers = (
+        "mafic",
+        "discord.http",
+        "discord.gateway",
+        "discord.voice_state",
+        "discord.voice_client",
+        "aiohttp.client",
+        "aiohttp.client_ws",
+    )
 
     _credentials = re.compile(
         r"(?i)([\"']?(?:token|session_?id|secret_?key|authorization|password)"
@@ -19,7 +30,13 @@ class CredentialSafeFormatter(logging.Formatter):
 
     @override
     def format(self, record: logging.LogRecord) -> str:
-        return self._credentials.sub(r"\1'[REDACTED]'", super().format(record))
+        rendered = super().format(record)
+        if any(
+            record.name == name or record.name.startswith(f"{name}.")
+            for name in self._transport_loggers
+        ):
+            return self._credentials.sub(r"\1'[REDACTED]'", rendered)
+        return rendered
 
 
 def setup_logging(encoding: str = "utf-8") -> None:
