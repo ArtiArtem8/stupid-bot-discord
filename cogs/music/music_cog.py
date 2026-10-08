@@ -370,6 +370,14 @@ class MusicCog(BaseCog):
     async def _send_no_player_or_unavailable(
         self, interaction: Interaction, result: MusicResult[object]
     ) -> None:
+        if result.message == MUSIC_RECOVERING_MESSAGE:
+            await send_info(
+                interaction,
+                MUSIC_RECOVERING_MESSAGE,
+                ephemeral=True,
+                delete_after=60,
+            )
+            return
         if result.message == MUSIC_SERVICE_UNAVAILABLE_MESSAGE:
             await send_warning(
                 interaction,

@@ -10,6 +10,7 @@ import discord
 from discord.ext import commands
 
 from api.music.models import (
+    MUSIC_RECOVERING_MESSAGE,
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     MusicResult,
     MusicResultStatus,
@@ -48,6 +49,17 @@ async def _await_operation(
 
 
 class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
+    async def test_recovery_result_uses_private_info_feedback(self) -> None:
+        interaction = MagicMock(guild=MagicMock(id=123))
+        result = MusicResult[None](MusicResultStatus.FAILURE, MUSIC_RECOVERING_MESSAGE)
+        with patch.object(FeedbackUI, "send", new_callable=AsyncMock) as feedback:
+            await self.cog._send_no_player_or_unavailable(interaction, result)
+        self.assertEqual(
+            feedback.call_args.kwargs["description"], MUSIC_RECOVERING_MESSAGE
+        )
+        self.assertEqual(feedback.call_args.kwargs["feedback_type"], FeedbackType.INFO)
+        self.assertTrue(feedback.call_args.kwargs["ephemeral"])
+
     @override
     def setUp(self) -> None:
         self.cog = object.__new__(MusicCog)
