@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import unittest
 from typing import Any, cast
@@ -9,6 +10,32 @@ from utils.logging_setup import CredentialSafeFormatter, setup_logging
 
 
 class TestLoggingSetup(unittest.TestCase):
+    def test_transport_payload_preserves_chat_and_track_text(self) -> None:
+        content = 'token: chat-token; "password": "chat-password"; don\'t erase this'
+        payload = {
+            "content": content,
+            "track": {"title": "Authorization: Bearer song-title"},
+            "voice": {"token": "private-voice-token", "sessionId": "private-id"},
+            "token_count": 42,
+        }
+        for value in (repr(payload), json.dumps(payload)):
+            with self.subTest(value=value):
+                record = logging.LogRecord(
+                    "discord.gateway", logging.DEBUG, "", 1, "Event: %s", (value,), None
+                )
+                rendered = CredentialSafeFormatter().format(record)
+                expected = value.replace("private-voice-token", "[REDACTED]").replace(
+                    "private-id", "[REDACTED]"
+                )
+                # The sanitizer normalizes only the quotes around credential values.
+                expected = expected.replace('"[REDACTED]"', "'[REDACTED]'")
+                self.assertEqual(rendered, f"Event: {expected}")
+
+    def test_credential_names_do_not_match_other_field_suffixes(self) -> None:
+        text = "retry_token=keep; previous-password=keep; session_id_suffix=keep"
+        record = logging.LogRecord("mafic.node", logging.DEBUG, "", 1, text, (), None)
+        self.assertEqual(CredentialSafeFormatter().format(record), text)
+
     def test_chat_payload_and_application_logs_remain_verbatim(self) -> None:
         content = (
             "секрет: мой пароль; token: chat-token; Authorization: Bearer chat-auth"

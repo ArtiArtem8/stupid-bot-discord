@@ -10,6 +10,8 @@ class CredentialSafeFormatter(logging.Formatter):
     Sanitize the formatted copy so logging arguments and network payloads remain
     untouched, and cached exception text cannot bypass another handler's policy.
     Application message/audit logs retain their complete original content.
+    Quoted payload values are opaque unless their field is a credential: a chat
+    message or track title can mention tokens without becoming a secret field.
     """
 
     _transport_loggers = (
@@ -22,11 +24,19 @@ class CredentialSafeFormatter(logging.Formatter):
         "aiohttp.client_ws",
     )
 
+    _credential_name = r"(?:token|session_?id|secret_?key|authorization|password)"
+    _quoted = r"\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'"
     _credentials = re.compile(
-        r"(?i)([\"']?(?:token|session_?id|secret_?key|authorization|password)"
-        r"[\"']?\s*[:=]\s*)(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'"
-        r"|\[[^\]]*\]|(?:Bearer|Bot|Basic)\s+[^\s,;}]+|[^\s,;}]+)"
+        rf"(?P<field>(?<![\w-])(?:\"{_credential_name}\"|'{_credential_name}'|{_credential_name})"
+        rf"\s*[:=]\s*)(?:{_quoted}|\[[^\]]*\]|(?:Bearer|Bot|Basic)\s+[^\s,;}}]+|[^\s,;}}]+)"
+        rf"|{_quoted}",
+        re.IGNORECASE,
     )
+
+    @staticmethod
+    def _redact_field(match: re.Match[str]) -> str:
+        field = match.group("field")
+        return f"{field}'[REDACTED]'" if field is not None else match.group()
 
     @override
     def format(self, record: logging.LogRecord) -> str:
@@ -35,7 +45,7 @@ class CredentialSafeFormatter(logging.Formatter):
             record.name == name or record.name.startswith(f"{name}.")
             for name in self._transport_loggers
         ):
-            return self._credentials.sub(r"\1'[REDACTED]'", rendered)
+            return self._credentials.sub(self._redact_field, rendered)
         return rendered
 
 
