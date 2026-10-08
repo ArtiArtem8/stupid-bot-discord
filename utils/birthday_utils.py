@@ -6,6 +6,11 @@ import config
 from resources import MONTH_NAMES_RU
 
 
+def format_storage_date(value: date) -> str:
+    """Return DD-MM-YYYY with four year digits, independent of platform strftime."""
+    return f"{value.day:02d}-{value.month:02d}-{value.year:04d}"
+
+
 def is_leap(year: int) -> bool:
     """Return True for leap years, False for non-leap years."""
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)

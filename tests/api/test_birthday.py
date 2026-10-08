@@ -30,6 +30,13 @@ class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(len(embed), 6000)
         self.assertIn("100", embed.footer.text or "")
 
+    def test_small_years_round_trip_with_four_digits(self) -> None:
+        for year in (1, 999, 1000):
+            with self.subTest(year=year):
+                expected = f"02-01-{year:04d}"
+                self.assertEqual(parse_birthday(expected), expected)
+                self.assertEqual(parse_birthday(f"{year:04d}-01-02"), expected)
+
     def test_parse_birthday_accepts_config_format(self) -> None:
         dt = datetime(2000, 1, 2)
         src = dt.strftime(config.DATE_FORMAT)
