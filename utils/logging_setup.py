@@ -13,7 +13,8 @@ class CredentialSafeFormatter(logging.Formatter):
 
     _credentials = re.compile(
         r"(?i)([\"']?(?:token|session_?id|secret_?key|authorization|password)"
-        r"[\"']?\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;}]+)"
+        r"[\"']?\s*[:=]\s*)(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'"
+        r"|\[[^\]]*\]|(?:Bearer|Bot|Basic)\s+[^\s,;}]+|[^\s,;}]+)"
     )
 
     @override

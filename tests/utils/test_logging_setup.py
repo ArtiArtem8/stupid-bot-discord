@@ -9,6 +9,21 @@ from utils.logging_setup import CredentialSafeFormatter, setup_logging
 
 
 class TestLoggingSetup(unittest.TestCase):
+    def test_redacts_unquoted_headers_and_secret_key_arrays(self) -> None:
+        record = logging.LogRecord(
+            "mafic.node",
+            logging.ERROR,
+            "",
+            1,
+            "Authorization: Bearer private-auth; secret_key: [11, 22, 33]",
+            (),
+            None,
+        )
+        output = CredentialSafeFormatter().format(record)
+        self.assertNotIn("private-auth", output)
+        self.assertNotIn("22", output)
+        self.assertNotIn("33", output)
+
     def test_redacts_payload_and_exception_without_mutating_arguments(self) -> None:
         payload = {"voice": {"token": "private-token", "sessionId": "private-id"}}
         record = logging.LogRecord(
