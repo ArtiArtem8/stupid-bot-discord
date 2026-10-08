@@ -1,4 +1,4 @@
-"""Reports commit before acknowledgement and deduplicate interaction retries."""
+"""Reports commit before success feedback and deduplicate interaction retries."""
 
 import unittest
 from typing import override

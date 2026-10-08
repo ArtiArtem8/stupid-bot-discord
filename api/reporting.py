@@ -86,7 +86,7 @@ def _create_report_embed(report: ReportDataDict) -> discord.Embed:
 async def submit_report(
     repository: ReportRepository, interaction: Interaction, reason: str
 ) -> tuple[ReportDataDict, int | None]:
-    """Commit a deduplicated report before acknowledging or notifying Discord."""
+    """Commit a deduplicated report before reporting success or notifying Discord."""
     result = await repository.submit(
         _build_report_data(interaction, reason), request_key=str(interaction.id)
     )
