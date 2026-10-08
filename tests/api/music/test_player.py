@@ -67,6 +67,27 @@ def _require_requester(entry: QueueEntry) -> TrackRequester:
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
+    def test_stuck_position_does_not_advance_with_wall_time(self) -> None:
+        player = _make_player(current=make_entry("current", length=60_000))
+        player._node_player_ready_event = asyncio.Event()
+        player._connected = True
+        player._position = 1000
+        player._last_update = 0
+        attempt = _require_attempt(player.current_attempt)
+        with patch("mafic.player.time", return_value=10.0):
+            self.assertEqual(player.position, 11_000)
+            player.mark_stuck(attempt)
+            self.assertEqual(player.position, 1000)
+            player.update_state(
+                {"time": 9000, "position": 1000, "connected": True, "ping": 1}
+            )
+            self.assertEqual(player.position, 1000)
+            player.update_state(
+                {"time": 9000, "position": 2000, "connected": True, "ping": 1}
+            )
+            self.assertIsNone(player.stuck_attempt)
+            self.assertEqual(player.position, 3000)
+
     async def test_stuck_status_clears_after_backward_seek_and_reported_progress(
         self,
     ) -> None:

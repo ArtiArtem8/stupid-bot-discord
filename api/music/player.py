@@ -38,6 +38,14 @@ class MusicPlayer(mafic.Player[discord.Client]):
     _stuck_position: int = 0
 
     @property
+    @override
+    def position(self) -> int:
+        """Use reported milliseconds while stalled; otherwise use Mafic's estimate."""
+        if self.stuck_attempt is not None:
+            return self._position
+        return super().position
+
+    @property
     def stuck_attempt(self) -> PlaybackAttempt | None:
         """Return the stalled current attempt until real Lavalink progress resumes."""
         if self._is_stale or self._stuck_attempt is not self._current_attempt:
