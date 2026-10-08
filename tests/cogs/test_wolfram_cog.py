@@ -31,6 +31,54 @@ from utils.image_utils import ImageOutputTooLargeError
 
 
 class TestWolframCog(unittest.IsolatedAsyncioTestCase):
+    async def test_unload_finishes_active_and_queued_requests_before_session_close(
+        self,
+    ) -> None:
+        cog, client = self._make_cog()
+        cog.ctx_menu = MagicMock()
+        admitted = asyncio.Event()
+        active = asyncio.Event()
+        count = 0
+        original = cog._handle_admitted_query
+
+        async def handle(
+            interaction: discord.Interaction, query: str, mode: WolframMode
+        ) -> None:
+            nonlocal count
+            count += 1
+            if count == 3:
+                admitted.set()
+            await original(interaction, query, mode)
+
+        running = 0
+
+        async def query(_query: str) -> WolframResult:
+            nonlocal running
+            running += 1
+            if running == 2:
+                active.set()
+            await asyncio.Event().wait()
+            raise RuntimeError("unreachable")
+
+        client.query = AsyncMock(side_effect=query)
+        interactions = [self._make_interaction()[0] for _ in range(3)]
+        with (
+            patch.object(cog, "_handle_admitted_query", side_effect=handle),
+            patch.object(FeedbackUI, "send", new_callable=AsyncMock) as feedback,
+        ):
+            requests = [
+                asyncio.create_task(cog._handle_query(item, "x", "solve"))
+                for item in interactions
+            ]
+            await admitted.wait()
+            await active.wait()
+            session = cog.client_session
+            await cog.cog_unload()
+        self.assertEqual(feedback.await_count, 3)
+        self.assertTrue(all(task.cancelled() for task in requests))
+        self.assertEqual(cog._requests, set())
+        session.close.assert_awaited_once()
+
     def _make_cog(self) -> tuple[WolframCog, MagicMock]:
         cog = object.__new__(WolframCog)
         client = MagicMock(spec=WolframClient)
@@ -38,6 +86,8 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         cog.wolfram_client = client
         cog.client_session = MagicMock(spec=aiohttp.ClientSession)
         cog._request_semaphore = asyncio.Semaphore(2)
+        cog._closing = False
+        cog._requests = set()
         cog.bot = MagicMock(spec=commands.Bot)
         return cog, client
 
@@ -589,6 +639,8 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         cog.client_session = None
         cog.wolfram_client = None
         cog._request_semaphore = asyncio.Semaphore(2)
+        cog._closing = False
+        cog._requests = set()
         session = MagicMock(spec=aiohttp.ClientSession)
         client = MagicMock(spec=WolframClient)
 
