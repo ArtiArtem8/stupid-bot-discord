@@ -1,12 +1,14 @@
 """Verify final uptime is committed before the shared database closes."""
 
 import asyncio
+import sqlite3
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from api.voice.model import VoiceLifecycle, VoiceSnapshot
 from framework.bot import StupidBot
@@ -20,6 +22,34 @@ from utils.asyncio_utils import run_in_thread
 
 
 class TestUptimeShutdown(unittest.IsolatedAsyncioTestCase):
+    async def test_periodic_loop_continues_after_sqlite_busy(self) -> None:
+        bot = object.__new__(StupidBot)
+        saved = asyncio.Event()
+        busy = sqlite3.OperationalError("database is locked")
+        busy.sqlite_errorcode = sqlite3.SQLITE_BUSY
+        attempts = 0
+
+        async def save() -> float:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise OperationalError("checkpoint", None, busy)
+            saved.set()
+            return 1.0
+
+        loop = bot.autosave_task
+        loop.before_loop(AsyncMock())
+        loop.change_interval(seconds=0.001)
+        with patch.object(bot, "save_state", side_effect=save):
+            task = loop.start()
+            try:
+                await asyncio.wait_for(saved.wait(), timeout=2.0)
+                self.assertFalse(loop.failed())
+            finally:
+                loop.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+        self.assertGreaterEqual(attempts, 2)
+
     async def test_storage_closes_after_voice_or_final_uptime_failure(self) -> None:
         for failing_step in ("voice", "uptime"):
             with self.subTest(failing_step=failing_step):
