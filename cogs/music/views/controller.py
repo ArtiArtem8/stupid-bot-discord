@@ -159,12 +159,16 @@ class TrackControllerManager(ControllerManagerProtocol):
             )
 
     async def cleanup(self) -> None:
-        """Stop accepting message cleanup work and cancel and await owned retries."""
+        """Close admission and drain active views and owned deletion retries."""
         self._closing = True
         tasks = tuple(self._message_delete_tasks.values())
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        for guild_id in self.controllers.keys() | self._active_messages.keys():
+            await self.destroy_for_guild(
+                guild_id, ControllerDestroyReason.VOICE_DISCONNECT
+            )
 
     @override
     async def create_for_user(
@@ -228,7 +232,8 @@ class TrackControllerManager(ControllerManagerProtocol):
 
     def _owns_attempt(self, player: MusicPlayer, attempt: PlaybackAttempt) -> bool:
         return (
-            self.connection.is_current_player(player)
+            not self._closing
+            and self.connection.is_current_player(player)
             and player.current_attempt is attempt
         )
 
@@ -302,7 +307,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         controller = self.controllers.pop(guild_id, None)
         if controller:
             try:
-                controller.stop()
+                await controller.close()
             except Exception:
                 logger.exception("Error stopping controller")
 
@@ -396,9 +401,19 @@ class TrackControllerView(ui.View):
         """Stop the updater loop and interaction."""
         logger.debug("Stopping %s", self.__class__.__name__)
         self._running = False
-        if self._task and self._task is not asyncio.current_task():
+        if (
+            self._task
+            and self._task is not asyncio.current_task()
+            and not self._task.cancelling()
+        ):
             self._task.cancel()
         super().stop()
+
+    async def close(self) -> None:
+        """Stop interactions and finish the updater before releasing its player."""
+        self.stop()
+        if self._task is not None and self._task is not asyncio.current_task():
+            await asyncio.gather(self._task, return_exceptions=True)
 
     def make_embed(self) -> discord.Embed:
         attempt = self.player.current_attempt

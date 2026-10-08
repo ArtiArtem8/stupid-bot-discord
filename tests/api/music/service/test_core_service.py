@@ -37,7 +37,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             await release.wait()
 
         self.voice_lifecycle.cleanup = AsyncMock(side_effect=drain)
-        self.bot.guilds = [MagicMock()]
+        self.bot.guilds = [MagicMock(id=123)]
         self.connection.disconnect = AsyncMock()
         cleanup = asyncio.create_task(self.service.cleanup())
         await entered.wait()
@@ -47,6 +47,11 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         await cleanup
         self.connection.disconnect.assert_awaited_once()
         self.connection.cleanup.assert_awaited_once()
+        self.state.end_session.assert_called_once_with(123)
+        self.state.cancel_timer.assert_called_once_with(123)
+        self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+            123, ControllerDestroyReason.VOICE_DISCONNECT
+        )
 
     async def test_cleanup_disposes_connection_when_disconnect_fails(self) -> None:
         self.voice_lifecycle.cleanup = AsyncMock()
@@ -92,8 +97,11 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.playback_events = MagicMock()
         self.voice_lifecycle = MagicMock()
         self.voice_lifecycle.is_healing.return_value = False
+        self.voice_lifecycle.cleanup = AsyncMock()
         self.voice_lifecycle.cancel_heal = AsyncMock()
         self.ui = MagicMock()
+        self.ui.controller.destroy_for_guild = AsyncMock()
+        self.state.end_session.return_value = None
         self.service = CoreMusicService(
             self.bot,
             self.connection,

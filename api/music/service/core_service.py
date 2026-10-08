@@ -702,7 +702,7 @@ class CoreMusicService:
         try:
             for guild in self.bot.guilds:
                 if guild.voice_client:
-                    await self.connection.disconnect(guild, force=True)
+                    await self.leave(guild)
         finally:
             await self.connection.cleanup()
             self._initialized = False

@@ -25,6 +25,67 @@ def _interaction() -> MagicMock:
 
 
 class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
+    async def test_cleanup_stops_and_drains_active_controller(self) -> None:
+        entered = asyncio.Event()
+        cancelling = asyncio.Event()
+        release = asyncio.Event()
+
+        async def update() -> None:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelling.set()
+                await release.wait()
+
+        manager = TrackControllerManager(MagicMock(), MagicMock())
+        view = TrackControllerView(
+            user_id=2,
+            player=MagicMock(),
+            guild_id=1,
+            attempt=PlaybackAttempt(1, make_entry("playing")),
+            on_stop_callback=None,
+            on_player_failure=AsyncMock(),
+        )
+        with patch.object(view, "_loop", side_effect=update):
+            view.start_updater()
+            await entered.wait()
+            manager.controllers[1] = view
+            manager._active_messages[1] = (10, 12)
+            cleanup = asyncio.create_task(manager.cleanup())
+            await cancelling.wait()
+            self.assertTrue(view.is_finished())
+            self.assertFalse(cleanup.done())
+            release.set()
+            await cleanup
+        self.assertEqual(manager.controllers, {})
+        self.assertEqual(manager._active_messages, {})
+
+    async def test_cleanup_during_send_prevents_late_controller_registration(
+        self,
+    ) -> None:
+        manager = TrackControllerManager(MagicMock(), MagicMock())
+        attempt = PlaybackAttempt(1, make_entry("playing"))
+        player = MagicMock(current_attempt=attempt)
+
+        async def send(**_kwargs: object) -> MagicMock:
+            await manager.cleanup()
+            return MagicMock()
+
+        channel = MagicMock(send=AsyncMock(side_effect=send))
+        view = MagicMock()
+        with patch.object(controller_module, "TrackControllerView", return_value=view):
+            await manager.create_for_user(
+                guild_id=1, user_id=2, channel=channel, player=player, attempt=attempt
+            )
+            await manager.create_for_user(
+                guild_id=1, user_id=2, channel=channel, player=player, attempt=attempt
+            )
+        self.assertEqual(manager.controllers, {})
+        view.stop.assert_called_once()
+        view.start_updater.assert_not_called()
+        channel.send.assert_awaited_once()
+
     async def test_player_replaced_during_send_does_not_register_controller(
         self,
     ) -> None:
@@ -94,7 +155,7 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
         connection = MagicMock()
         connection.invalidate_player = AsyncMock()
         manager = TrackControllerManager(MagicMock(), connection)
-        old_view = MagicMock()
+        old_view = MagicMock(spec=TrackControllerView)
         manager.controllers[1] = old_view
         manager._active_messages[1] = (10, 20)
 
@@ -121,7 +182,7 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
                 attempt=attempt,
             )
 
-        old_view.stop.assert_called_once()
+        old_view.close.assert_awaited_once()
         safe_delete_message.assert_awaited_once_with(10, 20)
         self.assertEqual(manager.controllers, {1: new_view})
         self.assertEqual(manager._active_messages, {1: (10, 21)})
@@ -143,7 +204,7 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
         self.bot.get_channel.return_value = self.channel
         self.bot.fetch_channel = AsyncMock(return_value=self.channel)
         self.manager = TrackControllerManager(self.bot, MagicMock())
-        self.old_view = MagicMock(attempt_id=1)
+        self.old_view = MagicMock(spec=TrackControllerView, attempt_id=1)
         self.manager.controllers[1] = self.old_view
         self.manager._active_messages[1] = (10, 20)
 
@@ -289,7 +350,7 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
         new_message = MagicMock(id=21)
         new_message.channel.id = 10
         self.channel.send = AsyncMock(return_value=new_message)
-        new_view = MagicMock(attempt_id=2)
+        new_view = MagicMock(spec=TrackControllerView, attempt_id=2)
 
         with (
             patch.object(asyncio, "sleep", wait_for_retry),
