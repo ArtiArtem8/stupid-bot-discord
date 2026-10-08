@@ -40,6 +40,7 @@ class VoiceLifecycleHandlers:
         self.ui = ui_orchestrator
         self.healer = healer
         self._healing_guilds: set[int] = set()
+        self._healing_tasks: dict[int, asyncio.Task[object]] = {}
         self._recent_voice_transitions: dict[int, float] = {}
         self._voice_transition_validation_tasks: dict[int, asyncio.Task[None]] = {}
         self._unavailable_node_labels: set[str] = set()
@@ -255,6 +256,9 @@ class VoiceLifecycleHandlers:
             return False
 
         self._healing_guilds.add(guild_id)
+        task = asyncio.current_task()
+        if task is not None:
+            self._healing_tasks[guild_id] = task
         try:
             await self.ui.controller.destroy_for_guild(
                 guild_id,
@@ -264,6 +268,14 @@ class VoiceLifecycleHandlers:
             return await self.healer.capture_and_heal(guild_id)
         finally:
             self._healing_guilds.discard(guild_id)
+            self._healing_tasks.pop(guild_id, None)
+
+    async def cancel_heal(self, guild_id: int) -> None:
+        """Drain healing, including its initial UI cleanup, before leaving."""
+        task = self._healing_tasks.get(guild_id)
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     def is_healing(self, guild_id: int) -> bool:
         """Return whether reconstructive recovery owns this guild."""

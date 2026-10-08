@@ -51,6 +51,27 @@ def _as_music_player(player: _FakeMusicPlayer) -> MusicPlayer:
 
 
 class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
+    async def test_recovery_rejects_join_until_cancelled_and_drained(self) -> None:
+        entered = asyncio.Event()
+        finished = asyncio.Event()
+
+        async def recover() -> None:
+            async with self.manager.recovery(123):
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    finished.set()
+
+        task = asyncio.create_task(recover())
+        await entered.wait()
+        result = await self.manager.join(MagicMock(id=123), MagicMock())
+        self.assertEqual(result, (VoiceCheckResult.RECOVERING, None))
+        await self.manager.cancel_recovery(123)
+        self.assertTrue(finished.is_set())
+        self.assertTrue(task.cancelled())
+        self.assertFalse(self.manager.is_recovering(123))
+
     async def test_readiness_can_recover_after_transient_false(self) -> None:
         player = MagicMock()
         with (

@@ -14,6 +14,7 @@ from api.music.errors import (
     compact_external_log_text,
 )
 from api.music.models import (
+    MUSIC_RECOVERING_MESSAGE,
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     ControllerDestroyReason,
     EnqueueOutcome,
@@ -130,6 +131,8 @@ class CoreMusicService:
         `connection.get_player()` is intentionally stricter than `guild.voice_client`,
         so do not use it as the only source of truth for whether the bot is in voice.
         """
+        await self.voice_lifecycle.cancel_heal(guild.id)
+        await self.connection.cancel_recovery(guild.id)
         raw_voice_client = guild.voice_client
 
         await self.ui.controller.destroy_for_guild(
@@ -218,7 +221,9 @@ class CoreMusicService:
         placement: QueuePlacement,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         result = await player.fetch_tracks(query)
-        if not self.connection.is_current_player(player):
+        if self.connection.is_recovering(
+            player.guild.id
+        ) or not self.connection.is_current_player(player):
             return MusicResult(
                 MusicResultStatus.FAILURE,
                 "Плеер изменился во время поиска. Попробуй запустить трек ещё раз.",
@@ -336,6 +341,8 @@ class CoreMusicService:
         expected: Sequence[QueueEntry],
         requester_id: int,
     ) -> MusicResult[tuple[QueueEntry, ...]]:
+        if self.connection.is_recovering(guild_id):
+            return MusicResult(MusicResultStatus.FAILURE, MUSIC_RECOVERING_MESSAGE)
         """Remove exact waiting entries from the active guild player."""
         player = self.connection.get_player(guild_id)
         if player is None:
@@ -396,6 +403,11 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
+        if self.connection.is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="stop")
 
@@ -417,6 +429,11 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[SkipTrackData]:
+        if self.connection.is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="skip")
 
@@ -443,6 +460,11 @@ class CoreMusicService:
         )
 
     async def pause(self, guild_id: int) -> MusicResult[None]:
+        if self.connection.is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="pause")
         try:
@@ -452,6 +474,11 @@ class CoreMusicService:
         return MusicResult(MusicResultStatus.SUCCESS, "Paused")
 
     async def resume(self, guild_id: int) -> MusicResult[None]:
+        if self.connection.is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="resume")
         try:
@@ -466,6 +493,11 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
+        if self.connection.is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="shuffle")
         await player.shuffle_queue()
@@ -480,6 +512,11 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RotateTrackData]:
+        if self.connection.is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         player = self.connection.get_player(guild_id)
         if not player:
             return self._missing_player_result(guild_id, context="rotate")
@@ -504,6 +541,11 @@ class CoreMusicService:
         )
 
     async def set_volume(self, guild_id: int, volume: int) -> MusicResult[int]:
+        if self.connection.is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         async with self.volume_settings.operation(guild_id, desired=volume) as current:
             player = self.connection.get_player(guild_id)
             if player:
@@ -523,6 +565,11 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RepeatModeData]:
+        if self.connection.is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="set_repeat")
 

@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TypeGuard, cast
@@ -99,6 +100,33 @@ class ConnectionManager:
         self._lazy_connect_task: asyncio.Task[None] | None = None
         self._join_locks: dict[int, asyncio.Lock] = {}
         self._voice_transitions: dict[int, tuple[MusicPlayer, object]] = {}
+        self._recovery_tasks: dict[int, asyncio.Task[object]] = {}
+
+    def is_recovering(self, guild_id: int) -> bool:
+        """Return whether recovery owns admission for this guild."""
+        return guild_id in self._recovery_tasks
+
+    @contextlib.asynccontextmanager
+    async def recovery(self, guild_id: int) -> AsyncIterator[None]:
+        """Exclude new joins and drain an accepted join before taking a snapshot."""
+        task = asyncio.current_task()
+        if task is None or guild_id in self._recovery_tasks:
+            raise RuntimeError("Recovery already owns this guild")
+        self._recovery_tasks[guild_id] = task
+        try:
+            async with self._join_locks.setdefault(guild_id, asyncio.Lock()):
+                pass
+            yield
+        finally:
+            if self._recovery_tasks.get(guild_id) is task:
+                self._recovery_tasks.pop(guild_id, None)
+
+    async def cancel_recovery(self, guild_id: int) -> None:
+        """Join cancelled recovery before a deliberate leave can complete."""
+        task = self._recovery_tasks.get(guild_id)
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     def is_transitioning(self, player: MusicPlayer) -> bool:
         """Return whether a move still owns this exact player."""
@@ -532,6 +560,9 @@ class ConnectionManager:
         """Join a voice channel."""
         lock = self._join_locks.setdefault(guild.id, asyncio.Lock())
         async with lock:
+            owner = self._recovery_tasks.get(guild.id)
+            if owner is not None and owner is not asyncio.current_task():
+                return VoiceCheckResult.RECOVERING, None
             return await self._join_unlocked(guild, channel)
 
     async def _connect_new_player(

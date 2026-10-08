@@ -63,6 +63,11 @@ class MusicPlayer(mafic.Player[discord.Client]):
         """Mark this player as no longer safe for reuse."""
         self._is_stale = True
 
+    async def seal_for_recovery(self) -> None:
+        """Finish an accepted transition, then freeze the snapshot source."""
+        async with self._transition_lock:
+            self._is_stale = True
+
     def clear_queue(self) -> None:
         self.queue.clear()
         logger.debug("Cleared queue for guild %s", self.guild.id)
@@ -76,6 +81,10 @@ class MusicPlayer(mafic.Player[discord.Client]):
     async def shuffle_queue(self) -> None:
         """Shuffle after pending transitions finish, including their rollback."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             self.queue.shuffle()
 
     def resolve_current_attempt(self, event_token: str) -> PlaybackAttempt | None:
@@ -211,6 +220,10 @@ class MusicPlayer(mafic.Player[discord.Client]):
     ) -> tuple[PlaybackAttempt | None, PlaybackAttempt | None]:
         """Replace current playback with the next entry, ignoring repeat."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             ended = self._current_attempt
             if ended is None:
                 return None, None
@@ -238,6 +251,10 @@ class MusicPlayer(mafic.Player[discord.Client]):
     ) -> tuple[PlaybackAttempt | None, PlaybackAttempt | None]:
         """Move the current entry to the queue tail and start the next entry."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             ended = self._current_attempt
             if ended is None:
                 return None, None
@@ -261,6 +278,10 @@ class MusicPlayer(mafic.Player[discord.Client]):
     async def stop_and_clear(self) -> None:
         """Clear queued state and stop playback atomically."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             old_queue = self.queue.snapshot()
             old_pending = self._pending_end_attempts.copy()
             ended = self._current_attempt
@@ -279,6 +300,10 @@ class MusicPlayer(mafic.Player[discord.Client]):
     async def start_queued_if_idle(self) -> PlaybackAttempt | None:
         """Start one queued entry if no attempt is active."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             return await self._start_queued_if_idle_unlocked()
 
     async def _start_queued_if_idle_unlocked(self) -> PlaybackAttempt | None:

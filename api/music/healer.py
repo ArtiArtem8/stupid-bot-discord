@@ -434,7 +434,7 @@ class SessionHealer(HealerProtocol):
     @override
     async def capture_and_heal(self, guild_id: int) -> bool:
         """Attempt to recover one guild's interrupted session."""
-        async with self._locks[guild_id]:
+        async with self._locks[guild_id], self.connection.recovery(guild_id):
             logger.info("Attempting to heal session for guild %s", guild_id)
 
             player = self._get_recoverable_player(guild_id)
@@ -443,6 +443,7 @@ class SessionHealer(HealerProtocol):
                 return False
 
             try:
+                await player.seal_for_recovery()
                 snapshot = await self._create_snapshot(player)
                 await self._hard_disconnect(player)
 
@@ -545,6 +546,8 @@ class SessionHealer(HealerProtocol):
         return channel
 
     async def _join_restore_voice(self, target: RestoreTarget, guild_id: int) -> bool:
+        if isinstance(target.guild.voice_client, MusicPlayer):
+            return False
         result, _old_channel = await self.connection.join(target.guild, target.channel)
         if result.status is not MusicResultStatus.SUCCESS:
             logger.warning(

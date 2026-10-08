@@ -32,6 +32,8 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.bot = MagicMock()
         self.connection = MagicMock()
+        self.connection.is_recovering.return_value = False
+        self.connection.cancel_recovery = AsyncMock()
         self.connection.ensure_available = AsyncMock(return_value=False)
         self.connection.start_lazy_connect = MagicMock()
         self.connection.cleanup = AsyncMock()
@@ -49,6 +51,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.volume_repo.save = AsyncMock()
         self.playback_events = MagicMock()
         self.voice_lifecycle = MagicMock()
+        self.voice_lifecycle.cancel_heal = AsyncMock()
         self.ui = MagicMock()
         self.service = CoreMusicService(
             self.bot,
@@ -72,6 +75,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
     async def test_late_load_does_not_enqueue_into_detached_player(self) -> None:
         player = MagicMock(spec=MusicPlayer)
+        player.guild = MagicMock(id=123)
         player.fetch_tracks = AsyncMock(return_value=[make_track("late")])
         player.enqueue_tracks = AsyncMock()
         self.connection.is_current_player.return_value = False
