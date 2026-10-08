@@ -18,6 +18,7 @@ from api.music.service.connection_manager import ConnectionManager
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from api.music.session_events import dispatch_music_session_end
+from utils.asyncio_utils import cancel_and_wait
 
 logger = logging.getLogger(__name__)
 
@@ -321,9 +322,8 @@ class VoiceLifecycleHandlers:
     async def cancel_heal(self, guild_id: int) -> None:
         """Drain healing, including its initial UI cleanup, before leaving."""
         task = self._healing_tasks.get(guild_id)
-        if task is not None and task is not asyncio.current_task():
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        if task is not None:
+            await cancel_and_wait(task)
 
     @contextlib.asynccontextmanager
     async def leaving(self, guild_id: int) -> AsyncGenerator[None]:

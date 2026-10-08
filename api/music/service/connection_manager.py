@@ -24,6 +24,7 @@ from api.music.models import (
     VoiceJoinResult,
 )
 from api.music.player import MusicPlayer, music_player_factory
+from utils.asyncio_utils import cancel_and_wait
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +127,8 @@ class ConnectionManager:
     async def cancel_recovery(self, guild_id: int) -> None:
         """Join cancelled recovery before a deliberate leave can complete."""
         task = self._recovery_tasks.get(guild_id)
-        if task is not None and task is not asyncio.current_task():
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        if task is not None:
+            await cancel_and_wait(task)
 
     def is_transitioning(self, player: MusicPlayer) -> bool:
         """Return whether a move still owns this exact player."""
