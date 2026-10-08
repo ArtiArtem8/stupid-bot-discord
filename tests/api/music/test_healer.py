@@ -72,6 +72,21 @@ def _runtime_player(current: PlaybackAttempt) -> MusicPlayer:
 
 
 class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
+    async def test_sealed_stuck_snapshot_keeps_last_reported_position(self) -> None:
+        healer, _, _ = self._make_warm_restore_healer()
+        attempt = PlaybackAttempt(1, make_entry("stalled"))
+        player = _runtime_player(attempt)
+        player.channel = MagicMock(spec=VoiceChannel, id=2)
+        player._connected = True
+        player._paused = False
+        player._position = 1000
+        player._last_update = 0
+        player.mark_stuck(attempt)
+        with patch("mafic.player.time", return_value=30.0):
+            snapshot = await healer._seal_and_snapshot(player)
+        self.assertTrue(player.is_stale)
+        self.assertEqual(snapshot.position, 1000)
+
     async def test_failed_snapshot_prerequisite_does_not_seal_player(self) -> None:
         healer, _, _ = self._make_warm_restore_healer()
         player = _runtime_player(PlaybackAttempt(1, make_entry("playing")))

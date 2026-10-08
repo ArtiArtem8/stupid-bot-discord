@@ -41,7 +41,11 @@ class MusicPlayer(mafic.Player[discord.Client]):
     @override
     def position(self) -> int:
         """Use reported milliseconds while stalled; otherwise use Mafic's estimate."""
-        if self.stuck_attempt is not None:
+        # Recovery seals the player before reading its position for the snapshot.
+        if (
+            self._stuck_attempt is not None
+            and self._stuck_attempt is self._current_attempt
+        ):
             return self._position
         return super().position
 
