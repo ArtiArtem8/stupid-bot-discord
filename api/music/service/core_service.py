@@ -81,9 +81,12 @@ class CoreMusicService:
         self.voice_lifecycle = voice_lifecycle
         self.ui = ui_orchestrator
         self._initialized = False
+        self._closing = False
 
     async def initialize(self) -> None:
         """Initialize the service and its components."""
+        if self._closing:
+            return
         if self._initialized:
             logger.debug("CoreMusicService already initialized.")
             return
@@ -697,8 +700,10 @@ class CoreMusicService:
 
     async def cleanup(self) -> None:
         """Stop recovery producers before disconnecting and disposing voice I/O."""
+        self._closing = True
         self.playback_events.cleanup()
         await self.voice_lifecycle.cleanup()
+        await self.connection.stop_connecting()
         try:
             for guild in self.bot.guilds:
                 if guild.voice_client:

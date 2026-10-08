@@ -101,6 +101,8 @@ class ConnectionManager:
         self._join_locks: dict[int, asyncio.Lock] = {}
         self._voice_transitions: dict[int, tuple[MusicPlayer, object]] = {}
         self._recovery_tasks: dict[int, asyncio.Task[object]] = {}
+        self._closing = False
+        self._connection_drain_task: asyncio.Task[None] | None = None
 
     def is_recovering(self, guild_id: int) -> bool:
         """Return whether recovery owns admission for this guild."""
@@ -148,12 +150,10 @@ class ConnectionManager:
         return False
 
     async def initialize(self) -> None:
-        """Initialize Lavalink node connection."""
-        if self.has_ready_node():
-            self._initialized = True
-            return
-
+        """Initialize Lavalink, raising NodeNotConnectedError after shutdown starts."""
         async with self._init_lock:
+            if self._closing:
+                raise NodeNotConnectedError(MUSIC_SERVICE_UNAVAILABLE_MESSAGE)
             if self.has_ready_node():
                 self._initialized = True
                 return
@@ -217,8 +217,10 @@ class ConnectionManager:
         return self.pool.label_to_node.get(node.label) is node
 
     def is_known_unavailable(self) -> bool:
-        """Return whether the last lazy connection attempt failed recently."""
-        return bool(self._last_connect_error) and not self.has_ready_node()
+        """Return whether shutdown or a recent connection failure blocks music."""
+        return self._closing or (
+            bool(self._last_connect_error) and not self.has_ready_node()
+        )
 
     def is_current_player(self, player: object) -> TypeGuard[MusicPlayer]:
         """Return whether this is the current non-stale guild voice client."""
@@ -417,6 +419,8 @@ class ConnectionManager:
         return await self._check_availability() is _AvailabilityResult.READY
 
     async def _check_availability(self) -> _AvailabilityResult:
+        if self._closing:
+            return _AvailabilityResult.TERMINAL_FAILURE
         if self.has_ready_node():
             return _AvailabilityResult.READY
 
@@ -453,7 +457,7 @@ class ConnectionManager:
 
     def start_lazy_connect(self) -> None:
         """Start at most one bootstrap task, ending when Lavalink becomes ready."""
-        if self.has_ready_node():
+        if self._closing or self.has_ready_node():
             return
 
         if self._lazy_connect_task and not self._lazy_connect_task.done():
@@ -481,8 +485,18 @@ class ConnectionManager:
         except Exception:
             logger.exception("Unexpected lazy Lavalink connection failure")
 
-    async def cleanup(self) -> None:
-        """Cancel pending connection work and close Mafic resources."""
+    async def stop_connecting(self) -> None:
+        """Reject new connects and drain accepted joins before disconnecting guilds.
+
+        Accepted commands finish with an unavailable result if shutdown started
+        during I/O. Caller cancellation leaves the shared drain running.
+        """
+        if self._connection_drain_task is None:
+            self._closing = True
+            self._connection_drain_task = asyncio.create_task(self._drain_connections())
+        await asyncio.shield(self._connection_drain_task)
+
+    async def _drain_connections(self) -> None:
         task = self._lazy_connect_task
         if task and not task.done():
             task.cancel()
@@ -490,6 +504,17 @@ class ConnectionManager:
                 await task
         self._lazy_connect_task = None
 
+        # Closing admission makes this snapshot complete. Waiting callers recheck
+        # admission under the same lock before they can touch voice resources.
+        for lock in tuple(self._join_locks.values()):
+            async with lock:
+                pass
+        async with self._init_lock:
+            pass
+
+    async def cleanup(self) -> None:
+        """Drain connection work before closing Mafic resources."""
+        await self.stop_connecting()
         await self.pool.close()
         self._initialized = False
 
@@ -560,12 +585,19 @@ class ConnectionManager:
         self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
     ) -> VoiceJoinResult:
         """Join a voice channel."""
+        if self._closing:
+            return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         lock = self._join_locks.setdefault(guild.id, asyncio.Lock())
         async with lock:
+            if self._closing:
+                return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
             owner = self._recovery_tasks.get(guild.id)
             if owner is not None and owner is not asyncio.current_task():
                 return VoiceCheckResult.RECOVERING, None
-            return await self._join_unlocked(guild, channel)
+            result = await self._join_unlocked(guild, channel)
+            if self._closing:
+                return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
+            return result
 
     async def _connect_new_player(
         self, channel: discord.VoiceChannel | discord.StageChannel

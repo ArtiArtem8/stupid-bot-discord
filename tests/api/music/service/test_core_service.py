@@ -22,6 +22,7 @@ from api.music.models import (
     VoiceCheckResult,
 )
 from api.music.player import MusicPlayer
+from api.music.service.connection_manager import ConnectionManager
 from api.music.service.core_service import CoreMusicService
 from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 from api.music.volume import VolumeSettings
@@ -29,6 +30,61 @@ from tests.api.music.helpers import make_entry, make_playlist, make_track
 
 
 class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
+    async def test_cleanup_disconnects_player_from_join_completed_during_shutdown(
+        self,
+    ) -> None:
+        entered, release = asyncio.Event(), asyncio.Event()
+        closing_entered = asyncio.Event()
+        pool = MagicMock(close=AsyncMock())
+        with patch.object(mafic, "NodePool", return_value=pool):
+            connection = ConnectionManager(self.bot)
+        self.service.connection = connection
+        guild = MagicMock(id=123, voice_client=None)
+        self.bot.guilds = [guild]
+        channel = MagicMock()
+        player = MagicMock(spec=MusicPlayer)
+
+        async def connect(**_kwargs: object) -> MagicMock:
+            entered.set()
+            await release.wait()
+            guild.voice_client = player
+            return player
+
+        async def disconnect(*_args: object, **_kwargs: object) -> bool:
+            pool.close.assert_not_awaited()
+            guild.voice_client = None
+            return True
+
+        async def stop_connecting() -> None:
+            closing_entered.set()
+            await original_stop()
+
+        original_stop = connection.stop_connecting
+        channel.connect = AsyncMock(side_effect=connect)
+        with (
+            patch.object(connection, "ensure_available", return_value=True),
+            patch.object(connection, "is_player_usable", return_value=True),
+            patch.object(connection, "disconnect", side_effect=disconnect),
+            patch.object(connection, "stop_connecting", side_effect=stop_connecting),
+        ):
+            joining = asyncio.create_task(self.service.join(guild, channel))
+            await entered.wait()
+            closing = asyncio.create_task(self.service.cleanup())
+            await closing_entered.wait()
+            self.assertFalse(closing.done())
+            pool.close.assert_not_awaited()
+            release.set()
+            self.assertEqual(
+                await joining, (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None)
+            )
+            await closing
+        self.assertIsNone(guild.voice_client)
+        pool.close.assert_awaited_once()
+        self.state.end_session.assert_called_once_with(123)
+        self.playback_events.setup.reset_mock()
+        await self.service.initialize()
+        self.playback_events.setup.assert_not_called()
+
     async def test_leave_rejects_new_healing_through_ui_cleanup_and_disconnect(
         self,
     ) -> None:
@@ -120,6 +176,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.connection.ensure_available = AsyncMock(return_value=False)
         self.connection.start_lazy_connect = MagicMock()
         self.connection.cleanup = AsyncMock()
+        self.connection.stop_connecting = AsyncMock()
         self.connection.get_player = MagicMock(return_value=None)
         self.connection.is_known_unavailable = MagicMock(return_value=True)
         self.connection.is_player_usable = MagicMock(return_value=False)
