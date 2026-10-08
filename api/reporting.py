@@ -11,6 +11,7 @@ from discord.ui import Modal, TextInput
 
 import config
 from api.report_models import ReportDataDict
+from framework.feedback_ui import FeedbackType, FeedbackUI
 from repositories.report_repository import ReportRepository
 from utils.embeds import SafeEmbed
 
@@ -169,6 +170,23 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
             await _remove_report_button(interaction.message)
         finally:
             await _notify_report(interaction, report, report_channel_id)
+
+    @override
+    async def on_error(self, interaction: Interaction, error: Exception) -> None:
+        """Resolve modal failures outside application-command error routing."""
+        logger.error(
+            "Report modal failed: interaction=%s user=%s",
+            interaction.id,
+            interaction.user.id,
+            exc_info=error,
+        )
+        await FeedbackUI.send(
+            interaction,
+            feedback_type=FeedbackType.ERROR,
+            description="Не удалось завершить обработку отчёта. Детали записаны в лог.",
+            ephemeral=True,
+            disable_report_btn=True,
+        )
 
 
 async def handle_report_button(
