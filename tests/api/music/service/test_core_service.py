@@ -28,6 +28,34 @@ from tests.api.music.helpers import make_entry, make_playlist, make_track
 
 
 class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
+    async def test_cleanup_drains_recovery_before_disconnecting(self) -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def drain() -> None:
+            entered.set()
+            await release.wait()
+
+        self.voice_lifecycle.cleanup = AsyncMock(side_effect=drain)
+        self.bot.guilds = [MagicMock()]
+        self.connection.disconnect = AsyncMock()
+        cleanup = asyncio.create_task(self.service.cleanup())
+        await entered.wait()
+        self.connection.disconnect.assert_not_awaited()
+        self.connection.cleanup.assert_not_awaited()
+        release.set()
+        await cleanup
+        self.connection.disconnect.assert_awaited_once()
+        self.connection.cleanup.assert_awaited_once()
+
+    async def test_cleanup_disposes_connection_when_disconnect_fails(self) -> None:
+        self.voice_lifecycle.cleanup = AsyncMock()
+        self.bot.guilds = [MagicMock()]
+        self.connection.disconnect = AsyncMock(side_effect=RuntimeError("disconnect"))
+        with self.assertRaisesRegex(RuntimeError, "disconnect"):
+            await self.service.cleanup()
+        self.connection.cleanup.assert_awaited_once()
+
     async def test_healing_blocks_mutation_before_recovery_connection_is_created(
         self,
     ) -> None:

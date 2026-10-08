@@ -62,6 +62,7 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         auto_leave_monitor_mock = MagicMock()
         auto_leave_monitor_mock.start = self.auto_leave_start
         auto_leave_monitor_mock.is_running = self.auto_leave_is_running
+        auto_leave_monitor_mock.get_task.return_value = None
         self.cog.auto_leave_monitor = auto_leave_monitor_mock
 
     async def test_on_ready_does_not_raise_when_service_init_is_soft(self) -> None:
@@ -96,6 +97,37 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
 
         cleanup.assert_awaited_once_with()
         components.controllers.cleanup.assert_awaited_once_with()
+
+    async def test_cog_unload_drains_monitor_before_disposing_service(self) -> None:
+        entered = asyncio.Event()
+        cancelling = asyncio.Event()
+        release = asyncio.Event()
+
+        async def monitor() -> None:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelling.set()
+                await release.wait()
+
+        monitor_task = asyncio.create_task(monitor())
+        await entered.wait()
+        loop = MagicMock()
+        loop.get_task.return_value = monitor_task
+        loop.cancel.side_effect = monitor_task.cancel
+        self.cog.auto_leave_monitor = loop
+        components = MagicMock()
+        components.controllers.cleanup = AsyncMock()
+        self.cog.components = components
+        with patch.object(self.cog.service, "cleanup", new=AsyncMock()) as cleanup:
+            unload = asyncio.create_task(self.cog.cog_unload())
+            await cancelling.wait()
+            cleanup.assert_not_awaited()
+            release.set()
+            await unload
+        self.assertTrue(monitor_task.cancelled())
+        cleanup.assert_awaited_once()
 
     async def test_cog_unload_cleans_controller_tasks_when_service_cleanup_fails(
         self,

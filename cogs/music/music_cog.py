@@ -1,5 +1,6 @@
 """Music Cog Controller."""
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, override
 
@@ -119,8 +120,10 @@ class MusicCog(BaseCog):
 
     @override
     async def cog_unload(self) -> None:
-        if self.auto_leave_monitor.is_running():
+        monitor = self.auto_leave_monitor.get_task()
+        if monitor is not None:
             self.auto_leave_monitor.cancel()
+            await asyncio.gather(monitor, return_exceptions=True)
         try:
             await self.service.cleanup()
         finally:

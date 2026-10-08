@@ -10,6 +10,92 @@ from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 
 
 class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
+    async def test_cleanup_drains_healing_despite_cancelled_waiter(self) -> None:
+        entered = asyncio.Event()
+        cancelling = asyncio.Event()
+        release = asyncio.Event()
+
+        async def heal(_guild_id: int) -> bool:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelling.set()
+                await release.wait()
+            return True
+
+        self.healer.capture_and_heal = AsyncMock(side_effect=heal)
+        healing = asyncio.create_task(self.handlers.heal(123))
+        await entered.wait()
+        cleanup = asyncio.create_task(self.handlers.cleanup())
+        await cancelling.wait()
+        self.assertFalse(cleanup.done())
+        self.assertFalse(await self.handlers.heal(456))
+        cleanup.cancel()
+        await asyncio.gather(cleanup, return_exceptions=True)
+        self.assertFalse(healing.done())
+        release.set()
+        await self.handlers.cleanup()
+        self.assertTrue(healing.cancelled())
+        self.assertFalse(self.handlers.is_healing(123))
+        self.healer.capture_and_heal.assert_awaited_once_with(123)
+
+    async def test_cleanup_waits_for_superseded_validator(self) -> None:
+        entered = asyncio.Event()
+        cancelling = asyncio.Event()
+        replacement_entered = asyncio.Event()
+        replacement_cancelled = asyncio.Event()
+        release = asyncio.Event()
+
+        async def validate(_guild_id: int, _player: object) -> None:
+            if not entered.is_set():
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancelling.set()
+                    await release.wait()
+            else:
+                replacement_entered.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    replacement_cancelled.set()
+
+        with patch.object(
+            self.handlers, "_validate_voice_transition_recovery", side_effect=validate
+        ):
+            self.handlers._schedule_voice_transition_validation(
+                123, self._make_player()
+            )
+            await entered.wait()
+            self.handlers._schedule_voice_transition_validation(
+                123, self._make_player()
+            )
+            await cancelling.wait()
+            await replacement_entered.wait()
+            cleanup = asyncio.create_task(self.handlers.cleanup())
+            await replacement_cancelled.wait()
+            self.assertFalse(cleanup.done())
+            release.set()
+            await cleanup
+        self.connection.invalidate_player.assert_not_awaited()
+
+    async def test_cleanup_rejects_late_events_and_removes_listeners_once(self) -> None:
+        self.handlers.setup()
+        await self.handlers.cleanup()
+        await self.handlers.cleanup()
+        self.handlers.setup()
+        await self.handlers._on_websocket_closed(
+            MagicMock(player=self._make_player(), code=4006)
+        )
+        self.handlers._schedule_voice_transition_validation(123, self._make_player())
+        self.assertFalse(self.handlers._voice_transition_validation_tasks)
+        self.assertEqual(self.bot.add_listener.call_count, 4)
+        self.assertEqual(self.bot.remove_listener.call_count, 4)
+        self.healer.capture_and_heal.assert_not_called()
+        self.ui.controller.destroy_for_guild.assert_not_awaited()
+
     async def test_new_move_supersedes_pending_failed_validation(self) -> None:
         player = self._make_player()
         self.handlers._recent_voice_transitions[123] = 1.0

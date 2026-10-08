@@ -696,12 +696,14 @@ class CoreMusicService:
         dispatch_music_session_end(self.bot, guild_id, session)
 
     async def cleanup(self) -> None:
-        """Cleanup on shutdown."""
-        for guild in self.bot.guilds:
-            if guild.voice_client:
-                await self.connection.disconnect(guild, force=True)
+        """Stop recovery producers before disconnecting and disposing voice I/O."""
         self.playback_events.cleanup()
-        self.voice_lifecycle.cleanup()
-        await self.connection.cleanup()
-        self._initialized = False
+        await self.voice_lifecycle.cleanup()
+        try:
+            for guild in self.bot.guilds:
+                if guild.voice_client:
+                    await self.connection.disconnect(guild, force=True)
+        finally:
+            await self.connection.cleanup()
+            self._initialized = False
         logger.info("CoreMusicService cleaned up.")

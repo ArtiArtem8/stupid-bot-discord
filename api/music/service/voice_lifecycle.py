@@ -39,15 +39,20 @@ class VoiceLifecycleHandlers:
         self.state = state_manager
         self.ui = ui_orchestrator
         self.healer = healer
-        self._healing_guilds: set[int] = set()
         self._healing_tasks: dict[int, asyncio.Task[object]] = {}
         self._recent_voice_transitions: dict[int, float] = {}
         self._voice_transition_validation_tasks: dict[int, asyncio.Task[None]] = {}
+        # Superseded validators still belong to us until cancellation completes.
+        self._active_validators: set[asyncio.Task[None]] = set()
         self._unavailable_node_labels: set[str] = set()
         self._setup_done = False
+        self._closing = False
+        self._cleanup_task: asyncio.Task[None] | None = None
 
     def setup(self) -> None:
         """Register event listeners."""
+        if self._closing:
+            return
         if self._setup_done:
             logger.warning("VoiceLifecycleHandlers setup called multiple times.")
             return
@@ -58,28 +63,50 @@ class VoiceLifecycleHandlers:
         self.bot.add_listener(self._on_websocket_closed, "on_websocket_closed")
         self._setup_done = True
 
-    def cleanup(self) -> None:
-        """Remove event listeners."""
-        if not self._setup_done:
-            return
+    async def cleanup(self) -> None:
+        """Close admission and drain recovery before voice resources are disposed.
 
-        self.bot.remove_listener(self.on_node_ready, "on_node_ready")
-        self.bot.remove_listener(self.on_node_unavailable, "on_node_unavailable")
-        self.bot.remove_listener(self._on_voice_state_update, "on_voice_state_update")
-        self.bot.remove_listener(self._on_websocket_closed, "on_websocket_closed")
-        for task in self._voice_transition_validation_tasks.values():
-            task.cancel()
+        Repeated callers share one drain; cancelling a caller does not interrupt it.
+        """
+        if self._cleanup_task is None:
+            self._closing = True
+            if self._setup_done:
+                self.bot.remove_listener(self.on_node_ready, "on_node_ready")
+                self.bot.remove_listener(
+                    self.on_node_unavailable, "on_node_unavailable"
+                )
+                self.bot.remove_listener(
+                    self._on_voice_state_update, "on_voice_state_update"
+                )
+                self.bot.remove_listener(
+                    self._on_websocket_closed, "on_websocket_closed"
+                )
+                self._setup_done = False
+            self._cleanup_task = asyncio.create_task(self._drain_recovery())
+        await asyncio.shield(self._cleanup_task)
+
+    async def _drain_recovery(self) -> None:
+        tasks = {*self._healing_tasks.values(), *self._active_validators}
+        for task in tasks:
+            if not task.cancelling():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._healing_tasks.clear()
+        self._active_validators.clear()
         self._voice_transition_validation_tasks.clear()
         self._recent_voice_transitions.clear()
         self._unavailable_node_labels.clear()
-        self._setup_done = False
-        logger.info("VoiceLifecycleHandlers listeners removed.")
+        logger.info("Voice lifecycle listeners removed and recovery tasks drained.")
 
     async def on_node_ready(self, node: mafic.Node[commands.Bot]) -> None:
+        if self._closing:
+            return
         self._unavailable_node_labels.discard(node.label)
         logger.info("Lavalink node '%s' is ready", node.label)
 
     async def on_node_unavailable(self, node: mafic.Node[commands.Bot]) -> None:
+        if self._closing:
+            return
         players: list[MusicPlayer] = []
         for player in node.players:
             if isinstance(player, MusicPlayer):
@@ -171,8 +198,10 @@ class VoiceLifecycleHandlers:
         event_name: str,
     ) -> bool:
         guild_id = player.guild.id
-        if guild_id in self._healing_guilds or not self.connection.is_current_player(
-            player
+        if (
+            self._closing
+            or self.is_healing(guild_id)
+            or not self.connection.is_current_player(player)
         ):
             logger.debug(
                 "Ignoring %s from non-current or healing player for guild %s",
@@ -194,6 +223,8 @@ class VoiceLifecycleHandlers:
     def _schedule_voice_transition_validation(
         self, guild_id: int, event_player: MusicPlayer
     ) -> None:
+        if self._closing:
+            return
         previous = self._voice_transition_validation_tasks.get(guild_id)
         if previous and not previous.done():
             previous.cancel()
@@ -202,6 +233,8 @@ class VoiceLifecycleHandlers:
             self._validate_voice_transition_recovery(guild_id, event_player)
         )
         self._voice_transition_validation_tasks[guild_id] = task
+        self._active_validators.add(task)
+        task.add_done_callback(self._active_validators.discard)
 
     async def _validate_voice_transition_recovery(
         self, guild_id: int, event_player: MusicPlayer
@@ -261,13 +294,13 @@ class VoiceLifecycleHandlers:
                     self._recent_voice_transitions.pop(guild_id, None)
 
     async def heal(self, guild_id: int) -> bool:
-        if guild_id in self._healing_guilds:
+        if self._closing or self.is_healing(guild_id):
             return False
 
-        self._healing_guilds.add(guild_id)
         task = asyncio.current_task()
-        if task is not None:
-            self._healing_tasks[guild_id] = task
+        if task is None:
+            raise RuntimeError("Healing requires an asyncio task")
+        self._healing_tasks[guild_id] = task
         try:
             await self.ui.controller.destroy_for_guild(
                 guild_id,
@@ -276,7 +309,6 @@ class VoiceLifecycleHandlers:
             self.state.cancel_timer(guild_id)
             return await self.healer.capture_and_heal(guild_id)
         finally:
-            self._healing_guilds.discard(guild_id)
             self._healing_tasks.pop(guild_id, None)
 
     async def cancel_heal(self, guild_id: int) -> None:
@@ -288,7 +320,7 @@ class VoiceLifecycleHandlers:
 
     def is_healing(self, guild_id: int) -> bool:
         """Return whether reconstructive recovery owns this guild."""
-        return guild_id in self._healing_guilds
+        return guild_id in self._healing_tasks
 
     async def _handle_bot_voice_state_update(
         self,
@@ -341,7 +373,7 @@ class VoiceLifecycleHandlers:
             guild_id, ControllerDestroyReason.VOICE_DISCONNECT
         )
         self.state.cancel_timer(guild_id)
-        if guild_id in self._healing_guilds:
+        if self.is_healing(guild_id):
             return
 
         session = self.state.end_session(guild_id)
@@ -363,7 +395,7 @@ class VoiceLifecycleHandlers:
         before: discord.VoiceState,
         after: discord.VoiceState,
     ) -> None:
-        if not self.bot.user:
+        if self._closing or not self.bot.user:
             return
 
         if await self._handle_bot_voice_state_update(member, before, after):
