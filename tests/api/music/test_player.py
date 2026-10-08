@@ -16,6 +16,7 @@ from api.music.models import (
     PlaybackAttempt,
     QueueEntry,
     RepeatMode,
+    TrackEndOutcome,
     TrackRequester,
 )
 from api.music.player import MusicPlayer
@@ -67,6 +68,48 @@ def _require_requester(entry: QueueEntry) -> TrackRequester:
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
+    async def test_track_end_waiting_behind_recovery_keeps_sealed_state(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        attempt = _require_attempt(player.current_attempt)
+        queued = make_entry("queued", entry_id=2)
+        player.queue.append(queued)
+        sealing = asyncio.Event()
+        ending = asyncio.Event()
+
+        async def seal() -> None:
+            sealing.set()
+            await player.seal_for_recovery()
+
+        async def end() -> TrackEndOutcome:
+            ending.set()
+            return await player.handle_track_end(
+                attempt.event_token, mafic.EndReason.FINISHED
+            )
+
+        with patch.object(player, "play", new=AsyncMock()) as play:
+            async with player._transition_lock:
+                seal_task = asyncio.create_task(seal())
+                await sealing.wait()
+                end_task = asyncio.create_task(end())
+                await ending.wait()
+            await seal_task
+            outcome = await end_task
+
+        self.assertTrue(outcome.is_stale)
+        self.assertIsNone(outcome.ended_attempt)
+        self.assertIs(player.current_attempt, attempt)
+        self.assertEqual(player.queue_snapshot(), (queued,))
+        play.assert_not_awaited()
+
+    async def test_sealed_player_rejects_exception_correlation(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        token = _current_token(player)
+        await player.seal_for_recovery()
+
+        self.assertIsNone(await player.resolve_exception_attempt(token))
+        self.assertIsNone(await player.claim_track_exception(token))
+        self.assertEqual(player._exception_attempt_ids, set())
+
     def test_stuck_position_does_not_advance_with_wall_time(self) -> None:
         player = _make_player(current=make_entry("current", length=60_000))
         player._node_player_ready_event = asyncio.Event()

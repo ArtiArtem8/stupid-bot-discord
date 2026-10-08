@@ -1,8 +1,9 @@
 """Tests for token-correlated playback event orchestration."""
 
+import asyncio
 import unittest
 from typing import override
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import mafic
@@ -17,6 +18,7 @@ from api.music.models import (
     TrackRequester,
 )
 from api.music.service.playback_events import PlaybackEventHandlers
+from cogs.music.views.controller import TrackControllerManager, TrackControllerView
 from tests.api.music.helpers import make_track
 
 
@@ -39,6 +41,56 @@ def _event_track(identifier: str, token: str) -> mafic.Track:
 
 
 class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
+    async def test_old_player_events_preserve_replacement_controller(self) -> None:
+        attempt = _attempt(1, "old", "old-token")
+        correlated = asyncio.Event()
+
+        async def claim(_token: str) -> PlaybackAttempt:
+            correlated.set()
+            return attempt
+
+        async def end(_token: str, _reason: mafic.EndReason) -> TrackEndOutcome:
+            correlated.set()
+            return TrackEndOutcome(attempt, None, False)
+
+        for event_kind in ("exception", "end"):
+            with self.subTest(event_kind=event_kind):
+                correlated.clear()
+                player = self._player()
+                player.current_attempt = attempt
+                manager = TrackControllerManager(self.bot, self.connection)
+                self.ui.controller = manager
+                player.claim_track_exception.side_effect = claim
+                player.handle_track_end.side_effect = end
+                event = MagicMock(
+                    player=player,
+                    track=_event_track("old", "old-token"),
+                    reason=mafic.EndReason.FINISHED,
+                    exception={"message": "failed", "severity": "common"},
+                )
+                replacement = MagicMock(
+                    spec=TrackControllerView, player=self._player(), attempt_id=1
+                )
+
+                with patch.object(manager, "_safe_delete_message", new=AsyncMock()):
+                    async with manager._locks[123]:
+                        if event_kind == "exception":
+                            task = asyncio.create_task(
+                                self.handlers._on_track_exception(event)
+                            )
+                        else:
+                            task = asyncio.create_task(
+                                self.handlers._on_track_end(event)
+                            )
+                        await correlated.wait()
+                        manager.controllers[123] = replacement
+                        manager._active_messages[123] = (789, 999)
+                    await task
+
+                self.assertIs(manager.controllers.get(123), replacement)
+                self.assertEqual(manager._active_messages.get(123), (789, 999))
+                replacement.close.assert_not_awaited()
+
     async def test_player_detached_during_start_resolution_does_not_revive_session(
         self,
     ) -> None:
@@ -213,6 +265,7 @@ class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
             123,
             ControllerDestroyReason.TRACK_EXCEPTION,
             expected_attempt_id=1,
+            expected_player=player,
         )
         self.assertEqual(self.ui.controller.destroy_for_guild.await_count, 1)
 
@@ -270,6 +323,7 @@ class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
             123,
             ControllerDestroyReason.TRACK_EXCEPTION,
             expected_attempt_id=attempt.attempt_id,
+            expected_player=player,
         )
 
     async def test_exception_then_load_failed_end_notifies_once(self) -> None:
@@ -420,6 +474,7 @@ class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
             123,
             ControllerDestroyReason.TRACK_EXCEPTION,
             expected_attempt_id=old.attempt_id,
+            expected_player=player,
         )
 
     async def test_cleanup_clears_failure_deduplication_state(self) -> None:

@@ -24,12 +24,74 @@ from api.music.models import (
 from api.music.player import MusicPlayer
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.core_service import CoreMusicService
+from api.music.service.state_manager import StateManager
 from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 from api.music.volume import VolumeSettings
 from tests.api.music.helpers import make_entry, make_playlist, make_track
 
 
 class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
+    async def test_cleanup_drains_accepted_node_transfer_before_closing_pool(
+        self,
+    ) -> None:
+        entered = asyncio.Event()
+        cancelling = asyncio.Event()
+        release = asyncio.Event()
+        pool_closed = asyncio.Event()
+        player = MagicMock(spec=MusicPlayer)
+        player.guild = MagicMock(id=123, voice_client=player)
+        unavailable = MagicMock(label="unavailable", available=False, players=[player])
+        target = MagicMock(label="ready", available=True)
+        pool = MagicMock(nodes=[unavailable, target], close=AsyncMock())
+        pool.close.side_effect = pool_closed.set
+        with patch.object(mafic, "NodePool", return_value=pool):
+            connection = ConnectionManager(self.bot)
+        handlers = VoiceLifecycleHandlers(
+            self.bot, connection, self.state, self.ui, MagicMock()
+        )
+        self.service.connection = connection
+        self.service.voice_lifecycle = handlers
+        self.bot.guilds = []
+
+        async def transfer(_node: object) -> None:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelling.set()
+                await release.wait()
+
+        player.transfer_to = AsyncMock(side_effect=transfer)
+        listener = asyncio.create_task(handlers.on_node_unavailable(unavailable))
+        await entered.wait()
+        cleanup = asyncio.create_task(self.service.cleanup())
+        cancellation_wait = asyncio.create_task(cancelling.wait())
+        disposal_wait = asyncio.create_task(pool_closed.wait())
+        try:
+            await asyncio.wait(
+                (cancellation_wait, disposal_wait),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            self.assertTrue(cancelling.is_set())
+            pool.close.assert_not_awaited()
+            self.assertFalse(cleanup.done())
+            release.set()
+            await cleanup
+            self.assertTrue(listener.cancelled())
+            pool.close.assert_awaited_once()
+        finally:
+            release.set()
+            for task in (listener, cleanup, cancellation_wait, disposal_wait):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(
+                listener,
+                cleanup,
+                cancellation_wait,
+                disposal_wait,
+                return_exceptions=True,
+            )
+
     async def test_cleanup_disconnects_player_from_join_completed_during_shutdown(
         self,
     ) -> None:
@@ -844,8 +906,6 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertIs(raised.exception, error)
 
     async def test_cancelled_expiry_is_not_disconnected(self) -> None:
-        from api.music.service.state_manager import StateManager
-
         self.service.state = StateManager()
         self.service.state.start_timer(1, "empty")
         timer = self.service.state.empty_channel_timers[1]
@@ -856,6 +916,45 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         await self.service._leave_expired(1, timer, player)
         self.connection.disconnect.assert_not_awaited()
         self.assertIsNot(self.service.state.empty_channel_timers[1], timer)
+
+    async def test_auto_leave_failure_preserves_session_and_continues_other_guilds(
+        self,
+    ) -> None:
+        self.service.state = StateManager()
+        players = {guild_id: MagicMock(spec=MusicPlayer) for guild_id in (1, 2)}
+        for guild_id, player in players.items():
+            player.guild = MagicMock(id=guild_id, voice_client=player)
+            player.channel = MagicMock(spec=discord.VoiceChannel)
+            self.service.state.start_timer(guild_id, "empty")
+            self.service.state.get_or_create_session(guild_id)
+        self.connection.get_player.side_effect = players.get
+        self.connection.is_current_player.return_value = True
+        self.voice_lifecycle.empty_channel_reason.return_value = "empty"
+
+        async def disconnect(guild: MagicMock, *, force: bool) -> bool:
+            self.assertTrue(force)
+            if guild.id == 1:
+                raise RuntimeError("disconnect failed")
+            guild.voice_client = None
+            return True
+
+        self.connection.disconnect = AsyncMock(side_effect=disconnect)
+        with (
+            patch.object(self.service.state, "check_auto_leave", return_value=[1, 2]),
+            self.assertLogs("api.music.service.core_service", level="ERROR"),
+        ):
+            await self.service.check_auto_leave()
+
+        self.assertEqual(self.connection.disconnect.await_count, 2)
+        self.assertTrue(self.service.state.is_timer_active(1))
+        self.assertIsNotNone(self.service.state.get_session(1))
+        self.assertFalse(self.service.state.is_timer_active(2))
+        self.assertIsNone(self.service.state.get_session(2))
+        self.ui.controller.destroy_for_guild.assert_awaited_once_with(
+            2,
+            ControllerDestroyReason.VOICE_DISCONNECT,
+            expected_player=players[2],
+        )
 
     async def test_skip_uses_atomic_player_result_without_pre_reading_queue(
         self,

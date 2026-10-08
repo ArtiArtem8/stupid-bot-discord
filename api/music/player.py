@@ -160,6 +160,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     def _resolve_exception_attempt_unlocked(
         self, event_token: str
     ) -> PlaybackAttempt | None:
+        if self._is_stale:
+            return None
         current = self.resolve_current_attempt(event_token)
         if current is not None:
             return current
@@ -357,6 +359,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     ) -> TrackEndOutcome:
         """Classify one Mafic end event and perform any required transition."""
         async with self._transition_lock:
+            if self._is_stale:
+                return TrackEndOutcome(None, None, True)
             old_queue = self.queue.snapshot()
             old_pending = self._pending_end_attempts.copy()
             old_current = self._current_attempt

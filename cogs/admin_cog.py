@@ -162,6 +162,36 @@ def _format_name_history(history: Sequence[NameHistoryEntry]) -> str:
     )
 
 
+def _format_blocked_user(
+    user_entry: BlockedUser,
+    member: discord.Member | None,
+    *,
+    show_details: bool,
+) -> str:
+    if member is None:
+        user_info = f"Пользователь покинул сервер `{user_entry.user_id}`"
+        current_username = user_entry.current_username
+    else:
+        user_info = f"{member.mention} `{member.id}`"
+        current_username = member.display_name
+
+    lines = [f"**Пользователь:** {user_info}"]
+    if show_details:
+        last_block = user_entry.block_history[-1]
+        username = truncate_text(current_username, width=80)
+        reason = truncate_text(last_block.reason or "Не указана", width=200)
+        timestamp = format_dt(last_block.timestamp, "R")
+        lines.extend(
+            [
+                f"• Текущее имя: {username}",
+                f"• Последняя блокировка: {timestamp}",
+                f"• Причина: {reason}",
+                f"• Администратор: <@{last_block.admin_id}>",
+            ]
+        )
+    return "\n".join(lines)
+
+
 class AdminCog(BaseCog):
     """Administrative commands for server management.
 
@@ -368,40 +398,18 @@ class AdminCog(BaseCog):
             return
         logger.info("Found %s blocked users in guild %s", len(blocked_users), guild.id)
 
-        entries: list[str] = []
-
-        for user_entry in blocked_users:
-            user = guild.get_member(user_entry.user_id)
-            if user is None:
-                user_info = f"Пользователь покинул сервер `{user_entry.user_id}`"
-                current_username = user_entry.current_username
-            else:
-                user_info = f"{user.mention} `{user.id}`"
-                current_username = user.display_name
-
-            entry = [f"**Пользователь:** {user_info}"]
-
-            if show_details:
-                last_block = user_entry.block_history[-1]
-                truncated_username = truncate_text(current_username, width=80)
-                truncated_reason = truncate_text(
-                    last_block.reason or "Не указана", width=200
-                )
-                ts = format_dt(last_block.timestamp, "R")
-                entry.extend(
-                    [
-                        f"• Текущее имя: {truncated_username}",
-                        f"• Последняя блокировка: {ts}",
-                        f"• Причина: {truncated_reason}",
-                        f"• Администратор: <@{last_block.admin_id}>",
-                    ]
-                )
-
-            entries.append("\n".join(entry))
+        entries = [
+            _format_blocked_user(
+                user_entry,
+                guild.get_member(user_entry.user_id),
+                show_details=show_details,
+            )
+            for user_entry in blocked_users
+        ]
         pages = BlockedListPages(entries, show_details=show_details)
         view = BasePaginator(pages, interaction.user.id)
         await view.prepare()
-        await view.send(interaction, embed=view.make_embed(), ephemeral=ephemeral)
+        await view.send(interaction, ephemeral=ephemeral)
 
     @app_commands.command(
         name="del", description="Удалить сообщение по ID (только владелец)."

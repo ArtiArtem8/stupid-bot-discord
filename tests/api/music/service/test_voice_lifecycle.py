@@ -465,7 +465,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
         )
         self.state.cancel_timer.assert_called_once_with(1)
 
-    def testempty_channel_reason_for_channel_without_humans(self) -> None:
+    def test_empty_channel_reason_for_channel_without_humans(self) -> None:
         channel = MagicMock()
         channel.members = [MagicMock(bot=True)]
 
@@ -473,7 +473,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(reason, "empty")
 
-    def testempty_channel_reason_for_all_deafened_humans(self) -> None:
+    def test_empty_channel_reason_for_all_deafened_humans(self) -> None:
         member = MagicMock(bot=False)
         member.voice.self_deaf = True
         member.voice.deaf = False
@@ -484,7 +484,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(reason, "all_deafened")
 
-    def testempty_channel_reason_is_none_for_active_human(self) -> None:
+    def test_empty_channel_reason_is_none_for_active_human(self) -> None:
         member = MagicMock(bot=False)
         member.voice.self_deaf = False
         member.voice.deaf = False

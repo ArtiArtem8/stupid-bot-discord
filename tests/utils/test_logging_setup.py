@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.config
 import unittest
 from typing import Any, cast
 from unittest.mock import patch
@@ -27,7 +28,6 @@ class TestLoggingSetup(unittest.TestCase):
                 expected = value.replace("private-voice-token", "[REDACTED]").replace(
                     "private-id", "[REDACTED]"
                 )
-                # The sanitizer normalizes only the quotes around credential values.
                 expected = expected.replace('"[REDACTED]"', "'[REDACTED]'")
                 self.assertEqual(rendered, f"Event: {expected}")
 
@@ -82,7 +82,7 @@ class TestLoggingSetup(unittest.TestCase):
         self.assertEqual(payload["voice"]["token"], "private-token")
 
     def test_rotating_file_retention_is_not_reduced(self) -> None:
-        with patch("utils.logging_setup.logging.config.dictConfig") as dict_config:
+        with patch.object(logging.config, "dictConfig") as dict_config:
             setup_logging()
 
         logging_config = cast(dict[str, Any], dict_config.call_args.args[0])

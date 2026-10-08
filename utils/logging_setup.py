@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 import logging.config
 import re
 from typing import override
@@ -26,10 +25,19 @@ class CredentialSafeFormatter(logging.Formatter):
 
     _credential_name = r"(?:token|session_?id|secret_?key|authorization|password)"
     _quoted = r"\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'"
+    _credential_field = (
+        r"(?<![\w-])"
+        rf"(?:\"{_credential_name}\"|'{_credential_name}'|{_credential_name})"
+        r"\s*[:=]\s*"
+    )
+    _credential_value = (
+        rf"{_quoted}"
+        r"|\[[^\]]*\]"
+        r"|(?:Bearer|Bot|Basic)\s+[^\s,;}]+"
+        r"|[^\s,;}]+"
+    )
     _credentials = re.compile(
-        rf"(?P<field>(?<![\w-])(?:\"{_credential_name}\"|'{_credential_name}'|{_credential_name})"
-        rf"\s*[:=]\s*)(?:{_quoted}|\[[^\]]*\]|(?:Bearer|Bot|Basic)\s+[^\s,;}}]+|[^\s,;}}]+)"
-        rf"|{_quoted}",
+        rf"(?P<field>{_credential_field})(?:{_credential_value})|{_quoted}",
         re.IGNORECASE,
     )
 
@@ -62,7 +70,9 @@ def setup_logging(encoding: str = "utf-8") -> None:
             },
             "debug_detailed": {
                 "()": CredentialSafeFormatter,
-                "format": "%(asctime)s %(levelname)s [%(name)s:%(lineno)d]: %(message)s",
+                "format": (
+                    "%(asctime)s %(levelname)s [%(name)s:%(lineno)d]: %(message)s"
+                ),
                 "datefmt": "%Y-%m-%d %H:%M:%S",
             },
         },

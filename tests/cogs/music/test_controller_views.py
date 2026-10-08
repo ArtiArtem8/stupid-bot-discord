@@ -25,6 +25,41 @@ def _interaction() -> MagicMock:
 
 
 class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
+    async def test_refresh_deleted_message_releases_controller(self) -> None:
+        manager = TrackControllerManager(MagicMock(), MagicMock())
+        attempt = PlaybackAttempt(1, make_entry("playing"))
+        player = MagicMock(current_attempt=attempt, paused=False, position=0)
+        player.guild.id = 1
+
+        async def on_stop(
+            view: TrackControllerView, reason: ControllerDestroyReason
+        ) -> None:
+            await manager.destroy_for_guild(1, reason, requesting_view=view)
+
+        view = TrackControllerView(
+            user_id=2,
+            player=player,
+            guild_id=1,
+            attempt=attempt,
+            on_stop_callback=on_stop,
+            on_player_failure=AsyncMock(),
+        )
+        message = MagicMock()
+        message.edit = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "deleted")
+        )
+        view.message = message
+        manager.controllers[1] = view
+        manager._active_messages[1] = (10, 12)
+
+        with patch.object(manager, "_safe_delete_message", new=AsyncMock()) as delete:
+            await asyncio.wait_for(manager.refresh_for_attempt(player, attempt), 1)
+
+        self.assertTrue(view.is_finished())
+        self.assertEqual(manager.controllers, {})
+        self.assertEqual(manager._active_messages, {})
+        delete.assert_awaited_once_with(10, 12)
+
     async def test_cleanup_stops_and_drains_active_controller(self) -> None:
         entered = asyncio.Event()
         cancelling = asyncio.Event()

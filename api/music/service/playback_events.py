@@ -167,6 +167,7 @@ class PlaybackEventHandlers:
             player.guild.id,
             ControllerDestroyReason.TRACK_EXCEPTION,
             expected_attempt_id=attempt.attempt_id,
+            expected_player=player,
         )
 
     async def _on_track_stuck(self, event: mafic.TrackStuckEvent[MusicPlayer]) -> None:
@@ -257,6 +258,7 @@ class PlaybackEventHandlers:
             player.guild.id,
             ControllerDestroyReason.TRACK_END,
             expected_attempt_id=ended.attempt_id,
+            expected_player=player,
         )
 
     def _extract_exception_details(

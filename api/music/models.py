@@ -168,7 +168,7 @@ class TrackRequester:
 
 @dataclass(frozen=True, slots=True)
 class QueueEntry:
-    """One request whose UUID survives healing and never aliases another player."""
+    """One request with a stable ID across playback and session recovery."""
 
     entry_id: int
     track: Track

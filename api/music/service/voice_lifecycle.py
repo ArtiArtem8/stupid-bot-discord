@@ -46,8 +46,7 @@ class VoiceLifecycleHandlers:
         self._leaving_guilds: dict[int, int] = {}
         self._recent_voice_transitions: dict[int, float] = {}
         self._voice_transition_validation_tasks: dict[int, asyncio.Task[None]] = {}
-        # Superseded validators still belong to us until cancellation completes.
-        self._active_validators: set[asyncio.Task[None]] = set()
+        self._active_recovery_tasks: set[asyncio.Task[object]] = set()
         self._unavailable_node_labels: set[str] = set()
         self._setup_done = False
         self._closing = False
@@ -90,13 +89,13 @@ class VoiceLifecycleHandlers:
         await asyncio.shield(self._cleanup_task)
 
     async def _drain_recovery(self) -> None:
-        tasks = {*self._healing_tasks.values(), *self._active_validators}
+        tasks = {*self._healing_tasks.values(), *self._active_recovery_tasks}
         for task in tasks:
             if not task.cancelling():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         self._healing_tasks.clear()
-        self._active_validators.clear()
+        self._active_recovery_tasks.clear()
         self._voice_transition_validation_tasks.clear()
         self._recent_voice_transitions.clear()
         self._unavailable_node_labels.clear()
@@ -111,25 +110,32 @@ class VoiceLifecycleHandlers:
     async def on_node_unavailable(self, node: mafic.Node[commands.Bot]) -> None:
         if self._closing:
             return
-        players: list[MusicPlayer] = []
-        for player in node.players:
-            if isinstance(player, MusicPlayer):
-                players.append(player)
-        affected_guild_ids: set[int] = {player.guild.id for player in players}
-        if node.label not in self._unavailable_node_labels:
-            message_format = (
-                "Lavalink node unavailable node=%s node_available=%s affected_guilds=%s"
-            )
-            logger.warning(
-                message_format,
-                node.label,
-                node.available,
-                sorted(affected_guild_ids),
-            )
-            self._unavailable_node_labels.add(node.label)
+        task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("Node recovery requires an asyncio task")
+        self._active_recovery_tasks.add(task)
+        try:
+            players = [
+                player for player in node.players if isinstance(player, MusicPlayer)
+            ]
+            affected_guild_ids = {player.guild.id for player in players}
+            if node.label not in self._unavailable_node_labels:
+                message_format = (
+                    "Lavalink node unavailable "
+                    "node=%s node_available=%s affected_guilds=%s"
+                )
+                logger.warning(
+                    message_format,
+                    node.label,
+                    node.available,
+                    sorted(affected_guild_ids),
+                )
+                self._unavailable_node_labels.add(node.label)
 
-        invalidated_guild_ids = await self.connection.handle_node_unavailable(node)
-        await self._cleanup_after_node_unavailable(invalidated_guild_ids)
+            invalidated_guild_ids = await self.connection.handle_node_unavailable(node)
+            await self._cleanup_after_node_unavailable(invalidated_guild_ids)
+        finally:
+            self._active_recovery_tasks.discard(task)
 
     async def _cleanup_after_node_unavailable(
         self,
@@ -237,8 +243,8 @@ class VoiceLifecycleHandlers:
             self._validate_voice_transition_recovery(guild_id, event_player)
         )
         self._voice_transition_validation_tasks[guild_id] = task
-        self._active_validators.add(task)
-        task.add_done_callback(self._active_validators.discard)
+        self._active_recovery_tasks.add(task)
+        task.add_done_callback(self._active_recovery_tasks.discard)
 
     async def _validate_voice_transition_recovery(
         self, guild_id: int, event_player: MusicPlayer

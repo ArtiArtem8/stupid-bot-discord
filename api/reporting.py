@@ -120,6 +120,15 @@ async def _notify_report(
         )
 
 
+async def _remove_report_button(message: discord.Message | None) -> None:
+    if message is None:
+        return
+    try:
+        await message.edit(view=None)
+    except discord.HTTPException:
+        logger.warning("Failed to remove report button from message %s", message.id)
+
+
 class ReportModal(Modal, title="Отправить отчёт о баге"):
     """Modal dialog for submitting bug reports.
 
@@ -157,15 +166,7 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
         )
         try:
             await interaction.edit_original_response(embed=embed)
-
-            if interaction.message:
-                try:
-                    await interaction.message.edit(view=None)
-                except discord.HTTPException:
-                    logger.warning(
-                        "Failed to remove report button from message %s",
-                        interaction.message.id,
-                    )
+            await _remove_report_button(interaction.message)
         finally:
             await _notify_report(interaction, report, report_channel_id)
 

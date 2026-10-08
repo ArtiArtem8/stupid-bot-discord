@@ -733,14 +733,7 @@ class ConnectionManager:
             await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         try:
-            token = object()
-            self._voice_transitions[player.guild.id] = (player, token)
-            try:
-                await player.move_to(channel, timeout=5.0)
-                ready = await self.wait_voice_ready(player)
-            finally:
-                if self._voice_transitions.get(player.guild.id) == (player, token):
-                    self._voice_transitions.pop(player.guild.id, None)
+            ready = await self._move_player(player, channel)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             await self.invalidate_player(
                 player,
@@ -760,6 +753,21 @@ class ConnectionManager:
             await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         return VoiceCheckResult.MOVED_CHANNELS, old_channel
+
+    async def _move_player(
+        self,
+        player: MusicPlayer,
+        channel: discord.VoiceChannel | discord.StageChannel,
+    ) -> bool:
+        guild_id = player.guild.id
+        transition = (player, object())
+        self._voice_transitions[guild_id] = transition
+        try:
+            await player.move_to(channel, timeout=5.0)
+            return await self.wait_voice_ready(player)
+        finally:
+            if self._voice_transitions.get(guild_id) is transition:
+                self._voice_transitions.pop(guild_id, None)
 
     async def _handle_join_io_failure(
         self, guild: discord.Guild, exc: Exception

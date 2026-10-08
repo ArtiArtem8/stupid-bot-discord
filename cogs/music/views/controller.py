@@ -244,12 +244,13 @@ class TrackControllerManager(ControllerManagerProtocol):
         async with self._locks[player.guild.id]:
             view = self.controllers.get(player.guild.id)
             if (
-                view
-                and view.player is player
-                and view.attempt is attempt
-                and self._owns_attempt(player, attempt)
+                view is None
+                or view.player is not player
+                or view.attempt is not attempt
+                or not self._owns_attempt(player, attempt)
             ):
-                await view.refresh_status()
+                return
+        await view.refresh_status()
 
     @override
     async def destroy_for_guild(
@@ -649,6 +650,14 @@ class TrackControllerView(ui.View):
             return None
         return self.attempt
 
+    async def _seek_and_refresh(self, expected: PlaybackAttempt, position: int) -> None:
+        if not await self.player.seek_attempt(expected, position):
+            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
+            return
+        if self._is_paused_cache:
+            self._frozen_position = position
+        await self._safe_update(force=True)
+
     @ui.button(
         emoji=MUSIC_PLAYER_EMOJIS["restart"],
         style=discord.ButtonStyle.secondary,
@@ -659,12 +668,7 @@ class TrackControllerView(ui.View):
         expected = await self._prepare_action(interaction)
         if expected is None:
             return
-        if not await self.player.seek_attempt(expected, 0):
-            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
-            return
-        if self._is_paused_cache:
-            self._frozen_position = 0
-        await self._safe_update(force=True)
+        await self._seek_and_refresh(expected, 0)
 
     @ui.button(
         emoji=MUSIC_PLAYER_EMOJIS["back_10"],
@@ -681,13 +685,7 @@ class TrackControllerView(ui.View):
             if self._is_paused_cache
             else (self.player.position or 0)
         )
-        new = max(pos - _SEEK_STEP_MS, 0)
-        if not await self.player.seek_attempt(expected, new):
-            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
-            return
-        if self._is_paused_cache:
-            self._frozen_position = new
-        await self._safe_update(force=True)
+        await self._seek_and_refresh(expected, max(pos - _SEEK_STEP_MS, 0))
 
     @ui.button(
         emoji=MUSIC_PLAYER_EMOJIS["pause"],
@@ -728,16 +726,11 @@ class TrackControllerView(ui.View):
             if self._is_paused_cache
             else (self.player.position or 0)
         )
-        new = min(
+        position = min(
             pos + _SEEK_STEP_MS,
             expected.entry.track.length,
         )
-        if not await self.player.seek_attempt(expected, new):
-            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
-            return
-        if self._is_paused_cache:
-            self._frozen_position = new
-        await self._safe_update(force=True)
+        await self._seek_and_refresh(expected, position)
 
     @ui.button(
         emoji=MUSIC_PLAYER_EMOJIS["skip"],

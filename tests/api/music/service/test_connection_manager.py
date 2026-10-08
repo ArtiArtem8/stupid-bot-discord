@@ -767,6 +767,32 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         )
         invalidate_node_and_players.assert_not_awaited()
 
+    async def test_cancelled_move_releases_transition_ownership(self) -> None:
+        guild = MagicMock(id=123)
+        old_channel = MagicMock(spec=discord.VoiceChannel, id=100)
+        new_channel = MagicMock(spec=discord.VoiceChannel, id=200)
+        player = _FakeMusicPlayer(guild)
+        guild.voice_client = player
+        entered = asyncio.Event()
+
+        async def move(_channel: discord.VoiceChannel, *, timeout: float) -> None:
+            self.assertEqual(timeout, 5.0)
+            entered.set()
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(player, "channel", old_channel, create=True),
+            patch.object(player, "move_to", AsyncMock(side_effect=move), create=True),
+            patch.object(self.manager, "is_player_usable", return_value=True),
+        ):
+            moving = asyncio.create_task(self.manager.join(guild, new_channel))
+            await entered.wait()
+            self.assertTrue(self.manager.is_transitioning(_as_music_player(player)))
+            moving.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await moving
+        self.assertFalse(self.manager.is_transitioning(_as_music_player(player)))
+
     async def test_move_timeout_uses_only_player_scope(self) -> None:
         guild = MagicMock(id=123)
         old_channel = MagicMock(spec=discord.VoiceChannel, id=100)
