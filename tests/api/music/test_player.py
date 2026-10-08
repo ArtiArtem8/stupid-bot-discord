@@ -3,6 +3,7 @@
 import asyncio
 import unittest
 from collections import deque
+from dataclasses import replace
 from typing import cast
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
@@ -15,6 +16,7 @@ from api.music.models import (
     PlaybackAttempt,
     QueueEntry,
     RepeatMode,
+    TrackEndOutcome,
     TrackRequester,
 )
 from api.music.player import MusicPlayer
@@ -66,6 +68,148 @@ def _require_requester(entry: QueueEntry) -> TrackRequester:
 
 
 class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
+    async def test_track_end_waiting_behind_recovery_keeps_sealed_state(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        attempt = _require_attempt(player.current_attempt)
+        queued = make_entry("queued", entry_id=2)
+        player.queue.append(queued)
+        sealing = asyncio.Event()
+        ending = asyncio.Event()
+
+        async def seal() -> None:
+            sealing.set()
+            await player.seal_for_recovery()
+
+        async def end() -> TrackEndOutcome:
+            ending.set()
+            return await player.handle_track_end(
+                attempt.event_token, mafic.EndReason.FINISHED
+            )
+
+        with patch.object(player, "play", new=AsyncMock()) as play:
+            async with player._transition_lock:
+                seal_task = asyncio.create_task(seal())
+                await sealing.wait()
+                end_task = asyncio.create_task(end())
+                await ending.wait()
+            await seal_task
+            outcome = await end_task
+
+        self.assertTrue(outcome.is_stale)
+        self.assertIsNone(outcome.ended_attempt)
+        self.assertIs(player.current_attempt, attempt)
+        self.assertEqual(player.queue_snapshot(), (queued,))
+        play.assert_not_awaited()
+
+    async def test_sealed_player_rejects_exception_correlation(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        token = _current_token(player)
+        await player.seal_for_recovery()
+
+        self.assertIsNone(await player.resolve_exception_attempt(token))
+        self.assertIsNone(await player.claim_track_exception(token))
+        self.assertEqual(player._exception_attempt_ids, set())
+
+    def test_stuck_position_does_not_advance_with_wall_time(self) -> None:
+        player = _make_player(current=make_entry("current", length=60_000))
+        player._node_player_ready_event = asyncio.Event()
+        player._connected = True
+        player._position = 1000
+        player._last_update = 0
+        attempt = _require_attempt(player.current_attempt)
+        with patch("mafic.player.time", return_value=10.0):
+            self.assertEqual(player.position, 11_000)
+            player.mark_stuck(attempt)
+            self.assertEqual(player.position, 1000)
+            player.update_state(
+                {"time": 9000, "position": 1000, "connected": True, "ping": 1}
+            )
+            self.assertEqual(player.position, 1000)
+            player.update_state(
+                {"time": 9000, "position": 2000, "connected": True, "ping": 1}
+            )
+            self.assertIsNone(player.stuck_attempt)
+            self.assertEqual(player.position, 3000)
+
+    async def test_stuck_status_clears_after_backward_seek_and_reported_progress(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current", length=120_000))
+        player._node_player_ready_event = asyncio.Event()
+        player._position = 60_000
+        attempt = _require_attempt(player.current_attempt)
+        player.mark_stuck(attempt)
+        with patch.object(player, "seek", new_callable=AsyncMock):
+            self.assertTrue(await player.seek_attempt(attempt, 10_000))
+        self.assertIs(player.stuck_attempt, attempt)
+        player.update_state(
+            {"time": 100, "position": 10_000, "connected": True, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+        player.update_state(
+            {"time": 200, "position": 11_000, "connected": True, "ping": 1}
+        )
+        self.assertIsNone(player.stuck_attempt)
+
+    def test_stuck_status_does_not_clear_on_paused_or_disconnected_progress(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current"))
+        player._node_player_ready_event = asyncio.Event()
+        player._position = 1000
+        attempt = _require_attempt(player.current_attempt)
+        player.mark_stuck(attempt)
+        player._paused = True
+        player.update_state(
+            {"time": 100, "position": 2000, "connected": True, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+        player._paused = False
+        player.update_state(
+            {"time": 200, "position": 3000, "connected": False, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+
+    def test_stuck_status_requires_reported_progress_from_the_current_attempt(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current", length=60_000))
+        player._node_player_ready_event = asyncio.Event()
+        player._position = 1000
+        attempt = _require_attempt(player.current_attempt)
+        self.assertTrue(player.mark_stuck(attempt))
+        player.update_state(
+            {"time": 100, "position": 1000, "connected": True, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+        self.assertFalse(player.mark_stuck(PlaybackAttempt(2, make_entry("old"))))
+        player.update_state(
+            {"time": 200, "position": 1100, "connected": True, "ping": 1}
+        )
+        self.assertIsNone(player.stuck_attempt)
+
+    async def test_enqueue_waiting_on_transition_rejects_detached_player(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        await player._transition_lock.acquire()
+        task = asyncio.create_task(
+            player.enqueue_tracks([make_track("late")], None, placement="end")
+        )
+        player.mark_stale()
+        player._transition_lock.release()
+        with self.assertRaises(mafic.PlayerNotConnected):
+            await task
+        self.assertEqual(player.queue_snapshot(), ())
+
+    async def test_old_undo_cannot_remove_replacement_players_request(self) -> None:
+        old = make_entry("old", entry_id=1, requester_id=10)
+        live = make_entry("new", entry_id=1, requester_id=20)
+        player = _make_player()
+        player.queue.append(live)
+        self.assertEqual(
+            await player.remove_queued_entries((old,), requester_id=10), ()
+        )
+        self.assertEqual(player.queue_snapshot(), (live,))
+
     async def test_shuffle_waits_for_skip_commit_or_rollback(self) -> None:
         for cancel_skip in (False, True):
             with self.subTest(cancel_skip=cancel_skip):
@@ -655,8 +799,8 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             make_entry("old-two", entry_id=2, requester_id=42),
         )
         replacements = (
-            make_entry("new-one", entry_id=1, requester_id=42),
-            make_entry("new-two", entry_id=2, requester_id=42),
+            replace(old_entries[0], track=make_track("new-one")),
+            replace(old_entries[1], track=make_track("new-two")),
         )
         new_player = _make_player(current=make_entry("current", entry_id=3))
         new_player.queue.extend(replacements)

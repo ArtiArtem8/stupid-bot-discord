@@ -1,12 +1,14 @@
-"""Reports commit before acknowledgement and deduplicate interaction retries."""
+"""Reports commit before success feedback and deduplicate interaction retries."""
 
 import unittest
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
+from discord.webhook.async_ import async_context
 from sqlalchemy import select
 
+import config
 from api.reporting import ReportModal, _build_report_data, _notify_report, submit_report
 from repositories.report_repository import ReportRepository
 from repositories.sqlite.schema import reports
@@ -14,6 +16,130 @@ from tests.storage import temporary_database
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):
+    def _prepare_modal_response(self) -> MagicMock:
+        self.interaction.type = discord.InteractionType.modal_submit
+        self.interaction.response = discord.InteractionResponse(self.interaction)
+        adapter = MagicMock()
+        adapter.create_interaction_response = AsyncMock(
+            return_value={"interaction": {"id": str(self.interaction.id)}}
+        )
+        return adapter
+
+    async def test_modal_dispatch_resolves_deferred_storage_failure(self) -> None:
+        adapter = self._prepare_modal_response()
+        modal = ReportModal(self.repository)
+        modal.reason._value = "a useful report"
+        token = async_context.set(adapter)
+        try:
+            with (
+                patch.object(
+                    self.repository,
+                    "submit",
+                    side_effect=OSError("sensitive storage failure"),
+                ),
+                patch("api.reporting._notify_report", new_callable=AsyncMock) as notify,
+                self.assertLogs("api.reporting", level="ERROR"),
+            ):
+                await modal._scheduled_task(self.interaction, [], {})
+        finally:
+            async_context.reset(token)
+
+        self.interaction.edit_original_response.assert_awaited_once()
+        reply = self.interaction.edit_original_response.await_args
+        if reply is None:
+            self.fail("Expected a final response for the failed report")
+        embed = reply.kwargs["embed"]
+        self.assertEqual(embed.color.value, config.Color.ERROR)
+        self.assertNotIn("sensitive storage failure", str(embed.to_dict()))
+        self.assertNotIn("view", reply.kwargs)
+        self.assertEqual(
+            adapter.create_interaction_response.call_args.kwargs["params"].payload,
+            {"type": 5, "data": {"flags": 64}},
+        )
+        notify.assert_not_awaited()
+
+    async def test_modal_defers_a_separate_private_confirmation(self) -> None:
+        adapter = self._prepare_modal_response()
+        self.interaction.message = MagicMock(edit=AsyncMock())
+        modal = ReportModal(self.repository)
+        modal.reason._value = "a useful report"
+        token = async_context.set(adapter)
+        try:
+            await modal.on_submit(self.interaction)
+        finally:
+            async_context.reset(token)
+        self.assertEqual(
+            adapter.create_interaction_response.call_args.kwargs["params"].payload,
+            {"type": 5, "data": {"flags": 64}},
+        )
+        self.interaction.message.edit.assert_awaited_once_with(view=None)
+        self.interaction.edit_original_response.assert_awaited_once()
+
+    async def test_failed_final_response_still_notifies_committed_report(self) -> None:
+        modal = ReportModal(self.repository)
+        modal.reason._value = "a useful report"
+        self.interaction.edit_original_response = AsyncMock(
+            side_effect=RuntimeError("lost reply")
+        )
+        with patch("api.reporting._notify_report", new_callable=AsyncMock) as notify:
+            with self.assertRaisesRegex(RuntimeError, "lost reply"):
+                await modal.on_submit(self.interaction)
+        self.interaction.response.defer.assert_awaited_once_with(
+            ephemeral=True, thinking=True
+        )
+        notify.assert_awaited_once()
+        async with self.database.transaction() as connection:
+            self.assertIsNotNone(await connection.scalar(select(reports.c.report_id)))
+
+    async def test_modal_dispatch_keeps_postcommit_failure_feedback_safe(self) -> None:
+        for failing_step in ("reply", "notification"):
+            with self.subTest(failing_step=failing_step):
+                self.interaction.id += 1
+                adapter = self._prepare_modal_response()
+                error = RuntimeError("sensitive remote failure")
+                self.interaction.edit_original_response = AsyncMock(
+                    side_effect=[error, None] if failing_step == "reply" else None
+                )
+                modal = ReportModal(self.repository)
+                modal.reason._value = "a useful report"
+                token = async_context.set(adapter)
+                try:
+                    with (
+                        patch(
+                            "api.reporting._notify_report",
+                            new=AsyncMock(
+                                side_effect=error
+                                if failing_step == "notification"
+                                else None
+                            ),
+                        ) as notify,
+                        self.assertLogs("api.reporting", level="ERROR"),
+                    ):
+                        await modal._scheduled_task(self.interaction, [], {})
+                finally:
+                    async_context.reset(token)
+
+                notify.assert_awaited_once()
+                self.assertEqual(self.interaction.edit_original_response.await_count, 2)
+                reply = self.interaction.edit_original_response.await_args
+                if reply is None:
+                    self.fail("Expected a safe final error response")
+                embed = reply.kwargs["embed"]
+                self.assertEqual(embed.color.value, config.Color.ERROR)
+                self.assertEqual(
+                    embed.description,
+                    "Не удалось завершить обработку отчёта. Детали записаны в лог.",
+                )
+                self.assertNotIn("sensitive remote failure", str(embed.to_dict()))
+                async with self.database.transaction() as connection:
+                    self.assertIsNotNone(
+                        await connection.scalar(
+                            select(reports.c.report_id).where(
+                                reports.c.request_key == str(self.interaction.id)
+                            )
+                        )
+                    )
+
     @override
     async def asyncSetUp(self) -> None:
         _, self.database = await temporary_database(self)
@@ -78,7 +204,7 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
 
         modal = ReportModal(self.repository)
         modal.reason._value = "a useful report"
-        self.interaction.response.send_message = AsyncMock(side_effect=response)
+        self.interaction.edit_original_response = AsyncMock(side_effect=response)
         with patch(
             "api.reporting._notify_report", new=AsyncMock(side_effect=notification)
         ):
@@ -95,7 +221,7 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(OSError):
                 await modal.on_submit(self.interaction)
-        self.interaction.response.send_message.assert_not_awaited()
+        self.interaction.edit_original_response.assert_not_awaited()
 
     def test_new_report_time_is_aware(self) -> None:
         from datetime import datetime

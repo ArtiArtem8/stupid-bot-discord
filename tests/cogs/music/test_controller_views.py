@@ -25,6 +25,160 @@ def _interaction() -> MagicMock:
 
 
 class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
+    async def test_refresh_deleted_message_releases_controller(self) -> None:
+        manager = TrackControllerManager(MagicMock(), MagicMock())
+        attempt = PlaybackAttempt(1, make_entry("playing"))
+        player = MagicMock(current_attempt=attempt, paused=False, position=0)
+        player.guild.id = 1
+
+        async def on_stop(
+            view: TrackControllerView, reason: ControllerDestroyReason
+        ) -> None:
+            await manager.destroy_for_guild(1, reason, requesting_view=view)
+
+        view = TrackControllerView(
+            user_id=2,
+            player=player,
+            guild_id=1,
+            attempt=attempt,
+            on_stop_callback=on_stop,
+            on_player_failure=AsyncMock(),
+        )
+        message = MagicMock()
+        message.edit = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "deleted")
+        )
+        view.message = message
+        manager.controllers[1] = view
+        manager._active_messages[1] = (10, 12)
+
+        with patch.object(manager, "_safe_delete_message", new=AsyncMock()) as delete:
+            await asyncio.wait_for(manager.refresh_for_attempt(player, attempt), 1)
+
+        self.assertTrue(view.is_finished())
+        self.assertEqual(manager.controllers, {})
+        self.assertEqual(manager._active_messages, {})
+        delete.assert_awaited_once_with(10, 12)
+
+    async def test_cleanup_stops_and_drains_active_controller(self) -> None:
+        entered = asyncio.Event()
+        cancelling = asyncio.Event()
+        release = asyncio.Event()
+
+        async def update() -> None:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelling.set()
+                await release.wait()
+
+        message = MagicMock(delete=AsyncMock())
+        bot = MagicMock()
+        bot.get_channel.return_value.get_partial_message.return_value = message
+        manager = TrackControllerManager(bot, MagicMock())
+        view = TrackControllerView(
+            user_id=2,
+            player=MagicMock(),
+            guild_id=1,
+            attempt=PlaybackAttempt(1, make_entry("playing")),
+            on_stop_callback=None,
+            on_player_failure=AsyncMock(),
+        )
+        with patch.object(view, "_loop", side_effect=update):
+            view.start_updater()
+            await entered.wait()
+            manager.controllers[1] = view
+            manager._active_messages[1] = (10, 12)
+            cleanup = asyncio.create_task(manager.cleanup())
+            await cancelling.wait()
+            self.assertTrue(view.is_finished())
+            self.assertFalse(cleanup.done())
+            release.set()
+            await cleanup
+        self.assertEqual(manager.controllers, {})
+        self.assertEqual(manager._active_messages, {})
+        message.delete.assert_awaited_once_with()
+
+    async def test_cleanup_during_send_prevents_late_controller_registration(
+        self,
+    ) -> None:
+        entered, release = asyncio.Event(), asyncio.Event()
+        bot = MagicMock()
+        channel = MagicMock(spec=discord.TextChannel, id=10)
+        message = MagicMock(id=12, channel=channel, delete=AsyncMock())
+        channel.get_partial_message.return_value = message
+        bot.get_channel.return_value = channel
+        manager = TrackControllerManager(bot, MagicMock())
+        attempt = PlaybackAttempt(1, make_entry("playing"))
+        player = MagicMock(current_attempt=attempt)
+
+        async def send(**_kwargs: object) -> MagicMock:
+            entered.set()
+            await release.wait()
+            return message
+
+        channel.send = AsyncMock(side_effect=send)
+        view = MagicMock()
+        with patch.object(controller_module, "TrackControllerView", return_value=view):
+            creation = asyncio.create_task(
+                manager.create_for_user(
+                    guild_id=1,
+                    user_id=2,
+                    channel=channel,
+                    player=player,
+                    attempt=attempt,
+                )
+            )
+            try:
+                await asyncio.wait_for(entered.wait(), 5)
+                await manager.cleanup()
+                release.set()
+                await creation
+            finally:
+                release.set()
+                await asyncio.gather(creation, return_exceptions=True)
+            await manager.create_for_user(
+                guild_id=1, user_id=2, channel=channel, player=player, attempt=attempt
+            )
+        self.assertEqual(manager.controllers, {})
+        self.assertEqual(manager._active_messages, {})
+        self.assertEqual(manager._message_delete_tasks, {})
+        view.stop.assert_called_once()
+        view.start_updater.assert_not_called()
+        channel.send.assert_awaited_once()
+        message.delete.assert_awaited_once_with()
+
+    async def test_player_replaced_during_send_does_not_register_controller(
+        self,
+    ) -> None:
+        connection = MagicMock()
+        connection.is_current_player.return_value = True
+        manager = TrackControllerManager(MagicMock(), connection)
+        attempt = PlaybackAttempt(1, make_entry("old"))
+        player = MagicMock(current_attempt=attempt)
+        message = MagicMock(id=12)
+        message.channel.id = 10
+
+        async def send(**_kwargs: object) -> MagicMock:
+            connection.is_current_player.return_value = False
+            return message
+
+        channel = MagicMock(send=AsyncMock(side_effect=send))
+        view = MagicMock()
+        with (
+            patch.object(controller_module, "TrackControllerView", return_value=view),
+            patch.object(
+                manager, "_safe_delete_message", new_callable=AsyncMock
+            ) as delete,
+        ):
+            await manager.create_for_user(
+                guild_id=1, user_id=2, channel=channel, player=player, attempt=attempt
+            )
+        delete.assert_awaited_once_with(10, 12)
+        self.assertEqual(manager.controllers, {})
+        view.start_updater.assert_not_called()
+
     async def test_stale_view_stop_does_not_remove_new_controller(self) -> None:
         manager = TrackControllerManager(MagicMock(), MagicMock())
         stale_view = MagicMock()
@@ -64,7 +218,7 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
         connection = MagicMock()
         connection.invalidate_player = AsyncMock()
         manager = TrackControllerManager(MagicMock(), connection)
-        old_view = MagicMock()
+        old_view = MagicMock(spec=TrackControllerView)
         manager.controllers[1] = old_view
         manager._active_messages[1] = (10, 20)
 
@@ -91,7 +245,7 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
                 attempt=attempt,
             )
 
-        old_view.stop.assert_called_once()
+        old_view.close.assert_awaited_once()
         safe_delete_message.assert_awaited_once_with(10, 20)
         self.assertEqual(manager.controllers, {1: new_view})
         self.assertEqual(manager._active_messages, {1: (10, 21)})
@@ -113,13 +267,31 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
         self.bot.get_channel.return_value = self.channel
         self.bot.fetch_channel = AsyncMock(return_value=self.channel)
         self.manager = TrackControllerManager(self.bot, MagicMock())
-        self.old_view = MagicMock(attempt_id=1)
+        self.old_view = MagicMock(spec=TrackControllerView, attempt_id=1)
         self.manager.controllers[1] = self.old_view
         self.manager._active_messages[1] = (10, 20)
 
     @override
     async def asyncTearDown(self) -> None:
         await self.manager.cleanup()
+
+    async def test_cleanup_deletes_active_controller_message(self) -> None:
+        await self.manager.cleanup()
+
+        self.old_view.close.assert_awaited_once_with()
+        self.message.delete.assert_awaited_once_with()
+        self.assertEqual(self.manager.controllers, {})
+        self.assertEqual(self.manager._active_messages, {})
+        self.assertEqual(self.manager._message_delete_tasks, {})
+
+    async def test_cleanup_delete_failure_does_not_start_retry(self) -> None:
+        self.message.delete.side_effect = TimeoutError()
+
+        await self.manager.cleanup()
+        await self.manager.cleanup()
+
+        self.message.delete.assert_awaited_once_with()
+        self.assertEqual(self.manager._message_delete_tasks, {})
 
     async def test_successful_delete_does_not_schedule_retry(self) -> None:
         await self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
@@ -259,7 +431,7 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
         new_message = MagicMock(id=21)
         new_message.channel.id = 10
         self.channel.send = AsyncMock(return_value=new_message)
-        new_view = MagicMock(attempt_id=2)
+        new_view = MagicMock(spec=TrackControllerView, attempt_id=2)
 
         with (
             patch.object(asyncio, "sleep", wait_for_retry),
@@ -323,7 +495,8 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.manager._message_delete_tasks, {})
         self.message.delete.assert_awaited_once_with()
         await self.manager._safe_delete_message(10, 20)
-        self.message.delete.assert_awaited_once_with()
+        self.assertEqual(self.message.delete.await_count, 2)
+        self.assertEqual(self.manager._message_delete_tasks, {})
 
     async def test_cleanup_before_retry_starts_releases_registry(self) -> None:
         self.message.delete.side_effect = TimeoutError()
@@ -354,7 +527,9 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
 
         self.message.delete.side_effect = fail_after_cleanup
         async with asyncio.TaskGroup() as group:
-            group.create_task(self.manager._safe_delete_message(10, 20))
+            group.create_task(
+                self.manager.destroy_for_guild(1, ControllerDestroyReason.TRACK_END)
+            )
             await deleting.wait()
             await self.manager.cleanup()
             resume.set()
@@ -382,6 +557,20 @@ class TestControllerMessageCleanup(unittest.IsolatedAsyncioTestCase):
 
 
 class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
+    def test_stuck_footer_retains_requester_and_clears_after_recovery(self) -> None:
+        attempt = PlaybackAttempt(1, make_entry("track"))
+        view, player, _ = self._make_view(attempt)
+        player.guild.get_member.return_value = None
+        player.stuck_attempt = attempt
+        self.assertEqual(
+            view.make_embed().footer.text,
+            "Трек застрял, жду продолжения • Запросил: 10",
+        )
+        player.stuck_attempt = None
+        self.assertEqual(view.make_embed().footer.text, "Запросил: 10")
+        self.assertFalse(view.is_finished())
+        view.stop()
+
     def _make_view(
         self,
         attempt: PlaybackAttempt,

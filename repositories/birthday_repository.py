@@ -25,7 +25,7 @@ from repositories.sqlite.schema import (
     birthday_settings,
     member_birthdays,
 )
-from utils.birthday_utils import is_birthday_today
+from utils.birthday_utils import format_storage_date, is_birthday_today
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +68,7 @@ async def _read(
     )
     for guild_id, user_id, name, birthday, version in members:
         formatted_birthday = (
-            date.fromisoformat(birthday).strftime(config.DATE_FORMAT)
-            if birthday
-            else ""
+            format_storage_date(date.fromisoformat(birthday)) if birthday else ""
         )
         configs[guild_id].users[user_id] = BirthdayUser(
             user_id, name, formatted_birthday, version=version
@@ -271,8 +269,7 @@ class BirthdayRepository:
                 .where(
                     birthday_history.c.guild_id == claim.guild_id,
                     birthday_history.c.user_id == claim.user_id,
-                    birthday_history.c.value
-                    == claim.today.strftime(config.DATE_FORMAT),
+                    birthday_history.c.value == format_storage_date(claim.today),
                 )
                 .limit(1)
             )
@@ -373,7 +370,7 @@ class BirthdayRepository:
                     guild_id=claim.guild_id,
                     user_id=claim.user_id,
                     position=position,
-                    value=claim.today.strftime(config.DATE_FORMAT),
+                    value=format_storage_date(claim.today),
                     origin="confirmed_send",
                 )
             )
@@ -442,5 +439,5 @@ async def _delivery_current(
         )
     )
     return birthday is not None and is_birthday_today(
-        date.fromisoformat(birthday).strftime(config.DATE_FORMAT), claim.today
+        format_storage_date(date.fromisoformat(birthday)), claim.today
     )

@@ -96,6 +96,11 @@ class StateManager:
     def cancel_timer(self, guild_id: int) -> None:
         self.empty_channel_timers.pop(guild_id, None)
 
+    def cancel_timer_if_current(self, guild_id: int, expected: EmptyTimerInfo) -> None:
+        """Remove only the expiry observed before an external await."""
+        if self.empty_channel_timers.get(guild_id) is expected:
+            self.cancel_timer(guild_id)
+
     def get_expired_timers(
         self, timeout_duration: float
     ) -> list[tuple[int, str | None]]:

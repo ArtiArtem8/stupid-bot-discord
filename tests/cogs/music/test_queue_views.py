@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 
 from api.music.models import (
+    MUSIC_RECOVERING_MESSAGE,
     MusicResult,
     MusicResultStatus,
     QueueEntry,
@@ -195,6 +196,29 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
 
 
 class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
+    async def test_recovery_feedback_preserves_undo_for_retry(self) -> None:
+        view = QueueUndoView(
+            timeout=120,
+            guild_id=123,
+            requester_id=42,
+            expected_entries=(make_entry("waiting", requester_id=42),),
+            remove_callback=AsyncMock(
+                return_value=MusicResult(
+                    MusicResultStatus.FAILURE, MUSIC_RECOVERING_MESSAGE
+                )
+            ),
+        )
+        interaction = _interaction()
+        interaction.followup.send = AsyncMock()
+        interaction.message.edit = AsyncMock()
+        with patch("cogs.music.views.queue.ack_component", new_callable=AsyncMock):
+            await view.remove(interaction)
+        self.assertFalse(view.is_finished())
+        interaction.message.edit.assert_not_awaited()
+        interaction.followup.send.assert_awaited_once_with(
+            MUSIC_RECOVERING_MESSAGE, ephemeral=True
+        )
+
     async def test_acknowledges_before_callback_and_edits_component_message(
         self,
     ) -> None:

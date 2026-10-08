@@ -24,14 +24,42 @@ from api.blocking_models import BlockedUser, NameHistoryEntry
 from framework.base_cog import BaseCog
 from framework.checks import is_owner_app
 from framework.feedback_ui import FeedbackType, FeedbackUI
+from framework.pagination import BasePaginator
 from resources import ACTION_TITLES
 from utils.embeds import SafeEmbed
-from utils.text_utils import truncate_sequence, truncate_text
+from utils.text_utils import TextPaginator, truncate_sequence, truncate_text
 
 if TYPE_CHECKING:
     from framework.bot import StupidBot
 
 logger = logging.getLogger(__name__)
+
+
+class BlockedListPages:
+    """Keep the full blocked-user snapshot in bounded, individually shown embeds."""
+
+    def __init__(self, entries: list[str], *, show_details: bool) -> None:
+        self.pages = TextPaginator(entries, page_size=15, max_length=3800).pages
+        self.total = len(entries)
+        self.show_details = show_details
+
+    async def get_page_count(self) -> int:
+        return len(self.pages)
+
+    def make_embed(self, page: int) -> discord.Embed:
+        embed = SafeEmbed(
+            title=f"Заблокированные пользователи ({self.total})",
+            description=self.pages[page],
+            color=config.Color.INFO,
+        )
+        detail = " • Детальная информация о блокировках" if self.show_details else ""
+        embed.set_footer(text=f"Страница {page + 1}/{len(self.pages)}{detail}")
+        return embed
+
+    async def on_unauthorized(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(
+            "Эти страницы доступны только автору команды.", ephemeral=True
+        )
 
 
 class BlockAction(StrEnum):
@@ -132,6 +160,42 @@ def _format_name_history(history: Sequence[NameHistoryEntry]) -> str:
         separator="\n",
         placeholder="...",
     )
+
+
+def _format_blocked_user(
+    user_entry: BlockedUser,
+    member: discord.Member | None,
+    *,
+    show_details: bool,
+) -> str:
+    if member is None:
+        user_info = f"Пользователь покинул сервер `{user_entry.user_id}`"
+        current_username = user_entry.current_username
+    else:
+        user_info = f"{member.mention} `{member.id}`"
+        current_username = member.display_name
+
+    lines = [f"**Пользователь:** {user_info}"]
+    if not show_details:
+        return "\n".join(lines)
+
+    username = truncate_text(current_username, width=80)
+    lines.append(f"• Текущее имя: {username}")
+    if not user_entry.block_history:
+        lines.append("• История блокировок отсутствует.")
+        return "\n".join(lines)
+
+    last_block = user_entry.block_history[-1]
+    reason = truncate_text(last_block.reason or "Не указана", width=200)
+    timestamp = format_dt(last_block.timestamp, "R")
+    lines.extend(
+        [
+            f"• Последняя блокировка: {timestamp}",
+            f"• Причина: {reason}",
+            f"• Администратор: <@{last_block.admin_id}>",
+        ]
+    )
+    return "\n".join(lines)
 
 
 class AdminCog(BaseCog):
@@ -339,53 +403,19 @@ class AdminCog(BaseCog):
             )
             return
         logger.info("Found %s blocked users in guild %s", len(blocked_users), guild.id)
-        embed = SafeEmbed(
-            title=f"Заблокированные пользователи ({len(blocked_users)})",
-            color=config.Color.INFO,
-        )
 
-        entries: list[str] = []
-
-        for user_entry in blocked_users:
-            user = guild.get_member(user_entry.user_id)
-            if user is None:
-                user_info = f"Пользователь покинул сервер `{user_entry.user_id}`"
-                current_username = user_entry.current_username
-            else:
-                user_info = f"{user.mention} `{user.id}`"
-                current_username = user.display_name
-
-            entry = [f"**Пользователь:** {user_info}"]
-
-            if show_details:
-                last_block = user_entry.block_history[-1]
-                truncated_username = truncate_text(current_username, width=80)
-                truncated_reason = truncate_text(
-                    last_block.reason or "Не указана", width=200
-                )
-                ts = format_dt(last_block.timestamp, "R")
-                entry.extend(
-                    [
-                        f"• Текущее имя: {truncated_username}",
-                        f"• Последняя блокировка: {ts}",
-                        f"• Причина: {truncated_reason}",
-                        f"• Администратор: <@{last_block.admin_id}>",
-                    ]
-                )
-
-            entries.append("\n".join(entry))
-        embed.add_field_pages(
-            name="Заблокированные пользователи",
-            lines=entries,
-            page_size=15,
-            separator="\n",
-        )
-
-        embed.set_footer(
-            text="" if not show_details else "Детальная информация о блокировках"
-        )
-
-        await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
+        entries = [
+            _format_blocked_user(
+                user_entry,
+                guild.get_member(user_entry.user_id),
+                show_details=show_details,
+            )
+            for user_entry in blocked_users
+        ]
+        pages = BlockedListPages(entries, show_details=show_details)
+        view = BasePaginator(pages, interaction.user.id)
+        await view.prepare()
+        await view.send(interaction, ephemeral=ephemeral)
 
     @app_commands.command(
         name="del", description="Удалить сообщение по ID (только владелец)."
@@ -406,6 +436,7 @@ class AdminCog(BaseCog):
             )
             return
 
+        await interaction.response.defer(ephemeral=True)
         try:
             msg = await channel.fetch_message(int(message_id))
             await msg.delete()

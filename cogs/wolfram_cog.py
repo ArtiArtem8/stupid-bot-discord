@@ -106,6 +106,8 @@ class WolframCog(BaseCog):
         self.client_session: aiohttp.ClientSession | None = None
         self.wolfram_client: WolframClient | None = None
         self._request_semaphore = asyncio.Semaphore(2)
+        self._closing = False
+        self._requests: set[asyncio.Task[object]] = set()
 
         self.ctx_menu = app_commands.ContextMenu(
             name="Solve with Wolfram",
@@ -126,6 +128,11 @@ class WolframCog(BaseCog):
     @override
     async def cog_unload(self) -> None:
         """Cleanup session and commands."""
+        self._closing = True
+        requests = tuple(self._requests)
+        for task in requests:
+            task.cancel()
+        await asyncio.gather(*requests, return_exceptions=True)
         if self.client_session:
             await self.client_session.close()
         self.wolfram_client = None
@@ -164,7 +171,37 @@ class WolframCog(BaseCog):
     async def _handle_query(
         self, interaction: Interaction, query: str, mode: WolframMode
     ) -> None:
-        """Unified handler for API interaction."""
+        """Own queued and active work until its response or cancellation completes."""
+        if self._closing:
+            await self._send_stopped(interaction)
+            return
+        task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("Wolfram request requires an asyncio task")
+        self._requests.add(task)
+        try:
+            await self._handle_admitted_query(interaction, query, mode)
+        except asyncio.CancelledError:
+            if self._closing:
+                await self._send_stopped(interaction)
+            raise
+        finally:
+            self._requests.discard(task)
+
+    async def _send_stopped(self, interaction: Interaction) -> None:
+        try:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.INFO,
+                description="Wolfram request stopped during reload. Please try again.",
+                ephemeral=True,
+            )
+        except discord.HTTPException as exc:
+            logger.warning("Cannot finish stopped Wolfram request: HTTP %s", exc.status)
+
+    async def _handle_admitted_query(
+        self, interaction: Interaction, query: str, mode: WolframMode
+    ) -> None:
         try:
             query = _normalize_query(query)
         except ValueError:
@@ -195,6 +232,9 @@ class WolframCog(BaseCog):
 
         logger.info("Wolfram %s: %s | User: %s", mode, query, interaction.user)
         async with self._request_semaphore:
+            if self._closing:
+                await self._send_stopped(interaction)
+                return
             await self._execute_query(interaction, query, mode=mode)
 
     async def _execute_query(
@@ -202,6 +242,7 @@ class WolframCog(BaseCog):
     ) -> None:
         """Execute one normalized query while the shared concurrency slot is held."""
         if not self.wolfram_client:
+            await self._send_stopped(interaction)
             return
         wolfram_query = f"{mode} {query}"
 

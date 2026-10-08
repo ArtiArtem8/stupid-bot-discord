@@ -503,13 +503,13 @@ class BirthdayCog(BaseCog):
         )
 
         if not entries:
-            msg = "На этом сервере нет **корректно** сохранённых дней рождений."
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description=msg,
+                description="На этом сервере нет сохранённых дней рождений.",
                 ephemeral=True,
             )
+            return
 
         embed = create_birthday_list_embed(guild.name, entries)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)

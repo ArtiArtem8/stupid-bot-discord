@@ -56,8 +56,6 @@ class ServerMonitoringManager:
             return 0
         async with self._member_lock(member.guild.id, member.id):
             roles = self._filter_saveable_roles(member)
-            if not roles:
-                return 0
             saved = await self.repository.save(
                 member.guild.id, member.id, str(member), roles, utcnow()
             )

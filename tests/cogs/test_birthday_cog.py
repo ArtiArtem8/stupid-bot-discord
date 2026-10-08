@@ -14,6 +14,7 @@ from api.birthday import BirthdayManager
 from api.birthday_models import BirthdayDelivery, BirthdayGuildConfig, BirthdayUser
 from cogs import birthday_cog as birthday_module
 from cogs.birthday_cog import BirthdayCog
+from framework.feedback_ui import FeedbackUI
 from repositories.birthday_repository import BirthdayRepository
 from repositories.sqlite.schema import birthday_deliveries
 from tests.storage import temporary_database
@@ -107,6 +108,29 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(config_patch.stop)
         self.record = AsyncMock(side_effect=record)
         self.manager.repo.finish_delivery = self.record
+
+    async def test_list_after_clearing_all_birthdays_sends_one_private_response(
+        self,
+    ) -> None:
+        self.user.clear_birthday()
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = self.guild
+
+        with patch.object(FeedbackUI, "send", new_callable=AsyncMock) as feedback:
+            await self.cog.list_birthdays._do_call(interaction, {"ephemeral": False})
+
+        feedback.assert_awaited_once()
+        response = feedback.await_args
+        if response is None:
+            self.fail("The birthday list did not produce a response")
+        self.assertTrue(response.kwargs["ephemeral"])
+        self.assertEqual(
+            response.kwargs["description"],
+            "На этом сервере нет сохранённых дней рождений.",
+        )
+        self.assertNotIn("embed", response.kwargs)
+        self.assertIs(self.cfg.users[10], self.user)
+        self.assertEqual(self.user.birthday, "")
 
     async def test_february_29_role_follows_non_leap_celebration(
         self,

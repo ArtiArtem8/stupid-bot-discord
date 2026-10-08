@@ -14,6 +14,12 @@ if TYPE_CHECKING:
 class ControllerManagerProtocol(Protocol):
     """Protocol for controller management."""
 
+    async def refresh_for_attempt(
+        self, player: MusicPlayer, attempt: PlaybackAttempt
+    ) -> None:
+        """Refresh only the controller owned by the exact player and attempt."""
+        ...
+
     async def create_for_user(
         self,
         *,
@@ -32,6 +38,7 @@ class ControllerManagerProtocol(Protocol):
         reason: ControllerDestroyReason,
         *,
         expected_attempt_id: int | None = None,
+        expected_player: MusicPlayer | None = None,
     ) -> None:
         """Destroy controller for a guild."""
         ...

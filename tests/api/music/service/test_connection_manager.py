@@ -51,6 +51,114 @@ def _as_music_player(player: _FakeMusicPlayer) -> MusicPlayer:
 
 
 class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
+    async def test_shutdown_drains_accepted_join_and_rejects_queued_and_late_joins(
+        self,
+    ) -> None:
+        entered, release = asyncio.Event(), asyncio.Event()
+        queued_entered, closing_entered = asyncio.Event(), asyncio.Event()
+        guild = MagicMock(id=123, voice_client=None)
+        channel = MagicMock()
+        pool = MagicMock(close=AsyncMock())
+        self.manager.pool = pool
+
+        async def connect(**_kwargs: object) -> _FakeMusicPlayer:
+            entered.set()
+            await release.wait()
+            player = _FakeMusicPlayer(guild)
+            guild.voice_client = player
+            return player
+
+        async def queued_join() -> object:
+            queued_entered.set()
+            return await self.manager.join(guild, channel)
+
+        async def close() -> None:
+            closing_entered.set()
+            await self.manager.cleanup()
+
+        channel.connect = AsyncMock(side_effect=connect)
+        with (
+            patch.object(self.manager, "ensure_available", return_value=True),
+            patch.object(self.manager, "is_player_usable", return_value=True),
+        ):
+            joining = asyncio.create_task(self.manager.join(guild, channel))
+            await entered.wait()
+            queued = asyncio.create_task(queued_join())
+            await queued_entered.wait()
+            closing = asyncio.create_task(close())
+            await closing_entered.wait()
+            self.assertFalse(closing.done())
+            pool.close.assert_not_awaited()
+            unavailable = (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None)
+            self.assertEqual(await self.manager.join(guild, channel), unavailable)
+            release.set()
+            self.assertEqual(await joining, unavailable)
+            self.assertEqual(await queued, unavailable)
+            await closing
+        channel.connect.assert_awaited_once()
+        pool.close.assert_awaited_once()
+        self.manager.start_lazy_connect()
+        self.assertIsNone(self.manager._lazy_connect_task)
+        self.assertFalse(await self.manager.ensure_available())
+        with self.assertRaises(NodeNotConnectedError):
+            await self.manager.initialize()
+
+    async def test_cancelled_shutdown_waiter_does_not_interrupt_connection_drain(
+        self,
+    ) -> None:
+        closing_entered = asyncio.Event()
+        lock = asyncio.Lock()
+        self.manager._join_locks[123] = lock
+        self.manager.pool = MagicMock(close=AsyncMock())
+
+        async def close() -> None:
+            closing_entered.set()
+            await self.manager.cleanup()
+
+        async with lock:
+            closing = asyncio.create_task(close())
+            await closing_entered.wait()
+            closing.cancel()
+            await asyncio.gather(closing, return_exceptions=True)
+            self.manager.pool.close.assert_not_awaited()
+            self.assertIsNotNone(self.manager._connection_drain_task)
+            drain = self.manager._connection_drain_task
+            if drain is not None:
+                self.assertFalse(drain.done())
+        await self.manager.cleanup()
+        self.manager.pool.close.assert_awaited_once()
+
+    async def test_recovery_rejects_join_until_cancelled_and_drained(self) -> None:
+        entered = asyncio.Event()
+        finished = asyncio.Event()
+
+        async def recover() -> None:
+            async with self.manager.recovery(123):
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    finished.set()
+
+        task = asyncio.create_task(recover())
+        await entered.wait()
+        result = await self.manager.join(MagicMock(id=123), MagicMock())
+        self.assertEqual(result, (VoiceCheckResult.RECOVERING, None))
+        await self.manager.cancel_recovery(123)
+        self.assertTrue(finished.is_set())
+        self.assertTrue(task.cancelled())
+        self.assertFalse(self.manager.is_recovering(123))
+
+    async def test_readiness_can_recover_after_transient_false(self) -> None:
+        player = MagicMock()
+        with (
+            patch.object(self.manager, "is_current_player", return_value=True),
+            patch.object(self.manager, "is_player_usable", side_effect=[False, True]),
+            patch.object(asyncio, "sleep", new_callable=AsyncMock) as wait,
+        ):
+            self.assertTrue(await self.manager.wait_voice_ready(player))
+        wait.assert_awaited_once()
+
     @override
     def setUp(self) -> None:
         self.bot = MagicMock()
@@ -659,6 +767,32 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         )
         invalidate_node_and_players.assert_not_awaited()
 
+    async def test_cancelled_move_releases_transition_ownership(self) -> None:
+        guild = MagicMock(id=123)
+        old_channel = MagicMock(spec=discord.VoiceChannel, id=100)
+        new_channel = MagicMock(spec=discord.VoiceChannel, id=200)
+        player = _FakeMusicPlayer(guild)
+        guild.voice_client = player
+        entered = asyncio.Event()
+
+        async def move(_channel: discord.VoiceChannel, *, timeout: float) -> None:
+            self.assertEqual(timeout, 5.0)
+            entered.set()
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(player, "channel", old_channel, create=True),
+            patch.object(player, "move_to", AsyncMock(side_effect=move), create=True),
+            patch.object(self.manager, "is_player_usable", return_value=True),
+        ):
+            moving = asyncio.create_task(self.manager.join(guild, new_channel))
+            await entered.wait()
+            self.assertTrue(self.manager.is_transitioning(_as_music_player(player)))
+            moving.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await moving
+        self.assertFalse(self.manager.is_transitioning(_as_music_player(player)))
+
     async def test_move_timeout_uses_only_player_scope(self) -> None:
         guild = MagicMock(id=123)
         old_channel = MagicMock(spec=discord.VoiceChannel, id=100)
@@ -760,12 +894,15 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         invalidate_player = AsyncMock()
 
         with (
+            patch.object(
+                self.manager, "wait_voice_ready", new=AsyncMock(return_value=False)
+            ),
             patch.object(player, "channel", old_channel, create=True),
             patch.object(player, "move_to", move_to, create=True),
             patch.object(
                 self.manager,
                 "is_player_usable",
-                side_effect=(True, False),
+                return_value=True,
             ),
             patch.object(
                 self.manager,
@@ -1462,6 +1599,32 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
 
 class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
+    async def test_cleanup_waits_for_active_node_initialization(self) -> None:
+        entered, release = asyncio.Event(), asyncio.Event()
+        closing_entered = asyncio.Event()
+
+        async def add_node(*_args: object, **_kwargs: object) -> None:
+            entered.set()
+            await release.wait()
+
+        async def close() -> None:
+            closing_entered.set()
+            await self.manager.cleanup()
+
+        self.pool.add_node = AsyncMock(side_effect=add_node)
+        with patch.object(mafic, "Node", return_value=MagicMock()):
+            initializing = asyncio.create_task(self.manager.initialize())
+            await entered.wait()
+            closing = asyncio.create_task(close())
+            await closing_entered.wait()
+            self.pool.close.assert_not_awaited()
+            self.assertFalse(closing.done())
+            release.set()
+            await initializing
+            await closing
+        self.pool.close.assert_awaited_once()
+        self.assertFalse(self.manager._initialized)
+
     @override
     def setUp(self) -> None:
         self.pool = MagicMock()

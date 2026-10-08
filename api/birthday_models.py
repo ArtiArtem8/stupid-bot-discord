@@ -11,6 +11,7 @@ import config
 from utils.birthday_utils import (
     calculate_days_until_birthday,
     format_birthday_date,
+    format_storage_date,
     is_birthday_today,
 )
 
@@ -61,11 +62,11 @@ class BirthdayUser:
         return self.birthday[:5] if self.has_birthday() else ""
 
     def was_congratulated_today(self, today: date) -> bool:
-        today_str = today.strftime(config.DATE_FORMAT)
+        today_str = format_storage_date(today)
         return today_str in self.was_congrats
 
     def add_congratulation(self, congratulation_date: date) -> None:
-        date_str = congratulation_date.strftime(config.DATE_FORMAT)
+        date_str = format_storage_date(congratulation_date)
         if date_str not in self.was_congrats:
             self.was_congrats.append(date_str)
 

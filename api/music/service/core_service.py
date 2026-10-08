@@ -14,6 +14,7 @@ from api.music.errors import (
     compact_external_log_text,
 )
 from api.music.models import (
+    MUSIC_RECOVERING_MESSAGE,
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     ControllerDestroyReason,
     EnqueueOutcome,
@@ -38,7 +39,7 @@ from api.music.models import (
 from api.music.player import MusicPlayer
 from api.music.service.connection_manager import ConnectionManager
 from api.music.service.playback_events import PlaybackEventHandlers
-from api.music.service.state_manager import StateManager
+from api.music.service.state_manager import EmptyTimerInfo, StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from api.music.service.voice_lifecycle import VoiceLifecycleHandlers
 from api.music.session_events import dispatch_music_session_end
@@ -80,9 +81,12 @@ class CoreMusicService:
         self.voice_lifecycle = voice_lifecycle
         self.ui = ui_orchestrator
         self._initialized = False
+        self._closing = False
 
     async def initialize(self) -> None:
         """Initialize the service and its components."""
+        if self._closing:
+            return
         if self._initialized:
             logger.debug("CoreMusicService already initialized.")
             return
@@ -97,6 +101,11 @@ class CoreMusicService:
         """Get the music player for a guild."""
         return self.connection.get_player(guild_id)
 
+    def _is_recovering(self, guild_id: int) -> bool:
+        return self.voice_lifecycle.is_healing(
+            guild_id
+        ) or self.connection.is_recovering(guild_id)
+
     async def heal(self, guild_id: int) -> bool:
         """Attempt to heal the session for the given guild."""
         return await self.voice_lifecycle.heal(guild_id)
@@ -105,6 +114,8 @@ class CoreMusicService:
         self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
     ) -> VoiceJoinResult:
         """Join a voice channel."""
+        if self._is_recovering(guild.id):
+            return VoiceCheckResult.RECOVERING, None
         result, old_channel = await self.connection.join(guild, channel)
 
         if result.status == MusicResultStatus.SUCCESS:
@@ -130,28 +141,30 @@ class CoreMusicService:
         `connection.get_player()` is intentionally stricter than `guild.voice_client`,
         so do not use it as the only source of truth for whether the bot is in voice.
         """
-        raw_voice_client = guild.voice_client
+        async with self.voice_lifecycle.leaving(guild.id):
+            await self.connection.cancel_recovery(guild.id)
+            raw_voice_client = guild.voice_client
 
-        await self.ui.controller.destroy_for_guild(
-            guild.id, ControllerDestroyReason.VOICE_DISCONNECT
-        )
-        await self.end_session(guild.id)
-        self.state.cancel_timer(guild.id)
+            await self.ui.controller.destroy_for_guild(
+                guild.id, ControllerDestroyReason.VOICE_DISCONNECT
+            )
+            await self.end_session(guild.id)
+            self.state.cancel_timer(guild.id)
 
-        if isinstance(raw_voice_client, MusicPlayer):
-            raw_voice_client.clear_queue()
+            if isinstance(raw_voice_client, MusicPlayer):
+                raw_voice_client.clear_queue()
 
-        if raw_voice_client is None:
-            return MusicResult(MusicResultStatus.FAILURE, "Not connected")
+            if raw_voice_client is None:
+                return MusicResult(MusicResultStatus.FAILURE, "Not connected")
 
-        disconnected = await self.connection.disconnect(guild, force=True)
+            disconnected = await self.connection.disconnect(guild, force=True)
 
-        if disconnected:
-            return MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
-        return MusicResult(
-            MusicResultStatus.ERROR,
-            "Не удалось отключиться от голосового канала.",
-        )
+            if disconnected:
+                return MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
+            return MusicResult(
+                MusicResultStatus.ERROR,
+                "Не удалось отключиться от голосового канала.",
+            )
 
     async def play(
         self,
@@ -218,6 +231,13 @@ class CoreMusicService:
         placement: QueuePlacement,
     ) -> MusicResult[PlayResponseData | VoiceJoinResult]:
         result = await player.fetch_tracks(query)
+        if self._is_recovering(
+            player.guild.id
+        ) or not self.connection.is_current_player(player):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                "Плеер изменился во время поиска. Попробуй запустить трек ещё раз.",
+            )
         if not result:
             query_text = compact_external_log_text(query)
             logger.debug(
@@ -323,7 +343,10 @@ class CoreMusicService:
         placement: QueuePlacement,
     ) -> EnqueueOutcome:
         requester = TrackRequester(requester_id, text_channel_id)
-        return await player.enqueue_tracks(tracks, requester, placement=placement)
+        outcome = await player.enqueue_tracks(tracks, requester, placement=placement)
+        if not self.connection.is_current_player(player):
+            raise mafic.PlayerNotConnected
+        return outcome
 
     async def remove_queued_entries(
         self,
@@ -332,6 +355,8 @@ class CoreMusicService:
         requester_id: int,
     ) -> MusicResult[tuple[QueueEntry, ...]]:
         """Remove exact waiting entries from the active guild player."""
+        if self._is_recovering(guild_id):
+            return MusicResult(MusicResultStatus.FAILURE, MUSIC_RECOVERING_MESSAGE)
         player = self.connection.get_player(guild_id)
         if player is None:
             return self._missing_player_result(
@@ -391,6 +416,11 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
+        if self._is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="stop")
 
@@ -412,6 +442,11 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[SkipTrackData]:
+        if self._is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="skip")
 
@@ -422,6 +457,7 @@ class CoreMusicService:
                     guild_id,
                     ControllerDestroyReason.SKIP,
                     expected_attempt_id=skipped_attempt.attempt_id,
+                    expected_player=player,
                 )
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             return await self._handle_player_io_failure(player, exc)
@@ -438,6 +474,11 @@ class CoreMusicService:
         )
 
     async def pause(self, guild_id: int) -> MusicResult[None]:
+        if self._is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="pause")
         try:
@@ -447,6 +488,11 @@ class CoreMusicService:
         return MusicResult(MusicResultStatus.SUCCESS, "Paused")
 
     async def resume(self, guild_id: int) -> MusicResult[None]:
+        if self._is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="resume")
         try:
@@ -461,6 +507,11 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
+        if self._is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="shuffle")
         await player.shuffle_queue()
@@ -475,6 +526,11 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RotateTrackData]:
+        if self._is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         player = self.connection.get_player(guild_id)
         if not player:
             return self._missing_player_result(guild_id, context="rotate")
@@ -499,6 +555,11 @@ class CoreMusicService:
         )
 
     async def set_volume(self, guild_id: int, volume: int) -> MusicResult[int]:
+        if self._is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         async with self.volume_settings.operation(guild_id, desired=volume) as current:
             player = self.connection.get_player(guild_id)
             if player:
@@ -518,6 +579,11 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RepeatModeData]:
+        if self._is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+            )
         if not (player := self.connection.get_player(guild_id)):
             return self._missing_player_result(guild_id, context="set_repeat")
 
@@ -590,16 +656,46 @@ class CoreMusicService:
 
     async def check_auto_leave(self) -> None:
         """Check for guilds that have been empty for too long."""
-        expired_guild_ids = self.state.check_auto_leave()
-        for guild_id in expired_guild_ids:
+        candidates = [
+            (
+                guild_id,
+                self.state.empty_channel_timers.get(guild_id),
+                self.connection.get_player(guild_id),
+            )
+            for guild_id in self.state.check_auto_leave()
+        ]
+        for guild_id, timer, player in candidates:
+            if timer is None or player is None:
+                continue
             try:
-                guild = self.bot.get_guild(guild_id)
-                if guild:
-                    await self.leave(guild)
+                await self._leave_expired(guild_id, timer, player)
             except Exception:
                 logger.exception("Failed to auto-leave guild %s", guild_id)
-                continue
-            self.state.clear_expired_timers([guild_id])
+
+    async def _leave_expired(
+        self, guild_id: int, timer: EmptyTimerInfo, player: MusicPlayer
+    ) -> None:
+        channel = player.channel
+        if (
+            self.state.empty_channel_timers.get(guild_id) is not timer
+            or not self.connection.is_current_player(player)
+            or self._is_recovering(guild_id)
+            or not isinstance(channel, (discord.VoiceChannel, discord.StageChannel))
+            or self.voice_lifecycle.empty_channel_reason(channel) is None
+        ):
+            return
+        async with self.voice_lifecycle.leaving(guild_id):
+            if not await self.connection.disconnect(player.guild, force=True):
+                return
+            if player.guild.voice_client is not None:
+                return
+            self.state.cancel_timer_if_current(guild_id, timer)
+            await self.end_session(guild_id)
+            await self.ui.controller.destroy_for_guild(
+                guild_id,
+                ControllerDestroyReason.VOICE_DISCONNECT,
+                expected_player=player,
+            )
 
     async def end_session(self, guild_id: int) -> None:
         """End the music session and dispatch the event."""
@@ -607,12 +703,16 @@ class CoreMusicService:
         dispatch_music_session_end(self.bot, guild_id, session)
 
     async def cleanup(self) -> None:
-        """Cleanup on shutdown."""
-        for guild in self.bot.guilds:
-            if guild.voice_client:
-                await self.connection.disconnect(guild, force=True)
-        self.playback_events.cleanup()
-        self.voice_lifecycle.cleanup()
-        await self.connection.cleanup()
-        self._initialized = False
+        """Stop recovery producers before disconnecting and disposing voice I/O."""
+        self._closing = True
+        await self.playback_events.cleanup()
+        await self.voice_lifecycle.cleanup()
+        await self.connection.stop_connecting()
+        try:
+            for guild in self.bot.guilds:
+                if guild.voice_client:
+                    await self.leave(guild)
+        finally:
+            await self.connection.cleanup()
+            self._initialized = False
         logger.info("CoreMusicService cleaned up.")

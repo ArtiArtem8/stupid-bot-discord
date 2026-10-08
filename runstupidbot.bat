@@ -1,6 +1,13 @@
 @echo off
 setlocal EnableDelayedExpansion
 
+:: Resolve relative paths against this launcher, including the first venv check.
+cd /d "%~dp0"
+if errorlevel 1 (
+    echo ERROR: Cannot enter the project directory.
+    exit /b 1
+)
+
 :: Verify that the virtual environment exists
 if not exist ".venv\Scripts\activate" (
     echo ERROR: Virtual environment not found.
@@ -15,9 +22,6 @@ echo ==============================================
 echo         Starting the application
 echo ==============================================
 echo.
-
-:: Navigate to the project directory
-cd /d "%~dp0"
 
 :: Activate the virtual environment
 echo Activating Python virtual environment...

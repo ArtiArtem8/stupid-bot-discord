@@ -13,6 +13,7 @@ from api.birthday_models import (
     BirthdayListEntry,
 )
 from repositories.birthday_repository import BirthdayRepository
+from utils.birthday_utils import format_storage_date
 from utils.text_utils import TextPaginator, truncate_text
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ def parse_birthday(date_str: str) -> str:
     for fmt in (config.DATE_FORMAT, "%Y-%m-%d"):
         try:
             dt = datetime.strptime(date_str, fmt)
-            return dt.strftime(config.DATE_FORMAT)
+            return format_storage_date(dt)
         except ValueError:
             continue
     raise ValueError("Invalid date format. Use DD-MM-YYYY or YYYY-MM-DD.")
@@ -101,6 +102,9 @@ def create_birthday_list_embed(
         embed.set_footer(text="Всего дней рождений: 0")
         return embed
 
+    footer = f"Всего дней рождений: {len(entries)}"
+    embed.set_footer(text=truncate_text(footer, width=2048))
+
     lines: list[str] = []
     for i, entry in enumerate(entries, 1):
         days_until = entry["days_until"]
@@ -139,8 +143,6 @@ def create_birthday_list_embed(
 
         embed.add_field(name=field_name, value=page_text, inline=False)
 
-    footer = f"Всего дней рождений: {len(entries)}"
-    embed.set_footer(text=truncate_text(footer, width=2048))
     return embed
 
 

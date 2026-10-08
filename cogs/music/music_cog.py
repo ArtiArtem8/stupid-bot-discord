@@ -1,5 +1,6 @@
 """Music Cog Controller."""
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, override
 
@@ -9,6 +10,7 @@ from discord.ext import commands, tasks
 
 import config
 from api.music.models import (
+    MUSIC_RECOVERING_MESSAGE,
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     MusicResult,
     MusicResultStatus,
@@ -22,7 +24,7 @@ from api.music.models import (
     VoiceJoinResult,
 )
 from framework.base_cog import BaseCog
-from framework.feedback_ui import FeedbackUI
+from framework.feedback_ui import FeedbackType, FeedbackUI
 from framework.interaction_flow import run_with_defer
 from repositories.volume_repository import VolumeStore
 
@@ -72,6 +74,7 @@ def _format_voice_result_message(
         VoiceCheckResult.SUCCESS: "Успешно подключился к {0}",
         VoiceCheckResult.USER_NOT_IN_VOICE: "Вы должны быть в голосовом канале!",
         VoiceCheckResult.USER_NOT_MEMBER: "Неверный тип пользователя",
+        VoiceCheckResult.RECOVERING: MUSIC_RECOVERING_MESSAGE,
     }
     template = messages.get(result, "Неизвестная ошибка")
     destination = to_channel.mention if to_channel else "Неизвестный канал"
@@ -82,6 +85,25 @@ def _format_voice_result_message(
 
 class MusicCog(BaseCog):
     """Music playback controller."""
+
+    @override
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        if not await super().interaction_check(interaction):
+            return False
+        if (
+            interaction.guild_id is not None
+            and self.service.voice_lifecycle.is_healing(interaction.guild_id)
+            and interaction.command is not None
+            and interaction.command.name not in {"leave", "queue"}
+        ):
+            await FeedbackUI.send(
+                interaction,
+                description=MUSIC_RECOVERING_MESSAGE,
+                feedback_type=FeedbackType.INFO,
+                ephemeral=True,
+            )
+            return False
+        return True
 
     def __init__(self, bot: commands.Bot, volumes: VolumeStore) -> None:
         super().__init__(bot)
@@ -98,8 +120,10 @@ class MusicCog(BaseCog):
 
     @override
     async def cog_unload(self) -> None:
-        if self.auto_leave_monitor.is_running():
+        monitor = self.auto_leave_monitor.get_task()
+        if monitor is not None:
             self.auto_leave_monitor.cancel()
+            await asyncio.gather(monitor, return_exceptions=True)
         try:
             await self.service.cleanup()
         finally:
@@ -346,6 +370,14 @@ class MusicCog(BaseCog):
     async def _send_no_player_or_unavailable(
         self, interaction: Interaction, result: MusicResult[object]
     ) -> None:
+        if result.message == MUSIC_RECOVERING_MESSAGE:
+            await send_info(
+                interaction,
+                MUSIC_RECOVERING_MESSAGE,
+                ephemeral=True,
+                delete_after=60,
+            )
+            return
         if result.message == MUSIC_SERVICE_UNAVAILABLE_MESSAGE:
             await send_warning(
                 interaction,

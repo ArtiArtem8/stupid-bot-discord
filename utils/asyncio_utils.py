@@ -1,4 +1,4 @@
-"""Await blocking operations without relinquishing ownership during cancellation."""
+"""Preserve ownership of asynchronous and blocking work during cancellation."""
 
 import asyncio
 import contextvars
@@ -6,6 +6,31 @@ import logging
 from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
+
+
+async def cancel_and_wait(task: asyncio.Task[object]) -> None:
+    """Request task cancellation once and wait for its cleanup to finish.
+
+    Concurrent callers do not interrupt cleanup with another cancel request.
+    Caller cancellation also waits for completion before propagating. A task
+    cannot join itself, so passing the current task is a no-op.
+
+    Discard the target's result or exception, as gather(return_exceptions=True)
+    does; its existing owner remains responsible for failure reporting.
+    """
+    if task is asyncio.current_task():
+        return
+    if not task.cancelling():
+        task.cancel()
+    completion = asyncio.gather(task, return_exceptions=True)
+    cancellation: asyncio.CancelledError | None = None
+    while not completion.done():
+        try:
+            await asyncio.shield(completion)
+        except asyncio.CancelledError as error:
+            cancellation = error
+    if cancellation is not None:
+        raise cancellation
 
 
 async def run_in_thread[T](operation: Callable[[], T]) -> T:

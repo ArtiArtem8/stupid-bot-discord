@@ -6,10 +6,11 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import discord
 import mafic
+from mafic.typings.incoming import PlayerUpdateState
 
 from .models import (
     PLAYBACK_USER_DATA_KEY,
@@ -32,6 +33,45 @@ logger = logging.getLogger(__name__)
 
 class MusicPlayer(mafic.Player[discord.Client]):
     """Mafic player owning queue-entry and playback-attempt transitions."""
+
+    _stuck_attempt: PlaybackAttempt | None = None
+    _stuck_position: int = 0
+
+    @property
+    @override
+    def position(self) -> int:
+        """Use reported milliseconds while stalled; otherwise use Mafic's estimate."""
+        # Recovery seals the player before reading its position for the snapshot.
+        if (
+            self._stuck_attempt is not None
+            and self._stuck_attempt is self._current_attempt
+        ):
+            return self._position
+        return super().position
+
+    @property
+    def stuck_attempt(self) -> PlaybackAttempt | None:
+        """Return the stalled current attempt until real Lavalink progress resumes."""
+        if self._is_stale or self._stuck_attempt is not self._current_attempt:
+            return None
+        return self._stuck_attempt
+
+    def mark_stuck(self, expected: PlaybackAttempt) -> bool:
+        """Mark a live current attempt at its last reported Lavalink position."""
+        if self._is_stale or self._current_attempt is not expected:
+            return False
+        self._stuck_attempt = expected
+        self._stuck_position = self._position
+        return True
+
+    @override
+    def update_state(self, state: PlayerUpdateState) -> None:
+        super().update_state(state)
+        if self.stuck_attempt is not None and state["connected"]:
+            if not self.paused and self._position > self._stuck_position:
+                self._stuck_attempt = None
+            # A backward seek establishes a new baseline for reported progress.
+            self._stuck_position = self._position
 
     def __init__(self, client: discord.Client, channel: Connectable) -> None:
         super().__init__(client, channel)
@@ -63,6 +103,11 @@ class MusicPlayer(mafic.Player[discord.Client]):
         """Mark this player as no longer safe for reuse."""
         self._is_stale = True
 
+    async def seal_for_recovery(self) -> None:
+        """Finish an accepted transition, then freeze the snapshot source."""
+        async with self._transition_lock:
+            self._is_stale = True
+
     def clear_queue(self) -> None:
         self.queue.clear()
         logger.debug("Cleared queue for guild %s", self.guild.id)
@@ -76,6 +121,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     async def shuffle_queue(self) -> None:
         """Shuffle after pending transitions finish, including their rollback."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             self.queue.shuffle()
 
     def resolve_current_attempt(self, event_token: str) -> PlaybackAttempt | None:
@@ -90,6 +137,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     async def resolve_track_start(self, event_token: str) -> PlaybackAttempt | None:
         """Classify a track-start event while holding the transition lock."""
         async with self._transition_lock:
+            if self._is_stale:
+                return None
             return self.resolve_current_attempt(event_token)
 
     async def resolve_exception_attempt(
@@ -111,6 +160,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     def _resolve_exception_attempt_unlocked(
         self, event_token: str
     ) -> PlaybackAttempt | None:
+        if self._is_stale:
+            return None
         current = self.resolve_current_attempt(event_token)
         if current is not None:
             return current
@@ -161,6 +212,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
         if not tracks:
             return EnqueueOutcome((), None)
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             entries = tuple(self._new_entry(track, requester) for track in tracks)
             if placement == "end":
                 self.queue.extend(entries)
@@ -189,12 +242,16 @@ class MusicPlayer(mafic.Player[discord.Client]):
         async with self._transition_lock:
             if self._is_stale or not expected:
                 return ()
+            expected_ids = {entry.request_id for entry in expected}
+            live_entries = tuple(
+                entry for entry in self.queue if entry.request_id in expected_ids
+            )
             if any(
                 entry.requester is None or entry.requester.user_id != requester_id
-                for entry in expected
+                for entry in live_entries
             ):
                 return ()
-            return self.queue.remove_entries(expected)
+            return self.queue.remove_entries(live_entries)
 
     async def skip(
         self,
@@ -203,10 +260,12 @@ class MusicPlayer(mafic.Player[discord.Client]):
     ) -> tuple[PlaybackAttempt | None, PlaybackAttempt | None]:
         """Replace current playback with the next entry, ignoring repeat."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             ended = self._current_attempt
             if ended is None:
                 return None, None
-            if expected is not None and (self._is_stale or ended is not expected):
+            if expected is not None and ended is not expected:
                 return None, None
             old_queue = self.queue.snapshot()
             old_pending = self._pending_end_attempts.copy()
@@ -230,6 +289,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     ) -> tuple[PlaybackAttempt | None, PlaybackAttempt | None]:
         """Move the current entry to the queue tail and start the next entry."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             ended = self._current_attempt
             if ended is None:
                 return None, None
@@ -253,6 +314,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     async def stop_and_clear(self) -> None:
         """Clear queued state and stop playback atomically."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             old_queue = self.queue.snapshot()
             old_pending = self._pending_end_attempts.copy()
             ended = self._current_attempt
@@ -271,6 +334,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     async def start_queued_if_idle(self) -> PlaybackAttempt | None:
         """Start one queued entry if no attempt is active."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             return await self._start_queued_if_idle_unlocked()
 
     async def _start_queued_if_idle_unlocked(self) -> PlaybackAttempt | None:
@@ -294,6 +359,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     ) -> TrackEndOutcome:
         """Classify one Mafic end event and perform any required transition."""
         async with self._transition_lock:
+            if self._is_stale:
+                return TrackEndOutcome(None, None, True)
             old_queue = self.queue.snapshot()
             old_pending = self._pending_end_attempts.copy()
             old_current = self._current_attempt
@@ -410,6 +477,8 @@ class MusicPlayer(mafic.Player[discord.Client]):
     ) -> PlaybackAttempt:
         """Create a fresh runtime attempt for a restored queue entry."""
         async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
             previous = self._current_attempt
             self._current_attempt = None
             try:

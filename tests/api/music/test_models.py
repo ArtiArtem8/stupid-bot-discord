@@ -1,7 +1,7 @@
 """Tests for explicit playable voice connection outcomes."""
 
 import unittest
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 
 from api.music.models import (
     EnqueueOutcome,
@@ -79,7 +79,7 @@ class TestPlaybackIdentityModels(unittest.TestCase):
         track = make_track("same")
         requester = TrackRequester(1)
         expected = QueueEntry(1, track, requester)
-        lookalike = QueueEntry(1, track, requester)
+        lookalike = replace(expected)
         self.assertEqual(lookalike, expected)
 
         outcome = EnqueueOutcome((expected,), PlaybackAttempt(1, lookalike))

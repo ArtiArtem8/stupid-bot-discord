@@ -434,7 +434,7 @@ class SessionHealer(HealerProtocol):
     @override
     async def capture_and_heal(self, guild_id: int) -> bool:
         """Attempt to recover one guild's interrupted session."""
-        async with self._locks[guild_id]:
+        async with self._locks[guild_id], self.connection.recovery(guild_id):
             logger.info("Attempting to heal session for guild %s", guild_id)
 
             player = self._get_recoverable_player(guild_id)
@@ -443,7 +443,7 @@ class SessionHealer(HealerProtocol):
                 return False
 
             try:
-                snapshot = await self._create_snapshot(player)
+                snapshot = await self._seal_and_snapshot(player)
                 await self._hard_disconnect(player)
 
                 await asyncio.sleep(2.0)
@@ -462,8 +462,9 @@ class SessionHealer(HealerProtocol):
                 logger.exception("Failed to heal session for %s", guild_id)
                 return False
 
-    async def _create_snapshot(self, player: MusicPlayer) -> PlayerStateSnapshot:
-        """Extract the player state required to restore its session."""
+    async def _seal_and_snapshot(self, player: MusicPlayer) -> PlayerStateSnapshot:
+        """Read prerequisites, then freeze transitions and capture restorable state."""
+        volume = await self.volume_repo.get_volume(guild_id=player.guild.id)
         voice_channel_id = _get_voice_channel_id(player.channel)
         if not voice_channel_id and (vc_client := player.guild.voice_client):
             voice_channel_id = _get_voice_channel_id(vc_client.channel)
@@ -471,9 +472,7 @@ class SessionHealer(HealerProtocol):
         if not voice_channel_id:
             raise ValueError("Cannot snapshot: Player has no active voice channel")
 
-        session = self.state.get_session(player.guild.id)
-
-        volume = await self.volume_repo.get_volume(guild_id=player.guild.id)
+        await player.seal_for_recovery()
 
         return PlayerStateSnapshot(
             guild_id=player.guild.id,
@@ -484,7 +483,7 @@ class SessionHealer(HealerProtocol):
             volume=volume,
             queue=player.queue_snapshot(),
             repeat_mode=player.repeat.mode,
-            session=session,
+            session=self.state.get_session(player.guild.id),
         )
 
     async def _hard_disconnect(self, player: MusicPlayer) -> None:
@@ -545,6 +544,8 @@ class SessionHealer(HealerProtocol):
         return channel
 
     async def _join_restore_voice(self, target: RestoreTarget, guild_id: int) -> bool:
+        if isinstance(target.guild.voice_client, MusicPlayer):
+            return False
         result, _old_channel = await self.connection.join(target.guild, target.channel)
         if result.status is not MusicResultStatus.SUCCESS:
             logger.warning(
@@ -618,6 +619,8 @@ class SessionHealer(HealerProtocol):
             restored_track = await self._resolve_fresh_track_for_restore(
                 player, snapshot.current_entry.track
             )
+            if not self.connection.is_current_player(player):
+                return False
             restored_entry = replace(snapshot.current_entry, track=restored_track)
 
             restore_position = max(0, snapshot.position)
@@ -654,6 +657,8 @@ class SessionHealer(HealerProtocol):
 
             self.state.record_track_start(snapshot.guild_id, restored)
             await self.ui.spawn_controller(player, restored)
+            if not self._is_expected_restore_attempt_active(player, restored):
+                return False
 
         if snapshot.session is not None:
             session = snapshot.session

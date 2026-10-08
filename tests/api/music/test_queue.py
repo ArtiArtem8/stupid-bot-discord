@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 
 from api.music.queue import QueueManager
 from tests.api.music.helpers import make_entry
@@ -82,7 +83,7 @@ class TestQueueManager(unittest.TestCase):
         self,
     ) -> None:
         queued = make_entry("same", entry_id=1)
-        lookalike = make_entry("same", entry_id=1)
+        lookalike = replace(queued)
         queue = QueueManager()
         queue.append(queued)
 

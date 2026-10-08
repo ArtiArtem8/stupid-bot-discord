@@ -2,9 +2,28 @@ from __future__ import annotations
 
 import unittest
 from typing import cast, override
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from cogs.on_message_cog import OnMessageCog
+
+
+class TestGreetingPrefix(unittest.IsolatedAsyncioTestCase):
+    async def test_string_and_sequence_ignore_only_complete_prefixes(self) -> None:
+        for prefixes in ("s!", ["s!", "bot!"]):
+            for content, accepted in (("!Доброе утро", True), ("s!hello", False)):
+                with self.subTest(prefixes=prefixes, content=content):
+                    bot = MagicMock(get_prefix=AsyncMock(return_value=prefixes))
+                    cog = OnMessageCog(bot, MagicMock())
+                    message = MagicMock(content=content, guild=None)
+                    message.author.bot = False
+                    with (
+                        patch.object(cog, "_log_message"),
+                        patch.object(
+                            cog, "quest_process_message", new_callable=AsyncMock
+                        ) as process,
+                    ):
+                        await cog.on_message(message)
+                    self.assertEqual(process.await_count, int(accepted))
 
 
 class TestMessageLogging(unittest.TestCase):

@@ -20,6 +20,10 @@ MUSIC_SERVICE_UNAVAILABLE_MESSAGE = (
 )
 PLAYBACK_USER_DATA_KEY = "stupid_attempt_token"
 
+MUSIC_RECOVERING_MESSAGE = (
+    "Восстанавливаю соединение. Попробуй ещё раз после завершения."
+)
+
 type Track = mafic.Track
 type Playlist = mafic.Playlist
 type SearchResult = list[Track] | Playlist | None
@@ -103,6 +107,7 @@ class VoiceCheckResult(StrEnum):
     SUCCESS = auto()
     USER_NOT_IN_VOICE = auto()
     USER_NOT_MEMBER = auto()
+    RECOVERING = auto()
 
     @property
     def status(self) -> MusicResultStatus:
@@ -163,11 +168,12 @@ class TrackRequester:
 
 @dataclass(frozen=True, slots=True)
 class QueueEntry:
-    """One concrete request for a source track."""
+    """One request with a stable ID across playback and session recovery."""
 
     entry_id: int
     track: Track
     requester: TrackRequester | None
+    request_id: str = field(default_factory=lambda: uuid4().hex)
 
 
 @dataclass(frozen=True, slots=True)

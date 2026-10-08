@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sqlite3
 from functools import partial
 from pathlib import Path
 from typing import override
@@ -7,6 +8,7 @@ from typing import override
 import discord
 from discord import Intents
 from discord.ext import commands, tasks
+from sqlalchemy.exc import OperationalError
 
 import config
 from api.birthday import BirthdayManager
@@ -255,7 +257,19 @@ class StupidBot(commands.Bot):
 
     @tasks.loop(seconds=config.AUTOSAVE_UPTIME_INTERVAL)
     async def autosave_task(self) -> None:
-        uptime = await self.save_state()
+        try:
+            uptime = await self.save_state()
+        except OperationalError as exc:
+            code = getattr(exc.orig, "sqlite_errorcode", None)
+            if not isinstance(code, int) or code & 0xFF not in (
+                sqlite3.SQLITE_BUSY,
+                sqlite3.SQLITE_LOCKED,
+            ):
+                raise
+            logger.warning(
+                "Uptime checkpoint deferred: SQLite busy/locked (code=%s)", code
+            )
+            return
         logger.debug("Autosaved uptime: %.0f seconds", uptime)
 
     @update_activity_task.before_loop

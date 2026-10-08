@@ -75,9 +75,9 @@ class TrackControllerManager(ControllerManagerProtocol):
         self._closing = False
 
     async def _safe_delete_message(self, channel_id: int, message_id: int) -> None:
-        """Try cleanup now and own any bounded retries for these exact IDs."""
+        """Try deletion immediately; schedule bounded retries only while open."""
         key = (channel_id, message_id)
-        if self._closing or key in self._message_delete_tasks:
+        if key in self._message_delete_tasks:
             return
         result = await self._delete_message_once(channel_id, message_id)
         if result != "retry" or self._closing or key in self._message_delete_tasks:
@@ -118,12 +118,12 @@ class TrackControllerManager(ControllerManagerProtocol):
                 channel_id,
                 exc.status,
                 exc.code,
-                "retry pending" if retryable else "abandoned",
+                "retryable" if retryable else "abandoned",
             )
             return "retry" if retryable else "failed"
         except (aiohttp.ClientError, TimeoutError) as exc:
             logger.debug(
-                "Controller message %s cleanup in channel %s will retry (%s)",
+                "Controller message %s cleanup in channel %s failed transiently (%s)",
                 message_id,
                 channel_id,
                 type(exc).__name__,
@@ -159,12 +159,16 @@ class TrackControllerManager(ControllerManagerProtocol):
             )
 
     async def cleanup(self) -> None:
-        """Stop accepting message cleanup work and cancel and await owned retries."""
+        """Close admission and drain active views and owned deletion retries."""
         self._closing = True
         tasks = tuple(self._message_delete_tasks.values())
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        for guild_id in self.controllers.keys() | self._active_messages.keys():
+            await self.destroy_for_guild(
+                guild_id, ControllerDestroyReason.VOICE_DISCONNECT
+            )
 
     @override
     async def create_for_user(
@@ -179,13 +183,15 @@ class TrackControllerManager(ControllerManagerProtocol):
         """Replace any existing guild controller with one for the current attempt."""
         async with self._locks[guild_id]:
             logger.debug("Manager: Setup controller for guild %s", guild_id)
-            if player.current_attempt is not attempt:
+            if not self._owns_attempt(player, attempt):
                 logger.debug("Manager: Aborting stale controller creation")
                 return
 
             await self._cleanup_existing(
                 guild_id, ControllerDestroyReason.TRACK_CHANGED
             )
+            if not self._owns_attempt(player, attempt):
+                return
 
             async def on_view_stop_callback(
                 view_ref: TrackControllerView, reason: ControllerDestroyReason
@@ -206,6 +212,10 @@ class TrackControllerManager(ControllerManagerProtocol):
                 msg = await channel.send(
                     embed=view.make_embed(), view=view, silent=True
                 )
+                if not self._owns_attempt(player, attempt):
+                    view.stop()
+                    await self._safe_delete_message(msg.channel.id, msg.id)
+                    return
 
                 view.message = msg
                 self.controllers[guild_id] = view
@@ -220,6 +230,28 @@ class TrackControllerManager(ControllerManagerProtocol):
                 logger.exception("Failed to send controller")
                 view.stop()
 
+    def _owns_attempt(self, player: MusicPlayer, attempt: PlaybackAttempt) -> bool:
+        return (
+            not self._closing
+            and self.connection.is_current_player(player)
+            and player.current_attempt is attempt
+        )
+
+    @override
+    async def refresh_for_attempt(
+        self, player: MusicPlayer, attempt: PlaybackAttempt
+    ) -> None:
+        async with self._locks[player.guild.id]:
+            view = self.controllers.get(player.guild.id)
+            if (
+                view is None
+                or view.player is not player
+                or view.attempt is not attempt
+                or not self._owns_attempt(player, attempt)
+            ):
+                return
+        await view.refresh_status()
+
     @override
     async def destroy_for_guild(
         self,
@@ -228,6 +260,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         requesting_view: TrackControllerView | None = None,
         *,
         expected_attempt_id: int | None = None,
+        expected_player: MusicPlayer | None = None,
     ) -> None:
         """Destroys the controller for a guild.
 
@@ -235,6 +268,12 @@ class TrackControllerManager(ControllerManagerProtocol):
         """
         async with self._locks[guild_id]:
             current_view = self.controllers.get(guild_id)
+            if (
+                expected_player is not None
+                and current_view
+                and current_view.player is not expected_player
+            ):
+                return
 
             if requesting_view and current_view != requesting_view:
                 logger.debug(
@@ -269,7 +308,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         controller = self.controllers.pop(guild_id, None)
         if controller:
             try:
-                controller.stop()
+                await controller.close()
             except Exception:
                 logger.exception("Error stopping controller")
 
@@ -363,9 +402,19 @@ class TrackControllerView(ui.View):
         """Stop the updater loop and interaction."""
         logger.debug("Stopping %s", self.__class__.__name__)
         self._running = False
-        if self._task and self._task is not asyncio.current_task():
+        if (
+            self._task
+            and self._task is not asyncio.current_task()
+            and not self._task.cancelling()
+        ):
             self._task.cancel()
         super().stop()
+
+    async def close(self) -> None:
+        """Stop interactions and finish the updater before releasing its player."""
+        self.stop()
+        if self._task is not None and self._task is not asyncio.current_task():
+            await asyncio.gather(self._task, return_exceptions=True)
 
     def make_embed(self) -> discord.Embed:
         attempt = self.player.current_attempt
@@ -398,11 +447,18 @@ class TrackControllerView(ui.View):
         member = self.player.guild.get_member(self.user_id)
         avatar = member.display_avatar if member else None
 
+        footer = f"Запросил: {member.display_name if member else self.user_id}"
+        if self.player.stuck_attempt is attempt:
+            footer = f"Трек застрял, жду продолжения • {footer}"
         embed.set_footer(
-            text=f"Запросил: {member.display_name if member else self.user_id}",
+            text=footer,
             icon_url=avatar.url if avatar else None,
         )
         return embed
+
+    async def refresh_status(self) -> None:
+        """Show a status change immediately, preserving the live controls."""
+        await self._safe_update(force=True)
 
     def _make_bar(self, pos: int, length: int, width: int = 10) -> str:
         if length <= 0:
@@ -594,6 +650,14 @@ class TrackControllerView(ui.View):
             return None
         return self.attempt
 
+    async def _seek_and_refresh(self, expected: PlaybackAttempt, position: int) -> None:
+        if not await self.player.seek_attempt(expected, position):
+            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
+            return
+        if self._is_paused_cache:
+            self._frozen_position = position
+        await self._safe_update(force=True)
+
     @ui.button(
         emoji=MUSIC_PLAYER_EMOJIS["restart"],
         style=discord.ButtonStyle.secondary,
@@ -604,12 +668,7 @@ class TrackControllerView(ui.View):
         expected = await self._prepare_action(interaction)
         if expected is None:
             return
-        if not await self.player.seek_attempt(expected, 0):
-            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
-            return
-        if self._is_paused_cache:
-            self._frozen_position = 0
-        await self._safe_update(force=True)
+        await self._seek_and_refresh(expected, 0)
 
     @ui.button(
         emoji=MUSIC_PLAYER_EMOJIS["back_10"],
@@ -626,13 +685,7 @@ class TrackControllerView(ui.View):
             if self._is_paused_cache
             else (self.player.position or 0)
         )
-        new = max(pos - _SEEK_STEP_MS, 0)
-        if not await self.player.seek_attempt(expected, new):
-            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
-            return
-        if self._is_paused_cache:
-            self._frozen_position = new
-        await self._safe_update(force=True)
+        await self._seek_and_refresh(expected, max(pos - _SEEK_STEP_MS, 0))
 
     @ui.button(
         emoji=MUSIC_PLAYER_EMOJIS["pause"],
@@ -673,16 +726,11 @@ class TrackControllerView(ui.View):
             if self._is_paused_cache
             else (self.player.position or 0)
         )
-        new = min(
+        position = min(
             pos + _SEEK_STEP_MS,
             expected.entry.track.length,
         )
-        if not await self.player.seek_attempt(expected, new):
-            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
-            return
-        if self._is_paused_cache:
-            self._frozen_position = new
-        await self._safe_update(force=True)
+        await self._seek_and_refresh(expected, position)
 
     @ui.button(
         emoji=MUSIC_PLAYER_EMOJIS["skip"],
