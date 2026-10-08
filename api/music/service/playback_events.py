@@ -79,58 +79,6 @@ class PlaybackEventHandlers:
             self._cleanup_task = asyncio.create_task(self._drain_callbacks())
         await asyncio.shield(self._cleanup_task)
 
-    async def _drain_callbacks(self) -> None:
-        callbacks = tuple(self._active_callbacks)
-        for task in callbacks:
-            if not task.cancelling():
-                task.cancel()
-        await asyncio.gather(*callbacks, return_exceptions=True)
-        self._active_callbacks.clear()
-        self._load_failures.clear()
-        logger.info("Playback listeners removed and accepted callbacks drained.")
-
-    @contextmanager
-    def _handling_event(self) -> Generator[None]:
-        task = asyncio.current_task()
-        if task is None:
-            raise RuntimeError("Playback handling requires an asyncio task")
-        self._active_callbacks.add(task)
-        try:
-            yield
-        finally:
-            self._active_callbacks.discard(task)
-
-    def _event_token(self, track: mafic.Track, event_name: str) -> str | None:
-        token = track.user_data.get(PLAYBACK_USER_DATA_KEY)
-        if isinstance(token, str) and token:
-            return token
-        logger.warning(
-            "Ignoring untagged %s guild track_source=%s track_id=%s",
-            event_name,
-            track.source,
-            track.identifier,
-        )
-        return None
-
-    def _should_handle_player_event(
-        self,
-        player: MusicPlayer,
-        event_name: str,
-    ) -> bool:
-        guild_id = player.guild.id
-        if (
-            self._closing
-            or self._is_healing(guild_id)
-            or not self.connection.is_current_player(player)
-        ):
-            logger.debug(
-                "Ignoring %s from non-current or healing player for guild %s",
-                event_name,
-                guild_id,
-            )
-            return False
-        return True
-
     async def _on_track_start(self, event: mafic.TrackStartEvent[MusicPlayer]) -> None:
         if not self._should_handle_player_event(event.player, "track_start"):
             return
@@ -153,6 +101,70 @@ class PlaybackEventHandlers:
                 attempt.attempt_id,
             )
             await self.ui.spawn_controller(player, attempt)
+
+    async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
+        if not self._should_handle_player_event(event.player, "track_end"):
+            return
+        token = self._event_token(event.track, "TrackEndEvent")
+        if token is None:
+            return
+
+        with self._handling_event():
+            player = event.player
+            reason = event.reason
+            try:
+                outcome = await player.handle_track_end(token, reason)
+            except EXPECTED_LAVALINK_IO_ERRORS as exc:
+                await self.connection.invalidate_player(
+                    player,
+                    context=f"track_end_transition_{reason.value}",
+                    error=type(exc).__name__,
+                )
+                return
+
+            if outcome.is_stale or outcome.ended_attempt is None:
+                return
+
+            ended = outcome.ended_attempt
+            logger.debug("Track ended: attempt=%s reason=%s", ended.attempt_id, reason)
+            self.state.record_history(player.guild.id, ended, reason)
+
+            failures = self._load_failures.setdefault(player.guild.id, set())
+            if (
+                reason is mafic.EndReason.LOAD_FAILED
+                and ended.event_token not in failures
+            ):
+                track = ended.entry.track
+                title = compact_external_log_text(
+                    track.title, limit=TRACK_TITLE_TEXT_LIMIT
+                )
+                logger.warning(
+                    "Track playback/source failure: %s",
+                    {
+                        "guild": player.guild.id,
+                        "attempt": ended.attempt_id,
+                        "source": track.source,
+                        "id": track.identifier,
+                        "title": title,
+                        "reason": "load_failed",
+                    },
+                )
+                self._dispatch_track_exception(
+                    player,
+                    ended,
+                    reason="Lavalink: загрузка не удалась",
+                    severity=None,
+                )
+            failures.discard(ended.event_token)
+            if not failures:
+                self._load_failures.pop(player.guild.id, None)
+
+            await self.ui.controller.destroy_for_guild(
+                player.guild.id,
+                ControllerDestroyReason.TRACK_END,
+                expected_attempt_id=ended.attempt_id,
+                expected_player=player,
+            )
 
     async def _on_track_exception(
         self, event: mafic.TrackExceptionEvent[MusicPlayer]
@@ -243,69 +255,57 @@ class PlaybackEventHandlers:
             ) and player.mark_stuck(attempt):
                 await self.ui.controller.refresh_for_attempt(player, attempt)
 
-    async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
-        if not self._should_handle_player_event(event.player, "track_end"):
-            return
-        token = self._event_token(event.track, "TrackEndEvent")
-        if token is None:
-            return
+    async def _drain_callbacks(self) -> None:
+        callbacks = tuple(self._active_callbacks)
+        for task in callbacks:
+            if not task.cancelling():
+                task.cancel()
+        await asyncio.gather(*callbacks, return_exceptions=True)
+        self._active_callbacks.clear()
+        self._load_failures.clear()
+        logger.info("Playback listeners removed and accepted callbacks drained.")
 
-        with self._handling_event():
-            player = event.player
-            reason = event.reason
-            try:
-                outcome = await player.handle_track_end(token, reason)
-            except EXPECTED_LAVALINK_IO_ERRORS as exc:
-                await self.connection.invalidate_player(
-                    player,
-                    context=f"track_end_transition_{reason.value}",
-                    error=type(exc).__name__,
-                )
-                return
+    @contextmanager
+    def _handling_event(self) -> Generator[None]:
+        task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("Playback handling requires an asyncio task")
+        self._active_callbacks.add(task)
+        try:
+            yield
+        finally:
+            self._active_callbacks.discard(task)
 
-            if outcome.is_stale or outcome.ended_attempt is None:
-                return
+    def _event_token(self, track: mafic.Track, event_name: str) -> str | None:
+        token = track.user_data.get(PLAYBACK_USER_DATA_KEY)
+        if isinstance(token, str) and token:
+            return token
+        logger.warning(
+            "Ignoring untagged %s guild track_source=%s track_id=%s",
+            event_name,
+            track.source,
+            track.identifier,
+        )
+        return None
 
-            ended = outcome.ended_attempt
-            logger.debug("Track ended: attempt=%s reason=%s", ended.attempt_id, reason)
-            self.state.record_history(player.guild.id, ended, reason)
-
-            failures = self._load_failures.setdefault(player.guild.id, set())
-            if (
-                reason is mafic.EndReason.LOAD_FAILED
-                and ended.event_token not in failures
-            ):
-                track = ended.entry.track
-                title = compact_external_log_text(
-                    track.title, limit=TRACK_TITLE_TEXT_LIMIT
-                )
-                logger.warning(
-                    "Track playback/source failure: %s",
-                    {
-                        "guild": player.guild.id,
-                        "attempt": ended.attempt_id,
-                        "source": track.source,
-                        "id": track.identifier,
-                        "title": title,
-                        "reason": "load_failed",
-                    },
-                )
-                self._dispatch_track_exception(
-                    player,
-                    ended,
-                    reason="Lavalink: загрузка не удалась",
-                    severity=None,
-                )
-            failures.discard(ended.event_token)
-            if not failures:
-                self._load_failures.pop(player.guild.id, None)
-
-            await self.ui.controller.destroy_for_guild(
-                player.guild.id,
-                ControllerDestroyReason.TRACK_END,
-                expected_attempt_id=ended.attempt_id,
-                expected_player=player,
+    def _should_handle_player_event(
+        self,
+        player: MusicPlayer,
+        event_name: str,
+    ) -> bool:
+        guild_id = player.guild.id
+        if (
+            self._closing
+            or self._is_healing(guild_id)
+            or not self.connection.is_current_player(player)
+        ):
+            logger.debug(
+                "Ignoring %s from non-current or healing player for guild %s",
+                event_name,
+                guild_id,
             )
+            return False
+        return True
 
     def _extract_exception_details(
         self, exception: LavalinkException
