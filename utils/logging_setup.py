@@ -1,5 +1,24 @@
 # ruff: noqa: E501
 import logging.config
+import re
+from typing import override
+
+
+class CredentialSafeFormatter(logging.Formatter):
+    """Redact transport credentials from rendered messages and exception chains.
+
+    Sanitize the formatted copy so logging arguments and network payloads remain
+    untouched, and cached exception text cannot bypass another handler's policy.
+    """
+
+    _credentials = re.compile(
+        r"(?i)([\"']?(?:token|session_?id|secret_?key|authorization|password)"
+        r"[\"']?\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;}]+)"
+    )
+
+    @override
+    def format(self, record: logging.LogRecord) -> str:
+        return self._credentials.sub(r"\1'[REDACTED]'", super().format(record))
 
 
 def setup_logging(encoding: str = "utf-8") -> None:
@@ -9,10 +28,12 @@ def setup_logging(encoding: str = "utf-8") -> None:
         "disable_existing_loggers": False,
         "formatters": {
             "detailed": {
+                "()": CredentialSafeFormatter,
                 "format": "%(asctime)s %(levelname)s [%(name)s]: %(message)s",
                 "datefmt": "%Y-%m-%d %H:%M:%S",
             },
             "debug_detailed": {
+                "()": CredentialSafeFormatter,
                 "format": "%(asctime)s %(levelname)s [%(name)s:%(lineno)d]: %(message)s",
                 "datefmt": "%Y-%m-%d %H:%M:%S",
             },

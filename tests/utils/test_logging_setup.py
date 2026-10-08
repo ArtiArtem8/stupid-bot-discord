@@ -1,13 +1,33 @@
 from __future__ import annotations
 
+import logging
 import unittest
 from typing import Any, cast
 from unittest.mock import patch
 
-from utils.logging_setup import setup_logging
+from utils.logging_setup import CredentialSafeFormatter, setup_logging
 
 
 class TestLoggingSetup(unittest.TestCase):
+    def test_redacts_payload_and_exception_without_mutating_arguments(self) -> None:
+        payload = {"voice": {"token": "private-token", "sessionId": "private-id"}}
+        record = logging.LogRecord(
+            "mafic.node",
+            logging.DEBUG,
+            "",
+            1,
+            "PATCH guild=42 payload=%s",
+            (payload,),
+            None,
+        )
+        record.exc_text = "ValueError: Authorization='private-header'"
+        for _ in range(2):
+            rendered = CredentialSafeFormatter().format(record)
+            for secret in ("private-token", "private-id", "private-header"):
+                self.assertNotIn(secret, rendered)
+            self.assertIn("guild=42", rendered)
+        self.assertEqual(payload["voice"]["token"], "private-token")
+
     def test_rotating_file_retention_is_not_reduced(self) -> None:
         with patch("utils.logging_setup.logging.config.dictConfig") as dict_config:
             setup_logging()
