@@ -4,7 +4,7 @@ import asyncio
 import os
 import unittest
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from fractions import Fraction
 from io import BytesIO
 
@@ -18,7 +18,7 @@ from api.voice.profile.details import (
 )
 from api.voice.read_models import VoiceXpBreakdown
 from api.voice.timeline import VoiceTimeline
-from cogs.voice.profile.design import CardIdentity
+from cogs.voice.profile.design import CardIdentity, bind_design
 from cogs.voice.profile.detail_models import DetailIdentity, PeoplePresentation
 from cogs.voice.profile.media import ProfileMediaRenderer
 from tests.cogs.voice.profile.test_media import profile_at
@@ -30,6 +30,40 @@ from tests.cogs.voice.profile.test_media import profile_at
     "Set VOICE_PROFILE_NATIVE=1 with Inkscape installed to run native integration",
 )
 class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
+    async def test_history_footer_fits_without_overlapping_timezone(self) -> None:
+        renderer = ProfileMediaRenderer()
+        try:
+            await renderer.astart()
+            if renderer.svg is None:
+                self.fail("Native renderer did not initialize")
+            for since in (date(2026, 9, 21), None):
+                with self.subTest(since=since):
+                    design = await asyncio.to_thread(
+                        bind_design,
+                        replace(
+                            profile_at(),
+                            history_since=since,
+                            timezone_label="America/Argentina/Buenos_Aires",
+                        ),
+                        CardIdentity("Name", "Guild"),
+                        renderer.svg.template,
+                        renderer.svg.raster,
+                    )
+                    scope = design.boxes["scope-label"]
+                    timezone = design.boxes["timezone-label"]
+                    self.assertLessEqual(scope.width, 560.25)
+                    self.assertLess(scope.x + scope.width, timezone.x)
+                    images = await asyncio.to_thread(
+                        renderer.svg.raster.layers, (design.svg,)
+                    )
+                    for image in images:
+                        try:
+                            self.assertEqual(image.size, (960, 480))
+                        finally:
+                            image.close()
+        finally:
+            await renderer.aclose()
+
     async def test_static_avatar_matches_full_decoder_pixels(self) -> None:
         renderer = ProfileMediaRenderer()
         try:
