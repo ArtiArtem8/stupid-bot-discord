@@ -177,8 +177,8 @@ is a separate editor project; the bot uses its exported SVG and JSON assets.
 Preserve canvas dimensions, layer and element IDs, and local resource references.
 
 The bottom-left `scope-label` is static text and can be edited directly in
-`profile.svg`. Its tracking date is a shared label, not a date calculated from
-each guild's history. `timezone-label` and profile values are replaced at render
+`profile.svg`. It identifies the server-local scope without claiming a tracking
+start date. `timezone-label` and profile values are replaced at render
 time. Appearance band colors are described in [progression](progression.md).
 
 Restart or reload the profile Cog after changing artwork or fonts. Its startup
