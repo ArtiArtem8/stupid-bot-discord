@@ -56,6 +56,7 @@ REQUIRED: Final = frozenset(
         "progress-label",
         "voice-value",
         "sessions-value",
+        "scope-label",
         "timezone-label",
         "clip-card",
     }
@@ -380,6 +381,11 @@ def _bind_metrics(
         ),
         "voice-value": format_duration(profile.total_voice_seconds),
         "sessions-value": f"{profile.session_count:,}",
+        "scope-label": (
+            f"On this server · history since {profile.history_since:%b %d, %Y}"
+            if profile.history_since is not None
+            else "On this server · no observed history"
+        ),
         "timezone-label": safe_label(profile.timezone_label, limit=64),
     }
     for key, value in values.items():

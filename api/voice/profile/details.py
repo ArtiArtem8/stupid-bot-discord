@@ -21,6 +21,7 @@ from api.voice.read_models import BotStat, CompanionStat, PresenceStat, VoiceXpB
 from api.voice.scope import (
     TimeRange,
     VoiceScope,
+    history_start,
     local_calendar_range,
     observation_ranges,
 )
@@ -116,16 +117,10 @@ def _observed_seconds(
 def _lifetime_period(
     timeline: VoiceTimeline, guild_id: int, as_of: datetime, timezone: tzinfo
 ) -> DetailPeriod | None:
-    # Lifetime coverage starts at the earliest retained evidence, never an
-    # invented account creation date. A wholly absent history has no denominator.
-    starts = [
-        item.started_at.astimezone(UTC)
-        for item in (*timeline.rooms, *timeline.coverage, *timeline.gaps)
-        if item.guild_id in (None, guild_id) and item.started_at < as_of
-    ]
-    if not starts:
+    start = history_start(timeline, guild_id)
+    if start is None or start >= as_of:
         return None
-    window = TimeRange(min(starts), as_of.astimezone(UTC))
+    window = TimeRange(start, as_of.astimezone(UTC))
     return DetailPeriod(
         window,
         window.start.astimezone(timezone).date(),

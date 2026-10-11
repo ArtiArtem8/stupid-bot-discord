@@ -11,6 +11,7 @@ uv run --locked prek install --force
 
 - Make a focused branch.
 - Keep changes scoped to the thing you are fixing.
+- Update both `README.md` and `README.ru.md` when changing documented features or setup.
 - Add or update tests when behavior changes.
 - Let the installed hooks run before pushing.
 

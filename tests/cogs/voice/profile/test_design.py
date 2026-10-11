@@ -1,6 +1,8 @@
 """SVG parsing rejects DTDs before handing input to the native renderer."""
 
 import unittest
+from dataclasses import replace
+from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock
@@ -8,12 +10,32 @@ from unittest.mock import MagicMock
 from defusedxml.common import DTDForbidden
 from defusedxml.ElementTree import fromstring
 
-from cogs.voice.profile.design import CardIdentity, bind_design, document_bytes
+from cogs.voice.profile.design import ASSETS, CardIdentity, bind_design, document_bytes
 from cogs.voice.profile.raster import NativeRasterizer
 from tests.cogs.voice.profile.test_media import profile_at
 
 
 class TestDesignXml(unittest.TestCase):
+    def test_scope_label_displays_history_date_or_missing_history(self) -> None:
+        for since, expected in (
+            (date(2026, 9, 21), "On this server · history since Sep 21, 2026"),
+            (None, "On this server · no observed history"),
+        ):
+            with self.subTest(since=since):
+                raster = MagicMock(spec=NativeRasterizer)
+                raster.query.return_value = {}
+                design = bind_design(
+                    replace(profile_at(), history_since=since),
+                    CardIdentity("Name", "Guild"),
+                    ASSETS / "profile.svg",
+                    raster,
+                )
+                root = fromstring(design.svg)
+                label = next(
+                    node for node in root.iter() if node.get("id") == "scope-label"
+                )
+                self.assertEqual(label.text, expected)
+
     def test_dtd_and_entity_payloads_never_reach_native_renderer(self) -> None:
         declarations = (
             "<!DOCTYPE svg>",

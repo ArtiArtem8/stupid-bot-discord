@@ -404,7 +404,9 @@
        font-size="20px"
        font-weight="500"
        fill="#bdacc9"
-       data-fill="muted">On this server · tracked since 21 Sep 2026</text>
+       data-fill="muted"
+       data-width="560"
+       data-min-size="18">On this server · no observed history</text>
     <text
        id="timezone-label"
        x="928"

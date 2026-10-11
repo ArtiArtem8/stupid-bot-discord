@@ -1,11 +1,13 @@
 """Project the guild-local lifetime values displayed by the voice card."""
 
+from zoneinfo import ZoneInfo
+
 from api.progression.appearance import LevelAppearancePolicy
 from api.progression.levels import LevelPolicy
 from api.voice.metrics.presence import presence
 from api.voice.metrics.xp import VoiceXpPolicy
 from api.voice.profile.model import VoiceProfile
-from api.voice.scope import VoiceScope
+from api.voice.scope import VoiceScope, history_start
 from api.voice.timeline import VoiceTimeline
 
 
@@ -20,6 +22,7 @@ def build_profile(
     observed = presence(timeline, user_id, scope)
     xp = VoiceXpPolicy().calculate(timeline, user_id, scope)
     progress = LevelPolicy().progress(xp)
+    start = history_start(timeline, guild_id)
     return VoiceProfile(
         guild_id=guild_id,
         user_id=user_id,
@@ -32,4 +35,7 @@ def build_profile(
         total_voice_seconds=observed.total_seconds,
         session_count=observed.session_count,
         timezone_label=timezone_label,
+        history_since=start.astimezone(ZoneInfo(timezone_label)).date()
+        if start
+        else None,
     )

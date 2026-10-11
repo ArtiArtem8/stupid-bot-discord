@@ -176,10 +176,13 @@ Runtime artwork lives under `cogs/voice/profile/assets/`. Voice Profile Studio
 is a separate editor project; the bot uses its exported SVG and JSON assets.
 Preserve canvas dimensions, layer and element IDs, and local resource references.
 
-The bottom-left `scope-label` is static text and can be edited directly in
-`profile.svg`. Its tracking date is a shared label, not a date calculated from
-each guild's history. `timezone-label` and profile values are replaced at render
-time. Appearance band colors are described in [progression](progression.md).
+The bottom-left `scope-label` is bound at render time: `On this server · history
+since ...` uses the earliest retained guild evidence, including observation gaps,
+in the configured profile timezone. It shares the history boundary used by People
+and XP, independently of the member's first session. With no history it reads
+`On this server · no observed history`. This date does not imply uninterrupted
+coverage. `timezone-label` and profile values are also replaced at render time.
+Appearance band colors are described in [progression](progression.md).
 
 Restart or reload the profile Cog after changing artwork or fonts. Its startup
 revision includes their contents, so new media uses the changed assets. Editing

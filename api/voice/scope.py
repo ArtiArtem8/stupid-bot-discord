@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, time, timedelta, tzinfo
+from itertools import chain
 
 from api.voice.model import require_aware
 from api.voice.timeline import RoomInterval, VoiceTimeline
@@ -75,6 +76,23 @@ def observed_rooms(
             selected = replace(room, started_at=start, ended_at=end)
         result.append(selected)
     return tuple(result)
+
+
+def history_start(timeline: VoiceTimeline, guild_id: int) -> datetime | None:
+    """Return the earliest retained guild evidence in UTC, or None.
+
+    Rooms, coverage and applicable gaps establish the history boundary,
+    independently of any member's first session. Global gaps apply to every
+    guild; the boundary does not imply uninterrupted observation.
+    """
+    return min(
+        (
+            item.started_at.astimezone(UTC)
+            for item in chain(timeline.rooms, timeline.coverage, timeline.gaps)
+            if item.guild_id in (None, guild_id)
+        ),
+        default=None,
+    )
 
 
 def observation_ranges(timeline: VoiceTimeline, guild_id: int) -> tuple[TimeRange, ...]:

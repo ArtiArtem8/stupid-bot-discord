@@ -1,13 +1,18 @@
 """Immutable values displayed by the compact voice card."""
 
 from dataclasses import dataclass
+from datetime import date
 
 from api.progression.appearance import LevelAppearance
 
 
 @dataclass(frozen=True, slots=True)
 class VoiceProfile:
-    """Display numbers rounded only after exact progression policy is applied."""
+    """Display numbers rounded only after exact progression policy is applied.
+
+    history_since is the first retained guild evidence in the profile timezone,
+    including observation gaps; None means no retained history.
+    """
 
     guild_id: int
     user_id: int
@@ -20,3 +25,4 @@ class VoiceProfile:
     total_voice_seconds: float
     session_count: int
     timezone_label: str
+    history_since: date | None
