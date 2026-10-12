@@ -26,6 +26,8 @@ DOMAINS = (
     "features/command_help",
     "features/greetings",
     "features/birthdays",
+    "features/access",
+    "features/member_roles",
 )
 
 

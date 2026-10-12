@@ -1,0 +1,183 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgctxt "skipped"
+msgid ""
+"\n"
+"\n"
+"Пропущено {count:d} ролей (удалены, недоступны или запрос завершился ошибкой). "
+"Существующие невыданные роли сохранены для повторной попытки."
+msgstr ""
+"\n"
+"\n"
+"Skipped {count:d} roles (deleted, inaccessible or the request failed). Existing roles"
+" not yet granted have been kept for another attempt."
+
+#, python-brace-format
+msgctxt "snapshot"
+msgid "- **{name}** — {count:d} ролей, вышел {timestamp}"
+msgstr "- **{name}** — {count:d} roles, left {timestamp}"
+
+msgctxt "ui"
+msgid "TTL должен быть положительным или не указан (бесконечно)."
+msgstr "TTL must be positive or left empty (unlimited)."
+
+#, python-brace-format
+msgctxt "ttl"
+msgid "TTL: {days:d} дней"
+msgstr "TTL: {days:d} days"
+
+#, python-brace-format
+msgctxt "days"
+msgid "{days:d} дней"
+msgstr "{days:d} days"
+
+#, python-brace-format
+msgctxt "enabled"
+msgid "Бот будет восстанавливать роли участникам при повторном входе ({retention})."
+msgstr "The bot will restore members' roles when they rejoin ({retention})."
+
+msgctxt "ui"
+msgid "Боту необходимо разрешение управление ролями."
+msgstr "The bot needs the Manage Roles permission."
+
+msgctxt "command"
+msgid "Включить мониторинг сервера и автовосстановление ролей"
+msgstr "Enable server monitoring and automatic role restoration"
+
+msgctxt "ui"
+msgid "Включён"
+msgstr "Enabled"
+
+#, python-brace-format
+msgctxt "restoration"
+msgid "Восстановление ролей: {name}"
+msgstr "Role restoration: {name}"
+
+#, python-brace-format
+msgctxt "restored"
+msgid "Восстановлено ролей: {count:d}"
+msgstr "Roles restored: {count:d}"
+
+msgctxt "command"
+msgid "Вручную восстановить роли участнику"
+msgstr "Manually restore a member's roles"
+
+#, python-brace-format
+msgctxt "missing"
+msgid "Для {mention} не найдено сохранённых ролей."
+msgstr "No saved roles found for {mention}."
+
+msgctxt "command"
+msgid "Количество дней хранения снимков. Пусто = бесконечно"
+msgstr "Days to retain snapshots. Leave empty for unlimited retention"
+
+msgctxt "ui"
+msgid "Мониторинг включён"
+msgstr "Monitoring enabled"
+
+msgctxt "ui"
+msgid "Мониторинг отключён"
+msgstr "Monitoring disabled"
+
+msgctxt "ui"
+msgid "Мониторинг уже отключён на этом сервере."
+msgstr "Monitoring is already disabled on this server."
+
+#, python-brace-format
+msgctxt "recent"
+msgid "Недавние участники ({shown:d} из {total:d})"
+msgstr "Recent members ({shown:d} of {total:d})"
+
+msgctxt "ui"
+msgid "Недостаточно прав"
+msgstr "Insufficient permissions"
+
+msgctxt "ui"
+msgid ""
+"Нет ролей для восстановления: снимок отсутствует, его срок хранения истёк или роли "
+"уже выданы."
+msgstr ""
+"No roles to restore: the snapshot is missing or expired, or the roles have already "
+"been granted."
+
+msgctxt "command"
+msgid "Отключить мониторинг сервера"
+msgstr "Disable server monitoring"
+
+msgctxt "ui"
+msgid "Отключён"
+msgstr "Disabled"
+
+#, python-brace-format
+msgctxt "footer"
+msgid "Показаны первые 10 из {total:d} снимков"
+msgstr "Showing the first 10 of {total:d} snapshots"
+
+msgctxt "command"
+msgid "Показать статус мониторинга и список сохранённых участников"
+msgstr "Show monitoring status and saved members"
+
+msgctxt "ui"
+msgid "Снимков сохранено"
+msgstr "Snapshots saved"
+
+#, python-brace-format
+msgctxt "deleted"
+msgid "Снимок ролей для {mention} удалён."
+msgstr "Role snapshot for {mention} deleted."
+
+msgctxt "ui"
+msgid "Сохранённые снимки ролей не удалены. Используйте `/monitor forget` для очистки."
+msgstr "Saved role snapshots have been kept. Use `/monitor forget` to delete them."
+
+msgctxt "ui"
+msgid "Статус"
+msgstr "Status"
+
+#, python-brace-format
+msgctxt "status"
+msgid "Статус мониторинга: {guild}"
+msgstr "Monitoring status: {guild}"
+
+msgctxt "command"
+msgid "Удалить сохранённый снимок ролей участника"
+msgstr "Delete a member's saved role snapshot"
+
+msgctxt "command"
+msgid "Управление мониторингом сервера и восстановлением ролей"
+msgstr "Manage server monitoring and role restoration"
+
+msgctxt "command"
+msgid "Участник, которому нужно восстановить роли"
+msgstr "Member whose roles should be restored"
+
+msgctxt "command"
+msgid "Участник, чей снимок нужно удалить"
+msgstr "Member whose snapshot should be deleted"
+
+msgctxt "ui"
+msgid "бесконечно"
+msgstr "unlimited"
+
+msgctxt "ui"
+msgid "бесконечное хранение"
+msgstr "unlimited retention"

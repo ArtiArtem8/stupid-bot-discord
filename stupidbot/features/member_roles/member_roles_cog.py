@@ -11,7 +11,10 @@ from discord.ext import commands, tasks
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.theme import Color
+from stupidbot.features.member_roles.messages import RoleMessages
 from stupidbot.features.member_roles.restoration import ServerMonitoringManager
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
 
 if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
@@ -85,29 +88,42 @@ class ServerMonitorCog(BaseCog):
 
     monitor = app_commands.Group(
         name="monitor",
-        description="Управление мониторингом сервера и восстановлением ролей",
+        description=app_commands.locale_str(
+            "Управление мониторингом сервера и восстановлением ролей",
+            domain="member_roles",
+        ),
         default_permissions=discord.Permissions(administrator=True),
         guild_only=True,
     )
 
     @monitor.command(
         name="enable",
-        description="Включить мониторинг сервера и автовосстановление ролей",
+        description=app_commands.locale_str(
+            "Включить мониторинг сервера и автовосстановление ролей",
+            domain="member_roles",
+        ),
     )
     @app_commands.describe(
-        ttl_days="Количество дней хранения снимков. Пусто = бесконечно"
+        ttl_days=app_commands.locale_str(
+            "Количество дней хранения снимков. Пусто = бесконечно",
+            domain="member_roles",
+        )
     )
     async def monitor_enable(
         self, interaction: discord.Interaction, ttl_days: int | None = None
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = RoleMessages(catalog("member_roles", context.language))
         guild = await self._require_guild(interaction)
 
         if not guild.me.guild_permissions.manage_roles:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title="Недостаточно прав",
-                description="Боту необходимо разрешение управление ролями.",
+                title=messages.catalog.pgettext("ui", "Недостаточно прав"),
+                description=messages.catalog.pgettext(
+                    "ui", "Боту необходимо разрешение управление ролями."
+                ),
                 ephemeral=True,
             )
             return
@@ -116,7 +132,9 @@ class ServerMonitorCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="TTL должен быть положительным или не указан (бесконечно).",
+                description=messages.catalog.pgettext(
+                    "ui", "TTL должен быть положительным или не указан (бесконечно)."
+                ),
                 ephemeral=True,
             )
             return
@@ -125,53 +143,67 @@ class ServerMonitorCog(BaseCog):
         logger.info("Monitoring enabled for guild %d with TTL=%s", guild.id, ttl_days)
 
         ttl_text = (
-            "бесконечное хранение" if ttl_days is None else f"TTL: {ttl_days} дней"
+            messages.catalog.pgettext("ui", "бесконечное хранение")
+            if ttl_days is None
+            else messages.ttl(days=ttl_days)
         )
-        msg = (
-            "Бот будет восстанавливать роли участникам при повторном входе "
-            f"({ttl_text})."
-        )
+        msg = messages.enabled(retention=ttl_text)
 
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
-            title="Мониторинг включён",
+            title=messages.catalog.pgettext("ui", "Мониторинг включён"),
             description=msg,
             ephemeral=True,
         )
 
-    @monitor.command(name="disable", description="Отключить мониторинг сервера")
+    @monitor.command(
+        name="disable",
+        description=app_commands.locale_str(
+            "Отключить мониторинг сервера", domain="member_roles"
+        ),
+    )
     async def monitor_disable(self, interaction: discord.Interaction) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = RoleMessages(catalog("member_roles", context.language))
         guild = await self._require_guild(interaction)
 
         if not await self.manager.is_enabled(guild.id):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                description="Мониторинг уже отключён на этом сервере.",
+                description=messages.catalog.pgettext(
+                    "ui", "Мониторинг уже отключён на этом сервере."
+                ),
                 ephemeral=True,
             )
             return
 
         await self.manager.set_enabled(guild.id, False)
         logger.info("Monitoring disabled for guild %d", guild.id)
-        msg = (
+        msg = messages.catalog.pgettext(
+            "ui",
             "Сохранённые снимки ролей не удалены. "
-            "Используйте `/monitor forget` для очистки."
+            "Используйте `/monitor forget` для очистки.",
         )
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
-            title="Мониторинг отключён",
+            title=messages.catalog.pgettext("ui", "Мониторинг отключён"),
             description=msg,
             ephemeral=True,
         )
 
     @monitor.command(
         name="status",
-        description="Показать статус мониторинга и список сохранённых участников",
+        description=app_commands.locale_str(
+            "Показать статус мониторинга и список сохранённых участников",
+            domain="member_roles",
+        ),
     )
     async def monitor_status(self, interaction: discord.Interaction) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = RoleMessages(catalog("member_roles", context.language))
         guild = await self._require_guild(interaction)
 
         enabled = await self.manager.is_enabled(guild.id)
@@ -179,50 +211,72 @@ class ServerMonitorCog(BaseCog):
         snapshots = await self.manager.get_all_snapshots(guild.id)
 
         embed = discord.Embed(
-            title=f"Статус мониторинга: {guild.name}",
+            title=messages.status(guild=guild.name),
             color=Color.INFO,
         )
 
         status_emoji = "✅" if enabled else "❌"
-        status_text = "Включён" if enabled else "Отключён"
-        ttl_text = "бесконечно" if ttl is None else f"{ttl} дней"
+        status_text = (
+            messages.catalog.pgettext("ui", "Включён")
+            if enabled
+            else messages.catalog.pgettext("ui", "Отключён")
+        )
+        ttl_text = (
+            messages.catalog.pgettext("ui", "бесконечно")
+            if ttl is None
+            else messages.days(days=ttl)
+        )
 
         embed.add_field(
-            name="Статус", value=f"{status_emoji} {status_text}", inline=True
+            name=messages.catalog.pgettext("ui", "Статус"),
+            value=f"{status_emoji} {status_text}",
+            inline=True,
         )
         embed.add_field(name="TTL", value=ttl_text, inline=True)
         embed.add_field(
-            name="Снимков сохранено", value=str(len(snapshots)), inline=True
+            name=messages.catalog.pgettext("ui", "Снимков сохранено"),
+            value=str(len(snapshots)),
+            inline=True,
         )
 
         if snapshots:
             snapshot_lines: list[str] = []
             for snapshot in snapshots[:10]:
                 timestamp = discord.utils.format_dt(snapshot.left_at, style="R")
-                msg = (
-                    f"- **{snapshot.username}** — {len(snapshot.roles)} ролей, "
-                    f"вышел {timestamp}"
+                msg = messages.snapshot(
+                    name=snapshot.username,
+                    count=len(snapshot.roles),
+                    timestamp=timestamp,
                 )
                 snapshot_lines.append(msg)
 
             embed.add_field(
-                name=f"Недавние участники ({len(snapshots[:10])} из {len(snapshots)})",
+                name=messages.recent(shown=len(snapshots[:10]), total=len(snapshots)),
                 value="\n".join(snapshot_lines),
                 inline=False,
             )
 
             if len(snapshots) > 10:
-                embed.set_footer(text=f"Показаны первые 10 из {len(snapshots)} снимков")
+                embed.set_footer(text=messages.footer(total=len(snapshots)))
 
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
 
     @monitor.command(
-        name="forget", description="Удалить сохранённый снимок ролей участника"
+        name="forget",
+        description=app_commands.locale_str(
+            "Удалить сохранённый снимок ролей участника", domain="member_roles"
+        ),
     )
-    @app_commands.describe(user="Участник, чей снимок нужно удалить")
+    @app_commands.describe(
+        user=app_commands.locale_str(
+            "Участник, чей снимок нужно удалить", domain="member_roles"
+        )
+    )
     async def monitor_forget(
         self, interaction: discord.Interaction, user: discord.User
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = RoleMessages(catalog("member_roles", context.language))
         guild = await self._require_guild(interaction)
 
         deleted = await self.manager.delete_snapshot(guild.id, user.id)
@@ -237,22 +291,33 @@ class ServerMonitorCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.SUCCESS,
-                description=f"Снимок ролей для {user.mention} удалён.",
+                description=messages.deleted(mention=user.mention),
                 ephemeral=True,
             )
         else:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                description=f"Для {user.mention} не найдено сохранённых ролей.",
+                description=messages.missing(mention=user.mention),
                 ephemeral=True,
             )
 
-    @monitor.command(name="restore", description="Вручную восстановить роли участнику")
-    @app_commands.describe(user="Участник, которому нужно восстановить роли")
+    @monitor.command(
+        name="restore",
+        description=app_commands.locale_str(
+            "Вручную восстановить роли участнику", domain="member_roles"
+        ),
+    )
+    @app_commands.describe(
+        user=app_commands.locale_str(
+            "Участник, которому нужно восстановить роли", domain="member_roles"
+        )
+    )
     async def monitor_restore(
         self, interaction: discord.Interaction, user: discord.Member
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = RoleMessages(catalog("member_roles", context.language))
         guild = await self._require_guild(interaction)
 
         snapshot = await self.manager.get_snapshot(guild.id, user.id)
@@ -260,7 +325,7 @@ class ServerMonitorCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                description=f"Для {user.mention} не найдено сохранённых ролей.",
+                description=messages.missing(mention=user.mention),
                 ephemeral=True,
             )
             return
@@ -274,25 +339,24 @@ class ServerMonitorCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.INFO,
                 description=(
-                    "Нет ролей для восстановления: снимок отсутствует, "
-                    "его срок хранения истёк или роли уже выданы."
+                    messages.catalog.pgettext(
+                        "ui",
+                        "Нет ролей для восстановления: снимок отсутствует, "
+                        "его срок хранения истёк или роли уже выданы.",
+                    )
                 ),
                 ephemeral=True,
             )
             return
 
         role_names = ", ".join(f"`{role.name}`" for role in restored)
-        description = f"Восстановлено ролей: {len(restored)}"
+        description = messages.restored(count=len(restored))
 
         if restored:
             description += f"\n\n{role_names}"
 
         if skipped:
-            description += (
-                f"\n\nПропущено {len(skipped)} ролей "
-                "(удалены, недоступны или запрос завершился ошибкой). "
-                "Существующие невыданные роли сохранены для повторной попытки."
-            )
+            description += messages.skipped(count=len(skipped))
 
         logger.info(
             "Restore for user %d in guild %d by admin %d: %d restored, %d skipped",
@@ -306,7 +370,7 @@ class ServerMonitorCog(BaseCog):
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS if restored else FeedbackType.WARNING,
-            title=f"Восстановление ролей: {user.display_name}",
+            title=messages.restoration(name=user.display_name),
             description=description,
             ephemeral=True,
         )

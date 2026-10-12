@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
 
 
+from stupidbot.features.access.messages import AccessMessages
 from stupidbot.features.access.presentation import (
     BLOCK,
     UNBLOCK,
@@ -37,6 +38,8 @@ from stupidbot.features.access.presentation import (
     format_name_history,
     format_recent_block_events,
 )
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
 
 logger = logging.getLogger(__name__)
 
@@ -57,50 +60,63 @@ class AdminCog(BaseCog):
         return True
 
     @app_commands.command(
-        name="block", description="Заблокировать пользователя от использования бота."
+        name="block",
+        description=app_commands.locale_str(
+            "Заблокировать пользователя от использования бота.", domain="access"
+        ),
     )
     @app_commands.describe(
-        user="Пользователь, которого надо лишить доступа к этому боту",
-        reason="Причина блокировки",
+        user=app_commands.locale_str(
+            "Пользователь, которого надо лишить доступа к этому боту", domain="access"
+        ),
+        reason=app_commands.locale_str("Причина блокировки", domain="access"),
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
     async def block(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = AccessMessages(catalog("access", context.language))
         guild = await self._require_guild(interaction)
         if await self.block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description=f"{user.mention} уже заблокирован.",
+                description=messages.already_blocked(mention=user.mention),
                 ephemeral=True,
             )
             return
         await self.block_manager.block_user(guild.id, user, interaction.user.id, reason)
         logger.info("Blocked user %d in guild %d", user.id, guild.id)
-        embed = create_block_embed(user, BLOCK, reason)
+        embed = create_block_embed(user, BLOCK, reason, language=context.language)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
 
     @app_commands.command(
         name="unblock",
-        description="Снять блокировку использования бота с пользователя.",
+        description=app_commands.locale_str(
+            "Снять блокировку использования бота с пользователя.", domain="access"
+        ),
     )
     @app_commands.describe(
-        user="Пользователь, с которого снимается блокировка",
-        reason="Причина снятия блокировки",
+        user=app_commands.locale_str(
+            "Пользователь, с которого снимается блокировка", domain="access"
+        ),
+        reason=app_commands.locale_str("Причина снятия блокировки", domain="access"),
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
     async def unblock(
         self, interaction: discord.Interaction, user: discord.Member, reason: str = ""
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = AccessMessages(catalog("access", context.language))
         guild = await self._require_guild(interaction)
         if not await self.block_manager.is_user_blocked(guild.id, user.id):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description=f"{user.mention} не заблокирован.",
+                description=messages.not_blocked(mention=user.mention),
                 ephemeral=True,
             )
             return
@@ -108,16 +124,22 @@ class AdminCog(BaseCog):
             guild.id, user, interaction.user.id, reason
         )
         logger.info("Unblocked user %d in guild %d", user.id, guild.id)
-        embed = create_block_embed(user, UNBLOCK, reason)
+        embed = create_block_embed(user, UNBLOCK, reason, language=context.language)
         await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
 
     @app_commands.command(
         name="block-info",
-        description="Показать подробную информацию о блокировках пользователя.",
+        description=app_commands.locale_str(
+            "Показать подробную информацию о блокировках пользователя.", domain="access"
+        ),
     )
     @app_commands.describe(
-        user="Пользователь для просмотра информации",
-        ephemeral="Скрыть сообщение от других пользователей",
+        user=app_commands.locale_str(
+            "Пользователь для просмотра информации", domain="access"
+        ),
+        ephemeral=app_commands.locale_str(
+            "Скрыть сообщение от других пользователей", domain="access"
+        ),
     )
     @app_commands.guild_only()
     @app_commands.default_permissions(administrator=True)
@@ -127,6 +149,8 @@ class AdminCog(BaseCog):
         user: discord.Member,
         ephemeral: bool = True,
     ) -> None:
+        context = await interaction_context(interaction, private=ephemeral)
+        messages = AccessMessages(catalog("access", context.language))
         guild = await self._require_guild(interaction)
         user_entry = await self.block_manager.get_user(guild.id, user.id)
 
@@ -140,7 +164,7 @@ class AdminCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                description=f"{user.mention} не имеет истории блокировок.",
+                description=messages.no_history(mention=user.mention),
                 ephemeral=ephemeral,
             )
             return
@@ -152,7 +176,7 @@ class AdminCog(BaseCog):
             guild.id,
         )
         embed = SafeEmbed(
-            title="Полная история блокировок",
+            title=messages.catalog.pgettext("ui", "Полная история блокировок"),
             color=Color.ERROR if user_entry.is_blocked else Color.SUCCESS,
         )
         embed.set_author(name=str(user), icon_url=user.display_avatar.url)
@@ -161,62 +185,73 @@ class AdminCog(BaseCog):
         if user_entry.is_blocked:
             last_block = user_entry.block_history[-1]
             timestamp = format_dt(last_block.timestamp, "F")
-            status_value = (
-                f"**Заблокирован**\n"
-                f"• Администратор: <@{last_block.admin_id}>\n"
-                f"• Дата: {timestamp}\n"
-                f"• Причина: {last_block.reason or 'Не указана'}\n"
+            status_value = messages.blocked_status(
+                admin_id=last_block.admin_id,
+                timestamp=timestamp,
+                reason=last_block.reason
+                or messages.catalog.pgettext("ui", "Не указана"),
             )
         else:
-            status_value = "Не заблокирован"
+            status_value = messages.catalog.pgettext("ui", "Не заблокирован")
 
         embed.safe_add_field(
-            name="Текущий статус",
+            name=messages.catalog.pgettext("ui", "Текущий статус"),
             value=status_value,
             inline=False,
         )
 
         embed.safe_add_field(
-            name="Последние события",
-            value=format_recent_block_events(user_entry),
+            name=messages.catalog.pgettext("ui", "Последние события"),
+            value=format_recent_block_events(user_entry, language=context.language),
             inline=False,
         )
         if user_entry.name_history:
             embed.safe_add_field(
-                name="История имён",
-                value=format_name_history(user_entry.name_history),
+                name=messages.catalog.pgettext("ui", "История имён"),
+                value=format_name_history(
+                    user_entry.name_history, language=context.language
+                ),
             )
 
         first_block_ts = format_dt(user_entry.block_history[0].timestamp, "D")
         stats = [
-            f"• Всего блокировок: {len(user_entry.block_history)}",
-            f"• Всего разблокировок: {len(user_entry.unblock_history)}",
-            f"• Первая блокировка: {first_block_ts}",
+            messages.blocks(count=len(user_entry.block_history)),
+            messages.unblocks(count=len(user_entry.unblock_history)),
+            messages.first_block(timestamp=first_block_ts),
         ]
 
         if user_entry.unblock_history:
             last_unblock_ts = format_dt(user_entry.unblock_history[-1].timestamp, "D")
-            stats.append(f"• Последняя разблокировка: {last_unblock_ts}")
+            stats.append(messages.last_unblock(timestamp=last_unblock_ts))
 
         embed.safe_add_field(
-            name="Статистика",
+            name=messages.catalog.pgettext("ui", "Статистика"),
             value="\n".join(stats),
             inline=False,
         )
 
-        danger_level = format_danger_level(len(user_entry.block_history))
-        embed.set_footer(text=f"Уровень проблемности: {danger_level}")
+        danger_level = format_danger_level(
+            len(user_entry.block_history), language=context.language
+        )
+        embed.set_footer(text=messages.danger(level=danger_level))
 
         await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
         logger.info("Displayed blockinfo for user %s in guild %s", user.id, guild.id)
 
     @app_commands.command(
-        name="list-blocked", description="Показать всех заблокированных пользователей"
+        name="list-blocked",
+        description=app_commands.locale_str(
+            "Показать всех заблокированных пользователей", domain="access"
+        ),
     )
     @app_commands.describe(
-        show_details="Показать дополнительную информацию",
-        ephemeral="Скрыть сообщение от других пользователей",
+        show_details=app_commands.locale_str(
+            "Показать дополнительную информацию", domain="access"
+        ),
+        ephemeral=app_commands.locale_str(
+            "Скрыть сообщение от других пользователей", domain="access"
+        ),
     )
     @app_commands.guild_only()
     @app_commands.default_permissions(administrator=True)
@@ -226,6 +261,8 @@ class AdminCog(BaseCog):
         show_details: bool = False,
         ephemeral: bool = True,
     ) -> None:
+        context = await interaction_context(interaction, private=ephemeral)
+        messages = AccessMessages(catalog("access", context.language))
         guild = await self._require_guild(interaction)
         all_users = await self.block_manager.get_guild_users(guild.id)
         blocked_users = [u for u in all_users if u.is_blocked]
@@ -235,7 +272,9 @@ class AdminCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                description="Нет заблокированных пользователей.",
+                description=messages.catalog.pgettext(
+                    "ui", "Нет заблокированных пользователей."
+                ),
                 ephemeral=ephemeral,
             )
             return
@@ -246,10 +285,13 @@ class AdminCog(BaseCog):
                 user_entry,
                 guild.get_member(user_entry.user_id),
                 show_details=show_details,
+                language=context.language,
             )
             for user_entry in blocked_users
         ]
-        pages = BlockedListPages(entries, show_details=show_details)
+        pages = BlockedListPages(
+            entries, show_details=show_details, language=context.language
+        )
         view = BasePaginator(pages, interaction.user.id)
         await view.prepare()
         await view.send(interaction, ephemeral=ephemeral)

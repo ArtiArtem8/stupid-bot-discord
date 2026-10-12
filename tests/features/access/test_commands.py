@@ -10,10 +10,21 @@ import discord
 from stupidbot.discord_ui.pagination import BasePaginator
 from stupidbot.features.access.access_cog import AdminCog
 from stupidbot.features.access.models import BlockedUser
-from stupidbot.features.access.presentation import BlockedListPages
+from stupidbot.features.access.presentation import BlockedListPages, format_blocked_user
+from stupidbot.i18n.policy import Language
 
 
 class TestBlockedPages(unittest.TestCase):
+    def test_english_labels_keep_names_and_audit_reasons_unchanged(self) -> None:
+        user = BlockedUser(1, "Иван", None)
+        user.add_block_entry(99, "Повторный спам")
+        entry = format_blocked_user(user, None, show_details=True, language=Language.EN)
+        pages = BlockedListPages([entry], show_details=True, language=Language.EN)
+        embed = pages.make_embed(0)
+        self.assertEqual(embed.title, "Blocked users (1)")
+        self.assertIn("Current name: Иван", embed.description or "")
+        self.assertIn("Reason: Повторный спам", embed.description or "")
+
     def test_large_list_retains_every_entry_in_bounded_messages(self) -> None:
         entries = [f"USER-{index}: " + "x" * 450 for index in range(100)]
         pages = BlockedListPages(entries, show_details=True)
