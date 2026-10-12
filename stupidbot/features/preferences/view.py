@@ -33,7 +33,7 @@ class LanguageSelect(discord.ui.Select["SettingsView"]):
         super().__init__(
             options=[
                 discord.SelectOption(
-                    label=panel.catalog.pgettext("discord", "Как в Discord"),
+                    label=panel.catalog.pgettext("discord", "As in Discord"),
                     value="discord",
                     default=panel.proposed.language is None,
                 ),
@@ -66,7 +66,7 @@ class TimezoneModal(discord.ui.Modal):
 
     def __init__(self, panel: "SettingsView") -> None:
         super().__init__(
-            title=panel.catalog.pgettext("timezone", "Часовой пояс"), timeout=180
+            title=panel.catalog.pgettext("timezone", "Timezone"), timeout=180
         )
         self.panel = panel
         self.zone: discord.ui.TextInput[TimezoneModal] = discord.ui.TextInput(
@@ -77,10 +77,11 @@ class TimezoneModal(discord.ui.Modal):
         )
         self.add_item(
             discord.ui.Label(
-                text=panel.catalog.pgettext("zone_id", "IANA-зона"),
+                text=panel.catalog.pgettext("zone_id", "IANA timezone"),
                 description=panel.catalog.pgettext(
                     "zone_help",
-                    "Например Europe/Moscow. Пустое поле — настройка установки.",
+                    "For example Europe/Moscow. Leave blank to use the installation "
+                    "default.",
                 ),
                 component=self.zone,
             )
@@ -97,8 +98,8 @@ class TimezoneModal(discord.ui.Modal):
             await interaction.response.send_message(
                 self.panel.catalog.pgettext(
                     "invalid_zone",
-                    "Неизвестная IANA-зона. "
-                    "Например: Europe/Moscow или Asia/Krasnoyarsk.",
+                    "Unknown IANA timezone. Examples: Europe/Moscow or "
+                    "Asia/Krasnoyarsk.",
                 ),
                 ephemeral=True,
             )
@@ -154,9 +155,9 @@ class SettingsView(discord.ui.LayoutView):
             fallback_timezone=self.fallback_timezone,
         )
         title = (
-            self.catalog.pgettext("personal_title", "Личные настройки")
+            self.catalog.pgettext("personal_title", "Personal settings")
             if self.scope is PreferenceScope.USER
-            else self.catalog.pgettext("server_title", "Настройки сервера")
+            else self.catalog.pgettext("server_title", "Server settings")
         )
         self.clear_items()
         self.add_item(
@@ -177,15 +178,15 @@ class SettingsView(discord.ui.LayoutView):
                 discord.ui.ActionRow(
                     CallbackButton[SettingsView](
                         self.edit_timezone,
-                        label=self.catalog.pgettext("timezone", "Часовой пояс"),
+                        label=self.catalog.pgettext("timezone", "Timezone"),
                     ),
                     CallbackButton[SettingsView](
                         self.save,
-                        label=self.catalog.pgettext("save", "Сохранить"),
+                        label=self.catalog.pgettext("save", "Save"),
                         style=discord.ButtonStyle.success,
                     ),
                     CallbackButton[SettingsView](
-                        self.cancel, label=self.catalog.pgettext("cancel", "Отмена")
+                        self.cancel, label=self.catalog.pgettext("cancel", "Cancel")
                     ),
                 ),
             )
@@ -198,7 +199,7 @@ class SettingsView(discord.ui.LayoutView):
             await interaction.response.send_message(
                 catalog("preferences", context.language).pgettext(
                     "owner_only",
-                    "Эта панель принадлежит другому пользователю. Откройте /settings.",
+                    "This panel belongs to someone else. Open /settings.",
                 ),
                 ephemeral=True,
             )
@@ -209,7 +210,7 @@ class SettingsView(discord.ui.LayoutView):
             await interaction.response.send_message(
                 self.catalog.pgettext(
                     "closed",
-                    "Панель уже закрыта или сохраняется. Откройте настройки заново.",
+                    "This panel is closed or saving. Open settings again.",
                 ),
                 ephemeral=True,
             )
@@ -221,7 +222,7 @@ class SettingsView(discord.ui.LayoutView):
             await interaction.response.send_message(
                 self.catalog.pgettext(
                     "permission",
-                    "Для изменения настроек сервера нужно право «Управлять сервером».",
+                    "You need Manage Server permission to change server settings.",
                 ),
                 ephemeral=True,
             )
@@ -247,7 +248,7 @@ class SettingsView(discord.ui.LayoutView):
                 self.messages.conflict(
                     language=current.language.value
                     if current.language
-                    else self.catalog.pgettext("discord", "Как в Discord"),
+                    else self.catalog.pgettext("discord", "As in Discord"),
                     timezone=current.timezone or self.fallback_timezone.key,
                 ),
             )
@@ -255,7 +256,7 @@ class SettingsView(discord.ui.LayoutView):
             interaction.extras["stupidbot.preferences.failed"] = False
             self.proposed = saved
             await self.finish(
-                interaction, self.catalog.pgettext("saved", "Настройки сохранены.")
+                interaction, self.catalog.pgettext("saved", "Settings saved.")
             )
         finally:
             self.saving = False
@@ -264,7 +265,7 @@ class SettingsView(discord.ui.LayoutView):
         """Close the editor without saving pending overrides."""
         await interaction.response.defer()
         await self.finish(
-            interaction, self.catalog.pgettext("cancelled", "Изменения отменены.")
+            interaction, self.catalog.pgettext("cancelled", "Changes cancelled.")
         )
 
     async def finish(self, interaction: discord.Interaction, text: str) -> None:
@@ -285,7 +286,7 @@ class SettingsView(discord.ui.LayoutView):
             discord.ui.TextDisplay(
                 self.catalog.pgettext(
                     "expired",
-                    "Время редактирования истекло. Откройте настройки заново.",
+                    "This editor has expired. Open settings again.",
                 )
             )
         )

@@ -21,55 +21,55 @@ msgstr ""
 
 #, python-brace-format
 msgctxt "deletion"
-msgid "-# Удалится {relative_time}"
+msgid "-# Deletes {relative_time}"
 msgstr "-# Удалится {relative_time}"
 
+msgctxt "access_title"
+msgid "Access denied"
+msgstr "Доступ запрещён"
+
+msgctxt "discord_error"
+msgid "Could not complete the action in Discord. Please try again."
+msgstr "Не удалось выполнить действие в Discord. Попробуйте ещё раз."
+
+msgctxt "internal_error"
+msgid "Could not complete the command. Details were logged."
+msgstr "Не удалось выполнить команду. Детали записаны в лог."
+
 msgctxt "discord_title"
-msgid "Discord Ошибка"
+msgid "Discord error"
 msgstr "Discord Ошибка"
 
-#, python-brace-format
-msgctxt "page"
-msgid "{name} (стр. {page:d})"
-msgstr "{name} (стр. {page:d})"
-
 msgctxt "internal_title"
-msgid "Внутренняя ошибка"
+msgid "Internal error"
 msgstr "Внутренняя ошибка"
 
 #, python-brace-format
 msgctxt "cooldown"
-msgid "Время ожидания: {relative_time}"
+msgid "Please wait: {relative_time}"
 msgstr "Время ожидания: {relative_time}"
 
-msgctxt "access_title"
-msgid "Доступ запрещён"
-msgstr "Доступ запрещён"
-
-msgctxt "guild_only"
-msgid "Команда может быть использована только на сервере"
-msgstr "Команда может быть использована только на сервере"
-
-msgctxt "discord_error"
-msgid "Не удалось выполнить действие в Discord. Попробуйте ещё раз."
-msgstr "Не удалось выполнить действие в Discord. Попробуйте ещё раз."
-
-msgctxt "internal_error"
-msgid "Не удалось выполнить команду. Детали записаны в лог."
-msgstr "Не удалось выполнить команду. Детали записаны в лог."
-
-msgctxt "access"
-msgid "Проверка доступа к команде не пройдена."
-msgstr "Проверка доступа к команде не пройдена."
-
 msgctxt "report"
-msgid "Сообщить о проблеме"
+msgid "Report a problem"
 msgstr "Сообщить о проблеме"
 
+msgctxt "access"
+msgid "The command access check failed."
+msgstr "Проверка доступа к команде не пройдена."
+
+msgctxt "guild_only"
+msgid "This command can only be used in a server"
+msgstr "Команда может быть использована только на сервере"
+
 msgctxt "not_yours"
-msgid "Это не ваше сообщение."
+msgid "This is not your message."
 msgstr "Это не ваше сообщение."
 
+#, python-brace-format
+msgctxt "page"
+msgid "{name} (page {page:d})"
+msgstr "{name} (стр. {page:d})"
+
 msgctxt "blocked"
-msgid "⛔ Доступ к командам запрещён."
+msgid "⛔ You cannot use commands."
 msgstr "⛔ Доступ к командам запрещён."

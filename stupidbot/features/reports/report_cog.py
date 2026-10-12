@@ -40,7 +40,7 @@ class ReportCog(BaseCog):
     @app_commands.command(
         name="report",
         description=app_commands.locale_str(
-            "Отправить отчет о баге или проблеме", domain="reports"
+            "Report a bug or problem", domain="reports"
         ),
     )
     @app_commands.checks.cooldown(1, 60, key=get_cooldown_key)
@@ -50,13 +50,13 @@ class ReportCog(BaseCog):
     @app_commands.command(
         name="set-report-channel",
         description=app_commands.locale_str(
-            "Установить канал для жалоб (для разработчиков)", domain="reports"
+            "Set the report channel (developers only)", domain="reports"
         ),
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
     @app_commands.describe(
-        channel=app_commands.locale_str("Канал для отчётов", domain="reports")
+        channel=app_commands.locale_str("Report channel", domain="reports")
     )
     @is_owner_app()
     async def set_report_channel(

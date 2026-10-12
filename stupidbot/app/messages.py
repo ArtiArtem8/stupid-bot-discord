@@ -16,25 +16,25 @@ class AppMessages:
         """Apply catalog plural rules to one calculated duration part."""
         templates = {
             TimeUnit.YEAR: self.catalog.npgettext(
-                "year", "{count:d} год", "{count:d} года", count
+                "year", "{count:d} year", "{count:d} years", count
             ),
             TimeUnit.MONTH: self.catalog.npgettext(
-                "month", "{count:d} месяц", "{count:d} месяца", count
+                "month", "{count:d} month", "{count:d} months", count
             ),
             TimeUnit.WEEK: self.catalog.npgettext(
-                "week", "{count:d} неделю", "{count:d} недели", count
+                "week", "{count:d} week", "{count:d} weeks", count
             ),
             TimeUnit.DAY: self.catalog.npgettext(
-                "day", "{count:d} день", "{count:d} дня", count
+                "day", "{count:d} day", "{count:d} days", count
             ),
             TimeUnit.HOUR: self.catalog.npgettext(
-                "hour", "{count:d} час", "{count:d} часа", count
+                "hour", "{count:d} hour", "{count:d} hours", count
             ),
             TimeUnit.MINUTE: self.catalog.npgettext(
-                "minute", "{count:d} минуту", "{count:d} минуты", count
+                "minute", "{count:d} minute", "{count:d} minutes", count
             ),
             TimeUnit.SECOND: self.catalog.npgettext(
-                "second", "{count:d} секунду", "{count:d} секунды", count
+                "second", "{count:d} second", "{count:d} seconds", count
             ),
         }
         return templates[unit].format(count=count)
@@ -50,9 +50,9 @@ class AppMessages:
         elif len(parts) == 1:
             duration = parts[0]
         else:
-            duration = self.catalog.pgettext("join", "{first} и {last}").format(
+            duration = self.catalog.pgettext("join", "{first} and {last}").format(
                 first=", ".join(parts[:-1]), last=parts[-1]
             )
-        return self.catalog.pgettext("presence", "жизнь уже {duration}.").format(
+        return self.catalog.pgettext("presence", "life for {duration}.").format(
             duration=duration
         )

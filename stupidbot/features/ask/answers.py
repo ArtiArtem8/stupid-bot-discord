@@ -48,27 +48,29 @@ def str_local(text: str) -> str:
 
 
 CAPABILITIES = [
-    pgettext_noop("answer", "Вероятно нет"),
-    pgettext_noop("answer", "Весьма спорно"),
-    pgettext_noop("answer", "Возможно"),
-    pgettext_noop("answer", "Да!"),
-    pgettext_noop("answer", "Зря ты спросил"),
-    pgettext_noop("answer", "Не хочу отвечать"),
-    pgettext_noop("answer", "Нет!"),
-    pgettext_noop("answer", "Почти наверняка"),
-    pgettext_noop("answer", "Предрешено"),
-    pgettext_noop("answer", "Скорее да"),
-    pgettext_noop("answer", "Я не знаю"),
+    pgettext_noop("answer", "Probably not"),
+    pgettext_noop("answer", "Highly debatable"),
+    pgettext_noop("answer", "Maybe"),
+    pgettext_noop("answer", "Yes!"),
+    pgettext_noop("answer", "You should not have asked"),
+    pgettext_noop("answer", "I do not want to answer"),
+    pgettext_noop("answer", "No!"),
+    pgettext_noop("answer", "Almost certainly"),
+    pgettext_noop("answer", "It is decided"),
+    pgettext_noop("answer", "More likely yes"),
+    pgettext_noop("answer", "I do not know"),
 ] * 2 + [
     pgettext_noop("answer", "..."),
     pgettext_noop(
         "answer",
-        "Безумие — это точное повторение одного и того же действия. Раз "
-        "за разом, в надежде на изменение. Это есть безумие.",
+        "Insanity is doing the exact same thing over and over again, expecting things "
+        "to change. That is insanity.",
     ),
-    pgettext_noop("answer", "Вы из тех людей, с кем очень приятно общаться"),
-    pgettext_noop("answer", "Вы из тех людей, с кем очень приятно прощаться"),
     pgettext_noop(
-        "answer", "Извините, но я сегодня слишком занят для бесполезного общения"
+        "answer", "You are one of those people who are a pleasure to talk to"
     ),
+    pgettext_noop(
+        "answer", "You are one of those people who are a pleasure to say goodbye to"
+    ),
+    pgettext_noop("answer", "Sorry, I am too busy for pointless conversation today"),
 ]

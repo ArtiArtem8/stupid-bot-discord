@@ -106,9 +106,7 @@ def _catalog_keys(directory: Path) -> frozenset[str]:
 
 @cache
 def _warn_missing(domain: str, context: str, _message: str) -> None:
-    logger.warning(
-        "Missing translation in %s/%s; using Russian source", domain, context
-    )
+    logger.warning("Missing translation in %s/%s; using source text", domain, context)
 
 
 @cache

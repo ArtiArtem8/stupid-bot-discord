@@ -428,9 +428,7 @@ class TrackControllerView(ui.View):
         attempt = self.player.current_attempt
         if attempt is None or attempt is not self.attempt:
             return discord.Embed(
-                title=self.messages.catalog.pgettext(
-                    "ui", "Воспроизведение остановлено"
-                ),
+                title=self.messages.catalog.pgettext("ui", "Playback stopped"),
                 color=Color.INFO,
             )
         track = attempt.entry.track
@@ -651,7 +649,9 @@ class TrackControllerView(ui.View):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description=messages.catalog.pgettext("ui", "Это не ваш контроллер."),
+                description=messages.catalog.pgettext(
+                    "ui", "This is not your controller."
+                ),
                 ephemeral=True,
                 disable_report_btn=True,
             )

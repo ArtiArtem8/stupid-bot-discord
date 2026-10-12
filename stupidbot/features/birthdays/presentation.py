@@ -17,18 +17,18 @@ from .messages import BirthdayMessages
 from .models import BirthdayGuildConfig
 
 MONTH_NAMES_RU = {
-    1: pgettext_noop("month", "января"),
-    2: pgettext_noop("month", "февраля"),
-    3: pgettext_noop("month", "марта"),
-    4: pgettext_noop("month", "апреля"),
-    5: pgettext_noop("month", "мая"),
-    6: pgettext_noop("month", "июня"),
-    7: pgettext_noop("month", "июля"),
-    8: pgettext_noop("month", "августа"),
-    9: pgettext_noop("month", "сентября"),
-    10: pgettext_noop("month", "октября"),
-    11: pgettext_noop("month", "ноября"),
-    12: pgettext_noop("month", "декабря"),
+    1: pgettext_noop("month", "January"),
+    2: pgettext_noop("month", "February"),
+    3: pgettext_noop("month", "March"),
+    4: pgettext_noop("month", "April"),
+    5: pgettext_noop("month", "May"),
+    6: pgettext_noop("month", "June"),
+    7: pgettext_noop("month", "July"),
+    8: pgettext_noop("month", "August"),
+    9: pgettext_noop("month", "September"),
+    10: pgettext_noop("month", "October"),
+    11: pgettext_noop("month", "November"),
+    12: pgettext_noop("month", "December"),
 }
 
 
@@ -128,7 +128,7 @@ def create_birthday_list_embed(
 
     if not entries:
         embed.description = messages.catalog.pgettext(
-            "ui", "Нет добавленных дней рождений."
+            "ui", "No birthdays have been added."
         )
         embed.set_footer(text=messages.total(count=0))
         return embed
@@ -140,7 +140,7 @@ def create_birthday_list_embed(
     for i, entry in enumerate(entries, 1):
         days_until = entry["days_until"]
         days_text = (
-            messages.catalog.pgettext("ui", "сегодня")
+            messages.catalog.pgettext("ui", "today")
             if days_until == 0
             else messages.days_until(days=days_until)
         )
@@ -166,7 +166,7 @@ def create_birthday_list_embed(
             break
 
         field_name = (
-            messages.catalog.pgettext("ui", "Ближайшие дни рождения")
+            messages.catalog.pgettext("ui", "Upcoming birthdays")
             if page_num == 1
             else messages.page(page=page_num)
         )
@@ -185,86 +185,82 @@ BIRTHDAY_WISHES = (
     (
         pgettext_noop(
             "wish",
-            "В день твоего рождения хочу пожелать, чтобы в жизни было всегда "
-            "больше счастливых и радостных минут, чтобы сердце наполнялось "
-            "радостью от тёплых и ласковых слов, а рядом находились верные друзья!",
+            "On your birthday, I wish you a life full of happy, joyful moments, a "
+            "heart warmed by kind and loving words, and loyal friends by your side!",
         )
     ),
     (
         pgettext_noop(
             "wish",
-            "Желаю, чтобы птица счастья всегда была в твоих руках, а все печали "
-            "пролетали мимо! Пускай заветные мечты осуществляются легко и просто, "
-            "а каждый миг наполняется радостью и позитивом! Открывай новые "
-            "горизонты, шагай уверенно вперед и достигай всех целей!",
+            "May happiness always be in your hands and all sorrows pass you by! May "
+            "your cherished dreams come true easily, and every moment bring joy and "
+            "positivity! Discover new horizons, stride forward confidently and "
+            "achieve all your goals!",
         )
     ),
     (
         pgettext_noop(
             "wish",
-            "Поздравляем от души с днем рождения! Желаем много любви и счастья, "
-            "чтобы судьба чаще дарила приятные сюрпризы. Пусть жизнь будет "
-            "интересной и насыщенной, пусть всегда хватает сил для достижения "
-            "желаемых высот!",
+            "A heartfelt happy birthday! Wishing you lots of love and happiness, and "
+            "many pleasant surprises. May your life be interesting and full, with all "
+            "the strength you need to reach your goals!",
         )
     ),
     (
         pgettext_noop(
             "wish",
-            "Поздравляю с днём рождения тебя! Желаю прекрасной и удивительной "
-            "жизни, океан безумной любви, бесконечно счастливого времени, только "
-            "крепкого здоровья и отличного настроения!",
+            "Happy birthday to you! Wishing you a wonderful, amazing life, an ocean "
+            "of love, endless happy times, good health and a great mood!",
         )
     ),
     (
         pgettext_noop(
             "wish",
-            "Поздравляю с Днем рождения! Желаю исполнения самых невероятных и "
-            "головокружительных желаний, ярких и незабываемых впечатлений, "
-            "успехов во всех твоих начинаниях. Пусть дни будут солнечными и "
-            "яркими, наполненными улыбками и счастьем. В общем, позитива во всем!",
+            "Happy birthday! May your wildest wishes come true, with bright, "
+            "unforgettable experiences and success in everything you start. May your "
+            "days be sunny and bright, filled with smiles and happiness. Positivity "
+            "in everything!",
         )
     ),
     (
         pgettext_noop(
             "wish",
-            "Поздравляю с днем рождения! Желаю позитивного настроения, побольше "
-            "радостных дней. Желаю Вам встречать каждое утро с улыбкой, верой в "
-            "лучшее. Пусть у Вашей мечты будут крылья! Свершения Вам задуманных "
-            "планов!",
+            "Happy birthday! Wishing you a positive mood and plenty of joyful days. "
+            "May you greet every morning with a smile and hope for the best. May your "
+            "dreams have wings, and your plans come true!",
         )
     ),
     (
         pgettext_noop(
             "wish",
-            "С днем рождения! Желаю жить всегда в радости, в окружении "
-            "спокойствия и постоянного счастья, желаю вам всего и понемногу, и "
-            "пусть самые простые дни иногда наполняются сказочными событиями.",
+            "Happy birthday! May you always live in joy, surrounded by peace and "
+            "lasting happiness. Wishing you a little of everything, and may even "
+            "ordinary days sometimes fill with magical events.",
         )
     ),
     (
         pgettext_noop(
             "wish",
-            "С днем рождения! Желаю прекрасного дня в окружении людей, которые "
-            "любят и ценят тебя больше всего, и много веселья. Улыбайся, "
-            "наслаждайся радостью общения, и пусть счастье наполнит твою жизнь.",
+            "Happy birthday! Wishing you a wonderful day surrounded by the people who "
+            "love and appreciate you most, and lots of fun. Smile, enjoy being "
+            "together, and may happiness fill your life.",
         )
     ),
     (
         pgettext_noop(
             "wish",
-            "С днем рождения! Море счастья и улыбок. Вдохновения к воплощению "
-            "поставленных целей. Пусть жизнь радует своей красочностью и "
-            "непредсказуемостью. Радуйся каждому дню и дари эти эмоции другим. "
-            "Оставайся собой, ты один из лучших людей на планете!",
+            "Happy birthday! An ocean of happiness and smiles, and inspiration to "
+            "achieve your goals. May life's colours and surprises delight you. Enjoy "
+            "every day and share those feelings with others. Stay yourself: you are "
+            "one of the best people on the planet!",
         )
     ),
     (
         pgettext_noop(
             "wish",
-            "С днем рождения! Хочется пожелать тебе в этом году побольше "
-            "вдохновения и энергии. Пускай все, за что бы ты не взялся, имеет "
-            "успешный финал. Здоровья побольше, ведь с ним ты сможешь все!",
+            "Happy birthday! Wishing you more inspiration and energy this year. May "
+            "everything you take on end in success. And plenty of good health, "
+            "because with it you can do anything!",
         )
     ),
 )

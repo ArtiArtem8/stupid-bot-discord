@@ -42,9 +42,7 @@ class BlockedListPages:
             color=Color.INFO,
         )
         detail = (
-            self.messages.catalog.pgettext(
-                "ui", " • Детальная информация о блокировках"
-            )
+            self.messages.catalog.pgettext("ui", " • Detailed block information")
             if self.show_details
             else ""
         )
@@ -60,7 +58,7 @@ class BlockedListPages:
         messages = AccessMessages(catalog("access", context.language))
         await interaction.response.send_message(
             messages.catalog.pgettext(
-                "ui", "Эти страницы доступны только автору команды."
+                "ui", "Only the command author can use these pages."
             ),
             ephemeral=True,
         )
@@ -107,7 +105,7 @@ def create_block_embed(
 
     if reason:
         embed.safe_add_field(
-            name=messages.catalog.pgettext("ui", "Причина"),
+            name=messages.catalog.pgettext("ui", "Reason"),
             value=reason,
             inline=False,
         )
@@ -128,10 +126,10 @@ def format_danger_level(block_count: int, *, language: Language = Language.RU) -
     """
     messages = AccessMessages(catalog("access", language))
     if block_count <= 2:
-        return messages.catalog.pgettext("ui", "🟢 Низкий")
+        return messages.catalog.pgettext("ui", "🟢 Low")
     if block_count <= 4:
-        return messages.catalog.pgettext("ui", "🟠 Средний")
-    return messages.catalog.pgettext("ui", "🔴 Высокий")
+        return messages.catalog.pgettext("ui", "🟠 Medium")
+    return messages.catalog.pgettext("ui", "🔴 High")
 
 
 def format_recent_block_events(
@@ -149,7 +147,7 @@ def format_recent_block_events(
     for timestamp, action, entry in events:
         icon = "🔒" if action == "BLOCK" else "🔓"
         reason = truncate_text(
-            entry.reason or messages.catalog.pgettext("ui", "Не указана"),
+            entry.reason or messages.catalog.pgettext("ui", "Not specified"),
             width=200,
             mode="middle",
         )
@@ -211,14 +209,12 @@ def format_blocked_user(
     username = truncate_text(current_username, width=80)
     lines.append(messages.current_name(name=username))
     if not user_entry.block_history:
-        lines.append(
-            messages.catalog.pgettext("ui", "• История блокировок отсутствует.")
-        )
+        lines.append(messages.catalog.pgettext("ui", "• No block history."))
         return "\n".join(lines)
 
     last_block = user_entry.block_history[-1]
     reason = truncate_text(
-        last_block.reason or messages.catalog.pgettext("ui", "Не указана"), width=200
+        last_block.reason or messages.catalog.pgettext("ui", "Not specified"), width=200
     )
     timestamp = format_dt(last_block.timestamp, "R")
     lines.extend(
@@ -235,6 +231,6 @@ BLOCK = BlockAction.BLOCK
 UNBLOCK = BlockAction.UNBLOCK
 
 ACTION_TITLES = {
-    "block": pgettext_noop("ui", "Блокировка"),
-    "unblock": pgettext_noop("ui", "Разблокировка"),
+    "block": pgettext_noop("ui", "Block"),
+    "unblock": pgettext_noop("ui", "Unblock"),
 }

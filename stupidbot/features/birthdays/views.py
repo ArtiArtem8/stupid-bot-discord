@@ -32,14 +32,16 @@ class ConfirmDeleteView(discord.ui.View):
         super().__init__(timeout=30)
         self.context = context
         self.messages = catalog("birthdays", context.language)
-        self.confirm.label = self.messages.pgettext("ui", "Да")
-        self.cancel.label = self.messages.pgettext("ui", "Нет")
+        self.confirm.label = self.messages.pgettext("ui", "Yes")
+        self.cancel.label = self.messages.pgettext("ui", "No")
         self.user_id = user_id
         self.expected_version = expected_version
         self.guild_id = guild_id
         self.manager = manager
 
-    @discord.ui.button(label=pgettext_noop("ui", "Да"), style=discord.ButtonStyle.green)
+    @discord.ui.button(
+        label=pgettext_noop("ui", "Yes"), style=discord.ButtonStyle.green
+    )
     async def confirm(self, interaction: Interaction, _: Button[Self]) -> None:
         if interaction.user.id != self.user_id:
             context = await interaction_context(interaction, private=True)
@@ -47,9 +49,7 @@ class ConfirmDeleteView(discord.ui.View):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                description=messages.pgettext(
-                    "ui", "Вы не можете выполнить это действие"
-                ),
+                description=messages.pgettext("ui", "You cannot perform this action"),
                 ephemeral=True,
             )
             return
@@ -67,9 +67,9 @@ class ConfirmDeleteView(discord.ui.View):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title=self.messages.pgettext("ui", "Ошибка"),
+                title=self.messages.pgettext("ui", "Error"),
                 description=self.messages.pgettext(
-                    "ui", "Произошла ошибка при удалении дня рождения"
+                    "ui", "An error occurred while removing the birthday"
                 ),
                 ephemeral=True,
             )
@@ -79,7 +79,7 @@ class ConfirmDeleteView(discord.ui.View):
                 interaction,
                 feedback_type=FeedbackType.ERROR,
                 description=self.messages.pgettext(
-                    "ui", "Конфигурация сервера не найдена"
+                    "ui", "Server configuration not found"
                 ),
                 ephemeral=True,
             )
@@ -91,7 +91,8 @@ class ConfirmDeleteView(discord.ui.View):
                 description=(
                     self.messages.pgettext(
                         "ui",
-                        "Дата уже изменена или удалена. Откройте подтверждение заново.",
+                        "The date has already changed or been removed. Open a new "
+                        "confirmation.",
                     )
                 ),
                 ephemeral=True,
@@ -100,11 +101,11 @@ class ConfirmDeleteView(discord.ui.View):
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
-            description=self.messages.pgettext("ui", "Ваш день рождения удалён"),
+            description=self.messages.pgettext("ui", "Your birthday has been removed"),
             ephemeral=True,
         )
 
-    @discord.ui.button(label=pgettext_noop("ui", "Нет"), style=discord.ButtonStyle.red)
+    @discord.ui.button(label=pgettext_noop("ui", "No"), style=discord.ButtonStyle.red)
     async def cancel(self, interaction: Interaction, _: Button[Self]) -> None:
         if interaction.user.id != self.user_id:
             context = await interaction_context(interaction, private=True)
@@ -112,15 +113,13 @@ class ConfirmDeleteView(discord.ui.View):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                description=messages.pgettext(
-                    "ui", "Вы не можете выполнить это действие."
-                ),
+                description=messages.pgettext("ui", "You cannot perform this action."),
                 ephemeral=True,
             )
             return
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.INFO,
-            description=self.messages.pgettext("ui", "Отменено"),
+            description=self.messages.pgettext("ui", "Cancelled"),
             ephemeral=True,
         )

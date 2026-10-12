@@ -148,7 +148,7 @@ def _format_recent_tracks(
         placeholder="\n...",
     )
     return (
-        result or messages.catalog.pgettext("ui", "*(пусто)*"),
+        result or messages.catalog.pgettext("ui", "*(empty)*"),
         len(formatted_groups),
     )
 
@@ -159,12 +159,12 @@ def build_session_summary_embed(
     """Build the summary shown when a music session ends."""
     messages = MusicMessages(catalog("music", language))
     embed = SafeEmbed(
-        title=messages.catalog.pgettext("ui", "Сессия закончена"),
+        title=messages.catalog.pgettext("ui", "Session ended"),
         color=Color.INFO,
         timestamp=session.start_time,
     )
     embed.safe_add_field(
-        name=messages.catalog.pgettext("ui", "В общем:"),
+        name=messages.catalog.pgettext("ui", "Summary:"),
         value=_format_session_stats(session, language=language),
         inline=True,
     )
@@ -173,13 +173,13 @@ def build_session_summary_embed(
     if text_lines == 1:
         embed.set_thumbnail(url=session.tracks[-1].thumbnail_url)
         embed.safe_add_field(
-            name=messages.catalog.pgettext("ui", "Трек:"),
+            name=messages.catalog.pgettext("ui", "Track:"),
             value=tracks_text,
             inline=False,
         )
     else:
         embed.safe_add_field(
-            name=messages.catalog.pgettext("ui", "Недавние треки:"),
+            name=messages.catalog.pgettext("ui", "Recent tracks:"),
             value=tracks_text,
             inline=False,
         )
@@ -197,9 +197,9 @@ def build_track_added_embed(
     messages = MusicMessages(catalog("music", language))
     track = data["track"]
     title_by_placement = {
-        "now": messages.catalog.pgettext("ui", "Сейчас играет"),
-        "next": messages.catalog.pgettext("ui", "Добавлено в начало очереди"),
-        "end": messages.catalog.pgettext("ui", "Добавлено в очередь"),
+        "now": messages.catalog.pgettext("ui", "Now playing"),
+        "next": messages.catalog.pgettext("ui", "Added to the front of the queue"),
+        "end": messages.catalog.pgettext("ui", "Added to the queue"),
     }
     embed = SafeEmbed(
         title=title_by_placement[data["placement"]],
@@ -209,7 +209,7 @@ def build_track_added_embed(
     if track.artwork_url:
         embed.set_thumbnail(url=track.artwork_url)
     embed.safe_add_field(
-        name=messages.catalog.pgettext("ui", "Длительность"),
+        name=messages.catalog.pgettext("ui", "Duration"),
         value=format_duration(track.length, language=language),
     )
     embed.set_footer(
@@ -234,8 +234,10 @@ def build_playlist_added_embed(
         DEFAULT_LIMITS.title - len(messages.playlist_added(name="")),
     )
     title_by_placement = {
-        "now": messages.catalog.pgettext("ui", "Плейлист запущен"),
-        "next": messages.catalog.pgettext("ui", "Плейлист добавлен в начало очереди"),
+        "now": messages.catalog.pgettext("ui", "Playlist started"),
+        "next": messages.catalog.pgettext(
+            "ui", "Playlist added to the front of the queue"
+        ),
         "end": messages.playlist_added(name=playlist_name),
     }
     description = messages.track_count(count=len(playlist.tracks))
@@ -248,7 +250,7 @@ def build_playlist_added_embed(
     )
     duration = sum(track.length for track in playlist.tracks)
     embed.safe_add_field(
-        name=messages.catalog.pgettext("ui", "Длительность"),
+        name=messages.catalog.pgettext("ui", "Duration"),
         value=format_duration(duration, language=language),
     )
     if playlist.tracks:
@@ -266,7 +268,7 @@ def build_skip_embed(
     """Build feedback for a successful skip."""
     messages = MusicMessages(catalog("music", language))
     embed = SafeEmbed(
-        title=messages.catalog.pgettext("ui", "Трек пропущен"),
+        title=messages.catalog.pgettext("ui", "Track skipped"),
         description=(
             format_track_link(skipped.title, skipped.uri) if skipped else "???"
         ),
@@ -274,7 +276,7 @@ def build_skip_embed(
     )
     if next_track:
         embed.safe_add_field(
-            name=messages.catalog.pgettext("ui", "Далее"),
+            name=messages.catalog.pgettext("ui", "Up next"),
             value=format_track_link(next_track.title, next_track.uri),
             inline=False,
         )
@@ -288,16 +290,16 @@ def build_rotate_embed(
     """Build feedback for moving the current track to the queue end."""
     messages = MusicMessages(catalog("music", language))
     embed = SafeEmbed(
-        title=messages.catalog.pgettext("ui", "Трек перемещён в конец"),
+        title=messages.catalog.pgettext("ui", "Track moved to the end"),
         description=format_track_link(moved_track.title, moved_track.uri),
         color=Color.INFO,
     )
     embed.safe_add_field(
-        name=messages.catalog.pgettext("ui", "Далее"),
+        name=messages.catalog.pgettext("ui", "Up next"),
         value=(
             format_track_link(next_track.title, next_track.uri)
             if next_track
-            else messages.catalog.pgettext("ui", "*Тот же самый трек*")
+            else messages.catalog.pgettext("ui", "*The same track*")
         ),
         inline=False,
     )
@@ -312,15 +314,15 @@ def build_repeat_embed(
     messages = MusicMessages(catalog("music", language))
     match new_mode:
         case RepeatMode.OFF:
-            message = messages.catalog.pgettext("ui", "Повтор **отключён**")
+            message = messages.catalog.pgettext("ui", "Repeat is **off**")
         case RepeatMode.QUEUE:
-            message = messages.catalog.pgettext("ui", "Повтор очереди **включён**")
+            message = messages.catalog.pgettext("ui", "Queue repeat is **on**")
         case RepeatMode.TRACK:
-            message = messages.catalog.pgettext("ui", "Повтор трека **включён**")
+            message = messages.catalog.pgettext("ui", "Track repeat is **on**")
         case _:
-            message = messages.catalog.pgettext("ui", "Режим повтора **неизвестен**")
+            message = messages.catalog.pgettext("ui", "Repeat mode is **unknown**")
     return discord.Embed(
-        title=messages.catalog.pgettext("ui", "Залупливание"),
+        title=messages.catalog.pgettext("ui", "Repeat mode"),
         description=message,
         color=Color.INFO,
     )
@@ -332,7 +334,7 @@ def build_track_exception_embed(
     """Build the user-facing notification for a track exception."""
     messages = MusicMessages(catalog("music", language))
     embed = SafeEmbed(
-        title=messages.catalog.pgettext("ui", "Не удалось воспроизвести трек"),
+        title=messages.catalog.pgettext("ui", "Could not play the track"),
         description=(
             messages.track_exception(
                 link=format_track_link(payload.track.title, payload.track.uri)

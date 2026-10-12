@@ -71,7 +71,7 @@ def _format_voice_result_message(
     language: Language = Language.RU,
 ) -> str:
     messages = MusicMessages(catalog("music", language))
-    unknown = messages.catalog.pgettext("unknown_channel", "Неизвестный канал")
+    unknown = messages.catalog.pgettext("unknown_channel", "Unknown channel")
     return messages.connection(
         result,
         destination=to_channel.mention if to_channel else unknown,
@@ -180,7 +180,7 @@ class MusicCog(BaseCog):
     @app_commands.command(
         name="join",
         description=app_commands.locale_str(
-            "Подключиться к голосовому каналу", domain="music"
+            "Connect to a voice channel", domain="music"
         ),
     )
     @app_commands.guild_only()
@@ -207,11 +207,11 @@ class MusicCog(BaseCog):
     @app_commands.command(
         name="play",
         description=app_commands.locale_str(
-            "Воспроизведение музыки с YT, SoundCloud, Y.Music и VK", domain="music"
+            "Play music from YT, SoundCloud, Y.Music and VK", domain="music"
         ),
     )
     @app_commands.describe(
-        query=app_commands.locale_str("URL или название", domain="music")
+        query=app_commands.locale_str("URL or title", domain="music")
     )
     @app_commands.guild_only()
     async def play(self, interaction: Interaction, query: str) -> None:
@@ -220,11 +220,11 @@ class MusicCog(BaseCog):
     @app_commands.command(
         name="play-next",
         description=app_commands.locale_str(
-            "Добавить трек или плейлист в начало очереди", domain="music"
+            "Add a track or playlist to the front of the queue", domain="music"
         ),
     )
     @app_commands.describe(
-        query=app_commands.locale_str("URL или название", domain="music")
+        query=app_commands.locale_str("URL or title", domain="music")
     )
     @app_commands.guild_only()
     async def play_next(self, interaction: Interaction, query: str) -> None:
@@ -242,7 +242,7 @@ class MusicCog(BaseCog):
         if not query.strip():
             await send_warning(
                 interaction,
-                messages.catalog.pgettext("ui", "Укажите название или ссылку на трек."),
+                messages.catalog.pgettext("ui", "Enter a track title or link."),
                 ephemeral=True,
             )
             return
@@ -284,7 +284,7 @@ class MusicCog(BaseCog):
         ):
             await send_warning(
                 interaction,
-                messages.catalog.pgettext("ui", "Вы должны быть в голосовом канале!"),
+                messages.catalog.pgettext("ui", "You must be in a voice channel!"),
                 ephemeral=True,
             )
             return None
@@ -328,9 +328,7 @@ class MusicCog(BaseCog):
         if not data:
             await send_info(
                 interaction,
-                messages.catalog.pgettext(
-                    "ui", "Ничего не нашлось. Попробуйте ещё раз."
-                ),
+                messages.catalog.pgettext("ui", "Nothing found. Please try again."),
             )
             return None
         return data
@@ -460,7 +458,7 @@ class MusicCog(BaseCog):
     @app_commands.command(
         name="stop",
         description=app_commands.locale_str(
-            "Остановить воспроизведение и очистить очередь", domain="music"
+            "Stop playback and clear the queue", domain="music"
         ),
     )
     @app_commands.guild_only()
@@ -472,13 +470,13 @@ class MusicCog(BaseCog):
             guild.id, interaction.user.id, interaction.channel_id
         )
         if res.is_success:
-            await send_info(interaction, messages.catalog.pgettext("ui", "Остановлено"))
+            await send_info(interaction, messages.catalog.pgettext("ui", "Stopped"))
         else:
             await self._send_no_player_or_unavailable(interaction, res)
 
     @app_commands.command(
         name="skip",
-        description=app_commands.locale_str("Пропустить текущий трек", domain="music"),
+        description=app_commands.locale_str("Skip the current track", domain="music"),
     )
     @app_commands.guild_only()
     async def skip(self, interaction: Interaction) -> None:
@@ -504,7 +502,7 @@ class MusicCog(BaseCog):
             messages = MusicMessages(catalog("music", context.language))
             await send_warning(
                 interaction,
-                messages.catalog.pgettext("ui", "Нечего пропускать"),
+                messages.catalog.pgettext("ui", "Nothing to skip"),
                 ephemeral=True,
             )
             return
@@ -513,10 +511,12 @@ class MusicCog(BaseCog):
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)
 
     @app_commands.command(
-        name="queue", description=app_commands.locale_str("Очередь", domain="music")
+        name="queue", description=app_commands.locale_str("Queue", domain="music")
     )
     @app_commands.describe(
-        ephemeral=app_commands.locale_str("Скрыть сообщение", domain="music")
+        ephemeral=app_commands.locale_str(
+            "Show this message only to you", domain="music"
+        )
     )
     @app_commands.guild_only()
     async def queue(self, interaction: Interaction, ephemeral: bool = True) -> None:
@@ -539,7 +539,7 @@ class MusicCog(BaseCog):
                 return
             await send_warning(
                 interaction,
-                messages.catalog.pgettext("ui", "Очередь пуста"),
+                messages.catalog.pgettext("ui", "The queue is empty"),
                 ephemeral=True,
             )
             return
@@ -555,14 +555,10 @@ class MusicCog(BaseCog):
 
     @app_commands.command(
         name="volume",
-        description=app_commands.locale_str(
-            "Установить громкость (0-200)", domain="music"
-        ),
+        description=app_commands.locale_str("Set volume (0–200)", domain="music"),
     )
     @app_commands.describe(
-        value=app_commands.locale_str(
-            "Оставьте пустым, чтобы узнать громкость", domain="music"
-        )
+        value=app_commands.locale_str("Leave empty to check the volume", domain="music")
     )
     @app_commands.guild_only()
     async def volume(
@@ -585,7 +581,7 @@ class MusicCog(BaseCog):
             await send_error(interaction, messages.failure(res.reason))
 
     @app_commands.command(
-        name="leave", description=app_commands.locale_str("Выйти", domain="music")
+        name="leave", description=app_commands.locale_str("Disconnect", domain="music")
     )
     @app_commands.guild_only()
     async def leave(self, interaction: Interaction) -> None:
@@ -601,8 +597,8 @@ class MusicCog(BaseCog):
             case MusicResultStatus.SUCCESS:
                 await send_info(
                     interaction,
-                    messages.catalog.pgettext("ui", "Отключился"),
-                    title=messages.catalog.pgettext("ui", "До свидания ❤️"),
+                    messages.catalog.pgettext("ui", "Disconnected"),
+                    title=messages.catalog.pgettext("ui", "Goodbye ❤️"),
                     ephemeral=True,
                 )
             case MusicResultStatus.FAILURE:
@@ -614,7 +610,7 @@ class MusicCog(BaseCog):
 
     @app_commands.command(
         name="shuffle",
-        description=app_commands.locale_str("Перемешать", domain="music"),
+        description=app_commands.locale_str("Shuffle the queue", domain="music"),
     )
     @app_commands.guild_only()
     async def shuffle(self, interaction: Interaction) -> None:
@@ -625,16 +621,14 @@ class MusicCog(BaseCog):
             guild.id, interaction.user.id, interaction.channel_id
         )
         if res.is_success:
-            await send_success(
-                interaction, messages.catalog.pgettext("ui", "Перемешано")
-            )
+            await send_success(interaction, messages.catalog.pgettext("ui", "Shuffled"))
         else:
             await self._send_no_player_or_unavailable(interaction, res)
 
     @app_commands.command(
         name="rotate",
         description=app_commands.locale_str(
-            "Переместить тек. трек в конец очереди", domain="music"
+            "Move the current track to the end of the queue", domain="music"
         ),
     )
     @app_commands.guild_only()
@@ -653,7 +647,7 @@ class MusicCog(BaseCog):
             messages = MusicMessages(catalog("music", context.language))
             await send_warning(
                 interaction,
-                messages.catalog.pgettext("ui", "Нечего перемещать"),
+                messages.catalog.pgettext("ui", "Nothing to move"),
                 ephemeral=True,
             )
             return
@@ -665,13 +659,12 @@ class MusicCog(BaseCog):
 
     @app_commands.command(
         name="repeat",
-        description=app_commands.locale_str(
-            "Включить/выключить повтор.", domain="music"
-        ),
+        description=app_commands.locale_str("Enable or disable repeat", domain="music"),
     )
     @app_commands.describe(
         mode=app_commands.locale_str(
-            "off — выкл, queue — повтор очереди, track - повтор трека", domain="music"
+            "off — no repeat, queue — repeat queue, track — repeat track",
+            domain="music",
         )
     )
     @app_commands.guild_only()
@@ -698,7 +691,8 @@ class MusicCog(BaseCog):
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)
 
     @app_commands.command(
-        name="pause", description=app_commands.locale_str("Пауза", domain="music")
+        name="pause",
+        description=app_commands.locale_str("Pause playback", domain="music"),
     )
     @app_commands.guild_only()
     async def pause(self, interaction: Interaction) -> None:
@@ -709,13 +703,14 @@ class MusicCog(BaseCog):
         if res.is_success:
             await send_info(
                 interaction,
-                messages.catalog.pgettext("ui", "Воспроизведение приостановлено"),
+                messages.catalog.pgettext("ui", "Playback paused"),
             )
         else:
             await self._send_no_player_or_unavailable(interaction, res)
 
     @app_commands.command(
-        name="resume", description=app_commands.locale_str("Продолжить", domain="music")
+        name="resume",
+        description=app_commands.locale_str("Resume playback", domain="music"),
     )
     @app_commands.guild_only()
     async def resume(self, interaction: Interaction) -> None:
@@ -726,16 +721,14 @@ class MusicCog(BaseCog):
         if res.is_success:
             await send_info(
                 interaction,
-                messages.catalog.pgettext("ui", "Воспроизведение продолжено"),
+                messages.catalog.pgettext("ui", "Playback resumed"),
             )
         else:
             await self._send_no_player_or_unavailable(interaction, res)
 
     @app_commands.command(
         name="reconnect",
-        description=app_commands.locale_str(
-            "Переподключиться в случае ошибок", domain="music"
-        ),
+        description=app_commands.locale_str("Reconnect after an error", domain="music"),
     )
     @app_commands.guild_only()
     async def heal(self, interaction: Interaction) -> None:
@@ -744,7 +737,7 @@ class MusicCog(BaseCog):
         if interaction.guild_id is None:
             await send_warning(
                 interaction,
-                messages.catalog.pgettext("ui", "сервер не найден"),
+                messages.catalog.pgettext("ui", "server not found"),
                 ephemeral=True,
             )
             return
@@ -753,7 +746,7 @@ class MusicCog(BaseCog):
         if not player:
             await send_warning(
                 interaction,
-                messages.catalog.pgettext("ui", "нет проигрывателя"),
+                messages.catalog.pgettext("ui", "no player"),
                 ephemeral=True,
             )
             return
@@ -764,22 +757,20 @@ class MusicCog(BaseCog):
         if restored:
             await send_warning(
                 interaction,
-                title=messages.catalog.pgettext("ui", "Восстановлен"),
-                message=messages.catalog.pgettext(
-                    "ui", "Попытка переподключения сделана"
-                ),
+                title=messages.catalog.pgettext("ui", "Restored"),
+                message=messages.catalog.pgettext("ui", "Reconnection attempted"),
                 ephemeral=True,
             )
             return
 
         await send_warning(
             interaction,
-            title=messages.catalog.pgettext("ui", "Не восстановлено"),
+            title=messages.catalog.pgettext("ui", "Not restored"),
             message=(
                 messages.catalog.pgettext(
                     "ui",
-                    "Переподключение выполнено, но трек не удалось снова запустить. "
-                    "Скорее всего, источник временно отдал ошибку.",
+                    "Reconnected, but the track could not be restarted. The source "
+                    "most likely returned a temporary error.",
                 )
             ),
             ephemeral=True,

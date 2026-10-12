@@ -62,14 +62,12 @@ class AdminCog(BaseCog):
     @app_commands.command(
         name="block",
         description=app_commands.locale_str(
-            "Заблокировать пользователя от использования бота.", domain="access"
+            "Block a user from using the bot", domain="access"
         ),
     )
     @app_commands.describe(
-        user=app_commands.locale_str(
-            "Пользователь, которого надо лишить доступа к этому боту", domain="access"
-        ),
-        reason=app_commands.locale_str("Причина блокировки", domain="access"),
+        user=app_commands.locale_str("User to block from this bot", domain="access"),
+        reason=app_commands.locale_str("Reason for blocking", domain="access"),
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
@@ -95,14 +93,12 @@ class AdminCog(BaseCog):
     @app_commands.command(
         name="unblock",
         description=app_commands.locale_str(
-            "Снять блокировку использования бота с пользователя.", domain="access"
+            "Unblock a user from using the bot", domain="access"
         ),
     )
     @app_commands.describe(
-        user=app_commands.locale_str(
-            "Пользователь, с которого снимается блокировка", domain="access"
-        ),
-        reason=app_commands.locale_str("Причина снятия блокировки", domain="access"),
+        user=app_commands.locale_str("User to unblock", domain="access"),
+        reason=app_commands.locale_str("Reason for unblocking", domain="access"),
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
@@ -130,15 +126,13 @@ class AdminCog(BaseCog):
     @app_commands.command(
         name="block-info",
         description=app_commands.locale_str(
-            "Показать подробную информацию о блокировках пользователя.", domain="access"
+            "Show detailed block information for a user", domain="access"
         ),
     )
     @app_commands.describe(
-        user=app_commands.locale_str(
-            "Пользователь для просмотра информации", domain="access"
-        ),
+        user=app_commands.locale_str("User to show information for", domain="access"),
         ephemeral=app_commands.locale_str(
-            "Скрыть сообщение от других пользователей", domain="access"
+            "Show this message only to you", domain="access"
         ),
     )
     @app_commands.guild_only()
@@ -176,7 +170,7 @@ class AdminCog(BaseCog):
             guild.id,
         )
         embed = SafeEmbed(
-            title=messages.catalog.pgettext("ui", "Полная история блокировок"),
+            title=messages.catalog.pgettext("ui", "Full block history"),
             color=Color.ERROR if user_entry.is_blocked else Color.SUCCESS,
         )
         embed.set_author(name=str(user), icon_url=user.display_avatar.url)
@@ -189,25 +183,25 @@ class AdminCog(BaseCog):
                 admin_id=last_block.admin_id,
                 timestamp=timestamp,
                 reason=last_block.reason
-                or messages.catalog.pgettext("ui", "Не указана"),
+                or messages.catalog.pgettext("ui", "Not specified"),
             )
         else:
-            status_value = messages.catalog.pgettext("ui", "Не заблокирован")
+            status_value = messages.catalog.pgettext("ui", "Not blocked")
 
         embed.safe_add_field(
-            name=messages.catalog.pgettext("ui", "Текущий статус"),
+            name=messages.catalog.pgettext("ui", "Current status"),
             value=status_value,
             inline=False,
         )
 
         embed.safe_add_field(
-            name=messages.catalog.pgettext("ui", "Последние события"),
+            name=messages.catalog.pgettext("ui", "Recent events"),
             value=format_recent_block_events(user_entry, language=context.language),
             inline=False,
         )
         if user_entry.name_history:
             embed.safe_add_field(
-                name=messages.catalog.pgettext("ui", "История имён"),
+                name=messages.catalog.pgettext("ui", "Name history"),
                 value=format_name_history(
                     user_entry.name_history, language=context.language
                 ),
@@ -225,7 +219,7 @@ class AdminCog(BaseCog):
             stats.append(messages.last_unblock(timestamp=last_unblock_ts))
 
         embed.safe_add_field(
-            name=messages.catalog.pgettext("ui", "Статистика"),
+            name=messages.catalog.pgettext("ui", "Statistics"),
             value="\n".join(stats),
             inline=False,
         )
@@ -241,16 +235,14 @@ class AdminCog(BaseCog):
 
     @app_commands.command(
         name="list-blocked",
-        description=app_commands.locale_str(
-            "Показать всех заблокированных пользователей", domain="access"
-        ),
+        description=app_commands.locale_str("Show all blocked users", domain="access"),
     )
     @app_commands.describe(
         show_details=app_commands.locale_str(
-            "Показать дополнительную информацию", domain="access"
+            "Show additional information", domain="access"
         ),
         ephemeral=app_commands.locale_str(
-            "Скрыть сообщение от других пользователей", domain="access"
+            "Show this message only to you", domain="access"
         ),
     )
     @app_commands.guild_only()
@@ -273,7 +265,7 @@ class AdminCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.INFO,
                 description=messages.catalog.pgettext(
-                    "ui", "Нет заблокированных пользователей."
+                    "ui", "There are no blocked users."
                 ),
                 ephemeral=ephemeral,
             )

@@ -23,69 +23,69 @@ msgid "..."
 msgstr "..."
 
 msgctxt "answer"
+msgid "Almost certainly"
+msgstr "Almost certainly"
+
+msgctxt "answer"
+msgid "Highly debatable"
+msgstr "Highly debatable"
+
+msgctxt "answer"
+msgid "I do not know"
+msgstr "I do not know"
+
+msgctxt "answer"
+msgid "I do not want to answer"
+msgstr "I do not want to answer"
+
+msgctxt "answer"
 msgid ""
-"Безумие — это точное повторение одного и того же действия. Раз за разом, в надежде на"
-" изменение. Это есть безумие."
+"Insanity is doing the exact same thing over and over again, expecting things to "
+"change. That is insanity."
 msgstr ""
 "Insanity is doing the exact same thing over and over again, expecting things to "
 "change. That is insanity."
 
 msgctxt "answer"
-msgid "Вероятно нет"
-msgstr "Probably not"
-
-msgctxt "answer"
-msgid "Весьма спорно"
-msgstr "Highly debatable"
-
-msgctxt "answer"
-msgid "Возможно"
-msgstr "Maybe"
-
-msgctxt "answer"
-msgid "Вы из тех людей, с кем очень приятно общаться"
-msgstr "You are one of those people who are a pleasure to talk to"
-
-msgctxt "answer"
-msgid "Вы из тех людей, с кем очень приятно прощаться"
-msgstr "You are one of those people who are a pleasure to say goodbye to"
-
-msgctxt "answer"
-msgid "Да!"
-msgstr "Yes!"
-
-msgctxt "answer"
-msgid "Зря ты спросил"
-msgstr "You should not have asked"
-
-msgctxt "answer"
-msgid "Извините, но я сегодня слишком занят для бесполезного общения"
-msgstr "Sorry, I am too busy for pointless conversation today"
+msgid "It is decided"
+msgstr "It is decided"
 
 msgctxt "command"
-msgid "Магический шар, задай любой вопрос"
+msgid "Magic 8-ball: ask any question"
 msgstr "Magic 8-ball: ask any question"
 
 msgctxt "answer"
-msgid "Не хочу отвечать"
-msgstr "I do not want to answer"
+msgid "Maybe"
+msgstr "Maybe"
 
 msgctxt "answer"
-msgid "Нет!"
-msgstr "No!"
-
-msgctxt "answer"
-msgid "Почти наверняка"
-msgstr "Almost certainly"
-
-msgctxt "answer"
-msgid "Предрешено"
-msgstr "It is decided"
-
-msgctxt "answer"
-msgid "Скорее да"
+msgid "More likely yes"
 msgstr "More likely yes"
 
 msgctxt "answer"
-msgid "Я не знаю"
-msgstr "I do not know"
+msgid "No!"
+msgstr "No!"
+
+msgctxt "answer"
+msgid "Probably not"
+msgstr "Probably not"
+
+msgctxt "answer"
+msgid "Sorry, I am too busy for pointless conversation today"
+msgstr "Sorry, I am too busy for pointless conversation today"
+
+msgctxt "answer"
+msgid "Yes!"
+msgstr "Yes!"
+
+msgctxt "answer"
+msgid "You are one of those people who are a pleasure to say goodbye to"
+msgstr "You are one of those people who are a pleasure to say goodbye to"
+
+msgctxt "answer"
+msgid "You are one of those people who are a pleasure to talk to"
+msgstr "You are one of those people who are a pleasure to talk to"
+
+msgctxt "answer"
+msgid "You should not have asked"
+msgstr "You should not have asked"

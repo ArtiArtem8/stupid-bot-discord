@@ -148,7 +148,8 @@ class PrefixBlockerCog(commands.Cog):
     ) -> str:
         messages = CommandHelpMessages(catalog("command_help", language))
         response = messages.catalog.pgettext(
-            "prefix_removed", "Префиксы убраны; воспользуйтесь слэш-командами."
+            "prefix_removed",
+            "Prefix commands have been removed; please use slash commands.",
         )
         primary = suggestions.primary
         if primary is None:

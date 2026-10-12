@@ -20,68 +20,76 @@ msgstr ""
 
 #, python-brace-format
 msgctxt "channel"
-msgid "**Канал:** {name}"
+msgid "**Channel:** {name}"
 msgstr "**Channel:** {name}"
 
 #, python-brace-format
 msgctxt "guild"
-msgid "**Сервер:** {name}"
+msgid "**Server:** {name}"
 msgstr "**Server:** {name}"
 
 #, python-brace-format
 msgctxt "receipt"
-msgid "-# Ваш персональный ID: `{report_id}`"
+msgid "-# Your personal ID: `{report_id}`"
 msgstr "-# Your personal ID: `{report_id}`"
 
+msgctxt "ui"
+msgid "Could not finish processing the report. Details have been logged."
+msgstr "Could not finish processing the report. Details have been logged."
+
+msgctxt "ui"
+msgid "Describe what happened..."
+msgstr "Describe what happened..."
+
+msgctxt "ui"
+msgid "Description"
+msgstr "Description"
+
+msgctxt "ui"
+msgid "Direct messages"
+msgstr "Direct messages"
+
+msgctxt "ui"
+msgid "Location"
+msgstr "Location"
+
+msgctxt "ui"
+msgid "Problem description"
+msgstr "Problem description"
+
+msgctxt "ui"
+msgid "Report"
+msgstr "Report"
+
 msgctxt "command"
-msgid "Канал для отчётов"
+msgid "Report a bug or problem"
+msgstr "Report a bug or problem"
+
+msgctxt "command"
+msgid "Report channel"
 msgstr "Report channel"
 
 #, python-brace-format
 msgctxt "destination"
-msgid "Канал для отчётов: {mention}"
+msgid "Report channel set to {mention}"
 msgstr "Report channel set to {mention}"
 
 msgctxt "ui"
-msgid "Локация"
-msgstr "Location"
-
-msgctxt "ui"
-msgid "Не удалось завершить обработку отчёта. Детали записаны в лог."
-msgstr "Could not finish processing the report. Details have been logged."
-
-msgctxt "ui"
-msgid "Описание"
-msgstr "Description"
-
-msgctxt "ui"
-msgid "Описание проблемы"
-msgstr "Problem description"
-
-msgctxt "ui"
-msgid "Опишите, что случилось..."
-msgstr "Describe what happened..."
-
-msgctxt "ui"
-msgid "Отправитель"
+msgid "Sender"
 msgstr "Sender"
 
 msgctxt "command"
-msgid "Отправить отчет о баге или проблеме"
-msgstr "Report a bug or problem"
+msgid "Set the report channel (developers only)"
+msgstr "Set the report channel (developers only)"
 
 msgctxt "ui"
-msgid "Отправить отчёт о баге"
+msgid "Submit a bug report"
 msgstr "Submit a bug report"
 
 msgctxt "ui"
-msgid "Отчёт"
-msgstr "Report"
-
-msgctxt "ui"
-msgid "Спасибо за отчёт!"
+msgid "Thank you for the report!"
 msgstr "Thank you for the report!"
 
-msgctxt "command"
-msgid "Установить канал для жалоб (для разработчиков)"
-msgstr "Set the report channel (developers only)"
+msgctxt "ui"
+msgid "Unknown channel"
+msgstr "Unknown channel"

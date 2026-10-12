@@ -1,20 +1,22 @@
 {
   "keys": [
-    "channel\u0004**Канал:** {name}",
-    "command\u0004Канал для отчётов",
-    "command\u0004Отправить отчет о баге или проблеме",
-    "command\u0004Установить канал для жалоб (для разработчиков)",
-    "destination\u0004Канал для отчётов: {mention}",
-    "guild\u0004**Сервер:** {name}",
-    "receipt\u0004-# Ваш персональный ID: `{report_id}`",
-    "ui\u0004Локация",
-    "ui\u0004Не удалось завершить обработку отчёта. Детали записаны в лог.",
-    "ui\u0004Описание",
-    "ui\u0004Описание проблемы",
-    "ui\u0004Опишите, что случилось...",
-    "ui\u0004Отправитель",
-    "ui\u0004Отправить отчёт о баге",
-    "ui\u0004Отчёт",
-    "ui\u0004Спасибо за отчёт!"
+    "channel\u0004**Channel:** {name}",
+    "command\u0004Report a bug or problem",
+    "command\u0004Report channel",
+    "command\u0004Set the report channel (developers only)",
+    "destination\u0004Report channel set to {mention}",
+    "guild\u0004**Server:** {name}",
+    "receipt\u0004-# Your personal ID: `{report_id}`",
+    "ui\u0004Could not finish processing the report. Details have been logged.",
+    "ui\u0004Describe what happened...",
+    "ui\u0004Description",
+    "ui\u0004Direct messages",
+    "ui\u0004Location",
+    "ui\u0004Problem description",
+    "ui\u0004Report",
+    "ui\u0004Sender",
+    "ui\u0004Submit a bug report",
+    "ui\u0004Thank you for the report!",
+    "ui\u0004Unknown channel"
   ]
 }

@@ -1,21 +1,21 @@
 {
   "keys": [
     "answer\u0004...",
-    "answer\u0004Безумие — это точное повторение одного и того же действия. Раз за разом, в надежде на изменение. Это есть безумие.",
-    "answer\u0004Вероятно нет",
-    "answer\u0004Весьма спорно",
-    "answer\u0004Возможно",
-    "answer\u0004Вы из тех людей, с кем очень приятно общаться",
-    "answer\u0004Вы из тех людей, с кем очень приятно прощаться",
-    "answer\u0004Да!",
-    "answer\u0004Зря ты спросил",
-    "answer\u0004Извините, но я сегодня слишком занят для бесполезного общения",
-    "answer\u0004Не хочу отвечать",
-    "answer\u0004Нет!",
-    "answer\u0004Почти наверняка",
-    "answer\u0004Предрешено",
-    "answer\u0004Скорее да",
-    "answer\u0004Я не знаю",
-    "command\u0004Магический шар, задай любой вопрос"
+    "answer\u0004Almost certainly",
+    "answer\u0004Highly debatable",
+    "answer\u0004I do not know",
+    "answer\u0004I do not want to answer",
+    "answer\u0004Insanity is doing the exact same thing over and over again, expecting things to change. That is insanity.",
+    "answer\u0004It is decided",
+    "answer\u0004Maybe",
+    "answer\u0004More likely yes",
+    "answer\u0004No!",
+    "answer\u0004Probably not",
+    "answer\u0004Sorry, I am too busy for pointless conversation today",
+    "answer\u0004Yes!",
+    "answer\u0004You are one of those people who are a pleasure to say goodbye to",
+    "answer\u0004You are one of those people who are a pleasure to talk to",
+    "answer\u0004You should not have asked",
+    "command\u0004Magic 8-ball: ask any question"
   ]
 }

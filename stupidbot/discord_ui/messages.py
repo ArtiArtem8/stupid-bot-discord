@@ -13,18 +13,18 @@ class FeedbackMessages:
 
     def page(self, *, name: str, page: int) -> str:
         """Label a continuation field without modifying its original name."""
-        return self.catalog.pgettext("page", "{name} (стр. {page:d})").format(
+        return self.catalog.pgettext("page", "{name} (page {page:d})").format(
             name=name, page=page
         )
 
     def cooldown(self, *, relative_time: str) -> str:
         """Show Discord's viewer-local relative timestamp."""
-        return self.catalog.pgettext(
-            "cooldown", "Время ожидания: {relative_time}"
-        ).format(relative_time=relative_time)
+        return self.catalog.pgettext("cooldown", "Please wait: {relative_time}").format(
+            relative_time=relative_time
+        )
 
     def deletion(self, *, relative_time: str) -> str:
         """Keep the removal notice a complete phrase when truncating embeds."""
-        return self.catalog.pgettext("deletion", "-# Удалится {relative_time}").format(
+        return self.catalog.pgettext("deletion", "-# Deletes {relative_time}").format(
             relative_time=relative_time
         )

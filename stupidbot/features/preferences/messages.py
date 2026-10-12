@@ -15,13 +15,14 @@ class PreferenceMessages:
         """Show the pending values without changing the editor's frozen language."""
         return self.catalog.pgettext(
             "preview",
-            "Язык: **{language}**\nЧасовой пояс: **{timezone}**\nСейчас: {local_time}",
+            "Language: **{language}**\nTimezone: **{timezone}**\nCurrent time: "
+            "{local_time}",
         ).format(language=language, timezone=timezone, local_time=local_time)
 
     def conflict(self, *, language: str, timezone: str) -> str:
         """Report current values after another editor wins a CAS race."""
         return self.catalog.pgettext(
             "conflict",
-            "Настройки уже изменены. Сейчас: {language}, {timezone}. "
-            "Откройте панель заново.",
+            "Settings have changed. Current values: {language}, {timezone}. Open the "
+            "panel again.",
         ).format(language=language, timezone=timezone)

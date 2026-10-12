@@ -42,7 +42,13 @@ the same CLI. SQLite maintenance uses `python -m stupidbot.storage`; the previou
 `python -m repositories.sqlite` entry remains a thin compatibility command.
 
 Translations live in each owner's `locales/` directory. Runtime uses stdlib
-gettext; Babel is a development dependency. Parameterized messages have typed
+gettext; Babel is a development dependency. Use readable English `msgid` text
+and stable English `msgctxt` values describing meaning, not filenames or classes.
+English translations equal their source text; Russian translations live in `ru.po`.
+This source convention does not change the Russian audience fallback.
+Translate complete phrases, with plural forms for counts and named placeholders
+for values; keep user content, external answers and technical identifiers intact.
+Parameterized messages have typed
 methods in the owner's `messages.py`. Pass an explicit presentation context to
 views and renderers; do not set a global language. Personal/ephemeral responses
 resolve user preferences, while public responses resolve guild preferences.
@@ -50,7 +56,8 @@ resolve user preferences, while public responses resolve guild preferences.
 After changing message literals or PO translations, run
 `uv run --locked python -m tools.catalogs`. Commit the PO, MO, index and digest
 files together. `uv run --locked python -m tools.catalogs --check` verifies
-extraction, placeholders, plural forms, duplicates and reproducible compilation;
+extraction, English source consistency, placeholders, plural forms, duplicates
+and reproducible compilation;
 the pre-push gate includes this check. Startup verifies release digests before
 loading handlers. A saved `/ask` answer is already rendered text and must never
 be retranslated on retrieval.

@@ -26,7 +26,7 @@ class PreferencesCog(BaseCog):
     @app_commands.command(
         name="settings",
         description=app_commands.locale_str(
-            "Ваш язык и часовой пояс", domain="preferences"
+            "Your language and timezone", domain="preferences"
         ),
     )
     async def settings(self, interaction: discord.Interaction) -> None:
@@ -35,7 +35,7 @@ class PreferencesCog(BaseCog):
     @app_commands.command(
         name="settings-server",
         description=app_commands.locale_str(
-            "Язык и часовой пояс общих сообщений сервера", domain="preferences"
+            "Language and timezone for public server messages", domain="preferences"
         ),
     )
     @app_commands.guild_only()

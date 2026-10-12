@@ -205,9 +205,7 @@ class DetailCardRenderer:
                 "top-bot-name": safe_label(
                     presentation.names.get(
                         top[0],
-                        messages.catalog.pgettext(
-                            "unknown_user", "Неизвестный пользователь"
-                        ),
+                        messages.catalog.pgettext("unknown_user", "Unknown user"),
                     )
                 )
                 if top
@@ -224,7 +222,7 @@ class DetailCardRenderer:
                 duration=recent_voice, count=detail.recent_unique_people
             )
             if detail.period.observed_seconds or detail.recent_presence.total_seconds
-            else messages.catalog.pgettext("no_observations", "Нет наблюдений"),
+            else messages.catalog.pgettext("no_observations", "No observations"),
         )
         _lifetime_labels(nodes, detail.lifetime_period, messages)
         return self._png(root, nodes)
@@ -277,7 +275,7 @@ def _hour_label(hours: tuple[int, ...], messages: VoiceMessages) -> str:
     if not hours:
         return "-"
     if len(hours) == 24:
-        return messages.catalog.pgettext("all_day", "Весь день")
+        return messages.catalog.pgettext("all_day", "All day")
     ranges: list[tuple[int, int]] = []
     for hour in hours:
         if ranges and ranges[-1][1] == hour:
@@ -289,7 +287,7 @@ def _hour_label(hours: tuple[int, ...], messages: VoiceMessages) -> str:
         return f"{start:02}:00-{end:02}:00"
     if len(ranges) == 2:
         return ", ".join(f"{start:02}-{end:02}" for start, end in ranges)
-    return messages.catalog.pgettext("multiple_peaks", "Несколько пиков")
+    return messages.catalog.pgettext("multiple_peaks", "Multiple peaks")
 
 
 def _weekday_labels(days: tuple[int, ...], messages: VoiceMessages) -> tuple[str, ...]:
@@ -302,7 +300,7 @@ def _weekday_labels(days: tuple[int, ...], messages: VoiceMessages) -> tuple[str
     if len(days) == 1:
         return (day_name[days[0]],)
     if len(days) == 7:
-        return (messages.catalog.pgettext("all_days", "Все дни"),)
+        return (messages.catalog.pgettext("all_days", "All days"),)
     labels = [", ".join(day_name[day] for day in days)]
     if len(days) >= 3 and days[-1] - days[0] + 1 == len(days):
         labels.extend(
@@ -398,7 +396,7 @@ def _activity_chart(
         if label is not None:
             replace_text(
                 label,
-                messages.catalog.pgettext("today", "Сегодня")
+                messages.catalog.pgettext("today", "Today")
                 if i == 29
                 else f"{day.date:%d}",
             )
@@ -442,7 +440,7 @@ def _person_row(
     name = safe_label(
         presentation.names.get(
             person.user_id,
-            messages.catalog.pgettext("unknown_user", "Неизвестный пользователь"),
+            messages.catalog.pgettext("unknown_user", "Unknown user"),
         )
     )
     _labels(

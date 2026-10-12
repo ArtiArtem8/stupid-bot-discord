@@ -35,17 +35,17 @@ class ReminderView(discord.ui.View):
         self.catalog = catalog("preferences", context.language)
         self.add_item(
             CallbackButton[ReminderView](
-                self.open, label=self.catalog.pgettext("open_settings", "Настроить")
+                self.open, label=self.catalog.pgettext("open_settings", "Set up")
             )
         )
         self.add_item(
             CallbackButton[ReminderView](
-                self.later, label=self.catalog.pgettext("later", "Позже")
+                self.later, label=self.catalog.pgettext("later", "Later")
             )
         )
         self.add_item(
             CallbackButton[ReminderView](
-                self.never, label=self.catalog.pgettext("never", "Не напоминать")
+                self.never, label=self.catalog.pgettext("never", "Do not remind me")
             )
         )
 
@@ -56,7 +56,7 @@ class ReminderView(discord.ui.View):
             await interaction.response.send_message(
                 catalog("preferences", context.language).pgettext(
                     "owner_only",
-                    "Эта панель принадлежит другому пользователю. Откройте /settings.",
+                    "This panel belongs to someone else. Open /settings.",
                 ),
                 ephemeral=True,
             )
@@ -81,17 +81,17 @@ class ReminderView(discord.ui.View):
         accepted = await self.repository.answer_prompt(self.reservation, never=never)
         if not accepted:
             text = self.catalog.pgettext(
-                "reminder_expired", "Эта подсказка уже обработана."
+                "reminder_expired", "This reminder has already been handled."
             )
         elif never:
             text = self.catalog.pgettext(
                 "reminder_disabled",
-                "Больше не буду напоминать. Настройки доступны в /settings.",
+                "I will not remind you again. Settings are available in /settings.",
             )
         else:
             text = self.catalog.pgettext(
                 "reminder_later",
-                "Хорошо. Настройки доступны в /settings в любое время.",
+                "Okay. Settings are available in /settings whenever you need them.",
             )
         self.stop()
         await interaction.edit_original_response(content=text, view=None)
@@ -137,8 +137,8 @@ async def maybe_remind(
             view.message = await interaction.followup.send(
                 messages.pgettext(
                     "reminder",
-                    "Выберите язык и часовой пояс для личных ответов и голосового "
-                    "профиля. Это можно сделать в /settings.",
+                    "Choose a language and timezone for personal replies and your "
+                    "voice profile in /settings.",
                 ),
                 view=view,
                 ephemeral=True,

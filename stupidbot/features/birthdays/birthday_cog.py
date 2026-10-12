@@ -83,13 +83,13 @@ class BirthdayCog(BaseCog):
     @app_commands.command(
         name="set-birthday",
         description=app_commands.locale_str(
-            "Установить свой день рождения (формат: ДД-ММ-ГГГГ или ГГГГ-ММ-ДД)",
+            "Set your birthday (DD-MM-YYYY or YYYY-MM-DD)",
             domain="birthdays",
         ),
     )
     @app_commands.describe(
         date_input=app_commands.locale_str(
-            "Дата рождения (например: 15-05-2000 или 2000-05-15)", domain="birthdays"
+            "Birthday (e.g. 15-05-2000 or 2000-05-15)", domain="birthdays"
         )
     )
     @app_commands.guild_only()
@@ -103,7 +103,7 @@ class BirthdayCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description=messages.catalog.pgettext(
-                    "ui", "Неверный формат даты. Используйте ДД-ММ-ГГГГ / ГГГГ-ММ-ДД"
+                    "ui", "Invalid date format. Use DD-MM-YYYY / YYYY-MM-DD"
                 ),
                 ephemeral=True,
             )
@@ -128,16 +128,16 @@ class BirthdayCog(BaseCog):
     @app_commands.command(
         name="setup-birthdays",
         description=app_commands.locale_str(
-            "Настроить систему дней рождений для сервера", domain="birthdays"
+            "Configure birthdays for this server", domain="birthdays"
         ),
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
     @app_commands.describe(
-        channel=app_commands.locale_str("Канал для поздравлений", domain="birthdays"),
-        role=app_commands.locale_str(
-            "Роль для именинников (опционально)", domain="birthdays"
+        channel=app_commands.locale_str(
+            "Channel for birthday wishes", domain="birthdays"
         ),
+        role=app_commands.locale_str("Birthday role (optional)", domain="birthdays"),
     )
     async def setup_birthdays(
         self,
@@ -168,7 +168,7 @@ class BirthdayCog(BaseCog):
     @app_commands.command(
         name="remove-birthday",
         description=app_commands.locale_str(
-            "Удалить свой день рождения из системы", domain="birthdays"
+            "Remove your saved birthday", domain="birthdays"
         ),
     )
     @app_commands.guild_only()
@@ -183,7 +183,7 @@ class BirthdayCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.ERROR,
                 description=messages.catalog.pgettext(
-                    "ui", "Конфигурация сервера не найдена"
+                    "ui", "Server configuration not found"
                 ),
                 ephemeral=True,
             )
@@ -195,7 +195,7 @@ class BirthdayCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description=messages.catalog.pgettext(
-                    "ui", "Вы не установили свой день рождения"
+                    "ui", "You have not set your birthday"
                 ),
                 ephemeral=True,
             )
@@ -205,7 +205,7 @@ class BirthdayCog(BaseCog):
             interaction.user.id, guild.id, self.manager, user.version, context=context
         )
         msg = messages.catalog.pgettext(
-            "ui", "Вы уверены, что хотите удалить свой день рождения?"
+            "ui", "Are you sure you want to remove your birthday?"
         )
         await FeedbackUI.send(
             interaction,
@@ -218,7 +218,7 @@ class BirthdayCog(BaseCog):
     @app_commands.command(
         name="list-birthdays",
         description=app_commands.locale_str(
-            "Список дней рождений на сервере, отсортированные по ближайшим",
+            "List server birthdays, with the nearest first",
             domain="birthdays",
         ),
     )
@@ -226,7 +226,7 @@ class BirthdayCog(BaseCog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(
         ephemeral=app_commands.locale_str(
-            "Скрыть сообщение после выполнения", domain="birthdays"
+            "Show the response only to you", domain="birthdays"
         )
     )
     async def list_birthdays(
@@ -241,7 +241,7 @@ class BirthdayCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description=messages.catalog.pgettext(
-                    "ui", "На этом сервере нет настроенной системы дней рождений"
+                    "ui", "Birthdays have not been configured on this server"
                 ),
                 ephemeral=True,
             )
@@ -252,7 +252,7 @@ class BirthdayCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.INFO,
                 description=messages.catalog.pgettext(
-                    "ui", "На этом сервере нет сохранённых дней рождений."
+                    "ui", "There are no saved birthdays on this server."
                 ),
                 ephemeral=True,
             )
@@ -273,7 +273,7 @@ class BirthdayCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description=messages.catalog.pgettext(
-                    "ui", "На этом сервере нет сохранённых дней рождений."
+                    "ui", "There are no saved birthdays on this server."
                 ),
                 ephemeral=True,
             )

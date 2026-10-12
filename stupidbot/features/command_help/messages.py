@@ -14,14 +14,14 @@ class CommandHelpMessages:
     def alternatives(self, *, primary: str, alternative: str) -> str:
         """Offer two similarly ranked visible commands."""
         return self.catalog.pgettext(
-            "alternatives", "-# возможно, вы искали {primary} или {alternative}"
+            "alternatives", "-# perhaps you were looking for {primary} or {alternative}"
         ).format(primary=primary, alternative=alternative)
 
     def suggestion(self, *, command: str, confident: bool) -> str:
         """Retain the existing distinction between strong and weak matches."""
         template = (
-            self.catalog.pgettext("try", "-# попробуйте {command}")
+            self.catalog.pgettext("try", "-# try {command}")
             if confident
-            else self.catalog.pgettext("maybe", "-# возможно {command}")
+            else self.catalog.pgettext("maybe", "-# perhaps {command}")
         )
         return template.format(command=command)

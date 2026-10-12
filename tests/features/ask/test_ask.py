@@ -33,7 +33,7 @@ class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):
         saved = await preferences.save(
             PreferenceScope.GUILD, 20, Preferences(Language.EN)
         )
-        self.cog.answers = ["Да!", "Нет!"]
+        self.cog.answers = ["Yes!", "No!"]
         first = interaction()
         first.client.preferences_repository = preferences
         await self.cog.q._do_call(first, {"text": "Question?"})
@@ -47,6 +47,24 @@ class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):
         await self.cog.q._do_call(second, {"text": "QUESTION ?"})
         second.response.send_message.assert_awaited_once_with("Yes!")
         self.assertEqual(self.cog.answers, queue_before)
+
+    async def test_historical_russian_answer_is_verbatim_with_english_sources(
+        self,
+    ) -> None:
+        request = interaction()
+        preferences = PreferencesRepository(self.database)
+        await preferences.save(PreferenceScope.GUILD, 20, Preferences(Language.EN))
+        request.client.preferences_repository = preferences
+        historical = "Да! Именно так — старый ответ."
+        await self.repository.answer(
+            request.user.id, str_local("Question?"), historical
+        )
+        self.cog.answers = ["Yes!", "No!"]
+
+        await self.cog.q._do_call(request, {"text": "QUESTION ?"})
+
+        request.response.send_message.assert_awaited_once_with(historical)
+        self.assertEqual(self.cog.answers, ["Yes!", "No!"])
 
     async def test_returns_existing_answer_without_rewriting_it(self) -> None:
         self.assertIsNone(await self.cog._add_to_history(1, "Question?", "answer"))

@@ -20,20 +20,20 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 
 #, python-brace-format
-msgctxt "maybe"
-msgid "-# возможно {command}"
-msgstr "-# возможно {command}"
-
-#, python-brace-format
 msgctxt "alternatives"
-msgid "-# возможно, вы искали {primary} или {alternative}"
+msgid "-# perhaps you were looking for {primary} or {alternative}"
 msgstr "-# возможно, вы искали {primary} или {alternative}"
 
 #, python-brace-format
+msgctxt "maybe"
+msgid "-# perhaps {command}"
+msgstr "-# возможно {command}"
+
+#, python-brace-format
 msgctxt "try"
-msgid "-# попробуйте {command}"
+msgid "-# try {command}"
 msgstr "-# попробуйте {command}"
 
 msgctxt "prefix_removed"
-msgid "Префиксы убраны; воспользуйтесь слэш-командами."
+msgid "Prefix commands have been removed; please use slash commands."
 msgstr "Префиксы убраны; воспользуйтесь слэш-командами."

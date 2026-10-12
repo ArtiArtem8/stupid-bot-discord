@@ -14,6 +14,7 @@ from stupidbot.features.reports.repository import ReportRepository
 from stupidbot.features.reports.ui import (
     ReportModal,
     _build_report_data,
+    _create_report_embed,
     _notify_report,
     submit_report,
 )
@@ -23,6 +24,41 @@ from tests.storage.fixtures import temporary_database
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):
+    async def test_unnamed_locations_are_localized_after_persistence(self) -> None:
+        for channel, ru, en in (
+            (None, "Неизвестный канал", "Unknown channel"),
+            (
+                MagicMock(spec=discord.DMChannel, id=42),
+                "Личные сообщения",
+                "Direct messages",
+            ),
+        ):
+            with self.subTest(channel=channel):
+                self.interaction.id += 1
+                self.interaction.channel = channel
+                report, _ = await submit_report(
+                    self.repository, self.interaction, "reason"
+                )
+                self.assertIsNone(report["channel"]["name"])
+                for language, expected in ((Language.RU, ru), (Language.EN, en)):
+                    embed = _create_report_embed(report, language=language)
+                    location = embed.fields[-1].value
+                    if location is None:
+                        self.fail("Expected the report location")
+                    self.assertIn(expected, location)
+
+    def test_saved_channel_names_are_never_reinterpreted_as_labels(self) -> None:
+        report = _build_report_data(self.interaction, "reason")
+        for name in ("Unknown", "DM with Author", "Канал пользователя"):
+            report["channel"]["name"] = name
+            for language in Language:
+                with self.subTest(name=name, language=language):
+                    embed = _create_report_embed(report, language=language)
+                    location = embed.fields[-1].value
+                    if location is None:
+                        self.fail("Expected the saved report location")
+                    self.assertTrue(location.endswith(name))
+
     async def test_modal_keeps_language_and_preserves_report_text(self) -> None:
         modal = ReportModal(
             self.repository, context=PresentationContext(Language.EN, ZoneInfo("UTC"))

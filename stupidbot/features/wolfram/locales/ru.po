@@ -19,18 +19,6 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-msgctxt "no_results"
-msgid "No results found"
-msgstr "Ничего не найдено"
-
-msgctxt "unknown_api_error"
-msgid "Unknown API Error"
-msgstr "Неизвестная ошибка API"
-
-msgctxt "invalid_response"
-msgid "Invalid XML response"
-msgstr "Некорректный XML-ответ"
-
 msgctxt "ui"
 msgid "API Error"
 msgstr "Ошибка API"
@@ -76,6 +64,10 @@ msgctxt "ui"
 msgid "Internal Error"
 msgstr "Внутренняя ошибка"
 
+msgctxt "invalid_response"
+msgid "Invalid XML response"
+msgstr "Некорректный XML-ответ"
+
 msgctxt "ui"
 msgid "No Plot"
 msgstr "Нет графика"
@@ -95,6 +87,10 @@ msgstr ""
 msgctxt "ui"
 msgid "No graph generated."
 msgstr "График не построен."
+
+msgctxt "no_results"
+msgid "No results found"
+msgstr "Ничего не найдено"
 
 msgctxt "command"
 msgid "Plot a mathematical function"
@@ -129,6 +125,10 @@ msgstr "Решить с Wolfram"
 msgctxt "ui"
 msgid "The API key is not set."
 msgstr "Ключ API не задан."
+
+msgctxt "unknown_api_error"
+msgid "Unknown API Error"
+msgstr "Неизвестная ошибка API"
 
 msgctxt "ui"
 msgid "Wolfram could not understand the input."

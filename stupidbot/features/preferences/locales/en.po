@@ -18,118 +18,118 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-msgctxt "zone_id"
-msgid "IANA-зона"
-msgstr "IANA timezone"
+msgctxt "discord"
+msgid "As in Discord"
+msgstr "As in Discord"
 
-msgctxt "reminder_disabled"
-msgid "Больше не буду напоминать. Настройки доступны в /settings."
-msgstr "I will not remind you again. Settings are available in /settings."
+msgctxt "cancel"
+msgid "Cancel"
+msgstr "Cancel"
 
-msgctxt "command"
-msgid "Ваш язык и часовой пояс"
-msgstr "Your language and timezone"
-
-msgctxt "expired"
-msgid "Время редактирования истекло. Откройте настройки заново."
-msgstr "This editor has expired. Open settings again."
+msgctxt "cancelled"
+msgid "Changes cancelled."
+msgstr "Changes cancelled."
 
 msgctxt "reminder"
 msgid ""
-"Выберите язык и часовой пояс для личных ответов и голосового профиля. Это можно "
-"сделать в /settings."
+"Choose a language and timezone for personal replies and your voice profile in "
+"/settings."
 msgstr ""
 "Choose a language and timezone for personal replies and your voice profile in "
 "/settings."
 
-msgctxt "permission"
-msgid "Для изменения настроек сервера нужно право «Управлять сервером»."
-msgstr "You need Manage Server permission to change server settings."
-
-msgctxt "cancelled"
-msgid "Изменения отменены."
-msgstr "Changes cancelled."
-
-msgctxt "discord"
-msgid "Как в Discord"
-msgstr "As in Discord"
-
-msgctxt "personal_title"
-msgid "Личные настройки"
-msgstr "Personal settings"
-
-msgctxt "zone_help"
-msgid "Например Europe/Moscow. Пустое поле — настройка установки."
-msgstr "For example Europe/Moscow. Leave blank to use the installation default."
-
-msgctxt "open_settings"
-msgid "Настроить"
-msgstr "Set up"
-
-msgctxt "server_title"
-msgid "Настройки сервера"
-msgstr "Server settings"
-
-msgctxt "saved"
-msgid "Настройки сохранены."
-msgstr "Settings saved."
-
-#, python-brace-format
-msgctxt "conflict"
-msgid "Настройки уже изменены. Сейчас: {language}, {timezone}. Откройте панель заново."
-msgstr "Settings have changed. Current values: {language}, {timezone}. Open the panel again."
-
 msgctxt "never"
-msgid "Не напоминать"
+msgid "Do not remind me"
 msgstr "Do not remind me"
 
-msgctxt "invalid_zone"
-msgid "Неизвестная IANA-зона. Например: Europe/Moscow или Asia/Krasnoyarsk."
-msgstr "Unknown IANA timezone. Examples: Europe/Moscow or Asia/Krasnoyarsk."
+msgctxt "zone_help"
+msgid "For example Europe/Moscow. Leave blank to use the installation default."
+msgstr "For example Europe/Moscow. Leave blank to use the installation default."
 
-msgctxt "cancel"
-msgid "Отмена"
-msgstr "Cancel"
+msgctxt "reminder_disabled"
+msgid "I will not remind you again. Settings are available in /settings."
+msgstr "I will not remind you again. Settings are available in /settings."
 
-msgctxt "closed"
-msgid "Панель уже закрыта или сохраняется. Откройте настройки заново."
-msgstr "This panel is closed or saving. Open settings again."
-
-msgctxt "later"
-msgid "Позже"
-msgstr "Later"
-
-msgctxt "save"
-msgid "Сохранить"
-msgstr "Save"
-
-msgctxt "reminder_later"
-msgid "Хорошо. Настройки доступны в /settings в любое время."
-msgstr "Okay. Settings are available in /settings whenever you need them."
-
-msgctxt "timezone"
-msgid "Часовой пояс"
-msgstr "Timezone"
-
-msgctxt "owner_only"
-msgid "Эта панель принадлежит другому пользователю. Откройте /settings."
-msgstr "This panel belongs to someone else. Open /settings."
-
-msgctxt "reminder_expired"
-msgid "Эта подсказка уже обработана."
-msgstr "This reminder has already been handled."
+msgctxt "zone_id"
+msgid "IANA timezone"
+msgstr "IANA timezone"
 
 msgctxt "command"
-msgid "Язык и часовой пояс общих сообщений сервера"
+msgid "Language and timezone for public server messages"
 msgstr "Language and timezone for public server messages"
 
 #, python-brace-format
 msgctxt "preview"
 msgid ""
-"Язык: **{language}**\n"
-"Часовой пояс: **{timezone}**\n"
-"Сейчас: {local_time}"
+"Language: **{language}**\n"
+"Timezone: **{timezone}**\n"
+"Current time: {local_time}"
 msgstr ""
 "Language: **{language}**\n"
 "Timezone: **{timezone}**\n"
 "Current time: {local_time}"
+
+msgctxt "later"
+msgid "Later"
+msgstr "Later"
+
+msgctxt "reminder_later"
+msgid "Okay. Settings are available in /settings whenever you need them."
+msgstr "Okay. Settings are available in /settings whenever you need them."
+
+msgctxt "personal_title"
+msgid "Personal settings"
+msgstr "Personal settings"
+
+msgctxt "save"
+msgid "Save"
+msgstr "Save"
+
+msgctxt "server_title"
+msgid "Server settings"
+msgstr "Server settings"
+
+msgctxt "open_settings"
+msgid "Set up"
+msgstr "Set up"
+
+#, python-brace-format
+msgctxt "conflict"
+msgid "Settings have changed. Current values: {language}, {timezone}. Open the panel again."
+msgstr "Settings have changed. Current values: {language}, {timezone}. Open the panel again."
+
+msgctxt "saved"
+msgid "Settings saved."
+msgstr "Settings saved."
+
+msgctxt "expired"
+msgid "This editor has expired. Open settings again."
+msgstr "This editor has expired. Open settings again."
+
+msgctxt "owner_only"
+msgid "This panel belongs to someone else. Open /settings."
+msgstr "This panel belongs to someone else. Open /settings."
+
+msgctxt "closed"
+msgid "This panel is closed or saving. Open settings again."
+msgstr "This panel is closed or saving. Open settings again."
+
+msgctxt "reminder_expired"
+msgid "This reminder has already been handled."
+msgstr "This reminder has already been handled."
+
+msgctxt "timezone"
+msgid "Timezone"
+msgstr "Timezone"
+
+msgctxt "invalid_zone"
+msgid "Unknown IANA timezone. Examples: Europe/Moscow or Asia/Krasnoyarsk."
+msgstr "Unknown IANA timezone. Examples: Europe/Moscow or Asia/Krasnoyarsk."
+
+msgctxt "permission"
+msgid "You need Manage Server permission to change server settings."
+msgstr "You need Manage Server permission to change server settings."
+
+msgctxt "command"
+msgid "Your language and timezone"
+msgstr "Your language and timezone"

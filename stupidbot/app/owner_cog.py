@@ -28,7 +28,7 @@ class OwnerCog(BaseCog):
 
     @app_commands.command(
         name="error-test",
-        description=app_commands.locale_str("Тестирование ошибок", domain="app"),
+        description=app_commands.locale_str("Test error handling", domain="app"),
     )
     @is_owner_app()
     @app_commands.default_permissions(administrator=True)
@@ -38,12 +38,12 @@ class OwnerCog(BaseCog):
     @app_commands.command(
         name="del",
         description=app_commands.locale_str(
-            "Удалить сообщение по ID (только владелец).", domain="app"
+            "Delete a message by ID (owner only)", domain="app"
         ),
     )
     @is_owner_app()
     @app_commands.describe(
-        message_id=app_commands.locale_str("ID сообщения для удаления", domain="app")
+        message_id=app_commands.locale_str("ID of the message to delete", domain="app")
     )
     @app_commands.default_permissions(administrator=True)
     async def delete_message(
@@ -57,7 +57,7 @@ class OwnerCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description=messages.pgettext(
-                    "ui", "Невозможно удалить сообщение в этом канале."
+                    "ui", "Cannot delete messages in this channel."
                 ),
                 ephemeral=True,
             )
@@ -71,7 +71,7 @@ class OwnerCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description=messages.pgettext("ui", "Сообщение не найдено."),
+                description=messages.pgettext("ui", "Message not found."),
                 ephemeral=True,
             )
             return
@@ -79,7 +79,7 @@ class OwnerCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description=messages.pgettext("ui", "Нет прав."),
+                description=messages.pgettext("ui", "Insufficient permissions."),
                 ephemeral=True,
             )
             return
@@ -87,7 +87,7 @@ class OwnerCog(BaseCog):
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
-            description=messages.pgettext("ui", "Удалено."),
+            description=messages.pgettext("ui", "Deleted."),
             ephemeral=True,
             delete_after=1.0,
         )

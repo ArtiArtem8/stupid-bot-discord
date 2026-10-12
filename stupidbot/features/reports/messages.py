@@ -14,19 +14,19 @@ class ReportMessages:
     def receipt(self, *, report_id: str) -> str:
         """Identify a committed report in the private confirmation."""
         return self.catalog.pgettext(
-            "receipt", "-# Ваш персональный ID: `{report_id}`"
+            "receipt", "-# Your personal ID: `{report_id}`"
         ).format(report_id=report_id)
 
     def guild(self, *, name: str) -> str:
         """Label the original guild name without modifying it."""
-        return self.catalog.pgettext("guild", "**Сервер:** {name}").format(name=name)
+        return self.catalog.pgettext("guild", "**Server:** {name}").format(name=name)
 
     def channel(self, *, name: str) -> str:
         """Label the original channel name without modifying it."""
-        return self.catalog.pgettext("channel", "**Канал:** {name}").format(name=name)
+        return self.catalog.pgettext("channel", "**Channel:** {name}").format(name=name)
 
     def destination(self, *, mention: str) -> str:
         """Confirm the committed notification destination."""
         return self.catalog.pgettext(
-            "destination", "Канал для отчётов: {mention}"
+            "destination", "Report channel set to {mention}"
         ).format(mention=mention)

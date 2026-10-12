@@ -143,7 +143,7 @@ class VoiceProfileView(discord.ui.View):
             context = await interaction_context(interaction, private=True)
             await interaction.response.send_message(
                 catalog("voice", context.language).pgettext(
-                    "not_your_card", "Это не ваша карточка."
+                    "not_your_card", "This is not your card."
                 ),
                 ephemeral=True,
             )
@@ -165,7 +165,7 @@ class VoiceProfileView(discord.ui.View):
             context = await interaction_context(interaction, private=True)
             await interaction.response.send_message(
                 catalog("voice", context.language).pgettext(
-                    "already_refreshing", "Карточка уже обновляется."
+                    "already_refreshing", "The card is already refreshing."
                 ),
                 ephemeral=True,
             )
@@ -194,7 +194,7 @@ class VoiceProfileView(discord.ui.View):
                 interaction,
                 feedback_type=FeedbackType.INFO,
                 description=catalog("voice", context.language).pgettext(
-                    "busy", "Карточки сейчас заняты. Попробуйте чуть позже."
+                    "busy", "Cards are busy right now. Please try again later."
                 ),
                 ephemeral=True,
             )
@@ -208,7 +208,7 @@ class VoiceProfileView(discord.ui.View):
                 feedback_type=FeedbackType.WARNING,
                 description=catalog("voice", context.language).pgettext(
                     "refresh_failed",
-                    "Не удалось обновить карточку. Попробуйте ещё раз.",
+                    "Could not refresh the card. Please try again.",
                 ),
                 ephemeral=True,
             )

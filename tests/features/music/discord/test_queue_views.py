@@ -13,7 +13,6 @@ from stupidbot.features.music.discord.views import (
     QueuePaginator,
     QueueUndoView,
 )
-from stupidbot.features.music.discord.views.queue import STALE_QUEUE_REQUEST_MESSAGE
 from stupidbot.features.music.discord.views.queue import logger as queue_logger
 from stupidbot.features.music.playback.models import (
     QueueEntry,
@@ -477,7 +476,8 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(view.is_finished())
         edit.assert_awaited_once_with(view=None)
         followup.assert_awaited_once_with(
-            STALE_QUEUE_REQUEST_MESSAGE,
+            "Ничего из этого запроса уже не ожидает в очереди. "
+            "Возможно, треки уже запустились или очередь была изменена.",
             ephemeral=True,
         )
 

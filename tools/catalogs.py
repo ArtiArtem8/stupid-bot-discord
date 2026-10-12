@@ -6,7 +6,9 @@ from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 from string import Formatter
+from unicodedata import name
 
+from babel import Locale
 from babel.messages.catalog import Catalog, Message
 from babel.messages.extract import extract
 from babel.messages.mofile import write_mo
@@ -45,6 +47,7 @@ def validate_message(message: Message, catalog: Catalog) -> None:
         return
     if message.fuzzy:
         raise ValueError(f"Fuzzy message: {message.id}")
+    validate_source(message, catalog)
     original = message.id if isinstance(message.id, str) else message.id[0]
     translations = (
         (message.string,) if isinstance(message.string, str) else message.string
@@ -55,6 +58,24 @@ def validate_message(message: Message, catalog: Catalog) -> None:
         raise ValueError(f"Missing plural form: {message.id}")
     for translated in translations:
         validate_template(original, translated)
+
+
+def validate_source(message: Message, catalog: Catalog) -> None:
+    """Keep English source text canonical and plural placeholder contracts equal."""
+    sources = (message.id,) if isinstance(message.id, str) else message.id
+    for source in sources:
+        if any("CYRILLIC" in name(character, "") for character in source):
+            raise ValueError(f"Use English source text: {source!r}")
+        validate_template(sources[0], source)
+    if message.context and not message.context.isascii():
+        raise ValueError(f"Use an English context: {message.context!r}")
+    locale = catalog.locale
+    if isinstance(locale, Locale) and locale.language == "en":
+        translations = (
+            (message.string,) if isinstance(message.string, str) else message.string
+        )
+        if tuple(sources) != tuple(translations or ()):
+            raise ValueError(f"English translation differs from source: {message.id!r}")
 
 
 def extract_owner(directory: Path) -> set[tuple[str | None, str | tuple[str, ...]]]:

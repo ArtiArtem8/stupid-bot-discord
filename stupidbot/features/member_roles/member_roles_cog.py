@@ -89,7 +89,7 @@ class ServerMonitorCog(BaseCog):
     monitor = app_commands.Group(
         name="monitor",
         description=app_commands.locale_str(
-            "Управление мониторингом сервера и восстановлением ролей",
+            "Manage server monitoring and role restoration",
             domain="member_roles",
         ),
         default_permissions=discord.Permissions(administrator=True),
@@ -99,13 +99,13 @@ class ServerMonitorCog(BaseCog):
     @monitor.command(
         name="enable",
         description=app_commands.locale_str(
-            "Включить мониторинг сервера и автовосстановление ролей",
+            "Enable server monitoring and automatic role restoration",
             domain="member_roles",
         ),
     )
     @app_commands.describe(
         ttl_days=app_commands.locale_str(
-            "Количество дней хранения снимков. Пусто = бесконечно",
+            "Days to retain snapshots. Leave empty for unlimited retention",
             domain="member_roles",
         )
     )
@@ -120,9 +120,9 @@ class ServerMonitorCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title=messages.catalog.pgettext("ui", "Недостаточно прав"),
+                title=messages.catalog.pgettext("ui", "Insufficient permissions"),
                 description=messages.catalog.pgettext(
-                    "ui", "Боту необходимо разрешение управление ролями."
+                    "ui", "The bot needs the Manage Roles permission."
                 ),
                 ephemeral=True,
             )
@@ -133,7 +133,7 @@ class ServerMonitorCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description=messages.catalog.pgettext(
-                    "ui", "TTL должен быть положительным или не указан (бесконечно)."
+                    "ui", "TTL must be positive or left empty (unlimited)."
                 ),
                 ephemeral=True,
             )
@@ -143,7 +143,7 @@ class ServerMonitorCog(BaseCog):
         logger.info("Monitoring enabled for guild %d with TTL=%s", guild.id, ttl_days)
 
         ttl_text = (
-            messages.catalog.pgettext("ui", "бесконечное хранение")
+            messages.catalog.pgettext("ui", "unlimited retention")
             if ttl_days is None
             else messages.ttl(days=ttl_days)
         )
@@ -152,7 +152,7 @@ class ServerMonitorCog(BaseCog):
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
-            title=messages.catalog.pgettext("ui", "Мониторинг включён"),
+            title=messages.catalog.pgettext("ui", "Monitoring enabled"),
             description=msg,
             ephemeral=True,
         )
@@ -160,7 +160,7 @@ class ServerMonitorCog(BaseCog):
     @monitor.command(
         name="disable",
         description=app_commands.locale_str(
-            "Отключить мониторинг сервера", domain="member_roles"
+            "Disable server monitoring", domain="member_roles"
         ),
     )
     async def monitor_disable(self, interaction: discord.Interaction) -> None:
@@ -173,7 +173,7 @@ class ServerMonitorCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.INFO,
                 description=messages.catalog.pgettext(
-                    "ui", "Мониторинг уже отключён на этом сервере."
+                    "ui", "Monitoring is already disabled on this server."
                 ),
                 ephemeral=True,
             )
@@ -183,13 +183,13 @@ class ServerMonitorCog(BaseCog):
         logger.info("Monitoring disabled for guild %d", guild.id)
         msg = messages.catalog.pgettext(
             "ui",
-            "Сохранённые снимки ролей не удалены. "
-            "Используйте `/monitor forget` для очистки.",
+            "Saved role snapshots have been kept. Use `/monitor forget` to delete "
+            "them.",
         )
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
-            title=messages.catalog.pgettext("ui", "Мониторинг отключён"),
+            title=messages.catalog.pgettext("ui", "Monitoring disabled"),
             description=msg,
             ephemeral=True,
         )
@@ -197,7 +197,7 @@ class ServerMonitorCog(BaseCog):
     @monitor.command(
         name="status",
         description=app_commands.locale_str(
-            "Показать статус мониторинга и список сохранённых участников",
+            "Show monitoring status and saved members",
             domain="member_roles",
         ),
     )
@@ -217,24 +217,24 @@ class ServerMonitorCog(BaseCog):
 
         status_emoji = "✅" if enabled else "❌"
         status_text = (
-            messages.catalog.pgettext("ui", "Включён")
+            messages.catalog.pgettext("ui", "Enabled")
             if enabled
-            else messages.catalog.pgettext("ui", "Отключён")
+            else messages.catalog.pgettext("ui", "Disabled")
         )
         ttl_text = (
-            messages.catalog.pgettext("ui", "бесконечно")
+            messages.catalog.pgettext("ui", "unlimited")
             if ttl is None
             else messages.days(days=ttl)
         )
 
         embed.add_field(
-            name=messages.catalog.pgettext("ui", "Статус"),
+            name=messages.catalog.pgettext("ui", "Status"),
             value=f"{status_emoji} {status_text}",
             inline=True,
         )
         embed.add_field(name="TTL", value=ttl_text, inline=True)
         embed.add_field(
-            name=messages.catalog.pgettext("ui", "Снимков сохранено"),
+            name=messages.catalog.pgettext("ui", "Snapshots saved"),
             value=str(len(snapshots)),
             inline=True,
         )
@@ -264,12 +264,12 @@ class ServerMonitorCog(BaseCog):
     @monitor.command(
         name="forget",
         description=app_commands.locale_str(
-            "Удалить сохранённый снимок ролей участника", domain="member_roles"
+            "Delete a member's saved role snapshot", domain="member_roles"
         ),
     )
     @app_commands.describe(
         user=app_commands.locale_str(
-            "Участник, чей снимок нужно удалить", domain="member_roles"
+            "Member whose snapshot should be deleted", domain="member_roles"
         )
     )
     async def monitor_forget(
@@ -305,12 +305,12 @@ class ServerMonitorCog(BaseCog):
     @monitor.command(
         name="restore",
         description=app_commands.locale_str(
-            "Вручную восстановить роли участнику", domain="member_roles"
+            "Manually restore a member's roles", domain="member_roles"
         ),
     )
     @app_commands.describe(
         user=app_commands.locale_str(
-            "Участник, которому нужно восстановить роли", domain="member_roles"
+            "Member whose roles should be restored", domain="member_roles"
         )
     )
     async def monitor_restore(
@@ -341,8 +341,8 @@ class ServerMonitorCog(BaseCog):
                 description=(
                     messages.catalog.pgettext(
                         "ui",
-                        "Нет ролей для восстановления: снимок отсутствует, "
-                        "его срок хранения истёк или роли уже выданы.",
+                        "No roles to restore: the snapshot is missing or expired, or "
+                        "the roles have already been granted.",
                     )
                 ),
                 ephemeral=True,

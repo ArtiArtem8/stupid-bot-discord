@@ -68,16 +68,16 @@ class ReportButtonView(View):
         self.on_report = on_report
         self.error_info = error_info
         self.report.label = catalog("discord_ui", language).pgettext(
-            "report", "Сообщить о проблеме"
+            "report", "Report a problem"
         )
 
-    @discord.ui.button(label="Сообщить о проблеме", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Report a problem", style=discord.ButtonStyle.danger)
     async def report(self, interaction: discord.Interaction, _: Button[Self]) -> None:
         if interaction.user.id != self.user_id:
             context = await interaction_context(interaction, private=True)
             await interaction.response.send_message(
                 catalog("discord_ui", context.language).pgettext(
-                    "not_yours", "Это не ваше сообщение."
+                    "not_yours", "This is not your message."
                 ),
                 ephemeral=True,
             )

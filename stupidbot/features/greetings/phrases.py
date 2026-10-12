@@ -17,39 +17,43 @@ MORNING_ANSWERS = (
     "https://tenor.com/view/shrek-donkey-good-morning-good-morning-good-morning-morning-gif-18326987",
     pgettext_noop(
         "answer",
-        "Доброго утра! Желаю хорошего настроения, бодрости и выполнения всех планов.",
+        "Good morning! Wishing you a great mood, plenty of energy and success with "
+        "all your plans.",
     ),
     (
         pgettext_noop(
             "answer",
-            "Желаю доброго, бодрого, позитивного, солнечного, "
-            "восхитительного, радостного и счастливого утра!",
+            "Wishing you a kind, energetic, positive, sunny, wonderful, joyful and "
+            "happy morning!",
         )
     ),
     (
         pgettext_noop(
             "answer",
-            "Пусть утро будет добрым, ароматным и бодрящим! А вся неделя "
-            "легкой, вдохновленной и продуктивной!",
+            "May your morning be kind, fragrant and refreshing! And may your whole "
+            "week be easy, inspiring and productive!",
         )
     ),
     pgettext_noop(
         "answer",
-        "С добрым утром, с новым днем! Пускай день будет легким, "
-        "веселым и плодотворным.",
+        "Good morning, and welcome to a new day! May it be easy, cheerful and "
+        "productive.",
     ),
     (
         pgettext_noop(
             "answer",
-            "С добрым утром! Просыпайся, потянись, улыбнись, взбодрись и "
-            "новый день скорей встречай! Ура!",
+            "Good morning! Wake up, stretch, smile, perk up and greet the new day! "
+            "Hooray!",
         )
     ),
-    pgettext_noop("answer", "Утро доброе, бл*ть!"),
+    pgettext_noop("answer", "Good f*cking morning!"),
     pgettext_noop(
-        "answer", "Утром один час лучше, чем два вечером. Таджикская пословица"
+        "answer", "One hour in the morning is worth two in the evening. Tajik proverb"
     ),
-    pgettext_noop("answer", "Что утром не сделаешь, то вечером не наверстаешь."),
+    pgettext_noop(
+        "answer",
+        "What you leave undone in the morning, you cannot make up for in the evening.",
+    ),
 )
 
 
@@ -70,12 +74,10 @@ EVENING_ANSWERS = (
     "https://tenor.com/view/anime-night-gif-13617044",
     "https://tenor.com/view/animu-anime-good-night-good-night-peeps-gif-14037283",
     "https://tenor.com/view/shrek-mehdi-shrek-dance-wati-by-night-maitre-gims-gif-19789528",
-    pgettext_noop("answer", "Пришло время попрощаться, но только на сегодня"),
+    pgettext_noop("answer", "Time to say goodbye, but only for today"),
+    pgettext_noop("answer", "May your guardian angel watch over you while you sleep"),
     pgettext_noop(
-        "answer", "Пусть ваш ангел-хранитель присмотрит за вами, пока вы спите"
+        "answer", "Today was a great day, but tomorrow, as always, will be even better"
     ),
-    pgettext_noop(
-        "answer", "Сегодня был отличный день, но завтра, как обычно, будет ещё лучше"
-    ),
-    pgettext_noop("answer", "Сон – это отражение нашего сердца и души"),
+    pgettext_noop("answer", "Sleep is a reflection of our heart and soul"),
 )

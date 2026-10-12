@@ -126,11 +126,11 @@ class VoiceProfileCog(BaseCog):
     @app_commands.command(
         name="voice-profile",
         description=app_commands.locale_str(
-            "Ваш голосовой профиль на этом сервере", domain="voice"
+            "Your voice profile on this server", domain="voice"
         ),
     )
     @app_commands.describe(
-        private=app_commands.locale_str("Показать карточку только вам", domain="voice")
+        private=app_commands.locale_str("Show the card only to you", domain="voice")
     )
     @app_commands.guild_only()
     async def voice_profile(
@@ -142,7 +142,7 @@ class VoiceProfileCog(BaseCog):
             context = await interaction_context(interaction, private=True)
             await interaction.response.send_message(
                 catalog("voice", context.language).pgettext(
-                    "guild_only", "Команда доступна только на сервере."
+                    "guild_only", "This command is only available in a server."
                 ),
                 ephemeral=True,
             )
@@ -181,7 +181,7 @@ class VoiceProfileCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 description=catalog("voice", context.language).pgettext(
-                    "unavailable", "Голосовая карточка временно недоступна."
+                    "unavailable", "Voice profiles are temporarily unavailable."
                 ),
                 ephemeral=True,
             )
@@ -221,7 +221,7 @@ class VoiceProfileCog(BaseCog):
                 interaction,
                 feedback_type=FeedbackType.INFO,
                 description=catalog("voice", context.language).pgettext(
-                    "busy", "Карточки сейчас заняты. Попробуйте чуть позже."
+                    "busy", "Cards are busy right now. Please try again later."
                 ),
                 ephemeral=True,
             )
@@ -355,9 +355,7 @@ class VoiceProfileCog(BaseCog):
         return (
             user.display_name
             if user is not None
-            else catalog("voice", language).pgettext(
-                "unknown_user", "Неизвестный пользователь"
-            )
+            else catalog("voice", language).pgettext("unknown_user", "Unknown user")
         )
 
     async def _timeline(self, guild_id: int) -> ProfileSnapshot:

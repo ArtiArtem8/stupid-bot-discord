@@ -216,7 +216,7 @@ class BirthdayDeliveryService:
             context = await guild_context(self.bot, guild.id)
             messages = BirthdayMessages(catalog("birthdays", context.language))
             source = secrets.choice(
-                BIRTHDAY_WISHES or [pgettext_noop("wish", "С днём рождения!")]
+                BIRTHDAY_WISHES or [pgettext_noop("wish", "Happy birthday!")]
             )
             wish = messages.catalog.pgettext("wish", source)
             embed = SafeEmbed(

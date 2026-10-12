@@ -19,59 +19,57 @@ msgstr ""
 "Generated-By: Babel 2.18.0\n"
 
 msgctxt "answer"
-msgid "Доброго утра! Желаю хорошего настроения, бодрости и выполнения всех планов."
+msgid "Good f*cking morning!"
+msgstr "Good f*cking morning!"
+
+msgctxt "answer"
+msgid "Good morning! Wake up, stretch, smile, perk up and greet the new day! Hooray!"
+msgstr "Good morning! Wake up, stretch, smile, perk up and greet the new day! Hooray!"
+
+msgctxt "answer"
+msgid ""
+"Good morning! Wishing you a great mood, plenty of energy and success with all your "
+"plans."
 msgstr ""
 "Good morning! Wishing you a great mood, plenty of energy and success with all your "
 "plans."
 
 msgctxt "answer"
-msgid ""
-"Желаю доброго, бодрого, позитивного, солнечного, восхитительного, радостного и "
-"счастливого утра!"
-msgstr "Wishing you a kind, energetic, positive, sunny, wonderful, joyful and happy morning!"
+msgid "Good morning, and welcome to a new day! May it be easy, cheerful and productive."
+msgstr "Good morning, and welcome to a new day! May it be easy, cheerful and productive."
 
 msgctxt "answer"
-msgid "Пришло время попрощаться, но только на сегодня"
-msgstr "Time to say goodbye, but only for today"
-
-msgctxt "answer"
-msgid "Пусть ваш ангел-хранитель присмотрит за вами, пока вы спите"
+msgid "May your guardian angel watch over you while you sleep"
 msgstr "May your guardian angel watch over you while you sleep"
 
 msgctxt "answer"
 msgid ""
-"Пусть утро будет добрым, ароматным и бодрящим! А вся неделя легкой, вдохновленной и "
-"продуктивной!"
+"May your morning be kind, fragrant and refreshing! And may your whole week be easy, "
+"inspiring and productive!"
 msgstr ""
 "May your morning be kind, fragrant and refreshing! And may your whole week be easy, "
 "inspiring and productive!"
 
 msgctxt "answer"
-msgid ""
-"С добрым утром! Просыпайся, потянись, улыбнись, взбодрись и новый день скорей "
-"встречай! Ура!"
-msgstr "Good morning! Wake up, stretch, smile, perk up and greet the new day! Hooray!"
-
-msgctxt "answer"
-msgid "С добрым утром, с новым днем! Пускай день будет легким, веселым и плодотворным."
-msgstr "Good morning, and welcome to a new day! May it be easy, cheerful and productive."
-
-msgctxt "answer"
-msgid "Сегодня был отличный день, но завтра, как обычно, будет ещё лучше"
-msgstr "Today was a great day, but tomorrow, as always, will be even better"
-
-msgctxt "answer"
-msgid "Сон – это отражение нашего сердца и души"
-msgstr "Sleep is a reflection of our heart and soul"
-
-msgctxt "answer"
-msgid "Утро доброе, бл*ть!"
-msgstr "Good f*cking morning!"
-
-msgctxt "answer"
-msgid "Утром один час лучше, чем два вечером. Таджикская пословица"
+msgid "One hour in the morning is worth two in the evening. Tajik proverb"
 msgstr "One hour in the morning is worth two in the evening. Tajik proverb"
 
 msgctxt "answer"
-msgid "Что утром не сделаешь, то вечером не наверстаешь."
+msgid "Sleep is a reflection of our heart and soul"
+msgstr "Sleep is a reflection of our heart and soul"
+
+msgctxt "answer"
+msgid "Time to say goodbye, but only for today"
+msgstr "Time to say goodbye, but only for today"
+
+msgctxt "answer"
+msgid "Today was a great day, but tomorrow, as always, will be even better"
+msgstr "Today was a great day, but tomorrow, as always, will be even better"
+
+msgctxt "answer"
+msgid "What you leave undone in the morning, you cannot make up for in the evening."
 msgstr "What you leave undone in the morning, you cannot make up for in the evening."
+
+msgctxt "answer"
+msgid "Wishing you a kind, energetic, positive, sunny, wonderful, joyful and happy morning!"
+msgstr "Wishing you a kind, energetic, positive, sunny, wonderful, joyful and happy morning!"

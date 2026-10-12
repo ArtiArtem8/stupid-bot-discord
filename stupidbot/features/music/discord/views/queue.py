@@ -48,8 +48,8 @@ type QueuedEntriesRemoveCallback = Callable[
 
 STALE_QUEUE_REQUEST_MESSAGE = pgettext_noop(
     "stale_queue",
-    "Ничего из этого запроса уже не ожидает в очереди. "
-    "Возможно, треки уже запустились или очередь была изменена.",
+    "No tracks from this request are still waiting in the queue. They may have "
+    "started playing or the queue may have changed.",
 )
 
 
@@ -75,7 +75,7 @@ class QueueUndoView(discord.ui.View):
         self.remove_callback = remove_callback
         self.remove_button = CallbackButton[Self](
             self.remove,
-            label=self.messages.catalog.pgettext("ui", "Удалить"),
+            label=self.messages.catalog.pgettext("ui", "Remove"),
             style=DANGER,
         )
         self.add_item(self.remove_button)
@@ -88,7 +88,7 @@ class QueueUndoView(discord.ui.View):
             return True
         await interaction.response.send_message(
             messages.catalog.pgettext(
-                "ui", "Удалить из очереди может только автор запроса."
+                "ui", "Only the requester can remove these tracks from the queue."
             ),
             ephemeral=True,
         )
@@ -131,7 +131,7 @@ class QueueUndoView(discord.ui.View):
             self.messages.track_count(count=len(removed)) if len(removed) > 1 else ""
         )
         embed = FeedbackUI.make_embed(
-            title=self.messages.catalog.pgettext("ui", "Удалено из очереди"),
+            title=self.messages.catalog.pgettext("ui", "Removed from the queue"),
             description=description,
             feedback_type=FeedbackType.SUCCESS,
         )
@@ -210,7 +210,7 @@ class QueuePaginationAdapter(PaginationData):
     @override
     def make_embed(self, page: int) -> discord.Embed:
         embed = discord.Embed(
-            title=self.messages.catalog.pgettext("ui", "Очередь воспроизведения"),
+            title=self.messages.catalog.pgettext("ui", "Playback queue"),
             color=Color.INFO,
         )
         current = self.snapshot.current
@@ -218,7 +218,7 @@ class QueuePaginationAdapter(PaginationData):
         if current:
             track = current.track
             embed.add_field(
-                name=self.messages.catalog.pgettext("ui", "Сейчас играет"),
+                name=self.messages.catalog.pgettext("ui", "Now playing"),
                 value=format_track_link(track.title, track.uri),
                 inline=False,
             )
@@ -226,18 +226,18 @@ class QueuePaginationAdapter(PaginationData):
                 embed.set_thumbnail(url=track.artwork_url)
         else:
             embed.description = self.messages.catalog.pgettext(
-                "ui", "Ничего не играет."
+                "ui", "Nothing is playing."
             )
 
         if 0 <= page < len(self._paginator.pages):
             embed.add_field(
-                name=self.messages.catalog.pgettext("ui", "Далее"),
+                name=self.messages.catalog.pgettext("ui", "Up next"),
                 value=self._paginator.pages[page],
                 inline=False,
             )
 
         repeat_str = (
-            self.messages.catalog.pgettext("ui", "выкл.")
+            self.messages.catalog.pgettext("ui", "off")
             if self.snapshot.repeat_mode is RepeatMode.OFF
             else self.snapshot.repeat_mode.value
         )
@@ -259,7 +259,7 @@ class QueuePaginationAdapter(PaginationData):
         await send_warning(
             interaction,
             messages.catalog.pgettext(
-                "ui", "Попрошу не трогать, это не ваше сообщение."
+                "ui", "Please leave this alone; it is not your message."
             ),
             ephemeral=True,
         )
@@ -296,7 +296,7 @@ class QueuePaginator(BasePaginator):
         else:
             await send_warning(
                 interaction,
-                messages.catalog.pgettext("ui", "Не удалось обновить очередь"),
+                messages.catalog.pgettext("ui", "Could not refresh the queue"),
                 ephemeral=True,
             )
             self.stop()

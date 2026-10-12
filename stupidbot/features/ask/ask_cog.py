@@ -38,7 +38,7 @@ class QuestionCog(BaseCog):
     @app_commands.command(
         name="ask",
         description=app_commands.locale_str(
-            "Магический шар, задай любой вопрос", domain="ask"
+            "Magic 8-ball: ask any question", domain="ask"
         ),
     )
     async def q(self, interaction: Interaction, *, text: str) -> None:

@@ -22,7 +22,7 @@ msgstr ""
 msgctxt "session_requester"
 msgid ""
 "\n"
-"**Заказчик:** <@{user_id:d}>"
+"**Requester:** <@{user_id:d}>"
 msgstr ""
 "\n"
 "**Requester:** <@{user_id:d}>"
@@ -31,41 +31,454 @@ msgstr ""
 msgctxt "session_people"
 msgid ""
 "\n"
-"**Заказчиков:** {count:d} чел."
+"**Requesters:** {count:d}"
 msgstr ""
 "\n"
 "**Requesters:** {count:d}"
 
 #, python-brace-format
 msgctxt "session_skips"
-msgid " (скипов: {count:d})"
+msgid " (skipped: {count:d})"
 msgstr " (skipped: {count:d})"
 
 msgctxt "ui"
-msgid "*(пусто)*"
+msgid "*(empty)*"
 msgstr "*(empty)*"
 
 #, python-brace-format
 msgctxt "session_tracks"
-msgid "**Всего:** {count:d} шт."
+msgid "**Total:** {count:d} tracks"
 msgstr "**Total:** {count:d} tracks"
 
 msgctxt "ui"
-msgid "*Тот же самый трек*"
+msgid "*The same track*"
 msgstr "*The same track*"
 
 msgctxt "command"
-msgid "URL или название"
-msgstr "URL or title"
+msgid "Add a track or playlist to the front of the queue"
+msgstr "Add a track or playlist to the front of the queue"
+
+#, python-brace-format
+msgctxt "playlist_added"
+msgid "Added playlist **{name}**"
+msgstr "Added playlist **{name}**"
+
+msgctxt "ui"
+msgid "Added to the front of the queue"
+msgstr "Added to the front of the queue"
+
+msgctxt "ui"
+msgid "Added to the queue"
+msgstr "Added to the queue"
+
+#, python-brace-format
+msgctxt "already_connected"
+msgid "Already connected to {destination}"
+msgstr "Already connected to {destination}"
+
+msgctxt "internal_error"
+msgid "An internal music error occurred. Details have been logged."
+msgstr "An internal music error occurred. Details have been logged."
 
 msgctxt "command"
-msgid "off — выкл, queue — повтор очереди, track - повтор трека"
+msgid "Connect to a voice channel"
+msgstr "Connect to a voice channel"
+
+#, python-brace-format
+msgctxt "joined"
+msgid "Connected to {destination}"
+msgstr "Connected to {destination}"
+
+#, python-brace-format
+msgctxt "join_timeout"
+msgid ""
+"Connection to {destination} **timed out**\n"
+"*Try changing this channel's region!*"
+msgstr ""
+"Connection to {destination} **timed out**\n"
+"*Try changing this channel's region!*"
+
+msgctxt "connection_failed"
+msgid "Could not connect"
+msgstr "Could not connect"
+
+#, python-brace-format
+msgctxt "join_failed"
+msgid "Could not connect to {destination}"
+msgstr "Could not connect to {destination}"
+
+msgctxt "disconnect_failed"
+msgid "Could not disconnect from the voice channel."
+msgstr "Could not disconnect from the voice channel."
+
+msgctxt "source_unavailable"
+msgid "Could not load the track. The source is temporarily unavailable or did not respond."
+msgstr "Could not load the track. The source is temporarily unavailable or did not respond."
+
+msgctxt "ui"
+msgid "Could not play the track"
+msgstr "Could not play the track"
+
+msgctxt "ui"
+msgid "Could not refresh the queue"
+msgstr "Could not refresh the queue"
+
+msgctxt "command"
+msgid "Disconnect"
+msgstr "Disconnect"
+
+msgctxt "ui"
+msgid "Disconnected"
+msgstr "Disconnected"
+
+msgctxt "ui"
+msgid "Duration"
+msgstr "Duration"
+
+msgctxt "ui"
+msgid "Empty"
+msgstr "Empty"
+
+msgctxt "command"
+msgid "Enable or disable repeat"
+msgstr "Enable or disable repeat"
+
+msgctxt "ui"
+msgid "Enter a track title or link."
+msgstr "Enter a track title or link."
+
+msgctxt "ui"
+msgid "Full history"
+msgstr "Full history"
+
+msgctxt "ui"
+msgid "Goodbye ❤️"
+msgstr "Goodbye ❤️"
+
+msgctxt "ui"
+msgid "History"
+msgstr "History"
+
+msgctxt "ui"
+msgid "How did you manage that?"
+msgstr "How did you manage that?"
+
+msgctxt "not_member"
+msgid "Invalid user type"
+msgstr "Invalid user type"
+
+msgctxt "command"
+msgid "Leave empty to check the volume"
+msgstr "Leave empty to check the volume"
+
+msgctxt "command"
+msgid "Move the current track to the end of the queue"
+msgstr "Move the current track to the end of the queue"
+
+#, python-brace-format
+msgctxt "moved"
+msgid "Moved {origin} -> {destination}"
+msgstr "Moved {origin} -> {destination}"
+
+msgctxt "no_player"
+msgid "No player"
+msgstr "No player"
+
+msgctxt "stale_queue"
+msgid ""
+"No tracks from this request are still waiting in the queue. They may have started "
+"playing or the queue may have changed."
+msgstr ""
+"No tracks from this request are still waiting in the queue. They may have started "
+"playing or the queue may have changed."
+
+msgctxt "not_connected"
+msgid "Not connected"
+msgstr "Not connected"
+
+msgctxt "ui"
+msgid "Not restored"
+msgstr "Not restored"
+
+msgctxt "nothing_found"
+msgid "Nothing found. Please try again."
+msgstr "Nothing found. Please try again."
+
+msgctxt "ui"
+msgid "Nothing found. Please try again."
+msgstr "Nothing found. Please try again."
+
+msgctxt "ui"
+msgid "Nothing is playing."
+msgstr "Nothing is playing."
+
+msgctxt "ui"
+msgid "Nothing to move"
+msgstr "Nothing to move"
+
+msgctxt "ui"
+msgid "Nothing to skip"
+msgstr "Nothing to skip"
+
+msgctxt "ui"
+msgid "Now playing"
+msgstr "Now playing"
+
+msgctxt "ui"
+msgid "Only the requester can remove these tracks from the queue."
+msgstr "Only the requester can remove these tracks from the queue."
+
+#, python-brace-format
+msgctxt "queue_footer"
+msgid "Page {page:d}/{pages:d} • Queued: {count:d} • Repeat: {repeat}"
+msgstr "Page {page:d}/{pages:d} • Queued: {count:d} • Repeat: {repeat}"
+
+#, python-brace-format
+msgctxt "history_footer"
+msgid "Page {page:d}/{pages:d} • {count:d} total"
+msgstr "Page {page:d}/{pages:d} • {count:d} total"
+
+msgctxt "command"
+msgid "Pause playback"
+msgstr "Pause playback"
+
+msgctxt "command"
+msgid "Play music from YT, SoundCloud, Y.Music and VK"
+msgstr "Play music from YT, SoundCloud, Y.Music and VK"
+
+msgctxt "ui"
+msgid "Playback paused"
+msgstr "Playback paused"
+
+msgctxt "ui"
+msgid "Playback queue"
+msgstr "Playback queue"
+
+msgctxt "ui"
+msgid "Playback resumed"
+msgstr "Playback resumed"
+
+msgctxt "ui"
+msgid "Playback stopped"
+msgstr "Playback stopped"
+
+msgctxt "ui"
+msgid "Playlist added to the front of the queue"
+msgstr "Playlist added to the front of the queue"
+
+msgctxt "ui"
+msgid "Playlist started"
+msgstr "Playlist started"
+
+msgctxt "ui"
+msgid "Please leave this alone; it is not your message."
+msgstr "Please leave this alone; it is not your message."
+
+msgctxt "command"
+msgid "Queue"
+msgstr "Queue"
+
+msgctxt "ui"
+msgid "Queue repeat is **on**"
+msgstr "Queue repeat is **on**"
+
+msgctxt "ui"
+msgid "Recent tracks:"
+msgstr "Recent tracks:"
+
+msgctxt "command"
+msgid "Reconnect after an error"
+msgstr "Reconnect after an error"
+
+msgctxt "ui"
+msgid ""
+"Reconnected, but the track could not be restarted. The source most likely returned a "
+"temporary error."
+msgstr ""
+"Reconnected, but the track could not be restarted. The source most likely returned a "
+"temporary error."
+
+msgctxt "ui"
+msgid "Reconnection attempted"
+msgstr "Reconnection attempted"
+
+msgctxt "ui"
+msgid "Remove"
+msgstr "Remove"
+
+msgctxt "ui"
+msgid "Removed from the queue"
+msgstr "Removed from the queue"
+
+msgctxt "ui"
+msgid "Repeat is **off**"
+msgstr "Repeat is **off**"
+
+msgctxt "ui"
+msgid "Repeat mode"
+msgstr "Repeat mode"
+
+msgctxt "ui"
+msgid "Repeat mode is **unknown**"
+msgstr "Repeat mode is **unknown**"
+
+#, python-brace-format
+msgctxt "requester"
+msgid "Requested by: {name}"
+msgstr "Requested by: {name}"
+
+msgctxt "ui"
+msgid "Restored"
+msgstr "Restored"
+
+msgctxt "recovering"
+msgid "Restoring the connection. Try again once recovery finishes."
+msgstr "Restoring the connection. Try again once recovery finishes."
+
+msgctxt "command"
+msgid "Resume playback"
+msgstr "Resume playback"
+
+msgctxt "ui"
+msgid "Session ended"
+msgstr "Session ended"
+
+msgctxt "command"
+msgid "Set volume (0–200)"
+msgstr "Set volume (0–200)"
+
+msgctxt "command"
+msgid "Show this message only to you"
+msgstr "Show this message only to you"
+
+msgctxt "command"
+msgid "Shuffle the queue"
+msgstr "Shuffle the queue"
+
+msgctxt "ui"
+msgid "Shuffled"
+msgstr "Shuffled"
+
+msgctxt "command"
+msgid "Skip the current track"
+msgstr "Skip the current track"
+
+msgctxt "command"
+msgid "Stop playback and clear the queue"
+msgstr "Stop playback and clear the queue"
+
+msgctxt "ui"
+msgid "Stopped"
+msgstr "Stopped"
+
+msgctxt "ui"
+msgid "Summary:"
+msgstr "Summary:"
+
+msgctxt "unavailable"
+msgid "The music service is currently unavailable. Please try again later."
+msgstr "The music service is currently unavailable. Please try again later."
+
+msgctxt "player_changed"
+msgid "The player changed during the search. Try playing the track again."
+msgstr "The player changed during the search. Try playing the track again."
+
+msgctxt "player_disconnected"
+msgid "The player lost its connection. Try playing the track again."
+msgstr "The player lost its connection. Try playing the track again."
+
+msgctxt "player_lost"
+msgid "The player lost its connection. Try playing the track again."
+msgstr "The player lost its connection. Try playing the track again."
+
+msgctxt "ui"
+msgid "The queue is empty"
+msgstr "The queue is empty"
+
+msgctxt "ui"
+msgid "There are no tracks in this session."
+msgstr "There are no tracks in this session."
+
+msgctxt "ui"
+msgid "This is not your controller."
+msgstr "This is not your controller."
+
+msgctxt "ui"
+msgid "Track moved to the end"
+msgstr "Track moved to the end"
+
+msgctxt "ui"
+msgid "Track repeat is **on**"
+msgstr "Track repeat is **on**"
+
+msgctxt "ui"
+msgid "Track skipped"
+msgstr "Track skipped"
+
+#, python-brace-format
+msgctxt "stuck"
+msgid "Track stalled, waiting to resume • {requester}"
+msgstr "Track stalled, waiting to resume • {requester}"
+
+msgctxt "ui"
+msgid "Track:"
+msgstr "Track:"
+
+#, python-brace-format
+msgctxt "track_count"
+msgid "Tracks: {count:d}"
+msgstr "Tracks: {count:d}"
+
+msgctxt "command"
+msgid "URL or title"
+msgstr "URL or title"
+
+msgctxt "unknown_channel"
+msgid "Unknown channel"
+msgstr "Unknown channel"
+
+msgctxt "ui"
+msgid "Up next"
+msgstr "Up next"
+
+#, python-brace-format
+msgctxt "channel_empty"
+msgid "Voice channel {destination} is empty!"
+msgstr "Voice channel {destination} is empty!"
+
+#, python-brace-format
+msgctxt "volume"
+msgid "Volume: {percent:d}%"
+msgstr "Volume: {percent:d}%"
+
+msgctxt "not_in_voice"
+msgid "You must be in a voice channel!"
+msgstr "You must be in a voice channel!"
+
+msgctxt "ui"
+msgid "You must be in a voice channel!"
+msgstr "You must be in a voice channel!"
+
+msgctxt "ui"
+msgid "no player"
+msgstr "no player"
+
+msgctxt "ui"
+msgid "off"
+msgstr "off"
+
+msgctxt "command"
+msgid "off — no repeat, queue — repeat queue, track — repeat track"
 msgstr "off — no repeat, queue — repeat queue, track — repeat track"
+
+msgctxt "ui"
+msgid "server not found"
+msgstr "server not found"
 
 #, python-brace-format
 msgctxt "days"
-msgid "{count:d} день"
-msgid_plural "{count:d} дня"
+msgid "{count:d} day"
+msgid_plural "{count:d} days"
 msgstr[0] "{count:d} day"
 msgstr[1] "{count:d} days"
 
@@ -73,420 +486,7 @@ msgstr[1] "{count:d} days"
 msgctxt "track_exception"
 msgid ""
 "{link}\n"
-"**Причина:** Источник временно недоступен или не ответил."
+"**Reason:** The source is temporarily unavailable or did not respond."
 msgstr ""
 "{link}\n"
 "**Reason:** The source is temporarily unavailable or did not respond."
-
-msgctxt "ui"
-msgid "В общем:"
-msgstr "Summary:"
-
-msgctxt "ui"
-msgid "В этой сессии нет треков."
-msgstr "There are no tracks in this session."
-
-msgctxt "command"
-msgid "Включить/выключить повтор."
-msgstr "Enable or disable repeat"
-
-msgctxt "internal_error"
-msgid "Внутренняя ошибка музыкального модуля. Детали записаны в лог."
-msgstr "An internal music error occurred. Details have been logged."
-
-msgctxt "command"
-msgid "Воспроизведение музыки с YT, SoundCloud, Y.Music и VK"
-msgstr "Play music from YT, SoundCloud, Y.Music and VK"
-
-msgctxt "ui"
-msgid "Воспроизведение остановлено"
-msgstr "Playback stopped"
-
-msgctxt "ui"
-msgid "Воспроизведение приостановлено"
-msgstr "Playback paused"
-
-msgctxt "ui"
-msgid "Воспроизведение продолжено"
-msgstr "Playback resumed"
-
-msgctxt "recovering"
-msgid "Восстанавливаю соединение. Попробуй ещё раз после завершения."
-msgstr "Restoring the connection. Try again once recovery finishes."
-
-msgctxt "ui"
-msgid "Восстановлен"
-msgstr "Restored"
-
-#, python-brace-format
-msgctxt "join_timeout"
-msgid ""
-"Время подключения к {destination} **истекло**\n"
-"*Попробуйте сменить регион этого канала!*"
-msgstr ""
-"Connection to {destination} **timed out**\n"
-"*Try changing this channel's region!*"
-
-msgctxt "not_in_voice"
-msgid "Вы должны быть в голосовом канале!"
-msgstr "You must be in a voice channel!"
-
-msgctxt "ui"
-msgid "Вы должны быть в голосовом канале!"
-msgstr "You must be in a voice channel!"
-
-msgctxt "command"
-msgid "Выйти"
-msgstr "Disconnect"
-
-#, python-brace-format
-msgctxt "channel_empty"
-msgid "Голосовой канал {destination} пуст!"
-msgstr "Voice channel {destination} is empty!"
-
-#, python-brace-format
-msgctxt "volume"
-msgid "Громкость: {percent:d}%"
-msgstr "Volume: {percent:d}%"
-
-msgctxt "ui"
-msgid "Далее"
-msgstr "Up next"
-
-msgctxt "ui"
-msgid "Длительность"
-msgstr "Duration"
-
-msgctxt "ui"
-msgid "До свидания ❤️"
-msgstr "Goodbye ❤️"
-
-msgctxt "command"
-msgid "Добавить трек или плейлист в начало очереди"
-msgstr "Add a track or playlist to the front of the queue"
-
-#, python-brace-format
-msgctxt "playlist_added"
-msgid "Добавлен плейлист **{name}**"
-msgstr "Added playlist **{name}**"
-
-msgctxt "ui"
-msgid "Добавлено в начало очереди"
-msgstr "Added to the front of the queue"
-
-msgctxt "ui"
-msgid "Добавлено в очередь"
-msgstr "Added to the queue"
-
-msgctxt "ui"
-msgid "Залупливание"
-msgstr "Repeat mode"
-
-#, python-brace-format
-msgctxt "requester"
-msgid "Запросил: {name}"
-msgstr "Requested by: {name}"
-
-msgctxt "ui"
-msgid "История"
-msgstr "History"
-
-msgctxt "ui"
-msgid "Как ты этого добился?"
-msgstr "How did you manage that?"
-
-msgctxt "unavailable"
-msgid "Музыкальный сервис сейчас недоступен. Попробуйте позже."
-msgstr "The music service is currently unavailable. Please try again later."
-
-msgctxt "ui"
-msgid "Не восстановлено"
-msgstr "Not restored"
-
-msgctxt "ui"
-msgid "Не удалось воспроизвести трек"
-msgstr "Could not play the track"
-
-msgctxt "source_unavailable"
-msgid "Не удалось загрузить трек. Источник временно недоступен или не ответил."
-msgstr "Could not load the track. The source is temporarily unavailable or did not respond."
-
-msgctxt "ui"
-msgid "Не удалось обновить очередь"
-msgstr "Could not refresh the queue"
-
-msgctxt "disconnect_failed"
-msgid "Не удалось отключиться от голосового канала."
-msgstr "Could not disconnect from the voice channel."
-
-msgctxt "connection_failed"
-msgid "Не удалось подключиться"
-msgstr "Could not connect"
-
-msgctxt "not_member"
-msgid "Неверный тип пользователя"
-msgstr "Invalid user type"
-
-msgctxt "ui"
-msgid "Недавние треки:"
-msgstr "Recent tracks:"
-
-msgctxt "unknown_channel"
-msgid "Неизвестный канал"
-msgstr "Unknown channel"
-
-msgctxt "not_connected"
-msgid "Нет подключения"
-msgstr "Not connected"
-
-msgctxt "no_player"
-msgid "Нет проигрывателя"
-msgstr "No player"
-
-msgctxt "ui"
-msgid "Нечего перемещать"
-msgstr "Nothing to move"
-
-msgctxt "ui"
-msgid "Нечего пропускать"
-msgstr "Nothing to skip"
-
-msgctxt "stale_queue"
-msgid ""
-"Ничего из этого запроса уже не ожидает в очереди. Возможно, треки уже запустились или"
-" очередь была изменена."
-msgstr ""
-"No tracks from this request are still waiting in the queue. They may have started "
-"playing or the queue may have changed."
-
-msgctxt "ui"
-msgid "Ничего не играет."
-msgstr "Nothing is playing."
-
-msgctxt "nothing_found"
-msgid "Ничего не нашлось. Попробуйте ещё раз."
-msgstr "Nothing found. Please try again."
-
-msgctxt "ui"
-msgid "Ничего не нашлось. Попробуйте ещё раз."
-msgstr "Nothing found. Please try again."
-
-msgctxt "command"
-msgid "Оставьте пустым, чтобы узнать громкость"
-msgstr "Leave empty to check the volume"
-
-msgctxt "command"
-msgid "Остановить воспроизведение и очистить очередь"
-msgstr "Stop playback and clear the queue"
-
-msgctxt "ui"
-msgid "Остановлено"
-msgstr "Stopped"
-
-msgctxt "ui"
-msgid "Отключился"
-msgstr "Disconnected"
-
-msgctxt "command"
-msgid "Очередь"
-msgstr "Queue"
-
-msgctxt "ui"
-msgid "Очередь воспроизведения"
-msgstr "Playback queue"
-
-msgctxt "ui"
-msgid "Очередь пуста"
-msgstr "The queue is empty"
-
-#, python-brace-format
-msgctxt "join_failed"
-msgid "Ошибка подключения к {destination}"
-msgstr "Could not connect to {destination}"
-
-msgctxt "command"
-msgid "Пауза"
-msgstr "Pause playback"
-
-#, python-brace-format
-msgctxt "moved"
-msgid "Переместился {origin} -> {destination}"
-msgstr "Moved {origin} -> {destination}"
-
-msgctxt "command"
-msgid "Переместить тек. трек в конец очереди"
-msgstr "Move the current track to the end of the queue"
-
-msgctxt "ui"
-msgid "Перемешано"
-msgstr "Shuffled"
-
-msgctxt "command"
-msgid "Перемешать"
-msgstr "Shuffle the queue"
-
-msgctxt "ui"
-msgid ""
-"Переподключение выполнено, но трек не удалось снова запустить. Скорее всего, источник"
-" временно отдал ошибку."
-msgstr ""
-"Reconnected, but the track could not be restarted. The source most likely returned a "
-"temporary error."
-
-msgctxt "command"
-msgid "Переподключиться в случае ошибок"
-msgstr "Reconnect after an error"
-
-msgctxt "player_changed"
-msgid "Плеер изменился во время поиска. Попробуй запустить трек ещё раз."
-msgstr "The player changed during the search. Try playing the track again."
-
-msgctxt "player_lost"
-msgid "Плеер потерял соединение. Попробуй запустить трек ещё раз."
-msgstr "The player lost its connection. Try playing the track again."
-
-msgctxt "player_disconnected"
-msgid "Плеер потерял соединение. Попробуйте запустить трек ещё раз."
-msgstr "The player lost its connection. Try playing the track again."
-
-msgctxt "ui"
-msgid "Плейлист добавлен в начало очереди"
-msgstr "Playlist added to the front of the queue"
-
-msgctxt "ui"
-msgid "Плейлист запущен"
-msgstr "Playlist started"
-
-msgctxt "ui"
-msgid "Повтор **отключён**"
-msgstr "Repeat is **off**"
-
-msgctxt "ui"
-msgid "Повтор очереди **включён**"
-msgstr "Queue repeat is **on**"
-
-msgctxt "ui"
-msgid "Повтор трека **включён**"
-msgstr "Track repeat is **on**"
-
-msgctxt "command"
-msgid "Подключиться к голосовому каналу"
-msgstr "Connect to a voice channel"
-
-msgctxt "ui"
-msgid "Полная история"
-msgstr "Full history"
-
-msgctxt "ui"
-msgid "Попрошу не трогать, это не ваше сообщение."
-msgstr "Please leave this alone; it is not your message."
-
-msgctxt "ui"
-msgid "Попытка переподключения сделана"
-msgstr "Reconnection attempted"
-
-msgctxt "command"
-msgid "Продолжить"
-msgstr "Resume playback"
-
-msgctxt "command"
-msgid "Пропустить текущий трек"
-msgstr "Skip the current track"
-
-msgctxt "ui"
-msgid "Пусто"
-msgstr "Empty"
-
-msgctxt "ui"
-msgid "Режим повтора **неизвестен**"
-msgstr "Repeat mode is **unknown**"
-
-msgctxt "ui"
-msgid "Сейчас играет"
-msgstr "Now playing"
-
-msgctxt "ui"
-msgid "Сессия закончена"
-msgstr "Session ended"
-
-msgctxt "command"
-msgid "Скрыть сообщение"
-msgstr "Show this message only to you"
-
-#, python-brace-format
-msgctxt "history_footer"
-msgid "Стр. {page:d}/{pages:d} • {count:d} всего"
-msgstr "Page {page:d}/{pages:d} • {count:d} total"
-
-#, python-brace-format
-msgctxt "queue_footer"
-msgid "Стр. {page:d}/{pages:d} • В очереди: {count:d} • Повтор: {repeat}"
-msgstr "Page {page:d}/{pages:d} • Queued: {count:d} • Repeat: {repeat}"
-
-#, python-brace-format
-msgctxt "stuck"
-msgid "Трек застрял, жду продолжения • {requester}"
-msgstr "Track stalled, waiting to resume • {requester}"
-
-msgctxt "ui"
-msgid "Трек перемещён в конец"
-msgstr "Track moved to the end"
-
-msgctxt "ui"
-msgid "Трек пропущен"
-msgstr "Track skipped"
-
-msgctxt "ui"
-msgid "Трек:"
-msgstr "Track:"
-
-#, python-brace-format
-msgctxt "track_count"
-msgid "Треков: {count:d}"
-msgstr "Tracks: {count:d}"
-
-msgctxt "ui"
-msgid "Удалено из очереди"
-msgstr "Removed from the queue"
-
-msgctxt "ui"
-msgid "Удалить"
-msgstr "Remove"
-
-msgctxt "ui"
-msgid "Удалить из очереди может только автор запроса."
-msgstr "Only the requester can remove these tracks from the queue."
-
-#, python-brace-format
-msgctxt "already_connected"
-msgid "Уже подключён к {destination}"
-msgstr "Already connected to {destination}"
-
-msgctxt "ui"
-msgid "Укажите название или ссылку на трек."
-msgstr "Enter a track title or link."
-
-#, python-brace-format
-msgctxt "joined"
-msgid "Успешно подключился к {destination}"
-msgstr "Connected to {destination}"
-
-msgctxt "command"
-msgid "Установить громкость (0-200)"
-msgstr "Set volume (0–200)"
-
-msgctxt "ui"
-msgid "Это не ваш контроллер."
-msgstr "This is not your controller."
-
-msgctxt "ui"
-msgid "выкл."
-msgstr "off"
-
-msgctxt "ui"
-msgid "нет проигрывателя"
-msgstr "no player"
-
-msgctxt "ui"
-msgid "сервер не найден"
-msgstr "server not found"

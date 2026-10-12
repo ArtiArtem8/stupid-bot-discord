@@ -24,13 +24,11 @@ logger = logging.getLogger(__name__)
 
 
 def _build_report_data(interaction: Interaction, reason: str) -> ReportDataDict:
-    """Construct the stored report data."""
+    """Snapshot actual names; unnamed locations receive labels at presentation."""
     create_date = datetime.now(UTC).isoformat()
 
-    channel_name = "Unknown"
-    if isinstance(interaction.channel, DMChannel):
-        channel_name = f"DM with {interaction.channel.recipient}"
-    elif interaction.channel:
+    channel_name = None
+    if interaction.channel and not isinstance(interaction.channel, DMChannel):
         channel_name = interaction.channel.name
 
     user = interaction.user
@@ -62,17 +60,17 @@ def _create_report_embed(
     """Format a stored report for Discord."""
     messages = ReportMessages(catalog("reports", language))
     embed = SafeEmbed(
-        title=messages.catalog.pgettext("ui", "Отчёт"),
+        title=messages.catalog.pgettext("ui", "Report"),
         color=Color.INFO,
         timestamp=datetime.now(UTC),
     )
     embed.safe_add_field(
-        name=messages.catalog.pgettext("ui", "Описание"),
+        name=messages.catalog.pgettext("ui", "Description"),
         value=report["reason"],
         inline=False,
     )
     embed.safe_add_field(
-        name=messages.catalog.pgettext("ui", "Отправитель"),
+        name=messages.catalog.pgettext("ui", "Sender"),
         value=f"{report['user']['name']} (`{report['user']['id']}`)",
         inline=True,
     )
@@ -80,15 +78,19 @@ def _create_report_embed(
     locs: list[str] = []
     if report["guild"]["name"]:
         locs.append(messages.guild(name=report["guild"]["name"]))
-    if report["channel"]["name"]:
-        locs.append(messages.channel(name=report["channel"]["name"]))
-
-    if locs:
-        embed.safe_add_field(
-            name=messages.catalog.pgettext("ui", "Локация"),
-            value="\n".join(locs),
-            inline=False,
+    channel_name = report["channel"]["name"]
+    if channel_name is None:
+        channel_name = (
+            messages.catalog.pgettext("ui", "Direct messages")
+            if report["channel"]["id"] is not None and report["guild"]["id"] is None
+            else messages.catalog.pgettext("ui", "Unknown channel")
         )
+    locs.append(messages.channel(name=channel_name))
+    embed.safe_add_field(
+        name=messages.catalog.pgettext("ui", "Location"),
+        value="\n".join(locs),
+        inline=False,
+    )
 
     embed.set_footer(text=f"ID: {report['report_id']}")
     if report["user"]["avatar"]:
@@ -172,12 +174,12 @@ class ReportModal(Modal):
         self.context = context
         self.messages = ReportMessages(catalog("reports", context.language))
         super().__init__(
-            title=self.messages.catalog.pgettext("ui", "Отправить отчёт о баге")
+            title=self.messages.catalog.pgettext("ui", "Submit a bug report")
         )
         self.reason = TextInput[Self](
             style=discord.TextStyle.paragraph,
             placeholder=self.messages.catalog.pgettext(
-                "ui", "Опишите, что случилось..."
+                "ui", "Describe what happened..."
             ),
             required=True,
             max_length=MAX_EMBED_FIELD_LENGTH,
@@ -185,7 +187,7 @@ class ReportModal(Modal):
         )
         self.add_item(
             Label(
-                text=self.messages.catalog.pgettext("ui", "Описание проблемы"),
+                text=self.messages.catalog.pgettext("ui", "Problem description"),
                 component=self.reason,
             )
         )
@@ -200,7 +202,7 @@ class ReportModal(Modal):
             self._repository, interaction, self.reason.value
         )
         embed = SafeEmbed(
-            title=self.messages.catalog.pgettext("ui", "Спасибо за отчёт!"),
+            title=self.messages.catalog.pgettext("ui", "Thank you for the report!"),
             description=self.messages.receipt(report_id=report["report_id"]),
             color=Color.SUCCESS,
         )
@@ -223,7 +225,8 @@ class ReportModal(Modal):
             interaction,
             feedback_type=FeedbackType.ERROR,
             description=self.messages.catalog.pgettext(
-                "ui", "Не удалось завершить обработку отчёта. Детали записаны в лог."
+                "ui",
+                "Could not finish processing the report. Details have been logged.",
             ),
             ephemeral=True,
             disable_report_btn=True,

@@ -27,7 +27,7 @@ async def handle_app_command_error(
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.WARNING,
-            description=messages.pgettext("blocked", "⛔ Доступ к командам запрещён."),
+            description=messages.pgettext("blocked", "⛔ You cannot use commands."),
             ephemeral=True,
         )
         return
@@ -36,7 +36,7 @@ async def handle_app_command_error(
             interaction,
             feedback_type=FeedbackType.WARNING,
             description=messages.pgettext(
-                "guild_only", "Команда может быть использована только на сервере"
+                "guild_only", "This command can only be used in a server"
             ),
             ephemeral=True,
         )
@@ -56,10 +56,8 @@ async def handle_app_command_error(
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.WARNING,
-            title=messages.pgettext("access_title", "Доступ запрещён"),
-            description=messages.pgettext(
-                "access", "Проверка доступа к команде не пройдена."
-            ),
+            title=messages.pgettext("access_title", "Access denied"),
+            description=messages.pgettext("access", "The command access check failed."),
             ephemeral=True,
         )
         return
@@ -80,10 +78,10 @@ async def handle_app_command_error(
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title=messages.pgettext("discord_title", "Discord Ошибка"),
+                title=messages.pgettext("discord_title", "Discord error"),
                 description=messages.pgettext(
                     "discord_error",
-                    "Не удалось выполнить действие в Discord. Попробуйте ещё раз.",
+                    "Could not complete the action in Discord. Please try again.",
                 ),
                 delete_after=600,
                 ephemeral=True,
@@ -106,9 +104,9 @@ async def handle_app_command_error(
     await FeedbackUI.send(
         interaction,
         feedback_type=FeedbackType.ERROR,
-        title=messages.pgettext("internal_title", "Внутренняя ошибка"),
+        title=messages.pgettext("internal_title", "Internal error"),
         description=messages.pgettext(
-            "internal_error", "Не удалось выполнить команду. Детали записаны в лог."
+            "internal_error", "Could not complete the command. Details were logged."
         ),
         delete_after=300,
         ephemeral=True,

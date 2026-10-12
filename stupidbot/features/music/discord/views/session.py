@@ -61,11 +61,11 @@ class SessionPaginationAdapter(PaginationData):
         description = (
             self._paginator.pages[page]
             if 0 <= page < len(self._paginator.pages)
-            else self.messages.catalog.pgettext("ui", "Пусто")
+            else self.messages.catalog.pgettext("ui", "Empty")
         )
 
         embed = discord.Embed(
-            title=self.messages.catalog.pgettext("ui", "Полная история"),
+            title=self.messages.catalog.pgettext("ui", "Full history"),
             color=Color.INFO,
             timestamp=self.session.start_time,
             description=description,
@@ -85,7 +85,7 @@ class SessionPaginationAdapter(PaginationData):
         messages = MusicMessages(catalog("music", context.language))
         await send_warning(
             interaction,
-            messages.catalog.pgettext("ui", "Как ты этого добился?"),
+            messages.catalog.pgettext("ui", "How did you manage that?"),
             ephemeral=True,
         )
 
@@ -102,12 +102,12 @@ class SessionSummaryView(ui.View):
     ) -> None:
         super().__init__(timeout=timeout)
         self.view_full_button.label = catalog("music", context.language).pgettext(
-            "ui", "История"
+            "ui", "History"
         )
         self.session = session
         self.message: discord.Message | None = None
 
-    @ui.button(label=pgettext_noop("ui", "История"), style=discord.ButtonStyle.primary)
+    @ui.button(label=pgettext_noop("ui", "History"), style=discord.ButtonStyle.primary)
     async def view_full_button(
         self, interaction: Interaction, _: ui.Button[Self]
     ) -> None:
@@ -119,7 +119,7 @@ class SessionSummaryView(ui.View):
         if total_tracks == 0:
             await send_warning(
                 interaction,
-                messages.catalog.pgettext("ui", "В этой сессии нет треков."),
+                messages.catalog.pgettext("ui", "There are no tracks in this session."),
                 ephemeral=True,
             )
             return
