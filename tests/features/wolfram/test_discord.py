@@ -31,6 +31,28 @@ from stupidbot.features.wolfram.wolfram_cog import (
 
 
 class TestWolframCog(unittest.IsolatedAsyncioTestCase):
+    async def test_public_result_and_private_receipt_use_separate_languages(
+        self,
+    ) -> None:
+        cog, _ = self._make_cog()
+        interaction, channel = self._make_interaction()
+        interaction.guild_locale = discord.Locale.russian
+        result = WolframResult(
+            success=True,
+            pods=(Pod("Result", "Result", (SubPod("x = 1", None, None),)),),
+        )
+        with patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback:
+            await cog._send_text_results(interaction, result, "x")
+        embed = channel.send.call_args.kwargs["embed"]
+        self.assertEqual(embed.title, "Выражение:")
+        self.assertEqual(embed.fields[0].name, "Result:")
+        self.assertIn("x = 1", embed.fields[0].value)
+        self.assertEqual(
+            feedback.call_args.kwargs["description"],
+            "Results: https://discord.invalid/messages/1",
+        )
+        self.assertTrue(feedback.call_args.kwargs["ephemeral"])
+
     async def test_unload_finishes_active_and_queued_requests_before_session_close(
         self,
     ) -> None:
@@ -98,6 +120,9 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         guild_limit: int | None = None,
     ) -> tuple[MagicMock, MagicMock]:
         interaction = MagicMock(spec=discord.Interaction)
+        interaction.locale = discord.Locale.american_english
+        interaction.guild_locale = discord.Locale.american_english
+        interaction.extras = {}
         channel = MagicMock(spec=discord.abc.Messageable)
         message = MagicMock(spec=discord.Message)
         message.jump_url = "https://discord.invalid/messages/1"

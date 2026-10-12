@@ -3,6 +3,7 @@
 import unittest
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import discord
 from discord.webhook.async_ import async_context
@@ -16,11 +17,28 @@ from stupidbot.features.reports.ui import (
     _notify_report,
     submit_report,
 )
+from stupidbot.i18n.policy import Language, PresentationContext
 from stupidbot.storage.schema import reports
 from tests.storage.fixtures import temporary_database
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):
+    async def test_modal_keeps_language_and_preserves_report_text(self) -> None:
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.EN, ZoneInfo("UTC"))
+        )
+        modal.reason._value = "Проблема с музыкой"
+        self.interaction.locale = discord.Locale.russian
+        self.interaction.response.defer = AsyncMock()
+        await modal.on_submit(self.interaction)
+        embed = self.interaction.edit_original_response.call_args.kwargs["embed"]
+        self.assertEqual(embed.title, "Thank you for the report!")
+        self.assertIn("Your personal ID:", embed.description)
+        async with self.database.transaction() as connection:
+            self.assertEqual(
+                await connection.scalar(select(reports.c.reason)), "Проблема с музыкой"
+            )
+
     def _prepare_modal_response(self) -> MagicMock:
         self.interaction.type = discord.InteractionType.modal_submit
         self.interaction.response = discord.InteractionResponse(self.interaction)
@@ -32,7 +50,9 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
 
     async def test_modal_dispatch_resolves_deferred_storage_failure(self) -> None:
         adapter = self._prepare_modal_response()
-        modal = ReportModal(self.repository)
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
         modal.reason._value = "a useful report"
         token = async_context.set(adapter)
         try:
@@ -69,7 +89,9 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
     async def test_modal_defers_a_separate_private_confirmation(self) -> None:
         adapter = self._prepare_modal_response()
         self.interaction.message = MagicMock(edit=AsyncMock())
-        modal = ReportModal(self.repository)
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
         modal.reason._value = "a useful report"
         token = async_context.set(adapter)
         try:
@@ -84,7 +106,9 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         self.interaction.edit_original_response.assert_awaited_once()
 
     async def test_failed_final_response_still_notifies_committed_report(self) -> None:
-        modal = ReportModal(self.repository)
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
         modal.reason._value = "a useful report"
         self.interaction.edit_original_response = AsyncMock(
             side_effect=RuntimeError("lost reply")
@@ -110,7 +134,10 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
                 self.interaction.edit_original_response = AsyncMock(
                     side_effect=[error, None] if failing_step == "reply" else None
                 )
-                modal = ReportModal(self.repository)
+                modal = ReportModal(
+                    self.repository,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                )
                 modal.reason._value = "a useful report"
                 token = async_context.set(adapter)
                 try:
@@ -212,7 +239,9 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         async def notification(*_args: object) -> None:
             events.append("notification")
 
-        modal = ReportModal(self.repository)
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
         modal.reason._value = "a useful report"
         self.interaction.edit_original_response = AsyncMock(side_effect=response)
         with patch(
@@ -225,7 +254,9 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
     async def test_persistence_failure_cannot_send_success_or_notification(
         self,
     ) -> None:
-        modal = ReportModal(self.repository)
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
         modal.reason._value = "a useful report"
         with patch.object(
             self.repository, "submit", side_effect=OSError("write failed")

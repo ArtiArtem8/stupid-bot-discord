@@ -32,6 +32,7 @@ from stupidbot.features.wolfram.client import (
     WolframRateLimitError,
     WolframResult,
 )
+from stupidbot.features.wolfram.messages import WolframMessages
 from stupidbot.features.wolfram.plot_image import (
     ImageProcessingError,
     process_wolfram_plot,
@@ -40,13 +41,17 @@ from stupidbot.features.wolfram.presentation import (
     build_text_results_embed,
     wolfram_result_url,
 )
+from stupidbot.i18n.catalog import catalog, pgettext_noop
+from stupidbot.i18n.discord import interaction_context
 
 logger = logging.getLogger(__name__)
 _WOLFRAM_RESULT_URL = "https://www.wolframalpha.com/input?i="
-_INVALID_QUERY_MESSAGE = "Query empty or too long."
-_WOLFRAM_FAILURE_MESSAGE = "Wolfram|Alpha request failed. Please try again later."
-_WOLFRAM_RATE_LIMIT_MESSAGE = (
-    "Wolfram|Alpha is temporarily rate-limited. Please try again later."
+_INVALID_QUERY_MESSAGE = pgettext_noop("ui", "Query empty or too long.")
+_WOLFRAM_FAILURE_MESSAGE = pgettext_noop(
+    "ui", "Wolfram|Alpha request failed. Please try again later."
+)
+_WOLFRAM_RATE_LIMIT_MESSAGE = pgettext_noop(
+    "ui", "Wolfram|Alpha is temporarily rate-limited. Please try again later."
 )
 _MAX_TEXT_RESULT_FIELDS = 10
 
@@ -86,7 +91,7 @@ class WolframCog(BaseCog):
         self._requests: set[asyncio.Task[object]] = set()
 
         self.ctx_menu = app_commands.ContextMenu(
-            name="Solve with Wolfram",
+            name=app_commands.locale_str("Solve with Wolfram", domain="wolfram"),
             callback=self._context_solve,
         )
         self.ctx_menu.add_check(self.interaction_check)
@@ -115,8 +120,17 @@ class WolframCog(BaseCog):
         self.client_session = None
         self.bot.tree.remove_command(self.ctx_menu.name, type=self.ctx_menu.type)
 
-    @app_commands.command(name="solve", description="Solve a mathematical equation")
-    @app_commands.describe(problem="Equation to solve (e.g. x^2 + 2x + 1 = 0)")
+    @app_commands.command(
+        name="solve",
+        description=app_commands.locale_str(
+            "Solve a mathematical equation", domain="wolfram"
+        ),
+    )
+    @app_commands.describe(
+        problem=app_commands.locale_str(
+            "Equation to solve (e.g. x^2 + 2x + 1 = 0)", domain="wolfram"
+        )
+    )
     @_wolfram_cooldown
     async def cmd_solve(
         self,
@@ -126,8 +140,17 @@ class WolframCog(BaseCog):
         await interaction.response.defer(ephemeral=True)
         await self._handle_query(interaction, problem, mode="solve")
 
-    @app_commands.command(name="plot", description="Plot a mathematical function")
-    @app_commands.describe(function="Function to plot (e.g. sin(x)/x)")
+    @app_commands.command(
+        name="plot",
+        description=app_commands.locale_str(
+            "Plot a mathematical function", domain="wolfram"
+        ),
+    )
+    @app_commands.describe(
+        function=app_commands.locale_str(
+            "Function to plot (e.g. sin(x)/x)", domain="wolfram"
+        )
+    )
     @_wolfram_cooldown
     async def cmd_plot(
         self,
@@ -165,11 +188,15 @@ class WolframCog(BaseCog):
             self._requests.discard(task)
 
     async def _send_stopped(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = WolframMessages(catalog("wolfram", context.language))
         try:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                description="Wolfram request stopped during reload. Please try again.",
+                description=messages.catalog.pgettext(
+                    "ui", "Wolfram request stopped during reload. Please try again."
+                ),
                 ephemeral=True,
             )
         except discord.HTTPException as exc:
@@ -178,13 +205,15 @@ class WolframCog(BaseCog):
     async def _handle_admitted_query(
         self, interaction: Interaction, query: str, mode: WolframMode
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = WolframMessages(catalog("wolfram", context.language))
         try:
             query = _normalize_query(query)
         except ValueError:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description=_INVALID_QUERY_MESSAGE,
+                description=messages.catalog.pgettext("ui", _INVALID_QUERY_MESSAGE),
                 ephemeral=True,
             )
             return
@@ -193,16 +222,18 @@ class WolframCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title="Internal Error",
-                description="Session not initialized.",
+                title=messages.catalog.pgettext("ui", "Internal Error"),
+                description=messages.catalog.pgettext("ui", "Session not initialized."),
+                ephemeral=True,
             )
             return
         if not self.wolfram_client:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title="API-Key Error",
-                description="The API key is not set.",
+                title=messages.catalog.pgettext("ui", "API-Key Error"),
+                description=messages.catalog.pgettext("ui", "The API key is not set."),
+                ephemeral=True,
             )
             return
 
@@ -217,6 +248,8 @@ class WolframCog(BaseCog):
         self, interaction: Interaction, query: str, *, mode: WolframMode
     ) -> None:
         """Execute one normalized query while the shared concurrency slot is held."""
+        context = await interaction_context(interaction, private=True)
+        messages = WolframMessages(catalog("wolfram", context.language))
         if not self.wolfram_client:
             await self._send_stopped(interaction)
             return
@@ -228,16 +261,20 @@ class WolframCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title="API Rate Limit Error",
-                description=_WOLFRAM_RATE_LIMIT_MESSAGE,
+                title=messages.catalog.pgettext("ui", "API Rate Limit Error"),
+                description=messages.catalog.pgettext(
+                    "ui", _WOLFRAM_RATE_LIMIT_MESSAGE
+                ),
+                ephemeral=True,
             )
             return
         except WolframAPIError:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title="API Error",
-                description=_WOLFRAM_FAILURE_MESSAGE,
+                title=messages.catalog.pgettext("ui", "API Error"),
+                description=messages.catalog.pgettext("ui", _WOLFRAM_FAILURE_MESSAGE),
+                ephemeral=True,
             )
             return
 
@@ -259,14 +296,20 @@ class WolframCog(BaseCog):
         mode: WolframMode,
     ) -> None:
         """Dispatch a parsed Wolfram result to the existing Discord feedback path."""
+        context = await interaction_context(interaction, private=True)
+        messages = WolframMessages(catalog("wolfram", context.language))
         if not result.success:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                title="No Results",
+                title=messages.catalog.pgettext("ui", "No Results"),
                 description=(
-                    result.error_msg or "Wolfram could not understand the input."
+                    result.error_msg
+                    or messages.catalog.pgettext(
+                        "ui", "Wolfram could not understand the input."
+                    )
                 ),
+                ephemeral=True,
             )
             return
 
@@ -282,8 +325,9 @@ class WolframCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                title="No Plot",
-                description="No graph generated.",
+                title=messages.catalog.pgettext("ui", "No Plot"),
+                description=messages.catalog.pgettext("ui", "No graph generated."),
+                ephemeral=True,
             )
             return
         await self._send_text_results(interaction, result, query)
@@ -292,14 +336,18 @@ class WolframCog(BaseCog):
         self, interaction: Interaction, result: WolframResult, query: str
     ) -> None:
         """Publish displayable text pods and acknowledge the interaction."""
-        embed = build_text_results_embed(result, query)
+        context = await interaction_context(interaction, private=True)
+        messages = WolframMessages(catalog("wolfram", context.language))
+        embed = build_text_results_embed(result, query, language=context.language)
         if not embed.fields:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="No displayable results found.\n"
-                "All results were filtered out.",
-                title=f"Query: `{query}`",
+                description=messages.catalog.pgettext(
+                    "ui",
+                    "No displayable results found.\nAll results were filtered out.",
+                ),
+                title=messages.query(query=query),
                 ephemeral=True,
             )
             return
@@ -310,11 +358,14 @@ class WolframCog(BaseCog):
             await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
             return
 
+        public = await interaction_context(interaction, private=False)
+        embed = build_text_results_embed(result, query, language=public.language)
         msg = await interaction.channel.send(embed=embed)
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
-            description=f"Results: {msg.jump_url}",
+            description=messages.results(url=msg.jump_url),
+            ephemeral=True,
         )
 
     async def _send_plot(
@@ -326,12 +377,16 @@ class WolframCog(BaseCog):
         result_query: str | None = None,
     ) -> None:
         """Download, process, and send image."""
+        context = await interaction_context(interaction, private=True)
+        messages = WolframMessages(catalog("wolfram", context.language))
         channel = interaction.channel
         if not channel or not isinstance(channel, discord.abc.Messageable):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="Cannot upload images in this context.",
+                description=messages.catalog.pgettext(
+                    "ui", "Cannot upload images in this context."
+                ),
                 ephemeral=True,
             )
             return
@@ -347,14 +402,18 @@ class WolframCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.SUCCESS,
-                description=f"Graph generated: {msg.jump_url}",
+                description=messages.graph(url=msg.jump_url),
+                ephemeral=True,
             )
         except WolframRateLimitError:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title="API Rate Limit Error",
-                description=_WOLFRAM_RATE_LIMIT_MESSAGE,
+                title=messages.catalog.pgettext("ui", "API Rate Limit Error"),
+                description=messages.catalog.pgettext(
+                    "ui", _WOLFRAM_RATE_LIMIT_MESSAGE
+                ),
+                ephemeral=True,
             )
         except (WolframAPIError, ImageProcessingError):
             await self._send_plot_error(interaction)
@@ -369,6 +428,8 @@ class WolframCog(BaseCog):
         result_query: str,
     ) -> discord.Message:
         """Download, process, and upload one plot while resources are open."""
+        context = await interaction_context(interaction, private=False)
+        messages = WolframMessages(catalog("wolfram", context.language))
         if not self.wolfram_client:
             raise WolframAPIError("Wolfram client is not initialized")
 
@@ -393,8 +454,11 @@ class WolframCog(BaseCog):
                 result_url = wolfram_result_url(result_query)
                 return await channel.send(
                     content=(
-                        f"{interaction.user.mention} [Wolfram]({result_url}) "
-                        f"**Plot:** `{query}`"
+                        messages.plot(
+                            mention=interaction.user.mention,
+                            url=result_url,
+                            query=query,
+                        )
                     ),
                     file=file,
                     suppress_embeds=True,
@@ -404,11 +468,16 @@ class WolframCog(BaseCog):
 
     async def _send_plot_error(self, interaction: Interaction) -> None:
         """Send the stable user-facing response for image pipeline failures."""
+        context = await interaction_context(interaction, private=True)
+        messages = WolframMessages(catalog("wolfram", context.language))
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.ERROR,
-            title="Image Error",
-            description="Failed to process graph image.",
+            title=messages.catalog.pgettext("ui", "Image Error"),
+            description=messages.catalog.pgettext(
+                "ui", "Failed to process graph image."
+            ),
+            ephemeral=True,
         )
 
 

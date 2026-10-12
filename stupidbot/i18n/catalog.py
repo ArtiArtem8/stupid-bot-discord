@@ -21,6 +21,8 @@ DOMAINS = (
     "discord_ui",
     "features/voice",
     "features/music",
+    "features/reports",
+    "features/wolfram",
 )
 
 

@@ -7,6 +7,8 @@ from urllib.parse import quote_plus
 from stupidbot.discord_ui.embeds import CharacterLimitExceededError, SafeEmbed
 from stupidbot.discord_ui.theme import BOT_ICON, Color
 from stupidbot.features.wolfram.client import WolframResult
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.policy import Language
 
 _WOLFRAM_RESULT_URL = "https://www.wolframalpha.com/input?i="
 _MAX_TEXT_RESULT_FIELDS = 10
@@ -17,10 +19,12 @@ def wolfram_result_url(query: str) -> str:
     return f"{_WOLFRAM_RESULT_URL}{quote_plus(query)}"
 
 
-def build_text_results_embed(result: WolframResult, query: str) -> SafeEmbed:
+def build_text_results_embed(
+    result: WolframResult, query: str, *, language: Language = Language.RU
+) -> SafeEmbed:
     """Build an embed from the displayable text pods that fit Discord's limits."""
     embed = SafeEmbed(
-        title="Expression:",
+        title=catalog("wolfram", language).pgettext("ui", "Expression:"),
         description=f"`{query}`",
         color=Color.INFO,
     )

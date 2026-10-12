@@ -1,0 +1,87 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgctxt "channel"
+msgid "**Канал:** {name}"
+msgstr "**Channel:** {name}"
+
+#, python-brace-format
+msgctxt "guild"
+msgid "**Сервер:** {name}"
+msgstr "**Server:** {name}"
+
+#, python-brace-format
+msgctxt "receipt"
+msgid "-# Ваш персональный ID: `{report_id}`"
+msgstr "-# Your personal ID: `{report_id}`"
+
+msgctxt "command"
+msgid "Канал для отчётов"
+msgstr "Report channel"
+
+#, python-brace-format
+msgctxt "destination"
+msgid "Канал для отчётов: {mention}"
+msgstr "Report channel set to {mention}"
+
+msgctxt "ui"
+msgid "Локация"
+msgstr "Location"
+
+msgctxt "ui"
+msgid "Не удалось завершить обработку отчёта. Детали записаны в лог."
+msgstr "Could not finish processing the report. Details have been logged."
+
+msgctxt "ui"
+msgid "Описание"
+msgstr "Description"
+
+msgctxt "ui"
+msgid "Описание проблемы"
+msgstr "Problem description"
+
+msgctxt "ui"
+msgid "Опишите, что случилось..."
+msgstr "Describe what happened..."
+
+msgctxt "ui"
+msgid "Отправитель"
+msgstr "Sender"
+
+msgctxt "command"
+msgid "Отправить отчет о баге или проблеме"
+msgstr "Report a bug or problem"
+
+msgctxt "ui"
+msgid "Отправить отчёт о баге"
+msgstr "Submit a bug report"
+
+msgctxt "ui"
+msgid "Отчёт"
+msgstr "Report"
+
+msgctxt "ui"
+msgid "Спасибо за отчёт!"
+msgstr "Thank you for the report!"
+
+msgctxt "command"
+msgid "Установить канал для жалоб (для разработчиков)"
+msgstr "Set the report channel (developers only)"

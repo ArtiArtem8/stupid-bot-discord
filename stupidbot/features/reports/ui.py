@@ -7,14 +7,18 @@ from typing import Self, override
 
 import discord
 from discord import DMChannel, Interaction
-from discord.ui import Modal, TextInput
+from discord.ui import Label, Modal, TextInput
 
 from stupidbot.discord_ui.embeds import SafeEmbed
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
 from stupidbot.discord_ui.theme import Color
+from stupidbot.features.reports.messages import ReportMessages
 from stupidbot.features.reports.models import ReportDataDict
 from stupidbot.features.reports.repository import ReportRepository
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import error_context, guild_context
+from stupidbot.i18n.policy import Language, PresentationContext
 
 logger = logging.getLogger(__name__)
 
@@ -52,32 +56,39 @@ def _build_report_data(interaction: Interaction, reason: str) -> ReportDataDict:
     }
 
 
-def _create_report_embed(report: ReportDataDict) -> discord.Embed:
+def _create_report_embed(
+    report: ReportDataDict, *, language: Language = Language.RU
+) -> discord.Embed:
     """Format a stored report for Discord."""
+    messages = ReportMessages(catalog("reports", language))
     embed = SafeEmbed(
-        title="Отчёт",
+        title=messages.catalog.pgettext("ui", "Отчёт"),
         color=Color.INFO,
         timestamp=datetime.now(UTC),
     )
     embed.safe_add_field(
-        name="Описание",
+        name=messages.catalog.pgettext("ui", "Описание"),
         value=report["reason"],
         inline=False,
     )
     embed.safe_add_field(
-        name="Отправитель",
+        name=messages.catalog.pgettext("ui", "Отправитель"),
         value=f"{report['user']['name']} (`{report['user']['id']}`)",
         inline=True,
     )
 
     locs: list[str] = []
     if report["guild"]["name"]:
-        locs.append(f"**Сервер:** {report['guild']['name']}")
+        locs.append(messages.guild(name=report["guild"]["name"]))
     if report["channel"]["name"]:
-        locs.append(f"**Канал:** {report['channel']['name']}")
+        locs.append(messages.channel(name=report["channel"]["name"]))
 
     if locs:
-        embed.safe_add_field(name="Локация", value="\n".join(locs), inline=False)
+        embed.safe_add_field(
+            name=messages.catalog.pgettext("ui", "Локация"),
+            value="\n".join(locs),
+            inline=False,
+        )
 
     embed.set_footer(text=f"ID: {report['report_id']}")
     if report["user"]["avatar"]:
@@ -111,7 +122,15 @@ async def _notify_report(
         )
         return
     try:
-        await channel.send(embed=_create_report_embed(report))
+        guild: object = getattr(channel, "guild", None)
+        context = (
+            await guild_context(interaction.client, guild.id)
+            if isinstance(guild, discord.Guild)
+            else await error_context(interaction)
+        )
+        await channel.send(
+            embed=_create_report_embed(report, language=context.language)
+        )
     except discord.HTTPException as exc:
         logger.warning(
             "Failed to notify report channel %s for report %s (HTTP %s, code %s)",
@@ -120,6 +139,11 @@ async def _notify_report(
             exc.status,
             exc.code,
         )
+    except Exception:
+        logger.warning(
+            "Report committed but notification failed: %s", report["report_id"]
+        )
+        logger.debug("Report notification failed", exc_info=True)
 
 
 async def _remove_report_button(message: discord.Message | None) -> None:
@@ -131,26 +155,40 @@ async def _remove_report_button(message: discord.Message | None) -> None:
         logger.warning("Failed to remove report button from message %s", message.id)
 
 
-class ReportModal(Modal, title="Отправить отчёт о баге"):
+class ReportModal(Modal):
     """Modal dialog for submitting bug reports.
 
     Provides a text area for users to describe issues or bugs
     they've encountered with the bot.
     """
 
-    reason = TextInput[Self](
-        label="Описание проблемы",
-        style=discord.TextStyle.paragraph,
-        placeholder="Опишите, что случилось...",
-        required=True,
-        max_length=MAX_EMBED_FIELD_LENGTH,
-        min_length=10,
-    )
-
     def __init__(
-        self, repository: ReportRepository, error_info: str | None = None
+        self,
+        repository: ReportRepository,
+        error_info: str | None = None,
+        *,
+        context: PresentationContext,
     ) -> None:
-        super().__init__()
+        self.context = context
+        self.messages = ReportMessages(catalog("reports", context.language))
+        super().__init__(
+            title=self.messages.catalog.pgettext("ui", "Отправить отчёт о баге")
+        )
+        self.reason = TextInput[Self](
+            style=discord.TextStyle.paragraph,
+            placeholder=self.messages.catalog.pgettext(
+                "ui", "Опишите, что случилось..."
+            ),
+            required=True,
+            max_length=MAX_EMBED_FIELD_LENGTH,
+            min_length=10,
+        )
+        self.add_item(
+            Label(
+                text=self.messages.catalog.pgettext("ui", "Описание проблемы"),
+                component=self.reason,
+            )
+        )
         self._repository = repository
         if error_info:
             self.reason.default = error_info
@@ -162,8 +200,8 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
             self._repository, interaction, self.reason.value
         )
         embed = SafeEmbed(
-            title="Спасибо за отчёт!",
-            description=f"-# Ваш персональный ID: `{report['report_id']}`",
+            title=self.messages.catalog.pgettext("ui", "Спасибо за отчёт!"),
+            description=self.messages.receipt(report_id=report["report_id"]),
             color=Color.SUCCESS,
         )
         try:
@@ -184,7 +222,9 @@ class ReportModal(Modal, title="Отправить отчёт о баге"):
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.ERROR,
-            description="Не удалось завершить обработку отчёта. Детали записаны в лог.",
+            description=self.messages.catalog.pgettext(
+                "ui", "Не удалось завершить обработку отчёта. Детали записаны в лог."
+            ),
             ephemeral=True,
             disable_report_btn=True,
         )
@@ -196,4 +236,7 @@ async def handle_report_button(
     error_info: str | None = None,
 ) -> None:
     """Open the report-submission modal."""
-    await interaction.response.send_modal(ReportModal(repository, error_info))
+    context = await error_context(interaction)
+    await interaction.response.send_modal(
+        ReportModal(repository, error_info, context=context)
+    )

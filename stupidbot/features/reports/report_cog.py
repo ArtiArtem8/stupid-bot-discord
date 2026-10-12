@@ -10,8 +10,11 @@ from discord.ext import commands
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.checks import is_owner_app
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.features.reports.messages import ReportMessages
 from stupidbot.features.reports.repository import ReportRepository
-from stupidbot.features.reports.ui import ReportModal
+from stupidbot.features.reports.ui import handle_report_button
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
 
 if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
@@ -35,28 +38,37 @@ class ReportCog(BaseCog):
         self.repository = repository
 
     @app_commands.command(
-        name="report", description="Отправить отчет о баге или проблеме"
+        name="report",
+        description=app_commands.locale_str(
+            "Отправить отчет о баге или проблеме", domain="reports"
+        ),
     )
     @app_commands.checks.cooldown(1, 60, key=get_cooldown_key)
     async def report(self, interaction: Interaction) -> None:
-        await interaction.response.send_modal(ReportModal(self.repository))
+        await handle_report_button(self.repository, interaction)
 
     @app_commands.command(
         name="set-report-channel",
-        description="Установить канал для жалоб (для разработчиков)",
+        description=app_commands.locale_str(
+            "Установить канал для жалоб (для разработчиков)", domain="reports"
+        ),
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
-    @app_commands.describe(channel="Report channel")
+    @app_commands.describe(
+        channel=app_commands.locale_str("Канал для отчётов", domain="reports")
+    )
     @is_owner_app()
     async def set_report_channel(
         self, interaction: Interaction, channel: discord.TextChannel
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = ReportMessages(catalog("reports", context.language))
         await self.repository.set_channel(channel.id)
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
-            description=f"Report channel set to {channel.mention}",
+            description=messages.destination(mention=channel.mention),
             ephemeral=True,
         )
 
