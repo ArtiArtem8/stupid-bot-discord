@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
 import aiohttp
 import mafic
 
 from stupidbot.common.text import truncate_text
-from stupidbot.features.music.results import MUSIC_SERVICE_UNAVAILABLE_MESSAGE
+from stupidbot.features.music.results import (
+    MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+    MusicErrorCode,
+)
 
 EXTERNAL_LOG_TEXT_LIMIT = 320
 NODE_TRANSPORT_ERRORS = (aiohttp.ClientError,)
@@ -51,15 +53,6 @@ def is_player_lifecycle_error(exc: Exception) -> bool:
         isinstance(exc, mafic.PlayerException)
         and not isinstance(exc, mafic.TrackLoadException)
     )
-
-
-class MusicErrorCode(StrEnum):
-    """Stable categories for errors exposed by the music module."""
-
-    SOURCE_UNAVAILABLE = "source_unavailable"
-    MUSIC_NODE_UNAVAILABLE = "music_node_unavailable"
-    PLAYER_DISCONNECTED = "player_disconnected"
-    INTERNAL = "internal"
 
 
 @dataclass(frozen=True, slots=True)

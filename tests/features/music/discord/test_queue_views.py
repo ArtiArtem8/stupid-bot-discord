@@ -22,6 +22,7 @@ from stupidbot.features.music.playback.models import (
 from stupidbot.features.music.results import (
     MUSIC_RECOVERING_MESSAGE,
     MusicResult,
+    MusicResultReason,
     MusicResultStatus,
 )
 from tests.features.music.fixtures import make_entry
@@ -206,7 +207,9 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             expected_entries=(make_entry("waiting", requester_id=42),),
             remove_callback=AsyncMock(
                 return_value=MusicResult(
-                    MusicResultStatus.FAILURE, MUSIC_RECOVERING_MESSAGE
+                    MusicResultStatus.FAILURE,
+                    "Reconnecting; please retry.",
+                    reason=MusicResultReason.RECOVERING,
                 )
             ),
         )
@@ -243,6 +246,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
                 MusicResultStatus.SUCCESS,
                 "removed",
                 data=(expected,),
+                reason=MusicResultReason.REMOVED_FROM_QUEUE,
             )
 
         remove = AsyncMock(side_effect=remove_entries)
@@ -313,6 +317,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
                 MusicResultStatus.SUCCESS,
                 "removed",
                 data=(expected,),
+                reason=MusicResultReason.REMOVED_FROM_QUEUE,
             )
 
         view = QueueUndoView(
@@ -354,6 +359,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
                 MusicResultStatus.SUCCESS,
                 "removed",
                 data=removed,
+                reason=MusicResultReason.REMOVED_FROM_QUEUE,
             )
         )
         view = QueueUndoView(
@@ -404,6 +410,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             return_value=MusicResult(
                 MusicResultStatus.FAILURE,
                 "stale",
+                reason=MusicResultReason.STALE_QUEUE_ENTRIES,
             )
         )
         view = QueueUndoView(
@@ -546,6 +553,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
                 MusicResultStatus.SUCCESS,
                 "removed",
                 data=(expected,),
+                reason=MusicResultReason.REMOVED_FROM_QUEUE,
             )
         )
         view = QueueUndoView(

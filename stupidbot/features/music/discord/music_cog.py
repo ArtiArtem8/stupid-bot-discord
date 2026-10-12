@@ -45,7 +45,9 @@ from stupidbot.features.music.repository import VolumeStore
 from stupidbot.features.music.results import (
     MUSIC_RECOVERING_MESSAGE,
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+    MusicErrorCode,
     MusicResult,
+    MusicResultReason,
     MusicResultStatus,
     PlayResponseData,
     VoiceCheckResult,
@@ -302,7 +304,7 @@ class MusicCog(BaseCog):
             return None
         if (
             result.status is MusicResultStatus.FAILURE
-            and result.message != "Nothing found"
+            and result.reason is not MusicResultReason.NOTHING_FOUND
         ):
             await send_error(interaction, result.message)
             return None
@@ -371,7 +373,7 @@ class MusicCog(BaseCog):
     async def _send_no_player_or_unavailable(
         self, interaction: Interaction, result: MusicResult[object]
     ) -> None:
-        if result.message == MUSIC_RECOVERING_MESSAGE:
+        if result.reason is MusicResultReason.RECOVERING:
             await send_info(
                 interaction,
                 MUSIC_RECOVERING_MESSAGE,
@@ -379,7 +381,7 @@ class MusicCog(BaseCog):
                 delete_after=60,
             )
             return
-        if result.message == MUSIC_SERVICE_UNAVAILABLE_MESSAGE:
+        if result.reason is MusicErrorCode.MUSIC_NODE_UNAVAILABLE:
             await send_warning(
                 interaction,
                 MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
@@ -472,7 +474,7 @@ class MusicCog(BaseCog):
         res = await self.service.get_queue(guild.id)
         data = res.data
         if not data:
-            if res.message == MUSIC_SERVICE_UNAVAILABLE_MESSAGE:
+            if res.reason is MusicErrorCode.MUSIC_NODE_UNAVAILABLE:
                 await send_warning(
                     interaction,
                     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,

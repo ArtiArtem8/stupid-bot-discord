@@ -24,6 +24,7 @@ from stupidbot.features.music.playback.player import MusicPlayer
 from stupidbot.features.music.results import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     MusicResult,
+    MusicResultReason,
     MusicResultStatus,
     VoiceCheckResult,
 )
@@ -1322,7 +1323,13 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         with patch.object(
             self.service,
             "_handle_player_io_failure",
-            new=AsyncMock(return_value=MusicResult(MusicResultStatus.FAILURE, "down")),
+            new=AsyncMock(
+                return_value=MusicResult(
+                    MusicResultStatus.FAILURE,
+                    "down",
+                    reason=MusicResultReason.PLAYER_LOST,
+                )
+            ),
         ) as handle_failure:
             result = await self.service.stop(123, requester_id=1, text_channel_id=2)
 

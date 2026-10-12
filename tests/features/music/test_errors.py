@@ -6,12 +6,14 @@ import aiohttp
 import mafic
 
 from stupidbot.features.music.errors import (
-    MusicErrorCode,
     NodeNotConnectedError,
     classify_music_exception,
     compact_external_log_text,
 )
-from stupidbot.features.music.results import MUSIC_SERVICE_UNAVAILABLE_MESSAGE
+from stupidbot.features.music.results import (
+    MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+    MusicErrorCode,
+)
 
 
 class TestMusicErrors(unittest.TestCase):

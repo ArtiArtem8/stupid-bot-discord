@@ -17,6 +17,7 @@ from stupidbot.features.music.discord.views import QueueUndoView
 from stupidbot.features.music.playback.models import PlayPlacement
 from stupidbot.features.music.results import (
     MusicResult,
+    MusicResultReason,
     MusicResultStatus,
     PlaylistResponseData,
     TrackResponseData,
@@ -155,7 +156,12 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
             "undo_entries": (entry,),
             "placement": "next",
         }
-        result = MusicResult(MusicResultStatus.SUCCESS, "ok", data=data)
+        result = MusicResult(
+            MusicResultStatus.SUCCESS,
+            "ok",
+            data=data,
+            reason=MusicResultReason.TRACK_PROCESSED,
+        )
         service = MagicMock()
         service.play = AsyncMock(return_value=result)
         service.get_queue_duration = AsyncMock(return_value=track.length)
@@ -213,6 +219,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         result: MusicResult[object] = MusicResult(
             MusicResultStatus.FAILURE,
             "Nothing found",
+            reason=MusicResultReason.NOTHING_FOUND,
         )
         service = MagicMock()
         service.play = AsyncMock(return_value=result)

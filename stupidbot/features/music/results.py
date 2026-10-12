@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from typing import Literal, NotRequired, TypedDict
 
@@ -69,6 +69,15 @@ class RotateTrackData(TypedDict):
     next: Track | None
 
 
+class MusicErrorCode(StrEnum):
+    """Stable categories for errors exposed by the music module."""
+
+    SOURCE_UNAVAILABLE = "source_unavailable"
+    MUSIC_NODE_UNAVAILABLE = "music_node_unavailable"
+    PLAYER_DISCONNECTED = "player_disconnected"
+    INTERNAL = "internal"
+
+
 class MusicResultStatus(StrEnum):
     """Status of a music operation."""
 
@@ -112,13 +121,43 @@ type VoiceJoinResult = tuple[VoiceCheckResult, discord.abc.GuildChannel | None]
 
 @dataclass(frozen=True, slots=True)
 class MusicResult[T]:
-    """Result of a music operation."""
+    """Operation result whose reason, independent of display text, drives policy."""
 
     status: MusicResultStatus
     message: str
     data: T | None = None
+    reason: MusicResultReason | MusicErrorCode = field(kw_only=True)
 
     @property
     def is_success(self) -> bool:
         """Check if the operation was successful."""
         return self.status is MusicResultStatus.SUCCESS
+
+
+class MusicResultReason(StrEnum):
+    """Stable operation outcomes; transport failures use MusicErrorCode."""
+
+    NOT_CONNECTED = "not_connected"
+    DISCONNECTED = "disconnected"
+    DISCONNECT_FAILED = "disconnect_failed"
+    PLAYER_LOST = "player_lost"
+    PLAYER_CHANGED = "player_changed"
+    CONNECTION_FAILED = "connection_failed"
+    NOTHING_FOUND = "nothing_found"
+    PLAYLIST_ADDED = "playlist_added"
+    TRACK_PROCESSED = "track_processed"
+    RECOVERING = "recovering"
+    STALE_QUEUE_ENTRIES = "stale_queue_entries"
+    REMOVED_FROM_QUEUE = "removed_from_queue"
+    STOPPED = "stopped"
+    SKIPPED = "skipped"
+    PAUSED = "paused"
+    RESUMED = "resumed"
+    SHUFFLED = "shuffled"
+    NOTHING_PLAYING = "nothing_playing"
+    ROTATED = "rotated"
+    VOLUME_SET = "volume_set"
+    REPEAT_UPDATED = "repeat_updated"
+    QUEUE_EMPTY = "queue_empty"
+    QUEUE_RETRIEVED = "queue_retrieved"
+    NO_PLAYER = "no_player"

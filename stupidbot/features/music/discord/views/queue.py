@@ -29,7 +29,11 @@ from stupidbot.features.music.playback.models import (
     QueueSnapshot,
     RepeatMode,
 )
-from stupidbot.features.music.results import MUSIC_RECOVERING_MESSAGE, MusicResult
+from stupidbot.features.music.results import (
+    MUSIC_RECOVERING_MESSAGE,
+    MusicResult,
+    MusicResultReason,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +98,7 @@ class QueueUndoView(discord.ui.View):
             self.expected_entries,
             self.requester_id,
         )
-        if not result.is_success and result.message == MUSIC_RECOVERING_MESSAGE:
+        if not result.is_success and result.reason is MusicResultReason.RECOVERING:
             await interaction.followup.send(MUSIC_RECOVERING_MESSAGE, ephemeral=True)
             return
         if not result.is_success or not result.data:

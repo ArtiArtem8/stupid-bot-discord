@@ -38,9 +38,6 @@ BOT_PREFIX = "s!"  # Legacy - all commands are slash commands currently
 # --- System constants ---
 ENCODING = "utf-8"
 """Default text encoding for file I/O operations."""
-"""Canonical format: DD-MM-YYYY."""
-"""Discord embed field character limit."""
-"""Default number of items per page in paginated views."""
 
 
 VOICE_PROFILE_TIMEZONE = os.getenv("VOICE_PROFILE_TIMEZONE", "UTC")

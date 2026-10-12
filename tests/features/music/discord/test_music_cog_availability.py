@@ -17,7 +17,9 @@ from stupidbot.features.music.discord.music_cog import (
 from stupidbot.features.music.results import (
     MUSIC_RECOVERING_MESSAGE,
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+    MusicErrorCode,
     MusicResult,
+    MusicResultReason,
     MusicResultStatus,
     VoiceCheckResult,
 )
@@ -52,9 +54,49 @@ async def _await_operation(
 
 
 class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
+    async def test_failure_reason_controls_feedback_independently_of_text(self) -> None:
+        cases = (
+            (
+                MusicResultReason.RECOVERING,
+                "Reconnecting; try again shortly.",
+                FeedbackType.INFO,
+                MUSIC_RECOVERING_MESSAGE,
+            ),
+            (
+                MusicErrorCode.MUSIC_NODE_UNAVAILABLE,
+                "Music is temporarily unavailable.",
+                FeedbackType.WARNING,
+                MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+            ),
+            (
+                MusicResultReason.NO_PLAYER,
+                MUSIC_RECOVERING_MESSAGE,
+                FeedbackType.WARNING,
+                "Нет проигрывателя",
+            ),
+        )
+        for reason, message, feedback_type, description in cases:
+            with self.subTest(reason=reason):
+                interaction = MagicMock(guild=MagicMock(id=123))
+                result = MusicResult[None](
+                    MusicResultStatus.FAILURE, message, reason=reason
+                )
+                with patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback:
+                    await self.cog._send_no_player_or_unavailable(interaction, result)
+                feedback.assert_awaited_once()
+                self.assertEqual(
+                    feedback.call_args.kwargs["feedback_type"], feedback_type
+                )
+                self.assertEqual(feedback.call_args.kwargs["description"], description)
+                self.assertTrue(feedback.call_args.kwargs["ephemeral"])
+
     async def test_recovery_result_uses_private_info_feedback(self) -> None:
         interaction = MagicMock(guild=MagicMock(id=123))
-        result = MusicResult[None](MusicResultStatus.FAILURE, MUSIC_RECOVERING_MESSAGE)
+        result = MusicResult[None](
+            MusicResultStatus.FAILURE,
+            MUSIC_RECOVERING_MESSAGE,
+            reason=MusicResultReason.RECOVERING,
+        )
         with patch.object(FeedbackUI, "send", new_callable=AsyncMock) as feedback:
             await self.cog._send_no_player_or_unavailable(interaction, result)
         self.assertEqual(
@@ -185,7 +227,11 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         message.delete = AsyncMock()
         interaction.edit_original_response = AsyncMock(return_value=message)
         self.cog.service.leave = AsyncMock(  # type: ignore[method-assign]
-            return_value=MusicResult(MusicResultStatus.SUCCESS, "ok")
+            return_value=MusicResult(
+                MusicResultStatus.SUCCESS,
+                "ok",
+                reason=MusicResultReason.TRACK_PROCESSED,
+            )
         )
 
         async def wait_for_operation(
@@ -223,7 +269,11 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
 
         async def slow_leave(_: object) -> MusicResult[None]:
             await asyncio.sleep(0)
-            return MusicResult(MusicResultStatus.SUCCESS, "ok")
+            return MusicResult(
+                MusicResultStatus.SUCCESS,
+                "ok",
+                reason=MusicResultReason.TRACK_PROCESSED,
+            )
 
         self.cog.service.leave = AsyncMock(side_effect=slow_leave)  # type: ignore[method-assign]
 
@@ -256,7 +306,11 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         guild = MagicMock()
         interaction = MagicMock(guild=guild)
         service_leave = AsyncMock(
-            return_value=MusicResult(MusicResultStatus.SUCCESS, "Disconnected")
+            return_value=MusicResult(
+                MusicResultStatus.SUCCESS,
+                "Disconnected",
+                reason=MusicResultReason.DISCONNECTED,
+            )
         )
 
         with (
@@ -296,6 +350,7 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         result: MusicResult[None] = MusicResult(
             MusicResultStatus.FAILURE,
             "Not connected",
+            reason=MusicResultReason.NOT_CONNECTED,
         )
 
         with (
@@ -331,8 +386,7 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         interaction = MagicMock(guild=guild)
         message = "Не удалось отключиться от голосового канала."
         result: MusicResult[None] = MusicResult(
-            MusicResultStatus.ERROR,
-            message,
+            MusicResultStatus.ERROR, message, reason=MusicResultReason.DISCONNECT_FAILED
         )
 
         with (
