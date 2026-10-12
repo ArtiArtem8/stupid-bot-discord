@@ -19,6 +19,8 @@ from stupidbot.features.music.discord.views import (
 )
 from stupidbot.features.music.discord.views import controller as controller_module
 from stupidbot.features.music.playback.models import PlaybackAttempt
+from stupidbot.features.preferences.models import PreferenceScope
+from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.i18n.policy import Language, PresentationContext
 from tests.features.music.fixtures import make_entry
 
@@ -32,6 +34,39 @@ def _interaction() -> MagicMock:
 
 
 class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
+    async def test_preferences_failure_still_delivers_controller(self) -> None:
+        bot = MagicMock()
+        repository = MagicMock(spec=PreferencesRepository)
+        repository.get = AsyncMock(side_effect=OSError("unavailable"))
+        bot.preferences_repository = repository
+        bot.get_guild.return_value = MagicMock(
+            preferred_locale=discord.Locale.american_english
+        )
+        manager = TrackControllerManager(bot, MagicMock())
+        attempt = PlaybackAttempt(1, make_entry("playing", length=120_000))
+        player = MagicMock(current_attempt=attempt, paused=False, position=0)
+        player.guild.get_member.return_value = None
+        message = MagicMock(id=12)
+        message.channel.id = 10
+        channel = MagicMock(send=AsyncMock(return_value=message))
+
+        with patch.object(TrackControllerView, "start_updater"):
+            await manager.create_for_user(
+                guild_id=1, user_id=2, channel=channel, player=player, attempt=attempt
+            )
+
+        view = manager.controllers[1]
+        self.addCleanup(view.stop)
+        repository.get.assert_awaited_once_with(PreferenceScope.GUILD, 1)
+        channel.send.assert_awaited_once()
+        self.assertIs(channel.send.call_args.kwargs["view"], view)
+        self.assertIs(view.message, message)
+        self.assertEqual(view.context.language, Language.EN)
+        self.assertEqual(
+            channel.send.call_args.kwargs["embed"].footer.text, "Requested by: 2"
+        )
+        self.assertFalse(view.is_finished())
+
     async def test_refresh_deleted_message_releases_controller(self) -> None:
         manager = TrackControllerManager(MagicMock(), MagicMock())
         attempt = PlaybackAttempt(1, make_entry("playing"))

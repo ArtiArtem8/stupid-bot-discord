@@ -78,21 +78,36 @@ async def error_context(interaction: discord.Interaction) -> PresentationContext
 
 
 async def guild_context(client: discord.Client, guild_id: int) -> PresentationContext:
-    """Resolve the shared audience for a background delivery or public controller."""
+    """Resolve public output without letting optional settings prevent delivery.
+
+    Failed reads or invalid stored overrides fall back to the guild locale and
+    installation timezone. Log the failure once without retrying storage; caller
+    cancellation still propagates so shutdown can stop background work.
+    """
     guild = client.get_guild(guild_id)
     locale = guild.preferred_locale if guild is not None else None
-    repository: object = getattr(client, "preferences_repository", None)
-    preferences = (
-        await repository.get(PreferenceScope.GUILD, guild_id)
-        if isinstance(repository, PreferencesRepository)
-        else None
-    )
-    return resolve_context(
-        language=preferences.language if preferences is not None else None,
-        timezone=preferences.timezone if preferences is not None else None,
-        locale=locale.value if isinstance(locale, discord.Locale) else None,
+    locale_value = locale.value if isinstance(locale, discord.Locale) else None
+    fallback = resolve_context(
+        language=None,
+        timezone=None,
+        locale=locale_value,
         fallback_timezone=fallback_timezone(),
     )
+    repository: object = getattr(client, "preferences_repository", None)
+    if not isinstance(repository, PreferencesRepository):
+        return fallback
+    try:
+        preferences = await repository.get(PreferenceScope.GUILD, guild_id)
+        return resolve_context(
+            language=preferences.language,
+            timezone=preferences.timezone,
+            locale=locale_value,
+            fallback_timezone=fallback.timezone,
+        )
+    except Exception:
+        logger.warning("Guild preferences unavailable; using presentation defaults")
+        logger.debug("Guild preferences lookup failed", exc_info=True)
+        return fallback
 
 
 async def message_context(

@@ -1,13 +1,20 @@
 """Resolve each audience without leaking user settings into public messages."""
 
+import asyncio
+from typing import override
 from unittest import IsolatedAsyncioTestCase, TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
+import discord
+
+from stupidbot import settings
 from stupidbot.features.preferences.models import Preferences, PreferenceScope
 from stupidbot.features.preferences.repository import PreferencesRepository
-from stupidbot.i18n.discord import interaction_context
+from stupidbot.i18n import discord as discord_i18n
+from stupidbot.i18n.discord import guild_context, interaction_context
 from stupidbot.i18n.policy import Language, resolve_context, resolve_language
+from stupidbot.storage.schema import guild_preferences
 from tests.features.preferences.fixtures import interaction
 from tests.storage.fixtures import temporary_database
 
@@ -72,3 +79,77 @@ class InteractionPolicyTests(IsolatedAsyncioTestCase):
             context = await interaction_context(request, private=True)
         read.assert_awaited_once()
         self.assertEqual(context.language, Language.EN)
+
+
+class GuildPolicyTests(IsolatedAsyncioTestCase):
+    @override
+    async def asyncSetUp(self) -> None:
+        _, self.database = await temporary_database(self)
+        self.repository = PreferencesRepository(self.database)
+        self.client = MagicMock(spec=discord.Client)
+        self.client.preferences_repository = self.repository
+        self.client.get_guild.return_value = MagicMock(
+            preferred_locale=discord.Locale.american_english
+        )
+
+    async def test_guild_overrides_still_take_priority(self) -> None:
+        await self.repository.save(
+            PreferenceScope.GUILD, 20, Preferences(Language.RU, "Asia/Krasnoyarsk")
+        )
+        context = await guild_context(self.client, 20)
+        self.assertEqual(context.language, Language.RU)
+        self.assertEqual(context.timezone.key, "Asia/Krasnoyarsk")
+
+    async def test_storage_failure_uses_locale_and_installation_zone_once(self) -> None:
+        for locale, language in (
+            (discord.Locale.american_english, Language.EN),
+            (discord.Locale.russian, Language.RU),
+            (discord.Locale.german, Language.RU),
+            (None, Language.RU),
+        ):
+            with self.subTest(locale=locale):
+                self.client.get_guild.return_value = (
+                    MagicMock(preferred_locale=locale) if locale is not None else None
+                )
+                with (
+                    patch.object(
+                        settings, "VOICE_PROFILE_TIMEZONE", "Asia/Krasnoyarsk"
+                    ),
+                    patch.object(
+                        self.repository, "get", side_effect=OSError("private details")
+                    ) as read,
+                    self.assertLogs(discord_i18n.logger, level="WARNING") as logs,
+                ):
+                    context = await guild_context(self.client, 20)
+                read.assert_awaited_once_with(PreferenceScope.GUILD, 20)
+                self.assertEqual(context.language, language)
+                self.assertEqual(context.timezone.key, "Asia/Krasnoyarsk")
+                self.assertEqual(len(logs.records), 1)
+                self.assertNotIn("private details", logs.output[0])
+                self.assertIsNone(logs.records[0].exc_info)
+
+    async def test_invalid_stored_timezone_uses_safe_fallback(self) -> None:
+        await self.repository.save(
+            PreferenceScope.GUILD, 20, Preferences(Language.RU, "UTC")
+        )
+        async with self.database.transaction() as connection:
+            await connection.execute(
+                guild_preferences.update()
+                .where(guild_preferences.c.subject_id == 20)
+                .values(timezone="Invalid/Timezone")
+            )
+        with (
+            patch.object(settings, "VOICE_PROFILE_TIMEZONE", "Europe/Moscow"),
+            self.assertLogs(discord_i18n.logger, level="WARNING"),
+        ):
+            context = await guild_context(self.client, 20)
+        self.assertEqual(context.language, Language.EN)
+        self.assertEqual(context.timezone.key, "Europe/Moscow")
+
+    async def test_lookup_cancellation_propagates(self) -> None:
+        with patch.object(
+            self.repository, "get", side_effect=asyncio.CancelledError()
+        ) as read:
+            with self.assertRaises(asyncio.CancelledError):
+                await guild_context(self.client, 20)
+        read.assert_awaited_once()
