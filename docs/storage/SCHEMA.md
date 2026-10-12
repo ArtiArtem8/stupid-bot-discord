@@ -14,6 +14,9 @@ Historical labels and constrained scope copies are deliberate denormalization.
 | `roles` | `role_id` | Identity | Retained scoped identity; deleted_us unknown unless observed |
 | `storage_state` | `singleton` | Publication state | One row; BUILDING becomes COMPLETE only after import verification |
 | `migration_sources` | `source_name` | Provenance | Immutable hashes/counts/formats for the imported snapshot |
+| `user_preferences` | `subject_id` | Personal settings | Nullable language/timezone overrides; revision fences concurrent editors |
+| `guild_preferences` | `subject_id` | Server settings | Independent public-message overrides; existing rows survive rollout seeding |
+| `preference_reminders` | `user_id` | Optional onboarding | Durable eligible uses, prompt count, last reservation time, dismissal and one-use token; independent of settings revision |
 | `birthday_settings` | `guild_id` | Current state | Versioned per-feature settings, independent of music |
 | `member_birthdays` | `guild_id, user_id` | Current state | Versioned calendar date and source position; clear retains version |
 | `birthday_history` | `guild_id, user_id, position` | History | Ordered duplicate-preserving markers; removed with birthday profile |
@@ -84,6 +87,22 @@ monotonically increasing global commit counter. A batch affecting another guild
 does not invalidate this scope unless it contains a shared fact.
 
 ## Queries and indexes
+
+Revision `0004_preferences` adds these settings and reminder tables without
+rewriting feature data. Revisions 0001/0002 remain frozen. Settings commit with
+compare-and-swap revision checks; a stale editor conflicts even if its proposed
+values happen to match. Explicit no-op saves preserve revision. Clearing a
+language override leaves the timezone untouched.
+
+Reminder reservation commits before sending and consumes its allowance even
+when Discord delivery is uncertain. After two successful personal profile uses,
+at most two reservations are allowed, separated by 14 days. Dismissal or an
+explicit personal settings save stops further prompts. Reminder counters do not
+invalidate open settings editors.
+
+Stored question answers remain final text: changing preferences or catalogs
+does not translate old answers. Profile media keys include language and the
+catalog revision alongside the existing scoped data revisions and timezone.
 
 Startup and recovery read facts, states, revisions and a record-ID cutoff in
 one snapshot transaction. Connection release precedes decoding and replay.

@@ -148,6 +148,12 @@ the settings for public server messages and requires Manage Server. “As in
 Discord” resets only the language override. Open editors retain their original
 language and reject stale saves if another editor has committed first.
 
+Bot messages, controls, command descriptions and profile labels support Russian
+and English. Responses prefer the selected audience's override, then its Discord
+locale, then Russian; private and server settings are independent. User text,
+Wolfram answers and previously saved `/ask` replies are kept unchanged.
+Existing deployments must [review guild languages before cutover](docs/storage/README.md#backup-restore-and-rollback).
+
 For a new installation, explicitly choose the profile calendar timezone;
 the example configuration suggests `Europe/Moscow`. Keep the existing
 `VOICE_PROFILE_TIMEZONE` when upgrading. An unset value still means `UTC`,

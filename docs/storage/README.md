@@ -71,6 +71,38 @@ Start the bot with `main.py --database PATH` to use the published database.
 
 ## Backup, restore and rollback
 
+Before deploying the architecture/i18n upgrade, inventory every existing guild
+and review explicit language overrides. Discord's guild locale can be a default
+`en-US`; it does not establish the community's intended language. The proposed
+`ru` preserves the old installation's public messages.
+
+```powershell
+uv run --locked python -m tools.language_rollout inventory --output guild-languages.json
+```
+
+This reads Discord REST with `DISCORD_BOT_TOKEN`, without opening SQLite,
+connecting to the gateway, syncing commands, or sending messages. It refuses
+to replace an existing output. Keep this operator inventory outside Git.
+Review every guild's `language` (`ru` or `en`) and set its `reviewed` flag to
+`true`. Refresh the inventory if server membership changes before cutover.
+
+Stop the bot, back up its database using SQLite backup, and migrate a new copy
+to `0004_preferences`. Preserve the existing `VOICE_PROFILE_TIMEZONE` value;
+an unset old value still means UTC. Preview the reviewed decisions against
+that prepared copy, then apply them as a separate deployment operation:
+
+```powershell
+uv run --locked python -m tools.language_rollout seed --database prepared.sqlite --manifest guild-languages.json
+uv run --locked python -m tools.language_rollout seed --database prepared.sqlite --manifest guild-languages.json --apply
+uv run --locked python -m stupidbot.storage --database prepared.sqlite check
+```
+
+Preview writes nothing. Apply inserts only absent guild preference rows in one
+transaction. It never overwrites existing language, timezone or revision,
+including a deliberate null-language reset. Repeating apply is a no-op. The bot
+must remain stopped until the prepared database and new code are selected
+together. No automatic migration or rollout seed runs at startup.
+
 ```powershell
 uv run --locked python -m stupidbot.storage --database "$localDb" backup "$env:TEMP/stupid-local/backup.sqlite"
 uv run --locked python -m stupidbot.storage --database "$env:TEMP/stupid-local/restored.sqlite" restore "$env:TEMP/stupid-local/backup.sqlite"

@@ -55,6 +55,14 @@ the pre-push gate includes this check. Startup verifies release digests before
 loading handlers. A saved `/ask` answer is already rendered text and must never
 be retranslated on retrieval.
 
+Command metadata follows Discord's client locale. Message bodies use the
+selected user/guild override, then that audience's Discord locale, then Russian.
+Gateway DM messages have no locale, so they use the personal override or Russian.
+The single bot-wide uptime presence stays Russian because Discord provides no
+per-guild audience for it. Birthday scheduling still uses the host calendar.
+Before an existing deployment adopts the new policy, follow the
+[guild inventory and explicit seeding procedure](docs/storage/README.md#backup-restore-and-rollback).
+
 ## Full Check
 
 Run the full pre-push hook set when you need a clean local pass:
