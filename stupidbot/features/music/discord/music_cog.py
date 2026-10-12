@@ -84,8 +84,6 @@ class MusicCog(BaseCog):
 
     @override
     async def interaction_check(self, interaction: Interaction) -> bool:
-        context = await interaction_context(interaction, private=True)
-        messages = MusicMessages(catalog("music", context.language))
         if not await super().interaction_check(interaction):
             return False
         if (
@@ -94,6 +92,8 @@ class MusicCog(BaseCog):
             and interaction.command is not None
             and interaction.command.name not in {"leave", "queue"}
         ):
+            context = await interaction_context(interaction, private=True)
+            messages = MusicMessages(catalog("music", context.language))
             await FeedbackUI.send(
                 interaction,
                 description=messages.failure(MusicResultReason.RECOVERING),
@@ -135,7 +135,6 @@ class MusicCog(BaseCog):
     async def on_music_session_end(
         self, _guild_id: int, session: MusicSession, channel_id: int
     ) -> None:
-        context = await guild_context(self.bot, _guild_id)
         channel = self.bot.get_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
@@ -143,6 +142,7 @@ class MusicCog(BaseCog):
         if not session.tracks:
             return
 
+        context = await guild_context(self.bot, _guild_id)
         embed = build_session_summary_embed(session, language=context.language)
         view = SessionSummaryView(session=session, timeout=300.0, context=context)
 
@@ -154,7 +154,6 @@ class MusicCog(BaseCog):
 
     @commands.Cog.listener()
     async def on_music_track_exception(self, payload: TrackExceptionPayload) -> None:
-        context = await guild_context(self.bot, payload.guild_id)
         channel_id = payload.channel_id
         if not channel_id:
             return
@@ -162,6 +161,7 @@ class MusicCog(BaseCog):
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
 
+        context = await guild_context(self.bot, payload.guild_id)
         embed = build_track_exception_embed(payload, language=context.language)
 
         try:
