@@ -1,0 +1,106 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "command"
+msgid "ID сообщения для удаления"
+msgstr "ID of the message to delete"
+
+#, python-brace-format
+msgctxt "year"
+msgid "{count:d} год"
+msgid_plural "{count:d} года"
+msgstr[0] "{count:d} year"
+msgstr[1] "{count:d} years"
+
+#, python-brace-format
+msgctxt "day"
+msgid "{count:d} день"
+msgid_plural "{count:d} дня"
+msgstr[0] "{count:d} day"
+msgstr[1] "{count:d} days"
+
+#, python-brace-format
+msgctxt "month"
+msgid "{count:d} месяц"
+msgid_plural "{count:d} месяца"
+msgstr[0] "{count:d} month"
+msgstr[1] "{count:d} months"
+
+#, python-brace-format
+msgctxt "minute"
+msgid "{count:d} минуту"
+msgid_plural "{count:d} минуты"
+msgstr[0] "{count:d} minute"
+msgstr[1] "{count:d} minutes"
+
+#, python-brace-format
+msgctxt "week"
+msgid "{count:d} неделю"
+msgid_plural "{count:d} недели"
+msgstr[0] "{count:d} week"
+msgstr[1] "{count:d} weeks"
+
+#, python-brace-format
+msgctxt "second"
+msgid "{count:d} секунду"
+msgid_plural "{count:d} секунды"
+msgstr[0] "{count:d} second"
+msgstr[1] "{count:d} seconds"
+
+#, python-brace-format
+msgctxt "hour"
+msgid "{count:d} час"
+msgid_plural "{count:d} часа"
+msgstr[0] "{count:d} hour"
+msgstr[1] "{count:d} hours"
+
+#, python-brace-format
+msgctxt "join"
+msgid "{first} и {last}"
+msgstr "{first} and {last}"
+
+msgctxt "ui"
+msgid "Невозможно удалить сообщение в этом канале."
+msgstr "Cannot delete messages in this channel."
+
+msgctxt "ui"
+msgid "Нет прав."
+msgstr "Insufficient permissions."
+
+msgctxt "ui"
+msgid "Сообщение не найдено."
+msgstr "Message not found."
+
+msgctxt "command"
+msgid "Тестирование ошибок"
+msgstr "Test error handling"
+
+msgctxt "ui"
+msgid "Удалено."
+msgstr "Deleted."
+
+msgctxt "command"
+msgid "Удалить сообщение по ID (только владелец)."
+msgstr "Delete a message by ID (owner only)"
+
+#, python-brace-format
+msgctxt "presence"
+msgid "жизнь уже {duration}."
+msgstr "life for {duration}."

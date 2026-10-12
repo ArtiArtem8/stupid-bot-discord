@@ -9,6 +9,8 @@ from discord import app_commands
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.checks import is_owner_app
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
 
 if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
@@ -24,27 +26,39 @@ class OwnerCog(BaseCog):
         """Allow admin commands to bypass block checks."""
         return True
 
-    @app_commands.command(name="error-test", description="Тестирование ошибок")
+    @app_commands.command(
+        name="error-test",
+        description=app_commands.locale_str("Тестирование ошибок", domain="app"),
+    )
     @is_owner_app()
     @app_commands.default_permissions(administrator=True)
     async def error(self, _: discord.Interaction) -> NoReturn:
         raise RuntimeError("Test error")
 
     @app_commands.command(
-        name="del", description="Удалить сообщение по ID (только владелец)."
+        name="del",
+        description=app_commands.locale_str(
+            "Удалить сообщение по ID (только владелец).", domain="app"
+        ),
     )
     @is_owner_app()
-    @app_commands.describe(message_id="ID сообщения для удаления")
+    @app_commands.describe(
+        message_id=app_commands.locale_str("ID сообщения для удаления", domain="app")
+    )
     @app_commands.default_permissions(administrator=True)
     async def delete_message(
         self, interaction: discord.Interaction, message_id: str
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = catalog("app", context.language)
         channel = interaction.channel
         if channel is None or not isinstance(channel, discord.abc.Messageable):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="Невозможно удалить сообщение в этом канале.",
+                description=messages.pgettext(
+                    "ui", "Невозможно удалить сообщение в этом канале."
+                ),
                 ephemeral=True,
             )
             return
@@ -57,7 +71,7 @@ class OwnerCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="Сообщение не найдено.",
+                description=messages.pgettext("ui", "Сообщение не найдено."),
                 ephemeral=True,
             )
             return
@@ -65,7 +79,7 @@ class OwnerCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="Нет прав.",
+                description=messages.pgettext("ui", "Нет прав."),
                 ephemeral=True,
             )
             return
@@ -73,7 +87,7 @@ class OwnerCog(BaseCog):
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
-            description="Удалено.",
+            description=messages.pgettext("ui", "Удалено."),
             ephemeral=True,
             delete_after=1.0,
         )

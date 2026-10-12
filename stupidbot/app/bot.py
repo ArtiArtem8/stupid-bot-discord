@@ -12,9 +12,9 @@ from sqlalchemy.exc import OperationalError
 
 from stupidbot import settings as config
 from stupidbot.app.cog_loader import CogLoader
+from stupidbot.app.messages import AppMessages
 from stupidbot.app.uptime import UptimeManager
 from stupidbot.app.uptime_repository import UptimeRepository
-from stupidbot.common.duration import format_duration_ru
 from stupidbot.discord_ui.errors import handle_app_command_error
 from stupidbot.discord_ui.feedback import FeedbackUI
 from stupidbot.features.access.operations import BlockManager
@@ -30,8 +30,9 @@ from stupidbot.features.reports.ui import handle_report_button
 from stupidbot.features.voice.journal import VoiceJournal
 from stupidbot.features.voice.repository import VoiceRepository
 from stupidbot.features.voice.runtime import VoiceAnalytics
-from stupidbot.i18n.catalog import catalogs
+from stupidbot.i18n.catalog import catalog, catalogs
 from stupidbot.i18n.commands import CommandTranslator
+from stupidbot.i18n.policy import Language
 from stupidbot.storage.database import Database, open_engine, validate_schema
 
 logger = logging.getLogger(__name__)
@@ -249,8 +250,10 @@ class StupidBot(commands.Bot):
     async def update_activity_task(self) -> None:
         """Refresh presence only when the formatted uptime changes."""
         uptime = self.uptime_manager.elapsed_microseconds() / 1_000_000
-        formatted_time = format_duration_ru(int(uptime), depth=2)
-        activity_str = f"жизнь уже {formatted_time}."
+        # Discord exposes one bot-wide presence, without a guild or user audience.
+        activity_str = AppMessages(catalog("app", Language.RU)).presence(
+            seconds=int(uptime)
+        )
 
         if activity_str == self.uptime_manager.last_activity_str:
             return

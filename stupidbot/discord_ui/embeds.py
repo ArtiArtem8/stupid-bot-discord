@@ -12,6 +12,9 @@ if TYPE_CHECKING:
     from discord.types.embed import EmbedType
 
 from stupidbot.common.text import TextPaginator, truncate_text
+from stupidbot.discord_ui.messages import FeedbackMessages
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.policy import Language
 
 
 class EmbedKwargs(TypedDict, total=False):
@@ -142,11 +145,12 @@ class SafeEmbed(discord.Embed):
         page_size: int = 20,
         separator: str = "\n",
         strict: bool = True,
+        language: Language = Language.RU,
     ) -> Self:
         """Paginate lines into repeated embed fields.
 
         ``page_size`` limits lines per field while the embed field-value limit
-        supplies the character budget. Later field names receive a Russian page
+        supplies the character budget. Later field names receive a localized page
         suffix. In non-strict mode, aggregate overflow truncates the final added
         value, while pages beyond the field-count limit are omitted.
         """
@@ -165,7 +169,13 @@ class SafeEmbed(discord.Embed):
                     )
                 break
 
-            page_name = name if idx == 1 else f"{name} (стр. {idx})"
+            page_name = (
+                name
+                if idx == 1
+                else FeedbackMessages(catalog("discord_ui", language)).page(
+                    name=name, page=idx
+                )
+            )
             self.safe_add_field(
                 name=page_name, value=page, inline=inline, strict=strict
             )

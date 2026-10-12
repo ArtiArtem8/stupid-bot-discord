@@ -11,6 +11,12 @@ class FeedbackMessages:
 
     catalog: Catalog
 
+    def page(self, *, name: str, page: int) -> str:
+        """Label a continuation field without modifying its original name."""
+        return self.catalog.pgettext("page", "{name} (стр. {page:d})").format(
+            name=name, page=page
+        )
+
     def cooldown(self, *, relative_time: str) -> str:
         """Show Discord's viewer-local relative timestamp."""
         return self.catalog.pgettext(

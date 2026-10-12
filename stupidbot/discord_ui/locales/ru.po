@@ -28,6 +28,11 @@ msgctxt "discord_title"
 msgid "Discord Ошибка"
 msgstr "Discord Ошибка"
 
+#, python-brace-format
+msgctxt "page"
+msgid "{name} (стр. {page:d})"
+msgstr "{name} (стр. {page:d})"
+
 msgctxt "internal_title"
 msgid "Внутренняя ошибка"
 msgstr "Внутренняя ошибка"

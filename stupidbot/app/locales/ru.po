@@ -1,0 +1,114 @@
+# Russian translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: ru\n"
+"Language-Team: ru <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && "
+"(n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "command"
+msgid "ID сообщения для удаления"
+msgstr "ID сообщения для удаления"
+
+#, python-brace-format
+msgctxt "year"
+msgid "{count:d} год"
+msgid_plural "{count:d} года"
+msgstr[0] "{count:d} год"
+msgstr[1] "{count:d} года"
+msgstr[2] "{count:d} лет"
+
+#, python-brace-format
+msgctxt "day"
+msgid "{count:d} день"
+msgid_plural "{count:d} дня"
+msgstr[0] "{count:d} день"
+msgstr[1] "{count:d} дня"
+msgstr[2] "{count:d} дней"
+
+#, python-brace-format
+msgctxt "month"
+msgid "{count:d} месяц"
+msgid_plural "{count:d} месяца"
+msgstr[0] "{count:d} месяц"
+msgstr[1] "{count:d} месяца"
+msgstr[2] "{count:d} месяцев"
+
+#, python-brace-format
+msgctxt "minute"
+msgid "{count:d} минуту"
+msgid_plural "{count:d} минуты"
+msgstr[0] "{count:d} минуту"
+msgstr[1] "{count:d} минуты"
+msgstr[2] "{count:d} минут"
+
+#, python-brace-format
+msgctxt "week"
+msgid "{count:d} неделю"
+msgid_plural "{count:d} недели"
+msgstr[0] "{count:d} неделю"
+msgstr[1] "{count:d} недели"
+msgstr[2] "{count:d} недель"
+
+#, python-brace-format
+msgctxt "second"
+msgid "{count:d} секунду"
+msgid_plural "{count:d} секунды"
+msgstr[0] "{count:d} секунду"
+msgstr[1] "{count:d} секунды"
+msgstr[2] "{count:d} секунд"
+
+#, python-brace-format
+msgctxt "hour"
+msgid "{count:d} час"
+msgid_plural "{count:d} часа"
+msgstr[0] "{count:d} час"
+msgstr[1] "{count:d} часа"
+msgstr[2] "{count:d} часов"
+
+#, python-brace-format
+msgctxt "join"
+msgid "{first} и {last}"
+msgstr "{first} и {last}"
+
+msgctxt "ui"
+msgid "Невозможно удалить сообщение в этом канале."
+msgstr "Невозможно удалить сообщение в этом канале."
+
+msgctxt "ui"
+msgid "Нет прав."
+msgstr "Нет прав."
+
+msgctxt "ui"
+msgid "Сообщение не найдено."
+msgstr "Сообщение не найдено."
+
+msgctxt "command"
+msgid "Тестирование ошибок"
+msgstr "Тестирование ошибок"
+
+msgctxt "ui"
+msgid "Удалено."
+msgstr "Удалено."
+
+msgctxt "command"
+msgid "Удалить сообщение по ID (только владелец)."
+msgstr "Удалить сообщение по ID (только владелец)."
+
+#, python-brace-format
+msgctxt "presence"
+msgid "жизнь уже {duration}."
+msgstr "жизнь уже {duration}."
