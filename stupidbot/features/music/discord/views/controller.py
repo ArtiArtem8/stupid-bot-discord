@@ -405,6 +405,12 @@ class TrackControllerView(ui.View):
     def attempt_id(self) -> int:
         return self.attempt.attempt_id
 
+    @property
+    def _display_position(self) -> int:
+        if self._is_paused_cache:
+            return self._frozen_position
+        return self.player.position or 0
+
     @override
     def stop(self) -> None:
         """Stop the updater loop and interaction."""
@@ -433,13 +439,8 @@ class TrackControllerView(ui.View):
             )
         track = attempt.entry.track
 
-        if self._is_paused_cache:
-            pos = self._frozen_position
-        else:
-            pos = self.player.position or 0
-
         length = track.length
-        pos = max(0, min(pos, length))
+        pos = max(0, min(self._display_position, length))
 
         bar = self._make_bar(pos, length)
         cur_min, cur_sec = divmod(pos // 1000, 60)
@@ -579,36 +580,27 @@ class TrackControllerView(ui.View):
         await self._request_stop(ControllerDestroyReason.TRACK_CHANGED)
         return True
 
-    async def _handle_pause_state(self) -> bool:
-        if self.player.paused:
-            return await self._handle_paused_state()
-        return await self._handle_resumed_state()
-
-    async def _handle_paused_state(self) -> bool:
-        if not self._is_paused_cache:
-            self._is_paused_cache = True
+    def _cache_pause_state(self, *, paused: bool, position: int) -> None:
+        self._is_paused_cache = paused
+        if paused:
+            self._frozen_position = position
             self._pause_start_time = time.monotonic()
-            self._frozen_position = self.player.position or 0
-            await self._safe_update(force=True)
-            return False
+        else:
+            self._pause_start_time = None
 
-        if self._pause_start_time and (
+    async def _handle_pause_state(self) -> bool:
+        paused = self.player.paused
+        if paused != self._is_paused_cache:
+            self._cache_pause_state(paused=paused, position=self.player.position or 0)
+            await self._safe_update(force=True)
+        elif not paused:
+            await self._safe_update()
+        elif self._pause_start_time and (
             time.monotonic() - self._pause_start_time > self._max_pause_duration
         ):
             logger.debug("View: Paused too long. Requesting stop.")
             await self._request_stop(ControllerDestroyReason.TIMEOUT)
             return True
-
-        return False
-
-    async def _handle_resumed_state(self) -> bool:
-        if self._is_paused_cache:
-            self._is_paused_cache = False
-            self._pause_start_time = None
-            await self._safe_update(force=True)
-            return False
-
-        await self._safe_update()
         return False
 
     def update_buttons_state(self) -> None:
@@ -699,12 +691,9 @@ class TrackControllerView(ui.View):
         expected = await self._prepare_action(interaction)
         if expected is None:
             return
-        pos = (
-            self._frozen_position
-            if self._is_paused_cache
-            else (self.player.position or 0)
+        await self._seek_and_refresh(
+            expected, max(self._display_position - _SEEK_STEP_MS, 0)
         )
-        await self._seek_and_refresh(expected, max(pos - _SEEK_STEP_MS, 0))
 
     @ui.button(
         emoji=MUSIC_PLAYER_EMOJIS["pause"],
@@ -721,13 +710,7 @@ class TrackControllerView(ui.View):
         if paused is None:
             await self._request_stop(ControllerDestroyReason.STALE_VIEW)
             return
-        if paused:
-            self._is_paused_cache = True
-            self._frozen_position = frozen_position
-            self._pause_start_time = time.monotonic()
-        else:
-            self._is_paused_cache = False
-            self._pause_start_time = None
+        self._cache_pause_state(paused=paused, position=frozen_position)
         await self._safe_update(force=True)
 
     @ui.button(
@@ -740,13 +723,8 @@ class TrackControllerView(ui.View):
         expected = await self._prepare_action(interaction)
         if expected is None:
             return
-        pos = (
-            self._frozen_position
-            if self._is_paused_cache
-            else (self.player.position or 0)
-        )
         position = min(
-            pos + _SEEK_STEP_MS,
+            self._display_position + _SEEK_STEP_MS,
             expected.entry.track.length,
         )
         await self._seek_and_refresh(expected, position)

@@ -1,6 +1,7 @@
 """Tests for track controller lifecycle and component acknowledgement."""
 
 import asyncio
+import time
 import unittest
 from typing import cast, override
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -758,20 +759,25 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         attempt = PlaybackAttempt(1, make_entry("track"))
         attempt.entry.track.length = 25_000
         cases = (
-            ("btn_restart", 0),
-            ("btn_back10", 5_000),
-            ("btn_fwd10", 25_000),
+            ("btn_restart", False, 0),
+            ("btn_back10", False, 5_000),
+            ("btn_fwd10", False, 25_000),
+            ("btn_restart", True, 0),
+            ("btn_back10", True, 2_000),
+            ("btn_fwd10", True, 22_000),
         )
 
-        for custom_id, expected_position in cases:
-            with self.subTest(custom_id=custom_id):
+        for custom_id, paused, expected_position in cases:
+            with self.subTest(custom_id=custom_id, paused=paused):
                 player = MagicMock(
                     current_attempt=attempt,
                     current=MagicMock(length=999_000),
-                    paused=False,
+                    paused=paused,
                     position=15_000,
                 )
                 view, player, _ = self._make_view(attempt, player)
+                view._is_paused_cache = paused
+                view._frozen_position = 12_000
                 safe_update = AsyncMock()
                 interaction = _interaction()
                 interaction.user.id = 10
@@ -789,6 +795,8 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
                 player.seek_attempt.assert_awaited_once_with(attempt, expected_position)
                 safe_update.assert_awaited_once_with(force=True)
+                if paused:
+                    self.assertEqual(view._frozen_position, expected_position)
 
     async def test_rejected_seek_preserves_cache_and_does_not_update(self) -> None:
         attempt = PlaybackAttempt(1, make_entry("track"))
@@ -939,6 +947,60 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         on_stop.assert_awaited_once_with(view, ControllerDestroyReason.STALE_VIEW)
         player.pause.assert_not_called()
         player.resume.assert_not_called()
+
+    async def test_updater_freezes_pause_position_and_refreshes_on_resume(self) -> None:
+        attempt = PlaybackAttempt(1, make_entry("track", length=120_000))
+        view, player, _ = self._make_view(attempt)
+        player.paused = True
+        player.position = 12_000
+        message = MagicMock(edit=AsyncMock())
+        view.message = message
+
+        # Drive individual updater ticks without a timer or background-task race.
+        with patch.object(time, "monotonic", return_value=50.0):
+            self.assertFalse(await view._handle_pause_state())
+            paused_embed = view.make_embed()
+            self.assertTrue((paused_embed.description or "").startswith("`0:12`"))
+            self.assertEqual(message.edit.await_count, 1)
+
+            player.position = 20_000
+            self.assertFalse(await view._handle_pause_state())
+            self.assertEqual(view.make_embed().description, paused_embed.description)
+            self.assertEqual(message.edit.await_count, 1)
+
+            player.paused = False
+            self.assertFalse(await view._handle_pause_state())
+            self.assertTrue((view.make_embed().description or "").startswith("`0:20`"))
+            self.assertEqual(message.edit.await_count, 2)
+            self.assertIsNone(view._pause_start_time)
+
+            self.assertFalse(await view._handle_pause_state())
+            self.assertEqual(message.edit.await_count, 2)
+
+        with patch.object(time, "monotonic", return_value=52.0):
+            self.assertFalse(await view._handle_pause_state())
+        self.assertEqual(message.edit.await_count, 3)
+        view.stop()
+
+    async def test_pause_timeout_uses_first_observation_despite_later_ticks(
+        self,
+    ) -> None:
+        attempt = PlaybackAttempt(1, make_entry("track"))
+        view, player, on_stop = self._make_view(attempt)
+        player.paused = True
+        view.message = MagicMock(edit=AsyncMock())
+
+        with patch.object(time, "monotonic", return_value=50.0):
+            self.assertFalse(await view._handle_pause_state())
+        with patch.object(time, "monotonic", return_value=950.0):
+            self.assertFalse(await view._handle_pause_state())
+        self.assertFalse(view.is_finished())
+        on_stop.assert_not_awaited()
+
+        with patch.object(time, "monotonic", return_value=951.0):
+            self.assertTrue(await view._handle_pause_state())
+        self.assertTrue(view.is_finished())
+        on_stop.assert_awaited_once_with(view, ControllerDestroyReason.TIMEOUT)
 
     async def test_rejected_skip_stops_controller_as_stale(self) -> None:
         attempt = PlaybackAttempt(1, make_entry("track"))
