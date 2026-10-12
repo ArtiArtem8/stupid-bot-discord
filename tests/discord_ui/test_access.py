@@ -4,6 +4,7 @@ import unittest
 from datetime import UTC, datetime
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import discord
 from discord.ext import commands
@@ -27,6 +28,7 @@ from stupidbot.features.music.runtime.session import MusicSession
 from stupidbot.features.voice.discord.profile_cog import VoiceProfileCog
 from stupidbot.features.voice.discord.view import ProfileAction, VoiceProfileView
 from stupidbot.features.wolfram.wolfram_cog import WolframCog
+from stupidbot.i18n.policy import Language, PresentationContext
 from tests.features.music.fixtures import make_entry
 
 
@@ -84,7 +86,13 @@ class TestAuthorization(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(10, refresh, reveal=AsyncMock(), private=False)
+        view = VoiceProfileView(
+            10,
+            refresh,
+            reveal=AsyncMock(),
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         self.assertTrue(await view.interaction_check(self.item))
         await view.buttons[ProfileAction.REFRESH].callback(self.item)
         refresh.assert_not_awaited()

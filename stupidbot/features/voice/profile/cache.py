@@ -8,12 +8,13 @@ waiters cannot release a running native job or erase its strong owner.
 import asyncio
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import monotonic
 
 from stupidbot.features.voice.profile.media import ProfileMedia, RenderBusyError
 from stupidbot.features.voice.profile.model import VoiceProfile
 from stupidbot.features.voice.profile.presentation import CardIdentity
+from stupidbot.i18n.policy import Language
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +31,8 @@ class MediaKey:
     avatar_key: str
     guild_icon_key: str | None
     revision: str
+    language: Language = field(kw_only=True)
+    catalog_revision: str = field(kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)

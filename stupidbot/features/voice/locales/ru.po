@@ -1,0 +1,470 @@
+# Russian translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: ru\n"
+"Language-Team: ru <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && "
+"(n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "activity.label"
+msgid "* Смена часов"
+msgstr "* Смена часов"
+
+msgctxt "xp.label"
+msgid "5+ человек"
+msgstr "5+ человек"
+
+msgctxt "estimate_short"
+msgid "<1 мин в голосе до следующего уровня"
+msgstr "<1 мин в голосе до следующего уровня"
+
+msgctxt "under_minute"
+msgid "<1м"
+msgstr "<1м"
+
+#, python-brace-format
+msgctxt "short_date"
+msgid "{day:02d} {month}"
+msgstr "{day:02d} {month}"
+
+#, python-brace-format
+msgctxt "date"
+msgid "{day:02d} {month} {year:d}"
+msgstr "{day:02d} {month} {year:d}"
+
+#, python-brace-format
+msgctxt "recent_people"
+msgid "{duration} вместе · {count:,d} человек"
+msgid_plural "{duration} вместе · {count:,d} человека"
+msgstr[0] "{duration} вместе · {count:,d} человек"
+msgstr[1] "{duration} вместе · {count:,d} человека"
+msgstr[2] "{duration} вместе · {count:,d} человек"
+
+#, python-brace-format
+msgctxt "duration"
+msgid "{hours:,d}ч {minutes:02d}м"
+msgstr "{hours:,d}ч {minutes:02d}м"
+
+#, python-brace-format
+msgctxt "million_hours"
+msgid "{hours:.1f} млн ч"
+msgstr "{hours:.1f} млн ч"
+
+#, python-brace-format
+msgctxt "thousand_hours"
+msgid "{hours:.1f} тыс ч"
+msgstr "{hours:.1f} тыс ч"
+
+#, python-brace-format
+msgctxt "estimate_hours"
+msgid "~{hours:,d} ч в голосе до следующего уровня"
+msgstr "~{hours:,d} ч в голосе до следующего уровня"
+
+#, python-brace-format
+msgctxt "estimate_fractional"
+msgid "~{hours:.1f} ч в голосе до следующего уровня"
+msgstr "~{hours:.1f} ч в голосе до следующего уровня"
+
+#, python-brace-format
+msgctxt "estimate_minutes"
+msgid "~{minutes:d} мин в голосе до следующего уровня"
+msgstr "~{minutes:d} мин в голосе до следующего уровня"
+
+msgctxt "activity.label"
+msgid "Активность"
+msgstr "Активность"
+
+msgctxt "activity.label"
+msgid "Активность по дням"
+msgstr "Активность по дням"
+
+msgctxt "activity.label"
+msgid "Активные дни"
+msgstr "Активные дни"
+
+msgctxt "xp.label"
+msgid "База"
+msgstr "База"
+
+msgctxt "people.label"
+msgid "Больше всего времени вместе"
+msgstr "Больше всего времени вместе"
+
+msgctxt "xp.label"
+msgid "Бонусы"
+msgstr "Бонусы"
+
+msgctxt "activity.label"
+msgid "В голосе"
+msgstr "В голосе"
+
+msgctxt "activity.label"
+msgid "В одиночку"
+msgstr "В одиночку"
+
+msgctxt "xp.label"
+msgid "В одиночку"
+msgstr "В одиночку"
+
+msgctxt "tier"
+msgid "ВОЗНЕСЁННЫЙ"
+msgstr "ВОЗНЕСЁННЫЙ"
+
+msgctxt "profile.label"
+msgid "ВРЕМЯ В ГОЛОСЕ"
+msgstr "ВРЕМЯ В ГОЛОСЕ"
+
+msgctxt "command"
+msgid "Ваш голосовой профиль на этом сервере"
+msgstr "Ваш голосовой профиль на этом сервере"
+
+msgctxt "people.label"
+msgid "Вдвоём"
+msgstr "Вдвоём"
+
+msgctxt "all_day"
+msgid "Весь день"
+msgstr "Весь день"
+
+msgctxt "people.label"
+msgid "Вместе"
+msgstr "Вместе"
+
+msgctxt "weekday"
+msgid "Воскресенье"
+msgstr "Воскресенье"
+
+msgctxt "weekday_short"
+msgid "Вс"
+msgstr "Вс"
+
+msgctxt "all_days"
+msgid "Все дни"
+msgstr "Все дни"
+
+msgctxt "activity.label"
+msgid "Всего в голосе"
+msgstr "Всего в голосе"
+
+msgctxt "weekday_short"
+msgid "Вт"
+msgstr "Вт"
+
+msgctxt "weekday"
+msgid "Вторник"
+msgstr "Вторник"
+
+msgctxt "unavailable"
+msgid "Голосовая карточка временно недоступна."
+msgstr "Голосовая карточка временно недоступна."
+
+msgctxt "xp.label"
+msgid "Голосовой XP"
+msgstr "Голосовой XP"
+
+#, python-brace-format
+msgctxt "attachment"
+msgid "Голосовой профиль {display_name} на сервере {guild_name}"
+msgstr "Голосовой профиль {display_name} на сервере {guild_name}"
+
+msgctxt "tier"
+msgid "ЗАПРЕДЕЛЬНЫЙ"
+msgstr "ЗАПРЕДЕЛЬНЫЙ"
+
+#, python-brace-format
+msgctxt "recent_coverage"
+msgid "За 30 дней: {percentage}"
+msgstr "За 30 дней: {percentage}"
+
+msgctxt "people.label"
+msgid "За всё время"
+msgstr "За всё время"
+
+msgctxt "xp.label"
+msgid "За всё время"
+msgstr "За всё время"
+
+#, python-brace-format
+msgctxt "lifetime_coverage"
+msgid "За всё время: {percentage}"
+msgstr "За всё время: {percentage}"
+
+msgctxt "xp.label"
+msgid "Звук выкл."
+msgstr "Звук выкл."
+
+msgctxt "history_empty"
+msgid "История не наблюдалась"
+msgstr "История не наблюдалась"
+
+#, python-brace-format
+msgctxt "history"
+msgid "История с {date}"
+msgstr "История с {date}"
+
+msgctxt "xp.label"
+msgid "Камера"
+msgstr "Камера"
+
+msgctxt "already_refreshing"
+msgid "Карточка уже обновляется."
+msgstr "Карточка уже обновляется."
+
+msgctxt "busy"
+msgid "Карточки сейчас заняты. Попробуйте чуть позже."
+msgstr "Карточки сейчас заняты. Попробуйте чуть позже."
+
+msgctxt "guild_only"
+msgid "Команда доступна только на сервере."
+msgstr "Команда доступна только на сервере."
+
+msgctxt "tier"
+msgid "ЛЕГЕНДАРНЫЙ"
+msgstr "ЛЕГЕНДАРНЫЙ"
+
+msgctxt "xp.label"
+msgid "Лимит бонусов"
+msgstr "Лимит бонусов"
+
+msgctxt "people.label"
+msgid "Люди"
+msgstr "Люди"
+
+msgctxt "tier"
+msgid "МИФИЧЕСКИЙ"
+msgstr "МИФИЧЕСКИЙ"
+
+msgctxt "activity.label"
+msgid "Медианная сессия"
+msgstr "Медианная сессия"
+
+msgctxt "xp.label"
+msgid "Микрофон выкл."
+msgstr "Микрофон выкл."
+
+msgctxt "tier"
+msgid "НАЧАЛЬНЫЙ"
+msgstr "НАЧАЛЬНЫЙ"
+
+msgctxt "tier"
+msgid "НЕОБЫЧНЫЙ"
+msgstr "НЕОБЫЧНЫЙ"
+
+msgctxt "scope_empty"
+msgid "На этом сервере · история не наблюдалась"
+msgstr "На этом сервере · история не наблюдалась"
+
+#, python-brace-format
+msgctxt "scope"
+msgid "На этом сервере · история с {date}"
+msgstr "На этом сервере · история с {date}"
+
+#, python-brace-format
+msgctxt "coverage"
+msgid "Наблюдение {percentage}"
+msgstr "Наблюдение {percentage}"
+
+msgctxt "refresh_failed"
+msgid "Не удалось обновить карточку. Попробуйте ещё раз."
+msgstr "Не удалось обновить карточку. Попробуйте ещё раз."
+
+msgctxt "unknown_user"
+msgid "Неизвестный пользователь"
+msgstr "Неизвестный пользователь"
+
+msgctxt "multiple_peaks"
+msgid "Несколько пиков"
+msgstr "Несколько пиков"
+
+msgctxt "activity.label"
+msgid "Нет данных"
+msgstr "Нет данных"
+
+msgctxt "no_observations"
+msgid "Нет наблюдений"
+msgstr "Нет наблюдений"
+
+msgctxt "profile.label"
+msgid "ПРОГРЕСС УРОВНЯ"
+msgstr "ПРОГРЕСС УРОВНЯ"
+
+msgctxt "weekday_short"
+msgid "Пн"
+msgstr "Пн"
+
+msgctxt "command"
+msgid "Показать карточку только вам"
+msgstr "Показать карточку только вам"
+
+msgctxt "weekday"
+msgid "Понедельник"
+msgstr "Понедельник"
+
+msgctxt "activity.label"
+msgid "Последние 30 дней"
+msgstr "Последние 30 дней"
+
+msgctxt "people.label"
+msgid "Последние 30 дней"
+msgstr "Последние 30 дней"
+
+msgctxt "xp.label"
+msgid "Последние 30 дней"
+msgstr "Последние 30 дней"
+
+msgctxt "weekday_short"
+msgid "Пт"
+msgstr "Пт"
+
+msgctxt "weekday"
+msgid "Пятница"
+msgstr "Пятница"
+
+msgctxt "tier"
+msgid "РЕДКИЙ"
+msgstr "РЕДКИЙ"
+
+msgctxt "people.label"
+msgid "С ботами"
+msgstr "С ботами"
+
+msgctxt "activity.label"
+msgid "С людьми"
+msgstr "С людьми"
+
+msgctxt "xp.label"
+msgid "С людьми"
+msgstr "С людьми"
+
+msgctxt "profile.label"
+msgid "СЕССИИ"
+msgstr "СЕССИИ"
+
+msgctxt "weekday_short"
+msgid "Сб"
+msgstr "Сб"
+
+msgctxt "today"
+msgid "Сегодня"
+msgstr "Сегодня"
+
+msgctxt "activity.label"
+msgid "Сессии"
+msgstr "Сессии"
+
+msgctxt "xp.label"
+msgid "Снижения"
+msgstr "Снижения"
+
+msgctxt "people.label"
+msgid "Совместное время не наблюдалось"
+msgstr "Совместное время не наблюдалось"
+
+msgctxt "weekday_short"
+msgid "Ср"
+msgstr "Ср"
+
+msgctxt "weekday"
+msgid "Среда"
+msgstr "Среда"
+
+msgctxt "activity.label"
+msgid "Средняя сессия"
+msgstr "Средняя сессия"
+
+msgctxt "weekday"
+msgid "Суббота"
+msgstr "Суббота"
+
+msgctxt "xp.label"
+msgid "Трансляция"
+msgstr "Трансляция"
+
+msgctxt "profile.label"
+msgid "УР."
+msgstr "УР."
+
+msgctxt "activity.label"
+msgid "Часы пик"
+msgstr "Часы пик"
+
+msgctxt "people.label"
+msgid "Чаще всего с ботом"
+msgstr "Чаще всего с ботом"
+
+msgctxt "weekday"
+msgid "Четверг"
+msgstr "Четверг"
+
+msgctxt "weekday_short"
+msgid "Чт"
+msgstr "Чт"
+
+msgctxt "tier"
+msgid "ЭПИЧЕСКИЙ"
+msgstr "ЭПИЧЕСКИЙ"
+
+msgctxt "not_your_card"
+msgid "Это не ваша карточка."
+msgstr "Это не ваша карточка."
+
+msgctxt "month"
+msgid "авг."
+msgstr "авг."
+
+msgctxt "month"
+msgid "апр."
+msgstr "апр."
+
+msgctxt "month"
+msgid "дек."
+msgstr "дек."
+
+msgctxt "month"
+msgid "июл."
+msgstr "июл."
+
+msgctxt "month"
+msgid "июн."
+msgstr "июн."
+
+msgctxt "month"
+msgid "мар."
+msgstr "мар."
+
+msgctxt "month"
+msgid "мая"
+msgstr "мая"
+
+msgctxt "month"
+msgid "ноя."
+msgstr "ноя."
+
+msgctxt "month"
+msgid "окт."
+msgstr "окт."
+
+msgctxt "month"
+msgid "сен."
+msgstr "сен."
+
+msgctxt "month"
+msgid "февр."
+msgstr "февр."
+
+msgctxt "month"
+msgid "янв."
+msgstr "янв."

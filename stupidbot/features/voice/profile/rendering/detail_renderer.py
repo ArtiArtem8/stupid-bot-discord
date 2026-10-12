@@ -7,14 +7,13 @@ chart lengths within authored tracks; it never calculates voice or XP policy.
 from __future__ import annotations
 
 import base64
-from calendar import day_abbr, day_name
 from collections.abc import Mapping
 from fractions import Fraction
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
-from stupidbot.features.voice.prediction import VoiceHoursEstimate
+from stupidbot.features.voice.messages import WEEKDAY_ABBR, WEEKDAYS, VoiceMessages
 from stupidbot.features.voice.profile.calendar import ClockSpan
 from stupidbot.features.voice.profile.details import (
     ActivityDetail,
@@ -33,7 +32,6 @@ from stupidbot.features.voice.profile.rendering.design import (
     check_template,
     document_bytes,
     fit_texts,
-    format_duration,
     normalized_png,
     property_value,
     replace_text,
@@ -42,6 +40,7 @@ from stupidbot.features.voice.profile.rendering.design import (
     theme_tokens,
 )
 from stupidbot.features.voice.profile.rendering.raster import NativeRasterizer
+from stupidbot.i18n.catalog import catalog
 
 if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
@@ -57,7 +56,10 @@ class DetailCardRenderer:
         self.assets = assets
 
     def _document(
-        self, name: str, identity: DetailIdentity, period: DetailPeriod
+        self,
+        name: Literal["activity", "people", "xp"],
+        identity: DetailIdentity,
+        period: DetailPeriod,
     ) -> tuple[Element, dict[str, Element]]:
         root, nodes = check_template(
             (self.assets / f"{name}.svg").read_bytes(),
@@ -84,17 +86,23 @@ class DetailCardRenderer:
         tokens = theme_tokens(ASSETS / "themes.json", identity.appearance)
         apply_tokens(root, tokens)
         bind_emblem(nodes, identity.appearance, tokens)
+        messages = VoiceMessages(catalog("voice", identity.card.language))
+        _labels(nodes, messages.labels(name))
         _labels(
             nodes,
             {
                 "display-name": safe_label(identity.card.display_name),
                 "guild-name": safe_label(identity.card.guild_name),
-                "tier-name": identity.appearance.tier.value.upper(),
+                "tier-name": messages.tier(identity.appearance.tier),
                 "period-label": (
-                    f"{period.first_date:%b %d} – {period.last_date:%b %d}"
+                    f"{messages.date_label(period.first_date, year=False)} – "
+                    f"{messages.date_label(period.last_date, year=False)}"
                     f" · {period.timezone_label}"
                 ),
-                "coverage-label": f"Coverage {_coverage(period)}",
+                "coverage-label": messages.coverage(
+                    percentage=_coverage(period),
+                    scope="period" if name == "activity" else "recent",
+                ),
             },
         )
         try:
@@ -126,34 +134,39 @@ class DetailCardRenderer:
     ) -> bytes:
         """Render local clock spans separately from observation gaps and future."""
         root, nodes = self._document("activity", identity, detail.period)
+        messages = VoiceMessages(catalog("voice", identity.card.language))
         presence = detail.presence
         values = (
-            format_duration(presence.total_seconds, compact=True),
-            format_duration(presence.group_seconds, compact=True),
-            format_duration(presence.solo_seconds, compact=True),
+            messages.duration(presence.total_seconds, compact=True),
+            messages.duration(presence.group_seconds, compact=True),
+            messages.duration(presence.solo_seconds, compact=True),
             f"{presence.session_count:,}",
         )
         stats = (
-            format_duration(presence.average_session_seconds, compact=True)
+            messages.duration(presence.average_session_seconds, compact=True)
             if presence.session_count
             else "-",
-            format_duration(presence.median_session_seconds, compact=True)
+            messages.duration(presence.median_session_seconds, compact=True)
             if presence.session_count
             else "-",
-            _hour_label(detail.peak_hours),
+            _hour_label(detail.peak_hours, messages),
         )
         if not detail.period.observed_seconds and not presence.total_seconds:
             values = ("-",) * 4
         _labels(nodes, {f"metric-{i}": value for i, value in enumerate(values)})
         _labels(nodes, {f"stat-{i}": value for i, value in enumerate(stats)})
-        _activity_chart(nodes, detail)
-        self._bind_weekdays(root, nodes["stat-3"], detail.peak_weekdays)
+        _activity_chart(nodes, detail, messages)
+        self._bind_weekdays(root, nodes["stat-3"], detail.peak_weekdays, messages)
         return self._png(root, nodes)
 
     def _bind_weekdays(
-        self, root: Element, node: Element, days: tuple[int, ...]
+        self,
+        root: Element,
+        node: Element,
+        days: tuple[int, ...],
+        messages: VoiceMessages,
     ) -> None:
-        labels = _weekday_labels(days)
+        labels = _weekday_labels(days, messages)
         for label in labels[:-1]:
             replace_text(node, label)
             box = self.raster.query(document_bytes(root)).get(node.attrib["id"])
@@ -167,15 +180,16 @@ class DetailCardRenderer:
         """Render aligned shared and one-on-one durations, without avatars."""
         detail = presentation.detail
         root, nodes = self._document("people", identity, detail.period)
+        messages = VoiceMessages(catalog("voice", identity.card.language))
         if detail.companions:
             style(nodes["empty-people"], "display", "none")
         for i in range(5):
-            _person_row(nodes, presentation, i)
+            _person_row(nodes, presentation, i, messages)
         summary = (
             f"{detail.unique_people:,}",
-            format_duration(detail.presence.group_seconds, compact=True),
-            format_duration(detail.private_seconds, compact=True),
-            format_duration(detail.bots.any_bot_seconds, compact=True),
+            messages.duration(detail.presence.group_seconds, compact=True),
+            messages.duration(detail.private_seconds, compact=True),
+            messages.duration(detail.bots.any_bot_seconds, compact=True),
         )
         _labels(nodes, {f"summary-{i}": value for i, value in enumerate(summary)})
         if not detail.presence.total_seconds and not (
@@ -189,28 +203,36 @@ class DetailCardRenderer:
             nodes,
             {
                 "top-bot-name": safe_label(
-                    presentation.names.get(top[0], "Unknown user")
+                    presentation.names.get(
+                        top[0],
+                        messages.catalog.pgettext(
+                            "unknown_user", "Неизвестный пользователь"
+                        ),
+                    )
                 )
                 if top
                 else "-",
-                "top-bot-time": format_duration(top[1], compact=True) if top else "",
+                "top-bot-time": messages.duration(top[1], compact=True) if top else "",
             },
         )
-        recent_voice = format_duration(
+        recent_voice = messages.duration(
             detail.recent_presence.group_seconds, compact=True
         )
         replace_text(
             nodes["recent-summary"],
-            f"{recent_voice} together · {detail.recent_unique_people:,} people"
+            messages.recent_people(
+                duration=recent_voice, count=detail.recent_unique_people
+            )
             if detail.period.observed_seconds or detail.recent_presence.total_seconds
-            else "No observations",
+            else messages.catalog.pgettext("no_observations", "Нет наблюдений"),
         )
-        _lifetime_labels(nodes, detail.lifetime_period)
+        _lifetime_labels(nodes, detail.lifetime_period, messages)
         return self._png(root, nodes)
 
     def render_xp(self, detail: XpDetail, identity: DetailIdentity) -> bytes:
         """Format exact policy components only at the presentation boundary."""
         root, nodes = self._document("xp", identity, detail.period)
+        messages = VoiceMessages(catalog("voice", identity.card.language))
         xp = detail.breakdown
         positive = {
             "solo": xp.solo_base,
@@ -234,7 +256,9 @@ class DetailCardRenderer:
             nodes,
             {
                 "xp-total": f"{int(xp.total):,} XP",
-                "xp-estimate": _estimate_label(detail.estimate),
+                "xp-estimate": messages.remaining_voice(
+                    None if detail.estimate is None else detail.estimate.expected_hours
+                ),
             },
         )
         if not xp.total and not (
@@ -245,15 +269,15 @@ class DetailCardRenderer:
             replace_text(nodes["xp-total"], "-")
         if not detail.period.observed_seconds and not detail.recent_xp:
             replace_text(nodes["recent-xp"], "-")
-        _lifetime_labels(nodes, detail.lifetime_period)
+        _lifetime_labels(nodes, detail.lifetime_period, messages)
         return self._png(root, nodes)
 
 
-def _hour_label(hours: tuple[int, ...]) -> str:
+def _hour_label(hours: tuple[int, ...], messages: VoiceMessages) -> str:
     if not hours:
         return "-"
     if len(hours) == 24:
-        return "All day"
+        return messages.catalog.pgettext("all_day", "Весь день")
     ranges: list[tuple[int, int]] = []
     for hour in hours:
         if ranges and ranges[-1][1] == hour:
@@ -265,16 +289,20 @@ def _hour_label(hours: tuple[int, ...]) -> str:
         return f"{start:02}:00-{end:02}:00"
     if len(ranges) == 2:
         return ", ".join(f"{start:02}-{end:02}" for start, end in ranges)
-    return "Multiple peaks"
+    return messages.catalog.pgettext("multiple_peaks", "Несколько пиков")
 
 
-def _weekday_labels(days: tuple[int, ...]) -> tuple[str, ...]:
+def _weekday_labels(days: tuple[int, ...], messages: VoiceMessages) -> tuple[str, ...]:
     if not days:
         return ("-",)
+    day_name = tuple(messages.catalog.pgettext("weekday", value) for value in WEEKDAYS)
+    day_abbr = tuple(
+        messages.catalog.pgettext("weekday_short", value) for value in WEEKDAY_ABBR
+    )
     if len(days) == 1:
         return (day_name[days[0]],)
     if len(days) == 7:
-        return ("All days",)
+        return (messages.catalog.pgettext("all_days", "Все дни"),)
     labels = [", ".join(day_name[day] for day in days)]
     if len(days) >= 3 and days[-1] - days[0] + 1 == len(days):
         labels.extend(
@@ -325,33 +353,18 @@ def _coverage(period: DetailPeriod) -> str:
     return f"{hundredths // 100}.{hundredths % 100:02}%"
 
 
-def _estimate_label(estimate: VoiceHoursEstimate | None) -> str:
-    if estimate is None:
-        return ""
-    hours = estimate.expected_hours
-    if hours < Fraction(1, 60):
-        return "<1 min in voice to next level"
-    if hours < 1:
-        return f"~{round(hours * 60)} min in voice to next level"
-    if hours < 10:
-        return f"~{float(hours):.1f} h in voice to next level"
-    return f"~{round(hours):,} h in voice to next level"
-
-
-def _lifetime_labels(nodes: dict[str, Element], period: DetailPeriod | None) -> None:
+def _lifetime_labels(
+    nodes: dict[str, Element], period: DetailPeriod | None, messages: VoiceMessages
+) -> None:
     _labels(
         nodes,
         {
-            "lifetime-label": f"History since {period.first_date:%b %d, %Y}"
-            if period
-            else "No observed history",
-            "lifetime-coverage": f"Lifetime coverage {_coverage(period)}"
-            if period
-            else "Lifetime coverage —",
+            "lifetime-label": messages.history(period.first_date if period else None),
+            "lifetime-coverage": messages.coverage(
+                percentage=_coverage(period) if period else "—", scope="lifetime"
+            ),
         },
     )
-    current = nodes["coverage-label"]
-    replace_text(current, (current.text or "").replace("Coverage", "30-day coverage"))
 
 
 def _labels(nodes: dict[str, Element], values: Mapping[str, str]) -> None:
@@ -359,7 +372,9 @@ def _labels(nodes: dict[str, Element], values: Mapping[str, str]) -> None:
         replace_text(nodes[key], value)
 
 
-def _activity_chart(nodes: dict[str, Element], detail: ActivityDetail) -> None:
+def _activity_chart(
+    nodes: dict[str, Element], detail: ActivityDetail, messages: VoiceMessages
+) -> None:
     if not any(day.clock_change_spans for day in detail.days):
         style(nodes["clock-note"], "display", "none")
     for i, day in enumerate(detail.days):
@@ -381,7 +396,12 @@ def _activity_chart(nodes: dict[str, Element], detail: ActivityDetail) -> None:
             style(nodes[f"{prefix}-dst"], "display", "none")
         label = nodes.get(f"date-{i}")
         if label is not None:
-            replace_text(label, "Today" if i == 29 else f"{day.date:%d}")
+            replace_text(
+                label,
+                messages.catalog.pgettext("today", "Сегодня")
+                if i == 29
+                else f"{day.date:%d}",
+            )
 
 
 def _span_path(track: Element, spans: tuple[ClockSpan, ...], minimum: float) -> str:
@@ -408,7 +428,10 @@ def _span_path(track: Element, spans: tuple[ClockSpan, ...], minimum: float) -> 
 
 
 def _person_row(
-    nodes: dict[str, Element], presentation: PeoplePresentation, index: int
+    nodes: dict[str, Element],
+    presentation: PeoplePresentation,
+    index: int,
+    messages: VoiceMessages,
 ) -> None:
     prefix = f"person-{index}"
     people = presentation.detail.companions
@@ -416,13 +439,20 @@ def _person_row(
         style(nodes[f"{prefix}-placement"], "display", "none")
         return
     person = people[index]
-    name = safe_label(presentation.names.get(person.user_id, "Unknown user"))
+    name = safe_label(
+        presentation.names.get(
+            person.user_id,
+            messages.catalog.pgettext("unknown_user", "Неизвестный пользователь"),
+        )
+    )
     _labels(
         nodes,
         {
             f"{prefix}-name": f"{index + 1}. {name}",
-            f"{prefix}-shared": format_duration(person.shared_seconds, compact=True),
-            f"{prefix}-private": format_duration(person.private_seconds, compact=True),
+            f"{prefix}-shared": messages.duration(person.shared_seconds, compact=True),
+            f"{prefix}-private": messages.duration(
+                person.private_seconds, compact=True
+            ),
         },
     )
     color = presentation.colors.get(person.user_id)

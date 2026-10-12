@@ -17,6 +17,7 @@ from stupidbot.features.voice.profile.rendering.design import (
     document_bytes,
 )
 from stupidbot.features.voice.profile.rendering.raster import NativeRasterizer
+from stupidbot.i18n.policy import Language
 from tests.features.voice.profile.test_media import profile_at
 
 
@@ -31,7 +32,7 @@ class TestDesignXml(unittest.TestCase):
                 raster.query.return_value = {}
                 design = bind_design(
                     replace(profile_at(), history_since=since),
-                    CardIdentity("Name", "Guild"),
+                    CardIdentity("Name", "Guild", language=Language.EN),
                     ASSETS / "profile.svg",
                     raster,
                 )
@@ -59,7 +60,10 @@ class TestDesignXml(unittest.TestCase):
                     raster = MagicMock(spec=NativeRasterizer)
                     with self.assertRaises(DTDForbidden):
                         bind_design(
-                            profile_at(), CardIdentity("N", "G"), template, raster
+                            profile_at(),
+                            CardIdentity("N", "G", language=Language.EN),
+                            template,
+                            raster,
                         )
                     raster.query.assert_not_called()
                     raster.layers.assert_not_called()

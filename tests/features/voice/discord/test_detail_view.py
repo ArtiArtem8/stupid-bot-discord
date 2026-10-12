@@ -5,6 +5,7 @@ import unittest
 from io import BytesIO
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import discord
 
@@ -16,6 +17,7 @@ from stupidbot.features.voice.discord.view import (
     VoiceProfileView,
 )
 from stupidbot.features.voice.profile.media import RenderBusyError
+from stupidbot.i18n.policy import Language, PresentationContext
 from tests.features.voice.discord.test_profile_cog import interaction
 
 
@@ -37,7 +39,11 @@ class TestDetailView(unittest.IsolatedAsyncioTestCase):
         self.refresh = AsyncMock()
         self.reveal = AsyncMock(side_effect=self._render)
         self.view = VoiceProfileView(
-            10, self.refresh, reveal=self.reveal, private=False
+            10,
+            self.refresh,
+            reveal=self.reveal,
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         self.message = MagicMock(spec=discord.InteractionMessage)
         self.message.attachments = [attachment("voice-profile.webp")]

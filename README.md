@@ -67,6 +67,11 @@ remain available while Lavalink is unreachable.
 ## Voice profiles
 
 `/voice-profile` shows your server-local level, XP, voice time and session count.
+Cards and their details support Russian and English. Personal cards use your
+language and timezone; public cards use the server settings. Open cards keep
+that context when refreshed. After the second successful private profile use,
+an optional settings reminder can appear at most twice, at least 14 days apart.
+Choose Later or Do not remind me; the bot does not send unsolicited DMs.
 Activity, People and XP buttons add details to the same message.
 
 ![Demo Listener's voice profile: Mythic level 40, 360 hours 45 minutes in voice and 80 sessions. Synthetic data.](docs/assets/profile.png)

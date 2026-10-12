@@ -33,6 +33,7 @@ from stupidbot.features.voice.profile.rendering.svg_renderer import (
     SvgProfileRenderer,
 )
 from stupidbot.features.voice.timeline import VoiceTimeline
+from stupidbot.i18n.policy import Language
 
 
 def profile_at(level: int = 1) -> VoiceProfile:
@@ -60,7 +61,9 @@ class TestMedia(unittest.IsolatedAsyncioTestCase):
         detail = build_xp_detail(
             VoiceTimeline((), (), ()), 1, 1, datetime(2026, 10, 3, tzinfo=UTC)
         )
-        identity = DetailIdentity(CardIdentity("N", "G"), profile_at().appearance)
+        identity = DetailIdentity(
+            CardIdentity("N", "G", language=Language.EN), profile_at().appearance
+        )
 
         def render(_detail: XpDetail, _identity: DetailIdentity) -> bytes:
             loop.call_soon_threadsafe(started.set)
@@ -90,7 +93,7 @@ class TestMedia(unittest.IsolatedAsyncioTestCase):
         prepared.prepare_seconds = 0.1
         svg.prepare.return_value = prepared
         renderer = ProfileMediaRenderer(svg=svg)
-        identity = CardIdentity("Name", "Guild")
+        identity = CardIdentity("Name", "Guild", language=Language.EN)
         with patch.object(media_module, "encode_webp", return_value=b"webp") as encode:
             for level in (1, 5, 10):
                 self.assertEqual(
@@ -123,7 +126,9 @@ class TestMedia(unittest.IsolatedAsyncioTestCase):
         renderer = ProfileMediaRenderer(svg=svg)
         with patch.object(media_module, "encode_webp") as encode:
             with self.assertRaises(RuntimeError):
-                await renderer.render(profile_at(20), CardIdentity("N", "G"))
+                await renderer.render(
+                    profile_at(20), CardIdentity("N", "G", language=Language.EN)
+                )
         encode.assert_not_called()
         await renderer.aclose()
 
@@ -142,7 +147,9 @@ class TestMedia(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(renderer, "_render_sync", side_effect=render):
             waiter = asyncio.create_task(
-                renderer.render(profile_at(), CardIdentity("N", "G"))
+                renderer.render(
+                    profile_at(), CardIdentity("N", "G", language=Language.EN)
+                )
             )
             await started.wait()
             waiter.cancel()

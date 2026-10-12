@@ -5,6 +5,7 @@ import unittest
 from io import BytesIO
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import discord
 
@@ -19,6 +20,7 @@ from stupidbot.features.voice.discord.view import (
 )
 from stupidbot.features.voice.profile.build import build_profile
 from stupidbot.features.voice.profile.media import ProfileMedia, RenderBusyError
+from stupidbot.i18n.policy import Language, PresentationContext
 from tests.features.voice.discord.fixtures import profile_request
 from tests.features.voice.discord.test_profile_cog import interaction
 from tests.features.voice.fixtures import example
@@ -36,7 +38,11 @@ class TestDetailDelivery(unittest.IsolatedAsyncioTestCase):
         self.item.guild.get_member.return_value = self.item.user
         self.request = profile_request(self.item.guild, self.item.user)
         self.view = VoiceProfileView(
-            10, self._refresh, reveal=AsyncMock(), private=False
+            10,
+            self._refresh,
+            reveal=AsyncMock(),
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         self.view.message = MagicMock(spec=discord.InteractionMessage)
         self.view.message.attachments = [MagicMock(spec=discord.Attachment)]
@@ -70,16 +76,30 @@ class TestDetailDelivery(unittest.IsolatedAsyncioTestCase):
             ) as render,
         ):
             first = asyncio.create_task(
-                self.cog._prepare(self.item.guild, self.item.user)
+                self.cog._prepare(
+                    self.item.guild,
+                    self.item.user,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                )
             )
             await started.wait()
             followers = [
-                asyncio.create_task(self.cog._prepare(self.item.guild, self.item.user))
+                asyncio.create_task(
+                    self.cog._prepare(
+                        self.item.guild,
+                        self.item.user,
+                        context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                    )
+                )
                 for _ in range(2)
             ]
             release.set()
             requests = await asyncio.gather(first, *followers)
-            cached = await self.cog._prepare(self.item.guild, self.item.user)
+            cached = await self.cog._prepare(
+                self.item.guild,
+                self.item.user,
+                context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+            )
         build.assert_called_once()
         self.assertEqual(assets.await_count, 2)
         render.assert_awaited_once()
@@ -103,7 +123,11 @@ class TestDetailDelivery(unittest.IsolatedAsyncioTestCase):
             nonlocal rejected_count
             item = interaction(user_id=user_id)
             try:
-                await self.cog._prepare(self.item.guild, item.user)
+                await self.cog._prepare(
+                    self.item.guild,
+                    item.user,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                )
             except RenderBusyError:
                 rejected_count += 1
                 if rejected_count == 2:
@@ -225,6 +249,7 @@ class TestDetailDelivery(unittest.IsolatedAsyncioTestCase):
             profile_at(35).appearance,
             self.item.user.display_avatar,
             "UTC",
+            language=Language.EN,
         )
         self.view.look = old_look
         with (
@@ -259,7 +284,7 @@ class TestDetailDelivery(unittest.IsolatedAsyncioTestCase):
         guild.get_member.side_effect = [member, None, None]
         self.bot.get_user.side_effect = [user, None]
         self.assertEqual(
-            [self.cog._display_name(guild, i) for i in range(3)],
+            [self.cog._display_name(guild, i, Language.EN) for i in range(3)],
             ["Member name", "User name", "Unknown user"],
         )
         guild.fetch_member.assert_not_called()
@@ -276,7 +301,13 @@ class TestDetailDelivery(unittest.IsolatedAsyncioTestCase):
 
 class TestProfileButtonEmojis(unittest.IsolatedAsyncioTestCase):
     async def test_buttons_use_supplied_custom_emojis_without_text_labels(self) -> None:
-        view = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock(), private=False)
+        view = VoiceProfileView(
+            10,
+            AsyncMock(),
+            reveal=AsyncMock(),
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         expected = {
             ProfileAction.ACTIVITY: "<:statistic:1555684012809388173>",
             ProfileAction.PEOPLE: "<:social:1555684011177672725>",

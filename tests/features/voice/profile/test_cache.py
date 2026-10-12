@@ -13,19 +13,52 @@ from stupidbot.features.voice.profile.cache import (
 )
 from stupidbot.features.voice.profile.media import ProfileMedia, RenderBusyError
 from stupidbot.features.voice.profile.presentation import CardIdentity
+from stupidbot.i18n.policy import Language
 from tests.features.voice.profile.test_media import profile_at
 
 
 def rendered(data: bytes) -> RenderedProfile:
     return RenderedProfile(
-        ProfileMedia(data, "png"), profile_at(), CardIdentity("Name", "Guild")
+        ProfileMedia(data, "png"),
+        profile_at(),
+        CardIdentity("Name", "Guild", language=Language.EN),
     )
 
 
-KEY = MediaKey(1, 2, 0, 3, "UTC", "Name", "Guild", "a", None, "v1")
+KEY = MediaKey(
+    1,
+    2,
+    0,
+    3,
+    "UTC",
+    "Name",
+    "Guild",
+    "a",
+    None,
+    "v1",
+    language=Language.EN,
+    catalog_revision="catalog-v1",
+)
 
 
 class TestMediaCache(unittest.IsolatedAsyncioTestCase):
+    async def test_language_catalog_revision_and_timezone_separate_images(self) -> None:
+        cache = ProfileMediaCache()
+        self.addAsyncCleanup(cache.aclose)
+        variants = (
+            KEY,
+            replace(KEY, language=Language.RU),
+            replace(KEY, catalog_revision="catalog-v2"),
+            replace(KEY, timezone="Europe/Moscow"),
+        )
+        for index, key in enumerate(variants):
+            build = AsyncMock(return_value=rendered(str(index).encode()))
+            first = await cache.get(key, build)
+            second = await cache.get(key, build)
+            self.assertIs(first, second)
+            self.assertEqual(first.media.data, str(index).encode())
+            build.assert_awaited_once()
+
     async def test_detail_cancellation_retains_shared_slot_until_close_drains(
         self,
     ) -> None:
@@ -83,7 +116,8 @@ class TestMediaCache(unittest.IsolatedAsyncioTestCase):
     async def test_identity_bytes_count_towards_cache_budget(self) -> None:
         cache = ProfileMediaCache(byte_limit=5)
         card = replace(
-            rendered(b"png"), identity=CardIdentity("Name", "Guild", b"avatar")
+            rendered(b"png"),
+            identity=CardIdentity("Name", "Guild", b"avatar", language=Language.EN),
         )
         build = AsyncMock(return_value=card)
         await cache.get(KEY, build)

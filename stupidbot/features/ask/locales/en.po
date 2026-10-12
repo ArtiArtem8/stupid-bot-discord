@@ -89,4 +89,3 @@ msgstr "More likely yes"
 msgctxt "answer"
 msgid "Я не знаю"
 msgstr "I do not know"
-

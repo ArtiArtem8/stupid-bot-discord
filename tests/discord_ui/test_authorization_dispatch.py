@@ -4,6 +4,7 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import discord
 
@@ -12,6 +13,7 @@ from stupidbot.features.member_roles.member_roles_cog import ServerMonitorCog
 from stupidbot.features.voice.discord.profile_cog import VoiceProfileCog
 from stupidbot.features.voice.discord.view import ProfileAction, VoiceProfileView
 from stupidbot.features.wolfram.wolfram_cog import WolframCog
+from stupidbot.i18n.policy import Language, PresentationContext
 
 
 class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
@@ -130,7 +132,12 @@ class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
 
     async def test_view_dispatch_enforces_owner_and_current_block(self) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(9001, refresh, reveal=AsyncMock())
+        view = VoiceProfileView(
+            9001,
+            refresh,
+            reveal=AsyncMock(),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         self.item.data = {
             "custom_id": view.buttons[ProfileAction.REFRESH].custom_id,
             "component_type": 2,

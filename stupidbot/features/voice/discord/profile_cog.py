@@ -8,21 +8,22 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
 from typing import override
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from stupidbot import settings as config
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.features.preferences.reminders import maybe_remind
 from stupidbot.features.voice.discord.attachments import detail_embed
 from stupidbot.features.voice.discord.view import (
     ProfileDetail,
     ProfileLook,
     VoiceProfileView,
 )
+from stupidbot.features.voice.messages import VoiceMessages
 from stupidbot.features.voice.profile.asset_cache import ProfileAssetCache
 from stupidbot.features.voice.profile.build import build_profile
 from stupidbot.features.voice.profile.cache import (
@@ -49,6 +50,9 @@ from stupidbot.features.voice.profile.presentation import (
 )
 from stupidbot.features.voice.runtime import AnalyticsUnavailableError, VoiceAnalytics
 from stupidbot.features.voice.timeline import VoiceTimeline
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
+from stupidbot.i18n.policy import Language, PresentationContext
 
 logger = logging.getLogger(__name__)
 _TIMELINE_REQUEST_LIMIT = 4
@@ -120,9 +124,14 @@ class VoiceProfileCog(BaseCog):
         await self._media_renderer.aclose()
 
     @app_commands.command(
-        name="voice-profile", description="Ваш голосовой профиль на этом сервере"
+        name="voice-profile",
+        description=app_commands.locale_str(
+            "Ваш голосовой профиль на этом сервере", domain="voice"
+        ),
     )
-    @app_commands.describe(private="Показать карточку только вам")
+    @app_commands.describe(
+        private=app_commands.locale_str("Показать карточку только вам", domain="voice")
+    )
     @app_commands.guild_only()
     async def voice_profile(
         self,
@@ -130,11 +139,16 @@ class VoiceProfileCog(BaseCog):
         private: bool = True,
     ) -> None:
         if interaction.guild is None:
+            context = await interaction_context(interaction, private=True)
             await interaction.response.send_message(
-                "Команда доступна только на сервере.", ephemeral=True
+                catalog("voice", context.language).pgettext(
+                    "guild_only", "Команда доступна только на сервере."
+                ),
+                ephemeral=True,
             )
             return
         await interaction.response.defer(thinking=True, ephemeral=private)
+        context = await interaction_context(interaction, private=private)
         guild_id, user_id = interaction.guild.id, interaction.user.id
 
         async def refresh(button_interaction: discord.Interaction) -> None:
@@ -147,8 +161,12 @@ class VoiceProfileCog(BaseCog):
                 button_interaction, guild_id, user_id, view, detail
             )
 
-        view = VoiceProfileView(user_id, refresh, reveal=reveal, private=private)
-        await self._deliver(interaction, guild_id, user_id, view)
+        view = VoiceProfileView(
+            user_id, refresh, reveal=reveal, private=private, context=context
+        )
+        delivered = await self._deliver(interaction, guild_id, user_id, view)
+        if private and delivered:
+            await maybe_remind(interaction, context)
 
     async def _deliver(
         self,
@@ -156,22 +174,25 @@ class VoiceProfileCog(BaseCog):
         guild_id: int,
         user_id: int,
         view: VoiceProfileView,
-    ) -> None:
+    ) -> bool:
         if self._revision is None:
+            context = await interaction_context(interaction, private=True)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="Голосовая карточка временно недоступна.",
+                description=catalog("voice", context.language).pgettext(
+                    "unavailable", "Голосовая карточка временно недоступна."
+                ),
                 ephemeral=True,
             )
-            return
+            return False
         guild = self.bot.get_guild(guild_id)
         if guild is None:
             raise RuntimeError("Profile guild is unavailable")
         user = guild.get_member(user_id) or await guild.fetch_member(user_id)
         attachments: list[discord.File] = []
         try:
-            request = await self._prepare(guild, user)
+            request = await self._prepare(guild, user, context=view.context)
             attachments.append(self._attachment(request, interaction.filesize_limit))
             identity = DetailIdentity(request.identity, request.profile.appearance)
             for detail in view.revealed_order:
@@ -195,16 +216,21 @@ class VoiceProfileCog(BaseCog):
             view.message = message
             view.look = request.look
         except RenderBusyError:
+            context = await interaction_context(interaction, private=True)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                description="Карточки сейчас заняты. Попробуйте чуть позже.",
+                description=catalog("voice", context.language).pgettext(
+                    "busy", "Карточки сейчас заняты. Попробуйте чуть позже."
+                ),
                 ephemeral=True,
             )
+            return False
         finally:
             for attachment in attachments:
                 attachment.close()
                 attachment.fp.close()
+        return True
 
     async def _reveal(
         self,
@@ -247,7 +273,12 @@ class VoiceProfileCog(BaseCog):
             if isinstance(resolved, ProfileLook):
                 avatar = await self._asset_bytes(resolved.avatar, "avatar")
                 resolved = DetailIdentity(
-                    CardIdentity(resolved.display_name, resolved.guild_name, avatar),
+                    CardIdentity(
+                        resolved.display_name,
+                        resolved.guild_name,
+                        avatar,
+                        language=resolved.language,
+                    ),
                     resolved.appearance,
                 )
             return await self._detail_media(
@@ -294,7 +325,9 @@ class VoiceProfileCog(BaseCog):
                     _companion_colors, snapshot.timeline, ids, guild.id, timezone_label
                 )
                 names = {
-                    identifier: self._display_name(guild, identifier)
+                    identifier: self._display_name(
+                        guild, identifier, identity.card.language
+                    )
                     for identifier in (
                         *ids,
                         *(bot_id for bot_id, _ in people.bots.by_bot),
@@ -315,9 +348,17 @@ class VoiceProfileCog(BaseCog):
                 media = await self._media_renderer.render_xp(xp, identity)
         return media
 
-    def _display_name(self, guild: discord.Guild, user_id: int) -> str:
+    def _display_name(
+        self, guild: discord.Guild, user_id: int, language: Language
+    ) -> str:
         user = guild.get_member(user_id) or self.bot.get_user(user_id)
-        return user.display_name if user is not None else "Unknown user"
+        return (
+            user.display_name
+            if user is not None
+            else catalog("voice", language).pgettext(
+                "unknown_user", "Неизвестный пользователь"
+            )
+        )
 
     async def _timeline(self, guild_id: int) -> ProfileSnapshot:
         if (
@@ -349,18 +390,15 @@ class VoiceProfileCog(BaseCog):
         return ProfileSnapshot(snapshot.timeline, self._epoch, snapshot.generation)
 
     async def _prepare(
-        self, guild: discord.Guild, user: discord.Member
+        self,
+        guild: discord.Guild,
+        user: discord.Member,
+        *,
+        context: PresentationContext,
     ) -> ProfileRequest:
         if self._revision is None:
             raise RuntimeError("Profile renderer is unavailable")
-        timezone_name = config.VOICE_PROFILE_TIMEZONE
-        try:
-            _ = ZoneInfo(timezone_name)
-        except (ZoneInfoNotFoundError, ValueError):
-            logger.warning(
-                "Invalid voice profile timezone %s; using UTC", timezone_name
-            )
-            timezone_name = "UTC"
+        timezone_name = context.timezone.key
         snapshot = await asyncio.wait_for(self._timeline(guild.id), _DATA_TIMEOUT)
         as_of = datetime.now(UTC)
         avatar_asset = user.display_avatar.with_format(
@@ -381,6 +419,8 @@ class VoiceProfileCog(BaseCog):
             str(avatar_asset),
             str(guild_asset) if guild_asset else None,
             self._revision,
+            language=context.language,
+            catalog_revision=catalog("voice", context.language).revision,
         )
 
         async def build() -> RenderedProfile:
@@ -396,7 +436,11 @@ class VoiceProfileCog(BaseCog):
                 self._asset_bytes(guild_asset, "guild icon"),
             )
             identity = CardIdentity(
-                key.display_name, key.guild_name, avatar, guild_icon
+                key.display_name,
+                key.guild_name,
+                avatar,
+                guild_icon,
+                language=context.language,
             )
             media = await self._media_renderer.render(profile, identity)
             return RenderedProfile(media, profile, identity)
@@ -408,6 +452,7 @@ class VoiceProfileCog(BaseCog):
             card.profile.appearance,
             avatar_asset,
             timezone_name,
+            language=context.language,
         )
         return ProfileRequest(
             snapshot, as_of, card.profile, card.identity, look, card.media
@@ -419,9 +464,11 @@ class VoiceProfileCog(BaseCog):
         return discord.File(
             BytesIO(media.data),
             filename=f"voice-profile.{media.extension}",
-            description=(
-                f"Голосовой профиль {request.identity.display_name} "
-                f"на сервере {request.identity.guild_name}"
+            description=VoiceMessages(
+                catalog("voice", request.identity.language)
+            ).attachment(
+                display_name=request.identity.display_name,
+                guild_name=request.identity.guild_name,
             ),
         )
 

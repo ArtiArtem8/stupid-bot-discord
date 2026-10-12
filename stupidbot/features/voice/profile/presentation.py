@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
 
 from stupidbot.features.voice.profile.appearance import LevelAppearance
 from stupidbot.features.voice.profile.details import PeopleDetail
-
-if TYPE_CHECKING:
-    pass
+from stupidbot.i18n.policy import Language
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,3 +34,4 @@ class CardIdentity:
     guild_name: str
     avatar_bytes: bytes | None = None
     guild_icon_png: bytes | None = None
+    language: Language = field(kw_only=True)

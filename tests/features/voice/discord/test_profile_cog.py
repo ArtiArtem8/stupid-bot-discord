@@ -11,6 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import discord
 from discord.ext import commands
@@ -20,6 +21,8 @@ import stupidbot.features.voice.discord.collector_cog
 from stupidbot import settings as config
 from stupidbot.app.bot import StupidBot
 from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.features.preferences.models import Preferences, PreferenceScope
+from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.features.voice.discord import profile_cog as cog_module
 from stupidbot.features.voice.discord import view as view_module
 from stupidbot.features.voice.discord.profile_cog import (
@@ -34,6 +37,7 @@ from stupidbot.features.voice.profile.rendering.raster import Box
 from stupidbot.features.voice.repository import VoiceRepository
 from stupidbot.features.voice.runtime import VoiceAnalytics
 from stupidbot.features.voice.timeline import VoiceReplayState, VoiceTimeline
+from stupidbot.i18n.policy import Language, PresentationContext
 from tests.features.voice.discord.fixtures import profile_request
 from tests.features.voice.fixtures import human, record
 from tests.features.voice.profile.test_media import profile_at
@@ -85,6 +89,50 @@ async def invoke(cog: VoiceProfileCog, item: MagicMock, private: bool = True) ->
 
 
 class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
+    async def test_public_profile_freezes_guild_language_and_calendar_for_refresh(
+        self,
+    ) -> None:
+        _, database = await temporary_database(self)
+        repository = PreferencesRepository(database)
+        saved = await repository.save(
+            PreferenceScope.GUILD, 42, Preferences(Language.EN, "Asia/Krasnoyarsk")
+        )
+        await repository.save(
+            PreferenceScope.USER, 10, Preferences(Language.RU, "Europe/Moscow")
+        )
+        item = interaction()
+        item.guild_id = 42
+        item.extras = {}
+        item.client.preferences_repository = repository
+        bot = MagicMock()
+        bot.get_guild.return_value = item.guild
+        item.guild.get_member.return_value = item.user
+        cog = VoiceProfileCog(bot)
+        cog._revision = "test"
+        expected = PresentationContext(Language.EN, ZoneInfo("Asia/Krasnoyarsk"))
+        with patch.object(
+            cog, "_prepare", AsyncMock(side_effect=profile_request)
+        ) as prepare:
+            await invoke(cog, item, private=False)
+            delivered = item.edit_original_response.await_args
+            if delivered is None:
+                self.fail("Expected a delivered profile")
+            view = delivered.kwargs["view"]
+            self.assertIsInstance(view, VoiceProfileView)
+            if not isinstance(view, VoiceProfileView):
+                self.fail("Expected profile controls")
+            self.addCleanup(view.stop)
+            self.assertEqual(view.context, expected)
+            await repository.save(
+                PreferenceScope.GUILD,
+                42,
+                Preferences(Language.RU, "UTC", saved.revision),
+            )
+            await view.perform(ProfileAction.REFRESH, interaction())
+            self.assertEqual(prepare.await_count, 2)
+            for call in prepare.await_args_list:
+                self.assertEqual(call.kwargs["context"], expected)
+
     async def test_gif_assets_are_reused_across_new_png_and_webp_cards(self) -> None:
         bot = MagicMock()
         cog = VoiceProfileCog(bot)
@@ -135,16 +183,36 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             ) as render,
         ):
             first = cog._attachment(
-                await cog._prepare(item.guild, item.user), item.filesize_limit
+                await cog._prepare(
+                    item.guild,
+                    item.user,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                ),
+                item.filesize_limit,
             )
             second = cog._attachment(
-                await cog._prepare(item.guild, item.user), item.filesize_limit
+                await cog._prepare(
+                    item.guild,
+                    item.user,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                ),
+                item.filesize_limit,
             )
             third = cog._attachment(
-                await cog._prepare(item.guild, item.user), item.filesize_limit
+                await cog._prepare(
+                    item.guild,
+                    item.user,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                ),
+                item.filesize_limit,
             )
             fourth = cog._attachment(
-                await cog._prepare(item.guild, item.user), item.filesize_limit
+                await cog._prepare(
+                    item.guild,
+                    item.user,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                ),
+                item.filesize_limit,
             )
         self.assertEqual(first.filename, "voice-profile.webp")
         self.assertEqual(second.filename, "voice-profile.webp")
@@ -200,7 +268,12 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         ):
             for item in (first, second):
                 attachment = cog._attachment(
-                    await cog._prepare(first.guild, item.user), item.filesize_limit
+                    await cog._prepare(
+                        first.guild,
+                        item.user,
+                        context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                    ),
+                    item.filesize_limit,
                 )
                 attachment.close()
         self.assertEqual(render.await_count, 2)
@@ -324,7 +397,11 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 item.response.defer.assert_awaited_once_with(
                     thinking=True, ephemeral=private
                 )
-                prepare.assert_awaited_once_with(item.guild, item.user)
+                prepare.assert_awaited_once_with(
+                    item.guild,
+                    item.user,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                )
                 call = build.call_args
                 if call is None:
                     self.fail("The command must build its profile attachment")
@@ -467,8 +544,22 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(return_value=ProfileMedia(b"animated", "webp", b"png")),
             ) as render,
         ):
-            first = cog._attachment(await cog._prepare(item.guild, item.user), 3)
-            second = cog._attachment(await cog._prepare(item.guild, item.user), 10)
+            first = cog._attachment(
+                await cog._prepare(
+                    item.guild,
+                    item.user,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                ),
+                3,
+            )
+            second = cog._attachment(
+                await cog._prepare(
+                    item.guild,
+                    item.user,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                ),
+                10,
+            )
         self.assertEqual(first.filename, "voice-profile.png")
         self.assertEqual(second.filename, "voice-profile.webp")
         self.assertIsNot(first, second)
@@ -533,7 +624,13 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
 class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
     async def test_other_user_cannot_use_public_controls(self) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(10, refresh, reveal=AsyncMock(), private=False)
+        view = VoiceProfileView(
+            10,
+            refresh,
+            reveal=AsyncMock(),
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         item = interaction(user_id=11)
         self.assertFalse(await view.interaction_check(item))
         refresh.assert_not_awaited()
@@ -545,8 +642,19 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
     async def test_private_view_hides_delete_and_public_view_has_trash(
         self,
     ) -> None:
-        private = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock())
-        public = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock(), private=False)
+        private = VoiceProfileView(
+            10,
+            AsyncMock(),
+            reveal=AsyncMock(),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
+        public = VoiceProfileView(
+            10,
+            AsyncMock(),
+            reveal=AsyncMock(),
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         self.assertEqual(len(private.children), 4)
         self.assertNotIn(ProfileAction.DELETE, private.buttons)
         self.assertEqual(len(public.children), 5)
@@ -561,7 +669,13 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
 
     async def test_owner_can_delete_public_card_and_stop_controls(self) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(10, refresh, reveal=AsyncMock(), private=False)
+        view = VoiceProfileView(
+            10,
+            refresh,
+            reveal=AsyncMock(),
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         item = interaction()
         self.assertTrue(await view.interaction_check(item))
         await view.buttons[ProfileAction.DELETE].callback(item)
@@ -571,7 +685,13 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
         refresh.assert_not_awaited()
 
     async def test_delete_already_missing_card_stops_controls(self) -> None:
-        view = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock(), private=False)
+        view = VoiceProfileView(
+            10,
+            AsyncMock(),
+            reveal=AsyncMock(),
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         item = interaction()
         item.delete_original_response.side_effect = discord.NotFound(
             MagicMock(status=404), "Unknown message"
@@ -583,7 +703,11 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
         for private in (False, True):
             with self.subTest(private=private):
                 view = VoiceProfileView(
-                    10, AsyncMock(), reveal=AsyncMock(), private=private
+                    10,
+                    AsyncMock(),
+                    reveal=AsyncMock(),
+                    private=private,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
                 )
                 message = MagicMock(spec=discord.InteractionMessage)
                 message.edit = AsyncMock()
@@ -597,7 +721,12 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
     async def test_timeout_before_delivery_and_after_external_delete_is_safe(
         self,
     ) -> None:
-        view = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock())
+        view = VoiceProfileView(
+            10,
+            AsyncMock(),
+            reveal=AsyncMock(),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         await view.on_timeout()
         self.assertTrue(view.is_finished())
         message = MagicMock(spec=discord.InteractionMessage)
@@ -609,7 +738,12 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(view.is_finished())
 
     async def test_timeout_logs_http_failure_and_keeps_controls_stopped(self) -> None:
-        view = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock())
+        view = VoiceProfileView(
+            10,
+            AsyncMock(),
+            reveal=AsyncMock(),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         message = MagicMock(spec=discord.InteractionMessage)
         message.edit = AsyncMock(
             side_effect=discord.HTTPException(MagicMock(status=503), "Unavailable")
@@ -621,7 +755,13 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(view.is_finished())
 
     async def test_control_errors_use_global_feedback_with_original_cause(self) -> None:
-        view = VoiceProfileView(10, AsyncMock(), reveal=AsyncMock(), private=False)
+        view = VoiceProfileView(
+            10,
+            AsyncMock(),
+            reveal=AsyncMock(),
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         item = interaction()
         error = discord.HTTPException(MagicMock(status=503), "Unavailable")
         with patch.object(
@@ -649,7 +789,13 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
             nonlocal message_exists
             message_exists = False
 
-        view = VoiceProfileView(10, refresh, reveal=AsyncMock(), private=False)
+        view = VoiceProfileView(
+            10,
+            refresh,
+            reveal=AsyncMock(),
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         first, second = interaction(), interaction()
         second.response.defer.side_effect = deletion_deferred.set
         second.delete_original_response.side_effect = delete
@@ -678,7 +824,12 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
             message.edit.assert_not_awaited()
             view.message = message
 
-        view = VoiceProfileView(10, refresh, reveal=AsyncMock())
+        view = VoiceProfileView(
+            10,
+            refresh,
+            reveal=AsyncMock(),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         rendering = asyncio.create_task(
             view.buttons[ProfileAction.REFRESH].callback(interaction())
         )
@@ -693,7 +844,13 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
 
     async def test_queued_clicks_cannot_refresh_after_delete(self) -> None:
         refresh = AsyncMock()
-        view = VoiceProfileView(10, refresh, reveal=AsyncMock(), private=False)
+        view = VoiceProfileView(
+            10,
+            refresh,
+            reveal=AsyncMock(),
+            private=False,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         item = interaction()
         await view.buttons[ProfileAction.DELETE].callback(item)
         await view.buttons[ProfileAction.REFRESH].callback(interaction())
@@ -711,7 +868,12 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
             await release.wait()
             await item.edit_original_response(attachments=[updated])
 
-        view = VoiceProfileView(10, refresh, reveal=AsyncMock())
+        view = VoiceProfileView(
+            10,
+            refresh,
+            reveal=AsyncMock(),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         updated = discord.File(BytesIO(b"image"), filename="updated.png")
         first = interaction()
         second = interaction()

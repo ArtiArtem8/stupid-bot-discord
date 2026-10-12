@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Self, override
 
@@ -22,6 +22,9 @@ from stupidbot.features.voice.discord.attachments import (
 )
 from stupidbot.features.voice.profile.appearance import LevelAppearance
 from stupidbot.features.voice.profile.media import RenderBusyError
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
+from stupidbot.i18n.policy import Language, PresentationContext
 
 STATISTIC_EMOJI = "<:statistic:1555684012809388173>"
 
@@ -102,10 +105,12 @@ class VoiceProfileView(discord.ui.View):
         *,
         reveal: Callable[[discord.Interaction, ProfileDetail], Awaitable[discord.File]],
         private: bool = True,
+        context: PresentationContext,
     ) -> None:
         super().__init__(timeout=600)
         self.owner_id = owner_id
         self.private = private
+        self.context = context
         self.revealed_order: list[ProfileDetail] = []
         self.look: ProfileLook | None = None
         self.message: discord.InteractionMessage | None = None
@@ -135,8 +140,12 @@ class VoiceProfileView(discord.ui.View):
     @override
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.owner_id:
+            context = await interaction_context(interaction, private=True)
             await interaction.response.send_message(
-                "Это не ваша карточка.", ephemeral=True
+                catalog("voice", context.language).pgettext(
+                    "not_your_card", "Это не ваша карточка."
+                ),
+                ephemeral=True,
             )
             return False
         return True
@@ -153,8 +162,12 @@ class VoiceProfileView(discord.ui.View):
         ):
             return
         if action is ProfileAction.REFRESH and self._action_lock.locked():
+            context = await interaction_context(interaction, private=True)
             await interaction.response.send_message(
-                "Карточка уже обновляется.", ephemeral=True
+                catalog("voice", context.language).pgettext(
+                    "already_refreshing", "Карточка уже обновляется."
+                ),
+                ephemeral=True,
             )
             return
         await interaction.response.defer()
@@ -176,20 +189,27 @@ class VoiceProfileView(discord.ui.View):
                 if detail not in self.revealed_order:
                     await self._reveal(interaction, detail)
         except RenderBusyError:
+            context = await interaction_context(interaction, private=True)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                description="Карточки сейчас заняты. Попробуйте чуть позже.",
+                description=catalog("voice", context.language).pgettext(
+                    "busy", "Карточки сейчас заняты. Попробуйте чуть позже."
+                ),
                 ephemeral=True,
             )
         except Exception:
             # This UI boundary owns retry feedback; no names or statistics in logs.
             logger.warning("Voice profile %s failed", action.value)
             logger.debug("Voice profile action failure", exc_info=True)
+            context = await interaction_context(interaction, private=True)
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="Не удалось обновить карточку. Попробуйте ещё раз.",
+                description=catalog("voice", context.language).pgettext(
+                    "refresh_failed",
+                    "Не удалось обновить карточку. Попробуйте ещё раз.",
+                ),
                 ephemeral=True,
             )
 
@@ -265,3 +285,4 @@ class ProfileLook:
     appearance: LevelAppearance
     avatar: discord.Asset
     timezone_label: str
+    language: Language = field(kw_only=True)

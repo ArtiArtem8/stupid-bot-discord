@@ -30,7 +30,7 @@ class PreferencesCog(BaseCog):
         ),
     )
     async def settings(self, interaction: discord.Interaction) -> None:
-        await self.open(interaction, PreferenceScope.USER)
+        await open_settings(interaction, self.repository, PreferenceScope.USER)
 
     @app_commands.command(
         name="settings-server",
@@ -42,38 +42,39 @@ class PreferencesCog(BaseCog):
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.checks.has_permissions(manage_guild=True)
     async def settings_server(self, interaction: discord.Interaction) -> None:
-        await self.open(interaction, PreferenceScope.GUILD)
+        await open_settings(interaction, self.repository, PreferenceScope.GUILD)
 
-    async def open(
-        self, interaction: discord.Interaction, scope: PreferenceScope
-    ) -> None:
-        """Freeze the viewer's context, then read the selected settings scope."""
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        context = await interaction_context(interaction, private=True)
-        subject_id = (
-            interaction.user.id
-            if scope is PreferenceScope.USER
-            else interaction.guild_id
-        )
-        if subject_id is None:
-            raise app_commands.NoPrivateMessage()
-        initial = await self.repository.get(scope, subject_id)
-        locale = (
-            interaction.locale
-            if scope is PreferenceScope.USER
-            else interaction.guild_locale
-        )
-        view = SettingsView(
-            owner_id=interaction.user.id,
-            scope=scope,
-            subject_id=subject_id,
-            repository=self.repository,
-            initial=initial,
-            context=context,
-            audience_locale=locale.value if locale is not None else None,
-            fallback_timezone=fallback_timezone(),
-        )
-        view.message = await interaction.edit_original_response(view=view)
+
+async def open_settings(
+    interaction: discord.Interaction,
+    repository: PreferencesRepository,
+    scope: PreferenceScope,
+) -> None:
+    """Freeze the viewer's context, then read the selected settings scope."""
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    context = await interaction_context(interaction, private=True)
+    subject_id = (
+        interaction.user.id if scope is PreferenceScope.USER else interaction.guild_id
+    )
+    if subject_id is None:
+        raise app_commands.NoPrivateMessage()
+    initial = await repository.get(scope, subject_id)
+    locale = (
+        interaction.locale
+        if scope is PreferenceScope.USER
+        else interaction.guild_locale
+    )
+    view = SettingsView(
+        owner_id=interaction.user.id,
+        scope=scope,
+        subject_id=subject_id,
+        repository=repository,
+        initial=initial,
+        context=context,
+        audience_locale=locale.value if locale is not None else None,
+        fallback_timezone=fallback_timezone(),
+    )
+    view.message = await interaction.edit_original_response(view=view)
 
 
 async def setup(bot: "StupidBot") -> None:

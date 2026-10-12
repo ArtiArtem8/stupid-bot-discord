@@ -90,4 +90,3 @@ msgstr "Скорее да"
 msgctxt "answer"
 msgid "Я не знаю"
 msgstr "Я не знаю"
-

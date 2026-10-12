@@ -25,6 +25,7 @@ from stupidbot.features.voice.profile.presentation import (
 from stupidbot.features.voice.profile.rendering.design import bind_design
 from stupidbot.features.voice.read_models import VoiceXpBreakdown
 from stupidbot.features.voice.timeline import VoiceTimeline
+from stupidbot.i18n.policy import Language
 from tests.features.voice.profile.test_media import profile_at
 
 
@@ -34,6 +35,55 @@ from tests.features.voice.profile.test_media import profile_at
     "Set VOICE_PROFILE_NATIVE=1 with Inkscape installed to run native integration",
 )
 class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
+    async def test_ru_en_main_details_and_animation_have_distinct_pixels(self) -> None:
+        renderer = ProfileMediaRenderer()
+        outputs: dict[Language, list[bytes]] = {}
+        try:
+            await renderer.astart()
+            timeline = VoiceTimeline((), (), ())
+            as_of = datetime(2026, 10, 3, 12, tzinfo=UTC)
+            for language in Language:
+                identity = CardIdentity(
+                    "Александр Оченьдлиннаяфамилия " * 4,
+                    "Very long server name " * 6,
+                    language=language,
+                )
+                profile = replace(
+                    profile_at(35), timezone_label="America/Argentina/Buenos_Aires"
+                )
+                detail_identity = DetailIdentity(identity, profile.appearance)
+                still = await renderer.render(profile_at(10), identity)
+                animated = await renderer.render(profile, identity)
+                cards = [
+                    still,
+                    await renderer.render_activity(
+                        build_activity_detail(timeline, 1, 1, as_of), detail_identity
+                    ),
+                    await renderer.render_people(
+                        PeoplePresentation(
+                            build_people_detail(timeline, 1, 1, as_of), {}, {}
+                        ),
+                        detail_identity,
+                    ),
+                    await renderer.render_xp(
+                        build_xp_detail(timeline, 1, 1, as_of), detail_identity
+                    ),
+                ]
+                outputs[language] = [card.data for card in cards]
+                self.assertEqual(animated.extension, "webp")
+                with Image.open(BytesIO(animated.data)) as image:
+                    self.assertTrue(getattr(image, "is_animated", False))
+                for card in cards:
+                    with Image.open(BytesIO(card.data)) as image:
+                        self.assertEqual(image.size, (960, 480))
+                outputs[language].append(animated.data)
+            for russian, english in zip(
+                outputs[Language.RU], outputs[Language.EN], strict=True
+            ):
+                self.assertNotEqual(russian, english)
+        finally:
+            await renderer.aclose()
+
     async def test_history_footer_fits_without_overlapping_timezone(self) -> None:
         renderer = ProfileMediaRenderer()
         try:
@@ -49,7 +99,7 @@ class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
                             history_since=since,
                             timezone_label="America/Argentina/Buenos_Aires",
                         ),
-                        CardIdentity("Name", "Guild"),
+                        CardIdentity("Name", "Guild", language=Language.EN),
                         renderer.svg.template,
                         renderer.svg.raster,
                     )
@@ -86,7 +136,9 @@ class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
                             duration=100,
                             loop=0,
                         )
-                identity = CardIdentity("Name", "Guild", output.getvalue())
+                identity = CardIdentity(
+                    "Name", "Guild", output.getvalue(), language=Language.EN
+                )
 
                 def render_pair(
                     identity: CardIdentity = identity,
@@ -123,6 +175,7 @@ class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
                 CardIdentity(
                     "Александр Оченьдлиннаяфамилия " * 4,
                     "Очень длинное название сервера " * 4,
+                    language=Language.EN,
                 ),
                 profile_at(35).appearance,
             )
@@ -163,7 +216,9 @@ class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
             process = raster._process
             self.assertIsNotNone(pid)
             self.assertIsNotNone(process)
-            identity = CardIdentity("Voice Listener", "Voice Guild", b"damaged-avatar")
+            identity = CardIdentity(
+                "Voice Listener", "Voice Guild", b"damaged-avatar", language=Language.EN
+            )
             lower = await renderer.render(profile_at(10), identity)
             self.assertEqual(lower.extension, "png")
             with Image.open(BytesIO(lower.data)) as image:

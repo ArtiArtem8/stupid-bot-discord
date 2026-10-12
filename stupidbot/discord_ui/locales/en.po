@@ -67,4 +67,3 @@ msgstr "This is not your message."
 msgctxt "blocked"
 msgid "⛔ Доступ к командам запрещён."
 msgstr "⛔ You cannot use commands."
-

@@ -41,6 +41,7 @@ from stupidbot.features.voice.timeline import (
     VoiceTimeline,
     build_timeline,
 )
+from stupidbot.i18n.policy import Language
 from tests.features.voice.fixtures import at, example, human, record
 from tests.features.voice.profile.test_media import profile_at
 
@@ -57,7 +58,8 @@ class TestDetailBindings(unittest.TestCase):
         self.raster.layers.side_effect = layers
         self.renderer = DetailCardRenderer(self.raster)
         self.identity = DetailIdentity(
-            CardIdentity("Александр " * 20, "Guild " * 40), profile_at(35).appearance
+            CardIdentity("Александр " * 20, "Guild " * 40, language=Language.EN),
+            profile_at(35).appearance,
         )
         self.as_of = datetime(2026, 9, 21, 12, tzinfo=UTC)
 

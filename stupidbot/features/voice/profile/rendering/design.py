@@ -21,6 +21,7 @@ from defusedxml.ElementTree import fromstring
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from stupidbot.common.json import JsonObject, get_json, is_json_object
+from stupidbot.features.voice.messages import VoiceMessages
 from stupidbot.features.voice.profile.appearance import (
     TIER_ORDER,
     LevelAppearance,
@@ -30,6 +31,7 @@ from stupidbot.features.voice.profile.model import VoiceProfile
 from stupidbot.features.voice.profile.presentation import CardIdentity
 from stupidbot.features.voice.profile.rendering.raster import Box, NativeRasterizer
 from stupidbot.features.voice.profile.rendering.theme import TIER_EMBLEM
+from stupidbot.i18n.catalog import catalog
 
 SVG: Final = "http://www.w3.org/2000/svg"
 XLINK: Final = "http://www.w3.org/1999/xlink"
@@ -312,6 +314,10 @@ def bind_design(
     tokens = theme_tokens(template.parent / "themes.json", profile.appearance)
     apply_tokens(root, tokens)
     _bind_metrics(nodes, profile, identity)
+    for identifier, label in (
+        VoiceMessages(catalog("voice", identity.language)).labels("profile").items()
+    ):
+        replace_text(nodes[identifier], label)
     notes = _bind_images(nodes, identity)
     # Bind only the fill length; preserve the designer's placement transform.
     track = nodes["progress-track"]
@@ -364,22 +370,19 @@ def _bind_metrics(
         or profile.session_count < 0
     ):
         raise ValueError("Negative profile metrics are not valid")
+    messages = VoiceMessages(catalog("voice", identity.language))
     values = {
         "display-name": safe_label(identity.display_name),
         "guild-name": safe_label(identity.guild_name),
-        "tier-name": profile.appearance.tier.value.upper(),
+        "tier-name": messages.tier(profile.appearance.tier),
         "level-value": str(profile.level),
         "total-xp": f"{profile.total_xp:,} XP",
         "progress-label": (
             f"{profile.level_earned_xp:,} / {profile.level_required_xp:,} XP"
         ),
-        "voice-value": format_duration(profile.total_voice_seconds),
+        "voice-value": messages.duration(profile.total_voice_seconds),
         "sessions-value": f"{profile.session_count:,}",
-        "scope-label": (
-            f"On this server · history since {profile.history_since:%b %d, %Y}"
-            if profile.history_since is not None
-            else "On this server · no observed history"
-        ),
+        "scope-label": messages.scope(profile.history_since),
         "timezone-label": safe_label(profile.timezone_label, limit=64),
     }
     for key, value in values.items():
@@ -468,16 +471,3 @@ def _split_layers(root: Element) -> tuple[bytes, bytes]:
         if item.get("id") == "static-layer":
             style(item, "display", "none")
     return document_bytes(static_root), document_bytes(star_root)
-
-
-def format_duration(seconds: float, *, compact: bool = False) -> str:
-    """Format elapsed time; optionally abbreviate very large hour totals."""
-    if 0 < seconds < 60:
-        return "<1m"
-    minutes = int(seconds // 60)
-    if compact and minutes >= 60_000:
-        hours = minutes / 60
-        if hours >= 1_000_000:
-            return f"{hours / 1_000_000:.1f}M h"
-        return f"{hours / 1000:.1f}k h"
-    return f"{minutes // 60:,}h {minutes % 60:02}m"
