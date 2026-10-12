@@ -193,16 +193,24 @@ class SafeEmbed(discord.Embed):
     ) -> Self:
         """Add a field whose value remains inside a complete code fence.
 
-        The language tag and fence overhead are reserved before content is
-        truncated, so the resulting field never loses its closing fence.
+        Reserve the language tag and fences before truncating the content.
+        Non-strict fields also respect the remaining aggregate budget and are
+        omitted if the name and a complete fence cannot fit. Strict mode rejects
+        a field limit smaller than the fence; aggregate overflow still raises
+        CharacterLimitExceededError through safe_add_field.
         """
+        name = truncate_text(str(name), self._limits.field_name)
+        budget = self._limits.field_value
+        if not strict:
+            budget = min(budget, self._limits.max_total - len(self) - len(name))
         # Two three-backtick fences, the language tag, and two newlines.
         overhead = len(lang) + 8
-        available = self._limits.field_value - overhead
+        if budget < overhead:
+            if strict:
+                raise ValueError("Code fence exceeds the embed field limit")
+            return self
 
-        if len(value) > available:
-            value = truncate_text(value, available)
-
+        value = truncate_text(value, budget - overhead)
         code_value = f"```{lang}\n{value}\n```"
         return self.safe_add_field(
             name=name, value=code_value, inline=inline, strict=strict

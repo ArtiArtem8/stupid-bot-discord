@@ -15,6 +15,39 @@ from stupidbot.discord_ui.embeds import (
 
 
 class TestSafeEmbed(unittest.TestCase):
+    def test_non_strict_code_field_preserves_fences_at_total_budget(self) -> None:
+        embed = SafeEmbed(limits=EmbedLimits(max_total=30), title="title")
+        embed.add_code_field(name="code", value="x" * 50, lang="py", strict=False)
+        self.assertEqual(len(embed.fields), 1)
+        value = embed.fields[0].value
+        if value is None:
+            self.fail("Expected a complete code field")
+        self.assertTrue(value.startswith("```py\n"))
+        self.assertTrue(value.endswith("\n```"))
+        self.assertEqual(len(embed), 30)
+
+    def test_non_strict_code_field_is_omitted_when_fence_cannot_fit(self) -> None:
+        for limits in (EmbedLimits(max_total=10), EmbedLimits(field_value=9)):
+            with self.subTest(limits=limits):
+                embed = SafeEmbed(limits=limits)
+                result = embed.add_code_field(
+                    name="code", value="x", lang="py", strict=False
+                )
+                self.assertIs(result, embed)
+                self.assertEqual(embed.fields, [])
+
+    def test_strict_code_field_rejects_limit_smaller_than_its_fence(self) -> None:
+        embed = SafeEmbed(limits=EmbedLimits(field_value=9))
+        with self.assertRaisesRegex(ValueError, "fence"):
+            embed.add_code_field(name="code", value="x", lang="py")
+        self.assertEqual(embed.fields, [])
+
+    def test_strict_code_field_preserves_aggregate_limit_failure(self) -> None:
+        embed = SafeEmbed(limits=EmbedLimits(max_total=20), title="title")
+        with self.assertRaises(CharacterLimitExceededError):
+            embed.add_code_field(name="code", value="x" * 50, lang="py")
+        self.assertEqual(embed.fields, [])
+
     def test_setters_share_total_budget_and_reuse_replaced_text(self) -> None:
         embed = SafeEmbed(description="x" * 4096)
         embed.set_footer(text="f" * 2048)
