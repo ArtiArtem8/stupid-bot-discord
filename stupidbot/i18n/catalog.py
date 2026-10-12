@@ -15,7 +15,13 @@ from stupidbot.i18n.policy import Language
 
 logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[1]
-DOMAINS = ("features/preferences", "features/ask", "discord_ui", "features/voice")
+DOMAINS = (
+    "features/preferences",
+    "features/ask",
+    "discord_ui",
+    "features/voice",
+    "features/music",
+)
 
 
 def pgettext_noop(_context: str, message: str) -> str:

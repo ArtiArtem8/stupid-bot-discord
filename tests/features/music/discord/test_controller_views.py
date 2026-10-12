@@ -4,6 +4,7 @@ import asyncio
 import unittest
 from typing import cast, override
 from unittest.mock import AsyncMock, MagicMock, call, patch
+from zoneinfo import ZoneInfo
 
 import aiohttp
 import discord
@@ -17,6 +18,7 @@ from stupidbot.features.music.discord.views import (
 )
 from stupidbot.features.music.discord.views import controller as controller_module
 from stupidbot.features.music.playback.models import PlaybackAttempt
+from stupidbot.i18n.policy import Language, PresentationContext
 from tests.features.music.fixtures import make_entry
 
 
@@ -47,6 +49,7 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
             attempt=attempt,
             on_stop_callback=on_stop,
             on_player_failure=AsyncMock(),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         message = MagicMock()
         message.edit = AsyncMock(
@@ -88,6 +91,7 @@ class TestTrackControllerManager(unittest.IsolatedAsyncioTestCase):
             attempt=PlaybackAttempt(1, make_entry("playing")),
             on_stop_callback=None,
             on_player_failure=AsyncMock(),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         with patch.object(view, "_loop", side_effect=update):
             view.start_updater()
@@ -596,6 +600,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             attempt=attempt,
             on_stop_callback=stop_callback,
             on_player_failure=AsyncMock(),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         return view, player, stop_callback
 
@@ -828,6 +833,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             attempt=attempt,
             on_stop_callback=on_stop,
             on_player_failure=on_player_failure,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         player.toggle_pause_for_attempt = AsyncMock(
             side_effect=aiohttp.ClientConnectionError("down")
@@ -965,6 +971,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             attempt=attempt,
             on_stop_callback=on_stop,
             on_player_failure=on_player_failure,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
 

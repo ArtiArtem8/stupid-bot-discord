@@ -1,0 +1,494 @@
+# Russian translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: ru\n"
+"Language-Team: ru <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && "
+"(n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgctxt "session_requester"
+msgid ""
+"\n"
+"**Заказчик:** <@{user_id:d}>"
+msgstr ""
+"\n"
+"**Заказчик:** <@{user_id:d}>"
+
+#, python-brace-format
+msgctxt "session_people"
+msgid ""
+"\n"
+"**Заказчиков:** {count:d} чел."
+msgstr ""
+"\n"
+"**Заказчиков:** {count:d} чел."
+
+#, python-brace-format
+msgctxt "session_skips"
+msgid " (скипов: {count:d})"
+msgstr " (скипов: {count:d})"
+
+msgctxt "ui"
+msgid "*(пусто)*"
+msgstr "*(пусто)*"
+
+#, python-brace-format
+msgctxt "session_tracks"
+msgid "**Всего:** {count:d} шт."
+msgstr "**Всего:** {count:d} шт."
+
+msgctxt "ui"
+msgid "*Тот же самый трек*"
+msgstr "*Тот же самый трек*"
+
+msgctxt "command"
+msgid "URL или название"
+msgstr "URL или название"
+
+msgctxt "command"
+msgid "off — выкл, queue — повтор очереди, track - повтор трека"
+msgstr "off — выкл, queue — повтор очереди, track - повтор трека"
+
+#, python-brace-format
+msgctxt "days"
+msgid "{count:d} день"
+msgid_plural "{count:d} дня"
+msgstr[0] "{count:d} день"
+msgstr[1] "{count:d} дня"
+msgstr[2] "{count:d} дней"
+
+#, python-brace-format
+msgctxt "track_exception"
+msgid ""
+"{link}\n"
+"**Причина:** Источник временно недоступен или не ответил."
+msgstr ""
+"{link}\n"
+"**Причина:** Источник временно недоступен или не ответил."
+
+msgctxt "ui"
+msgid "В общем:"
+msgstr "В общем:"
+
+msgctxt "ui"
+msgid "В этой сессии нет треков."
+msgstr "В этой сессии нет треков."
+
+msgctxt "command"
+msgid "Включить/выключить повтор."
+msgstr "Включить/выключить повтор."
+
+msgctxt "internal_error"
+msgid "Внутренняя ошибка музыкального модуля. Детали записаны в лог."
+msgstr "Внутренняя ошибка музыкального модуля. Детали записаны в лог."
+
+msgctxt "command"
+msgid "Воспроизведение музыки с YT, SoundCloud, Y.Music и VK"
+msgstr "Воспроизведение музыки с YT, SoundCloud, Y.Music и VK"
+
+msgctxt "ui"
+msgid "Воспроизведение остановлено"
+msgstr "Воспроизведение остановлено"
+
+msgctxt "ui"
+msgid "Воспроизведение приостановлено"
+msgstr "Воспроизведение приостановлено"
+
+msgctxt "ui"
+msgid "Воспроизведение продолжено"
+msgstr "Воспроизведение продолжено"
+
+msgctxt "recovering"
+msgid "Восстанавливаю соединение. Попробуй ещё раз после завершения."
+msgstr "Восстанавливаю соединение. Попробуй ещё раз после завершения."
+
+msgctxt "ui"
+msgid "Восстановлен"
+msgstr "Восстановлен"
+
+#, python-brace-format
+msgctxt "join_timeout"
+msgid ""
+"Время подключения к {destination} **истекло**\n"
+"*Попробуйте сменить регион этого канала!*"
+msgstr ""
+"Время подключения к {destination} **истекло**\n"
+"*Попробуйте сменить регион этого канала!*"
+
+msgctxt "not_in_voice"
+msgid "Вы должны быть в голосовом канале!"
+msgstr "Вы должны быть в голосовом канале!"
+
+msgctxt "ui"
+msgid "Вы должны быть в голосовом канале!"
+msgstr "Вы должны быть в голосовом канале!"
+
+msgctxt "command"
+msgid "Выйти"
+msgstr "Выйти"
+
+#, python-brace-format
+msgctxt "channel_empty"
+msgid "Голосовой канал {destination} пуст!"
+msgstr "Голосовой канал {destination} пуст!"
+
+#, python-brace-format
+msgctxt "volume"
+msgid "Громкость: {percent:d}%"
+msgstr "Громкость: {percent:d}%"
+
+msgctxt "ui"
+msgid "Далее"
+msgstr "Далее"
+
+msgctxt "ui"
+msgid "Длительность"
+msgstr "Длительность"
+
+msgctxt "ui"
+msgid "До свидания ❤️"
+msgstr "До свидания ❤️"
+
+msgctxt "command"
+msgid "Добавить трек или плейлист в начало очереди"
+msgstr "Добавить трек или плейлист в начало очереди"
+
+#, python-brace-format
+msgctxt "playlist_added"
+msgid "Добавлен плейлист **{name}**"
+msgstr "Добавлен плейлист **{name}**"
+
+msgctxt "ui"
+msgid "Добавлено в начало очереди"
+msgstr "Добавлено в начало очереди"
+
+msgctxt "ui"
+msgid "Добавлено в очередь"
+msgstr "Добавлено в очередь"
+
+msgctxt "ui"
+msgid "Залупливание"
+msgstr "Залупливание"
+
+#, python-brace-format
+msgctxt "requester"
+msgid "Запросил: {name}"
+msgstr "Запросил: {name}"
+
+msgctxt "ui"
+msgid "История"
+msgstr "История"
+
+msgctxt "ui"
+msgid "Как ты этого добился?"
+msgstr "Как ты этого добился?"
+
+msgctxt "unavailable"
+msgid "Музыкальный сервис сейчас недоступен. Попробуйте позже."
+msgstr "Музыкальный сервис сейчас недоступен. Попробуйте позже."
+
+msgctxt "ui"
+msgid "Не восстановлено"
+msgstr "Не восстановлено"
+
+msgctxt "ui"
+msgid "Не удалось воспроизвести трек"
+msgstr "Не удалось воспроизвести трек"
+
+msgctxt "source_unavailable"
+msgid "Не удалось загрузить трек. Источник временно недоступен или не ответил."
+msgstr "Не удалось загрузить трек. Источник временно недоступен или не ответил."
+
+msgctxt "ui"
+msgid "Не удалось обновить очередь"
+msgstr "Не удалось обновить очередь"
+
+msgctxt "disconnect_failed"
+msgid "Не удалось отключиться от голосового канала."
+msgstr "Не удалось отключиться от голосового канала."
+
+msgctxt "connection_failed"
+msgid "Не удалось подключиться"
+msgstr "Не удалось подключиться"
+
+msgctxt "not_member"
+msgid "Неверный тип пользователя"
+msgstr "Неверный тип пользователя"
+
+msgctxt "ui"
+msgid "Недавние треки:"
+msgstr "Недавние треки:"
+
+msgctxt "unknown_channel"
+msgid "Неизвестный канал"
+msgstr "Неизвестный канал"
+
+msgctxt "not_connected"
+msgid "Нет подключения"
+msgstr "Нет подключения"
+
+msgctxt "no_player"
+msgid "Нет проигрывателя"
+msgstr "Нет проигрывателя"
+
+msgctxt "ui"
+msgid "Нечего перемещать"
+msgstr "Нечего перемещать"
+
+msgctxt "ui"
+msgid "Нечего пропускать"
+msgstr "Нечего пропускать"
+
+msgctxt "stale_queue"
+msgid ""
+"Ничего из этого запроса уже не ожидает в очереди. Возможно, треки уже запустились или"
+" очередь была изменена."
+msgstr ""
+"Ничего из этого запроса уже не ожидает в очереди. Возможно, треки уже запустились или"
+" очередь была изменена."
+
+msgctxt "ui"
+msgid "Ничего не играет."
+msgstr "Ничего не играет."
+
+msgctxt "nothing_found"
+msgid "Ничего не нашлось. Попробуйте ещё раз."
+msgstr "Ничего не нашлось. Попробуйте ещё раз."
+
+msgctxt "ui"
+msgid "Ничего не нашлось. Попробуйте ещё раз."
+msgstr "Ничего не нашлось. Попробуйте ещё раз."
+
+msgctxt "command"
+msgid "Оставьте пустым, чтобы узнать громкость"
+msgstr "Оставьте пустым, чтобы узнать громкость"
+
+msgctxt "command"
+msgid "Остановить воспроизведение и очистить очередь"
+msgstr "Остановить воспроизведение и очистить очередь"
+
+msgctxt "ui"
+msgid "Остановлено"
+msgstr "Остановлено"
+
+msgctxt "ui"
+msgid "Отключился"
+msgstr "Отключился"
+
+msgctxt "command"
+msgid "Очередь"
+msgstr "Очередь"
+
+msgctxt "ui"
+msgid "Очередь воспроизведения"
+msgstr "Очередь воспроизведения"
+
+msgctxt "ui"
+msgid "Очередь пуста"
+msgstr "Очередь пуста"
+
+#, python-brace-format
+msgctxt "join_failed"
+msgid "Ошибка подключения к {destination}"
+msgstr "Ошибка подключения к {destination}"
+
+msgctxt "command"
+msgid "Пауза"
+msgstr "Пауза"
+
+#, python-brace-format
+msgctxt "moved"
+msgid "Переместился {origin} -> {destination}"
+msgstr "Переместился {origin} -> {destination}"
+
+msgctxt "command"
+msgid "Переместить тек. трек в конец очереди"
+msgstr "Переместить тек. трек в конец очереди"
+
+msgctxt "ui"
+msgid "Перемешано"
+msgstr "Перемешано"
+
+msgctxt "command"
+msgid "Перемешать"
+msgstr "Перемешать"
+
+msgctxt "ui"
+msgid ""
+"Переподключение выполнено, но трек не удалось снова запустить. Скорее всего, источник"
+" временно отдал ошибку."
+msgstr ""
+"Переподключение выполнено, но трек не удалось снова запустить. Скорее всего, источник"
+" временно отдал ошибку."
+
+msgctxt "command"
+msgid "Переподключиться в случае ошибок"
+msgstr "Переподключиться в случае ошибок"
+
+msgctxt "player_changed"
+msgid "Плеер изменился во время поиска. Попробуй запустить трек ещё раз."
+msgstr "Плеер изменился во время поиска. Попробуй запустить трек ещё раз."
+
+msgctxt "player_lost"
+msgid "Плеер потерял соединение. Попробуй запустить трек ещё раз."
+msgstr "Плеер потерял соединение. Попробуй запустить трек ещё раз."
+
+msgctxt "player_disconnected"
+msgid "Плеер потерял соединение. Попробуйте запустить трек ещё раз."
+msgstr "Плеер потерял соединение. Попробуйте запустить трек ещё раз."
+
+msgctxt "ui"
+msgid "Плейлист добавлен в начало очереди"
+msgstr "Плейлист добавлен в начало очереди"
+
+msgctxt "ui"
+msgid "Плейлист запущен"
+msgstr "Плейлист запущен"
+
+msgctxt "ui"
+msgid "Повтор **отключён**"
+msgstr "Повтор **отключён**"
+
+msgctxt "ui"
+msgid "Повтор очереди **включён**"
+msgstr "Повтор очереди **включён**"
+
+msgctxt "ui"
+msgid "Повтор трека **включён**"
+msgstr "Повтор трека **включён**"
+
+msgctxt "command"
+msgid "Подключиться к голосовому каналу"
+msgstr "Подключиться к голосовому каналу"
+
+msgctxt "ui"
+msgid "Полная история"
+msgstr "Полная история"
+
+msgctxt "ui"
+msgid "Попрошу не трогать, это не ваше сообщение."
+msgstr "Попрошу не трогать, это не ваше сообщение."
+
+msgctxt "ui"
+msgid "Попытка переподключения сделана"
+msgstr "Попытка переподключения сделана"
+
+msgctxt "command"
+msgid "Продолжить"
+msgstr "Продолжить"
+
+msgctxt "command"
+msgid "Пропустить текущий трек"
+msgstr "Пропустить текущий трек"
+
+msgctxt "ui"
+msgid "Пусто"
+msgstr "Пусто"
+
+msgctxt "ui"
+msgid "Режим повтора **неизвестен**"
+msgstr "Режим повтора **неизвестен**"
+
+msgctxt "ui"
+msgid "Сейчас играет"
+msgstr "Сейчас играет"
+
+msgctxt "ui"
+msgid "Сессия закончена"
+msgstr "Сессия закончена"
+
+msgctxt "command"
+msgid "Скрыть сообщение"
+msgstr "Скрыть сообщение"
+
+#, python-brace-format
+msgctxt "history_footer"
+msgid "Стр. {page:d}/{pages:d} • {count:d} всего"
+msgstr "Стр. {page:d}/{pages:d} • {count:d} всего"
+
+#, python-brace-format
+msgctxt "queue_footer"
+msgid "Стр. {page:d}/{pages:d} • В очереди: {count:d} • Повтор: {repeat}"
+msgstr "Стр. {page:d}/{pages:d} • В очереди: {count:d} • Повтор: {repeat}"
+
+#, python-brace-format
+msgctxt "stuck"
+msgid "Трек застрял, жду продолжения • {requester}"
+msgstr "Трек застрял, жду продолжения • {requester}"
+
+msgctxt "ui"
+msgid "Трек перемещён в конец"
+msgstr "Трек перемещён в конец"
+
+msgctxt "ui"
+msgid "Трек пропущен"
+msgstr "Трек пропущен"
+
+msgctxt "ui"
+msgid "Трек:"
+msgstr "Трек:"
+
+#, python-brace-format
+msgctxt "track_count"
+msgid "Треков: {count:d}"
+msgstr "Треков: {count:d}"
+
+msgctxt "ui"
+msgid "Удалено из очереди"
+msgstr "Удалено из очереди"
+
+msgctxt "ui"
+msgid "Удалить"
+msgstr "Удалить"
+
+msgctxt "ui"
+msgid "Удалить из очереди может только автор запроса."
+msgstr "Удалить из очереди может только автор запроса."
+
+#, python-brace-format
+msgctxt "already_connected"
+msgid "Уже подключён к {destination}"
+msgstr "Уже подключён к {destination}"
+
+msgctxt "ui"
+msgid "Укажите название или ссылку на трек."
+msgstr "Укажите название или ссылку на трек."
+
+#, python-brace-format
+msgctxt "joined"
+msgid "Успешно подключился к {destination}"
+msgstr "Успешно подключился к {destination}"
+
+msgctxt "command"
+msgid "Установить громкость (0-200)"
+msgstr "Установить громкость (0-200)"
+
+msgctxt "ui"
+msgid "Это не ваш контроллер."
+msgstr "Это не ваш контроллер."
+
+msgctxt "ui"
+msgid "выкл."
+msgstr "выкл."
+
+msgctxt "ui"
+msgid "нет проигрывателя"
+msgstr "нет проигрывателя"
+
+msgctxt "ui"
+msgid "сервер не найден"
+msgstr "сервер не найден"

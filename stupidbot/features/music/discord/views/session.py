@@ -15,14 +15,25 @@ from stupidbot.discord_ui.pagination import BasePaginator, PaginationData
 from stupidbot.discord_ui.theme import Color
 from stupidbot.features.music.discord.feedback import send_warning
 from stupidbot.features.music.discord.presentation import format_track_link
+from stupidbot.features.music.messages import MusicMessages
 from stupidbot.features.music.runtime.session import MusicSession
+from stupidbot.i18n.catalog import catalog, pgettext_noop
+from stupidbot.i18n.discord import interaction_context
+from stupidbot.i18n.policy import PresentationContext
 
 
 class SessionPaginationAdapter(PaginationData):
     """Adapts music session history for the paginator."""
 
-    def __init__(self, session: MusicSession, page_size: int = 15) -> None:
+    def __init__(
+        self,
+        session: MusicSession,
+        page_size: int = 15,
+        *,
+        context: PresentationContext,
+    ) -> None:
         self.session = session
+        self.messages = MusicMessages(catalog("music", context.language))
         self.page_size = page_size
         self._paginator = self._build_paginator()
 
@@ -50,11 +61,11 @@ class SessionPaginationAdapter(PaginationData):
         description = (
             self._paginator.pages[page]
             if 0 <= page < len(self._paginator.pages)
-            else "Пусто"
+            else self.messages.catalog.pgettext("ui", "Пусто")
         )
 
         embed = discord.Embed(
-            title="Полная история",
+            title=self.messages.catalog.pgettext("ui", "Полная история"),
             color=Color.INFO,
             timestamp=self.session.start_time,
             description=description,
@@ -62,35 +73,58 @@ class SessionPaginationAdapter(PaginationData):
 
         total_pages = max(1, len(self._paginator.pages))
         embed.set_footer(
-            text=f"Стр. {page + 1}/{total_pages} • {self._paginator.total_items} всего"
+            text=self.messages.history_footer(
+                page=page + 1, pages=total_pages, count=self._paginator.total_items
+            )
         )
         return embed
 
     @override
     async def on_unauthorized(self, interaction: Interaction) -> None:
-        await send_warning(interaction, "Как ты этого добился?", ephemeral=True)
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
+        await send_warning(
+            interaction,
+            messages.catalog.pgettext("ui", "Как ты этого добился?"),
+            ephemeral=True,
+        )
 
 
 class SessionSummaryView(ui.View):
     """Simplified view for session summaries."""
 
-    def __init__(self, *, session: MusicSession, timeout: float = 300.0) -> None:
+    def __init__(
+        self,
+        *,
+        session: MusicSession,
+        context: PresentationContext,
+        timeout: float = 300.0,
+    ) -> None:
         super().__init__(timeout=timeout)
+        self.view_full_button.label = catalog("music", context.language).pgettext(
+            "ui", "История"
+        )
         self.session = session
         self.message: discord.Message | None = None
 
-    @ui.button(label="История", style=discord.ButtonStyle.primary)
+    @ui.button(label=pgettext_noop("ui", "История"), style=discord.ButtonStyle.primary)
     async def view_full_button(
         self, interaction: Interaction, _: ui.Button[Self]
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         if not await check_component_access(interaction):
             return
         total_tracks = len(self.session.tracks)
         if total_tracks == 0:
-            await send_warning(interaction, "В этой сессии нет треков.", ephemeral=True)
+            await send_warning(
+                interaction,
+                messages.catalog.pgettext("ui", "В этой сессии нет треков."),
+                ephemeral=True,
+            )
             return
 
-        adapter = SessionPaginationAdapter(self.session)
+        adapter = SessionPaginationAdapter(self.session, context=context)
         paginator = BasePaginator(
             data=adapter, user_id=interaction.user.id, show_first_last=False
         )

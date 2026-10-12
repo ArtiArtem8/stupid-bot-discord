@@ -36,6 +36,7 @@ from stupidbot.features.music.discord.views import (
     QueueUndoView,
     SessionSummaryView,
 )
+from stupidbot.features.music.messages import MusicMessages
 from stupidbot.features.music.playback.models import (
     QueuePlacement,
     QueueSnapshot,
@@ -43,8 +44,6 @@ from stupidbot.features.music.playback.models import (
 )
 from stupidbot.features.music.repository import VolumeStore
 from stupidbot.features.music.results import (
-    MUSIC_RECOVERING_MESSAGE,
-    MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     MusicErrorCode,
     MusicResult,
     MusicResultReason,
@@ -54,6 +53,9 @@ from stupidbot.features.music.results import (
     VoiceJoinResult,
 )
 from stupidbot.features.music.runtime.session import MusicSession
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import guild_context, interaction_context
+from stupidbot.i18n.policy import Language
 
 if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
@@ -65,25 +67,16 @@ def _format_voice_result_message(
     result: VoiceCheckResult,
     to_channel: discord.abc.GuildChannel | None,
     from_channel: discord.abc.GuildChannel | None,
+    *,
+    language: Language = Language.RU,
 ) -> str:
-    messages = {
-        VoiceCheckResult.ALREADY_CONNECTED: "Уже подключён к {0}",
-        VoiceCheckResult.CHANNEL_EMPTY: "Голосовой канал {0} пуст!",
-        VoiceCheckResult.CONNECTION_FAILED: "Ошибка подключения к {0}",
-        VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE: MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
-        VoiceCheckResult.TIMEOUT: "Время подключения к {0} **истекло**"
-        "\n*Попробуйте сменить регион этого канала!*",
-        VoiceCheckResult.MOVED_CHANNELS: "Переместился {1} -> {0}",
-        VoiceCheckResult.SUCCESS: "Успешно подключился к {0}",
-        VoiceCheckResult.USER_NOT_IN_VOICE: "Вы должны быть в голосовом канале!",
-        VoiceCheckResult.USER_NOT_MEMBER: "Неверный тип пользователя",
-        VoiceCheckResult.RECOVERING: MUSIC_RECOVERING_MESSAGE,
-    }
-    template = messages.get(result, "Неизвестная ошибка")
-    destination = to_channel.mention if to_channel else "Неизвестный канал"
-    origin = from_channel.mention if from_channel else "Неизвестный канал"
-
-    return template.format(destination, origin)
+    messages = MusicMessages(catalog("music", language))
+    unknown = messages.catalog.pgettext("unknown_channel", "Неизвестный канал")
+    return messages.connection(
+        result,
+        destination=to_channel.mention if to_channel else unknown,
+        origin=from_channel.mention if from_channel else unknown,
+    )
 
 
 class MusicCog(BaseCog):
@@ -91,6 +84,8 @@ class MusicCog(BaseCog):
 
     @override
     async def interaction_check(self, interaction: Interaction) -> bool:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         if not await super().interaction_check(interaction):
             return False
         if (
@@ -101,7 +96,7 @@ class MusicCog(BaseCog):
         ):
             await FeedbackUI.send(
                 interaction,
-                description=MUSIC_RECOVERING_MESSAGE,
+                description=messages.failure(MusicResultReason.RECOVERING),
                 feedback_type=FeedbackType.INFO,
                 ephemeral=True,
             )
@@ -140,6 +135,7 @@ class MusicCog(BaseCog):
     async def on_music_session_end(
         self, _guild_id: int, session: MusicSession, channel_id: int
     ) -> None:
+        context = await guild_context(self.bot, _guild_id)
         channel = self.bot.get_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
@@ -147,8 +143,8 @@ class MusicCog(BaseCog):
         if not session.tracks:
             return
 
-        embed = build_session_summary_embed(session)
-        view = SessionSummaryView(session=session, timeout=300.0)
+        embed = build_session_summary_embed(session, language=context.language)
+        view = SessionSummaryView(session=session, timeout=300.0, context=context)
 
         try:
             msg = await channel.send(embed=embed, view=view)
@@ -158,6 +154,7 @@ class MusicCog(BaseCog):
 
     @commands.Cog.listener()
     async def on_music_track_exception(self, payload: TrackExceptionPayload) -> None:
+        context = await guild_context(self.bot, payload.guild_id)
         channel_id = payload.channel_id
         if not channel_id:
             return
@@ -165,7 +162,7 @@ class MusicCog(BaseCog):
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
 
-        embed = build_track_exception_embed(payload)
+        embed = build_track_exception_embed(payload, language=context.language)
 
         try:
             await channel.send(embed=embed, delete_after=60)
@@ -180,7 +177,12 @@ class MusicCog(BaseCog):
     async def before_auto_leave_monitor(self) -> None:
         await self.bot.wait_until_ready()
 
-    @app_commands.command(name="join", description="Подключиться к голосовому каналу")
+    @app_commands.command(
+        name="join",
+        description=app_commands.locale_str(
+            "Подключиться к голосовому каналу", domain="music"
+        ),
+    )
     @app_commands.guild_only()
     async def join(self, interaction: Interaction) -> None:
         guild = await self._require_guild(interaction)
@@ -203,18 +205,27 @@ class MusicCog(BaseCog):
         )
 
     @app_commands.command(
-        name="play", description="Воспроизведение музыки с YT, SoundCloud, Y.Music и VK"
+        name="play",
+        description=app_commands.locale_str(
+            "Воспроизведение музыки с YT, SoundCloud, Y.Music и VK", domain="music"
+        ),
     )
-    @app_commands.describe(query="URL или название")
+    @app_commands.describe(
+        query=app_commands.locale_str("URL или название", domain="music")
+    )
     @app_commands.guild_only()
     async def play(self, interaction: Interaction, query: str) -> None:
         await self._run_play_command(interaction, query, "end")
 
     @app_commands.command(
         name="play-next",
-        description="Добавить трек или плейлист в начало очереди",
+        description=app_commands.locale_str(
+            "Добавить трек или плейлист в начало очереди", domain="music"
+        ),
     )
-    @app_commands.describe(query="URL или название")
+    @app_commands.describe(
+        query=app_commands.locale_str("URL или название", domain="music")
+    )
     @app_commands.guild_only()
     async def play_next(self, interaction: Interaction, query: str) -> None:
         await self._run_play_command(interaction, query, "next")
@@ -225,11 +236,13 @@ class MusicCog(BaseCog):
         query: str,
         placement: QueuePlacement,
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
         if not query.strip():
             await send_warning(
                 interaction,
-                "Укажите название или ссылку на трек.",
+                messages.catalog.pgettext("ui", "Укажите название или ссылку на трек."),
                 ephemeral=True,
             )
             return
@@ -262,6 +275,8 @@ class MusicCog(BaseCog):
     async def _get_voice_channel_for_play(
         self, interaction: Interaction
     ) -> discord.VoiceChannel | discord.StageChannel | None:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         if (
             not isinstance(interaction.user, Member)
             or not interaction.user.voice
@@ -269,7 +284,7 @@ class MusicCog(BaseCog):
         ):
             await send_warning(
                 interaction,
-                "Вы должны быть в голосовом канале!",
+                messages.catalog.pgettext("ui", "Вы должны быть в голосовом канале!"),
                 ephemeral=True,
             )
             return None
@@ -294,22 +309,29 @@ class MusicCog(BaseCog):
         result: MusicResult[PlayResponseData | VoiceJoinResult],
         channel: discord.abc.GuildChannel,
     ) -> PlayResponseData | None:
+        context = await interaction_context(interaction, private=False)
+        messages = MusicMessages(catalog("music", context.language))
         data = result.data
         if isinstance(data, tuple):
             check, from_channel = data
             await self._handle_join_for_play(interaction, check, channel, from_channel)
             return None
         if result.status is MusicResultStatus.ERROR:
-            await send_error(interaction, result.message)
+            await send_error(interaction, messages.failure(result.reason))
             return None
         if (
             result.status is MusicResultStatus.FAILURE
             and result.reason is not MusicResultReason.NOTHING_FOUND
         ):
-            await send_error(interaction, result.message)
+            await send_error(interaction, messages.failure(result.reason))
             return None
         if not data:
-            await send_info(interaction, "Ничего не нашлось. Попробуйте ещё раз.")
+            await send_info(
+                interaction,
+                messages.catalog.pgettext(
+                    "ui", "Ничего не нашлось. Попробуйте ещё раз."
+                ),
+            )
             return None
         return data
 
@@ -343,7 +365,10 @@ class MusicCog(BaseCog):
         warn_on_failure: bool = False,
         ephemeral: bool = False,
     ) -> None:
-        msg = _format_voice_result_message(result, channel, from_channel)
+        context = await interaction_context(interaction, private=ephemeral)
+        msg = _format_voice_result_message(
+            result, channel, from_channel, language=context.language
+        )
         if result.status is MusicResultStatus.ERROR:
             await send_error(interaction, msg, ephemeral=ephemeral)
             return
@@ -373,10 +398,12 @@ class MusicCog(BaseCog):
     async def _send_no_player_or_unavailable(
         self, interaction: Interaction, result: MusicResult[object]
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         if result.reason is MusicResultReason.RECOVERING:
             await send_info(
                 interaction,
-                MUSIC_RECOVERING_MESSAGE,
+                messages.failure(MusicResultReason.RECOVERING),
                 ephemeral=True,
                 delete_after=60,
             )
@@ -384,7 +411,7 @@ class MusicCog(BaseCog):
         if result.reason is MusicErrorCode.MUSIC_NODE_UNAVAILABLE:
             await send_warning(
                 interaction,
-                MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+                messages.failure(MusicErrorCode.MUSIC_NODE_UNAVAILABLE),
                 ephemeral=True,
                 delete_after=60,
             )
@@ -394,12 +421,14 @@ class MusicCog(BaseCog):
     async def _send_play_feedback(
         self, interaction: Interaction, data: PlayResponseData, delay_sec: float
     ) -> None:
+        context = await interaction_context(interaction, private=False)
         match data["type"]:
             case "track":
                 embed = build_track_added_embed(
                     data,
                     requester_name=interaction.user.display_name,
                     requester_avatar_url=interaction.user.display_avatar.url,
+                    language=context.language,
                 )
                 delete_after = min(delay_sec, 480)
             case "playlist":
@@ -407,6 +436,7 @@ class MusicCog(BaseCog):
                     data,
                     requester_name=interaction.user.display_name,
                     requester_avatar_url=interaction.user.display_avatar.url,
+                    language=context.language,
                 )
                 delete_after = min(delay_sec, 600)
 
@@ -418,6 +448,7 @@ class MusicCog(BaseCog):
                 requester_id=interaction.user.id,
                 remove_callback=self.service.remove_queued_entries,
                 timeout=delete_after,
+                context=context,
             )
         await FeedbackUI.send(
             interaction,
@@ -427,22 +458,32 @@ class MusicCog(BaseCog):
         )
 
     @app_commands.command(
-        name="stop", description="Остановить воспроизведение и очистить очередь"
+        name="stop",
+        description=app_commands.locale_str(
+            "Остановить воспроизведение и очистить очередь", domain="music"
+        ),
     )
     @app_commands.guild_only()
     async def stop(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=False)
+        messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
         res = await self.service.stop(
             guild.id, interaction.user.id, interaction.channel_id
         )
         if res.is_success:
-            await send_info(interaction, "Остановлено")
+            await send_info(interaction, messages.catalog.pgettext("ui", "Остановлено"))
         else:
             await self._send_no_player_or_unavailable(interaction, res)
 
-    @app_commands.command(name="skip", description="Пропустить текущий трек")
+    @app_commands.command(
+        name="skip",
+        description=app_commands.locale_str("Пропустить текущий трек", domain="music"),
+    )
     @app_commands.guild_only()
     async def skip(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=False)
+        messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
         res = await self.service.skip(
             guild.id, interaction.user.id, interaction.channel_id
@@ -452,71 +493,104 @@ class MusicCog(BaseCog):
             return
 
         if not res.is_success or not res.data:
-            await send_error(interaction, res.message)
+            await send_error(interaction, messages.failure(res.reason))
             return
 
         skipped = res.data["before"]
         next_track = res.data["after"]
 
         if not skipped and not next_track:
-            await send_warning(interaction, "Нечего пропускать", ephemeral=True)
+            context = await interaction_context(interaction, private=True)
+            messages = MusicMessages(catalog("music", context.language))
+            await send_warning(
+                interaction,
+                messages.catalog.pgettext("ui", "Нечего пропускать"),
+                ephemeral=True,
+            )
             return
 
-        embed = build_skip_embed(skipped, next_track)
+        embed = build_skip_embed(skipped, next_track, language=context.language)
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)
 
-    @app_commands.command(name="queue", description="Очередь")
-    @app_commands.describe(ephemeral="Скрыть сообщение")
+    @app_commands.command(
+        name="queue", description=app_commands.locale_str("Очередь", domain="music")
+    )
+    @app_commands.describe(
+        ephemeral=app_commands.locale_str("Скрыть сообщение", domain="music")
+    )
     @app_commands.guild_only()
     async def queue(self, interaction: Interaction, ephemeral: bool = True) -> None:
+        context = await interaction_context(interaction, private=ephemeral)
+        messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
 
         res = await self.service.get_queue(guild.id)
         data = res.data
         if not data:
+            context = await interaction_context(interaction, private=True)
+            messages = MusicMessages(catalog("music", context.language))
             if res.reason is MusicErrorCode.MUSIC_NODE_UNAVAILABLE:
                 await send_warning(
                     interaction,
-                    MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+                    messages.failure(MusicErrorCode.MUSIC_NODE_UNAVAILABLE),
                     ephemeral=True,
                     delete_after=60,
                 )
                 return
-            await send_warning(interaction, "Очередь пуста", ephemeral=True)
+            await send_warning(
+                interaction,
+                messages.catalog.pgettext("ui", "Очередь пуста"),
+                ephemeral=True,
+            )
             return
 
         async def fetch() -> QueueSnapshot | None:
             res = await self.service.get_queue(guild.id)
             return res.data
 
-        adapter = QueuePaginationAdapter(data)
+        adapter = QueuePaginationAdapter(data, context=context)
         view = QueuePaginator(adapter, fetch, interaction.user.id)
         await view.prepare()
         await view.send(interaction, ephemeral=ephemeral)
 
-    @app_commands.command(name="volume", description="Установить громкость (0-200)")
-    @app_commands.describe(value="Оставьте пустым, чтобы узнать громкость")
+    @app_commands.command(
+        name="volume",
+        description=app_commands.locale_str(
+            "Установить громкость (0-200)", domain="music"
+        ),
+    )
+    @app_commands.describe(
+        value=app_commands.locale_str(
+            "Оставьте пустым, чтобы узнать громкость", domain="music"
+        )
+    )
     @app_commands.guild_only()
     async def volume(
         self,
         interaction: Interaction,
         value: app_commands.Range[int, 0, 200] | None = None,
     ) -> None:
+        context = await interaction_context(interaction, private=False)
+        messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
         if value is None:
             vol = await self.service.get_volume(guild.id)
-            await send_info(interaction, f"Громкость: {vol}%")
+            await send_info(interaction, messages.volume(percent=vol))
             return
 
         res = await self.service.set_volume(guild.id, value)
-        if res.is_success:
-            await send_success(interaction, f"Громкость: {res.data}%")
+        if res.is_success and res.data is not None:
+            await send_success(interaction, messages.volume(percent=res.data))
         else:
-            await send_error(interaction, res.message)
+            await send_error(interaction, messages.failure(res.reason))
 
-    @app_commands.command(name="leave", description="Выйти")
+    @app_commands.command(
+        name="leave", description=app_commands.locale_str("Выйти", domain="music")
+    )
     @app_commands.guild_only()
     async def leave(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
         res = await run_with_defer(
             interaction,
@@ -527,32 +601,46 @@ class MusicCog(BaseCog):
             case MusicResultStatus.SUCCESS:
                 await send_info(
                     interaction,
-                    "Отключился",
-                    title="До свидания ❤️",
+                    messages.catalog.pgettext("ui", "Отключился"),
+                    title=messages.catalog.pgettext("ui", "До свидания ❤️"),
                     ephemeral=True,
                 )
             case MusicResultStatus.FAILURE:
                 await self._send_no_player_or_unavailable(interaction, res)
             case MusicResultStatus.ERROR:
-                await send_error(interaction, res.message, ephemeral=True)
+                await send_error(
+                    interaction, messages.failure(res.reason), ephemeral=True
+                )
 
-    @app_commands.command(name="shuffle", description="Перемешать")
+    @app_commands.command(
+        name="shuffle",
+        description=app_commands.locale_str("Перемешать", domain="music"),
+    )
     @app_commands.guild_only()
     async def shuffle(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=False)
+        messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
         res = await self.service.shuffle(
             guild.id, interaction.user.id, interaction.channel_id
         )
         if res.is_success:
-            await send_success(interaction, "Перемешано")
+            await send_success(
+                interaction, messages.catalog.pgettext("ui", "Перемешано")
+            )
         else:
             await self._send_no_player_or_unavailable(interaction, res)
 
     @app_commands.command(
-        name="rotate", description="Переместить тек. трек в конец очереди"
+        name="rotate",
+        description=app_commands.locale_str(
+            "Переместить тек. трек в конец очереди", domain="music"
+        ),
     )
     @app_commands.guild_only()
     async def rotate(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=False)
+        messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
         res = await self.service.rotate(
             guild.id, interaction.user.id, interaction.channel_id
@@ -561,17 +649,30 @@ class MusicCog(BaseCog):
             await self._send_no_player_or_unavailable(interaction, res)
             return
         if not res.data or not res.data["skipped"]:
-            await send_warning(interaction, "Нечего перемещать", ephemeral=True)
+            context = await interaction_context(interaction, private=True)
+            messages = MusicMessages(catalog("music", context.language))
+            await send_warning(
+                interaction,
+                messages.catalog.pgettext("ui", "Нечего перемещать"),
+                ephemeral=True,
+            )
             return
         moved_track = res.data["skipped"]
         next_track = res.data["next"]
 
-        embed = build_rotate_embed(moved_track, next_track)
+        embed = build_rotate_embed(moved_track, next_track, language=context.language)
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)
 
-    @app_commands.command(name="repeat", description="Включить/выключить повтор.")
+    @app_commands.command(
+        name="repeat",
+        description=app_commands.locale_str(
+            "Включить/выключить повтор.", domain="music"
+        ),
+    )
     @app_commands.describe(
-        mode="off — выкл, queue — повтор очереди, track - повтор трека"
+        mode=app_commands.locale_str(
+            "off — выкл, queue — повтор очереди, track - повтор трека", domain="music"
+        )
     )
     @app_commands.guild_only()
     async def repeat(
@@ -579,6 +680,7 @@ class MusicCog(BaseCog):
         interaction: Interaction,
         mode: RepeatMode | None = None,
     ) -> None:
+        context = await interaction_context(interaction, private=False)
         guild = await self._require_guild(interaction)
         result = await self.service.set_repeat(
             guild.id,
@@ -592,41 +694,68 @@ class MusicCog(BaseCog):
             await self._send_no_player_or_unavailable(interaction, result)
             return
 
-        embed = build_repeat_embed(data.get("mode"))
+        embed = build_repeat_embed(data.get("mode"), language=context.language)
         await FeedbackUI.send(interaction, embed=embed, delete_after=60)
 
-    @app_commands.command(name="pause", description="Пауза")
+    @app_commands.command(
+        name="pause", description=app_commands.locale_str("Пауза", domain="music")
+    )
     @app_commands.guild_only()
     async def pause(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=False)
+        messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
         res = await self.service.pause(guild.id)
         if res.is_success:
-            await send_info(interaction, "Воспроизведение приостановлено")
-        else:
-            await self._send_no_player_or_unavailable(interaction, res)
-
-    @app_commands.command(name="resume", description="Продолжить")
-    @app_commands.guild_only()
-    async def resume(self, interaction: Interaction) -> None:
-        guild = await self._require_guild(interaction)
-        res = await self.service.resume(guild.id)
-        if res.is_success:
-            await send_info(interaction, "Воспроизведение продолжено")
+            await send_info(
+                interaction,
+                messages.catalog.pgettext("ui", "Воспроизведение приостановлено"),
+            )
         else:
             await self._send_no_player_or_unavailable(interaction, res)
 
     @app_commands.command(
-        name="reconnect", description="Переподключиться в случае ошибок"
+        name="resume", description=app_commands.locale_str("Продолжить", domain="music")
+    )
+    @app_commands.guild_only()
+    async def resume(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=False)
+        messages = MusicMessages(catalog("music", context.language))
+        guild = await self._require_guild(interaction)
+        res = await self.service.resume(guild.id)
+        if res.is_success:
+            await send_info(
+                interaction,
+                messages.catalog.pgettext("ui", "Воспроизведение продолжено"),
+            )
+        else:
+            await self._send_no_player_or_unavailable(interaction, res)
+
+    @app_commands.command(
+        name="reconnect",
+        description=app_commands.locale_str(
+            "Переподключиться в случае ошибок", domain="music"
+        ),
     )
     @app_commands.guild_only()
     async def heal(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         if interaction.guild_id is None:
-            await send_warning(interaction, "сервер не найден", ephemeral=True)
+            await send_warning(
+                interaction,
+                messages.catalog.pgettext("ui", "сервер не найден"),
+                ephemeral=True,
+            )
             return
 
         player = self.service.get_player(interaction.guild_id)
         if not player:
-            await send_warning(interaction, "нет проигрывателя", ephemeral=True)
+            await send_warning(
+                interaction,
+                messages.catalog.pgettext("ui", "нет проигрывателя"),
+                ephemeral=True,
+            )
             return
 
         await interaction.response.defer(ephemeral=True)
@@ -635,18 +764,23 @@ class MusicCog(BaseCog):
         if restored:
             await send_warning(
                 interaction,
-                title="Восстановлен",
-                message="Попытка переподключения сделана",
+                title=messages.catalog.pgettext("ui", "Восстановлен"),
+                message=messages.catalog.pgettext(
+                    "ui", "Попытка переподключения сделана"
+                ),
                 ephemeral=True,
             )
             return
 
         await send_warning(
             interaction,
-            title="Не восстановлено",
+            title=messages.catalog.pgettext("ui", "Не восстановлено"),
             message=(
-                "Переподключение выполнено, но трек не удалось снова запустить. "
-                "Скорее всего, источник временно отдал ошибку."
+                messages.catalog.pgettext(
+                    "ui",
+                    "Переподключение выполнено, но трек не удалось снова запустить. "
+                    "Скорее всего, источник временно отдал ошибку.",
+                )
             ),
             ephemeral=True,
         )

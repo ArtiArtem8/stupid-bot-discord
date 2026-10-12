@@ -114,6 +114,7 @@ class TestAuthorization(unittest.IsolatedAsyncioTestCase):
             attempt=attempt,
             on_stop_callback=stopped,
             on_player_failure=AsyncMock(),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         button = next(
             child
@@ -137,6 +138,7 @@ class TestAuthorization(unittest.IsolatedAsyncioTestCase):
             requester_id=10,
             remove_callback=remove,
             timeout=60,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         paginator = QueuePaginator(MagicMock(spec=QueuePaginationAdapter), refresh, 10)
         await undo.remove(self.item)
@@ -147,7 +149,10 @@ class TestAuthorization(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(paginator.is_finished())
 
     async def test_history_denial_does_not_open_paginator(self) -> None:
-        view = SessionSummaryView(session=MagicMock(spec=MusicSession))
+        view = SessionSummaryView(
+            session=MagicMock(spec=MusicSession),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         await view.view_full_button.callback(self.item)
         self.feedback.assert_awaited_once()
         self.item.response.send_message.assert_not_awaited()

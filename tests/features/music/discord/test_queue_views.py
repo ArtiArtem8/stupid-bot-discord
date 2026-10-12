@@ -3,6 +3,7 @@
 import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import discord
 
@@ -25,6 +26,7 @@ from stupidbot.features.music.results import (
     MusicResultReason,
     MusicResultStatus,
 )
+from stupidbot.i18n.policy import Language, PresentationContext
 from tests.features.music.fixtures import make_entry
 
 
@@ -63,14 +65,20 @@ def _make_snapshot(
 class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
     def test_long_current_and_queued_tracks_fit_fields(self) -> None:
         snapshot = _make_snapshot("x" * 2000, current_identifier="y" * 2000)
-        embed = QueuePaginationAdapter(snapshot).make_embed(0)
+        embed = QueuePaginationAdapter(
+            snapshot, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        ).make_embed(0)
         self.assertEqual(len(embed.fields), 2)
         for field in embed.fields:
             self.assertLessEqual(len(field.value or ""), 1024)
 
     async def test_first_page_shows_current_and_initial_queue_tracks(self) -> None:
         snapshot = _make_snapshot("one", "two", current_identifier="current")
-        adapter = QueuePaginationAdapter(snapshot, page_size=1)
+        adapter = QueuePaginationAdapter(
+            snapshot,
+            page_size=1,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
 
         async def refresh() -> QueueSnapshot | None:
             return snapshot
@@ -98,7 +106,11 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
 
     async def test_navigates_across_multiple_pages(self) -> None:
         snapshot = _make_snapshot("one", "two", "three")
-        adapter = QueuePaginationAdapter(snapshot, page_size=1)
+        adapter = QueuePaginationAdapter(
+            snapshot,
+            page_size=1,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
 
         async def refresh() -> QueueSnapshot | None:
             return snapshot
@@ -126,7 +138,11 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
     async def test_refresh_replaces_snapshot_and_returns_to_first_page(self) -> None:
         initial = _make_snapshot("old-one", "old-two")
         refreshed = _make_snapshot("new-one", "new-two")
-        adapter = QueuePaginationAdapter(initial, page_size=1)
+        adapter = QueuePaginationAdapter(
+            initial,
+            page_size=1,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
 
         async def refresh() -> QueueSnapshot | None:
             return refreshed
@@ -152,7 +168,9 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
 
     async def test_empty_refresh_warns_and_finishes_view(self) -> None:
         snapshot = _make_snapshot("one")
-        adapter = QueuePaginationAdapter(snapshot)
+        adapter = QueuePaginationAdapter(
+            snapshot, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
 
         async def refresh() -> QueueSnapshot | None:
             return None
@@ -175,7 +193,9 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
 
     async def test_unauthorized_interaction_gets_private_warning(self) -> None:
         snapshot = _make_snapshot("one")
-        adapter = QueuePaginationAdapter(snapshot)
+        adapter = QueuePaginationAdapter(
+            snapshot, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
 
         async def refresh() -> QueueSnapshot | None:
             return snapshot
@@ -212,6 +232,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
                     reason=MusicResultReason.RECOVERING,
                 )
             ),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
         interaction.followup.send = AsyncMock()
@@ -256,6 +277,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             requester_id=42,
             remove_callback=remove,
             timeout=120,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
         interaction.user.id = 42
@@ -326,6 +348,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             requester_id=42,
             remove_callback=remove_entries,
             timeout=120,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
         interaction.user.id = 42
@@ -368,6 +391,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             requester_id=42,
             remove_callback=remove,
             timeout=120,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
         interaction.user.id = 42
@@ -419,6 +443,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             requester_id=42,
             remove_callback=remove,
             timeout=120,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
         interaction.user.id = 42
@@ -465,6 +490,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             requester_id=42,
             remove_callback=remove,
             timeout=120,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
         interaction.user.id = 42
@@ -488,6 +514,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             requester_id=42,
             remove_callback=AsyncMock(),
             timeout=120,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
         message = MagicMock()
@@ -523,6 +550,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
                     requester_id=42,
                     remove_callback=AsyncMock(),
                     timeout=120,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
                 )
                 interaction = _interaction()
                 message = MagicMock()
@@ -562,6 +590,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             requester_id=42,
             remove_callback=remove,
             timeout=120,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
         interaction.user.id = 42
@@ -599,6 +628,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             requester_id=42,
             remove_callback=remove,
             timeout=120,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
         interaction.user.id = 42
@@ -639,6 +669,7 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
             requester_id=42,
             remove_callback=remove,
             timeout=120,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
         )
         interaction = _interaction()
         interaction.user.id = 99

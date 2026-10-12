@@ -15,9 +15,12 @@ from stupidbot.discord_ui.embeds import DEFAULT_LIMITS, SafeEmbed
 from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
 from stupidbot.discord_ui.theme import Color
 from stupidbot.features.music.contracts import TrackExceptionPayload
+from stupidbot.features.music.messages import MusicMessages
 from stupidbot.features.music.playback.models import RepeatMode, Track
 from stupidbot.features.music.results import PlaylistResponseData, TrackResponseData
 from stupidbot.features.music.runtime.session import MusicSession, TrackInfo
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.policy import Language
 
 MAX_TIMEDELTA_DAYS = 999_999_999
 _MARKDOWN_LINK_BRACKET_RE = re.compile(r"([\[\]])")
@@ -33,8 +36,9 @@ class _TrackGroup:
     count: int
 
 
-def format_duration(ms: float) -> str:
+def format_duration(ms: float, *, language: Language = Language.RU) -> str:
     """Convert milliseconds to a timedelta string without microseconds."""
+    messages = MusicMessages(catalog("music", language))
     try:
         total = timedelta(seconds=ms / 1_000.0)
     except OverflowError:
@@ -45,7 +49,11 @@ def format_duration(ms: float) -> str:
     if total.days >= MAX_TIMEDELTA_DAYS - 1_000_000:
         return "∞"
     if total.days >= 14:
-        return f"{total.days} days"
+        return messages.days(count=total.days)
+    if total.days:
+        return (
+            f"{messages.days(count=total.days)}, {total - timedelta(days=total.days)}"
+        )
     return str(total)
 
 
@@ -84,19 +92,24 @@ def format_track_link(title: str, uri: str | None, *, max_length: int = 1024) ->
     return f"[{label}]({uri})"
 
 
-def _format_session_stats(session: MusicSession) -> str:
+def _format_session_stats(
+    session: MusicSession, *, language: Language = Language.RU
+) -> str:
     """Format session statistics."""
+    messages = MusicMessages(catalog("music", language))
     total_tracks = len(session.tracks)
     skipped_tracks = sum(1 for track in session.tracks if track.skipped)
 
-    stats_parts = [f"**Всего:** {total_tracks} шт."]
+    stats_parts = [messages.session_tracks(count=total_tracks)]
     if skipped_tracks:
-        stats_parts.append(f" (скипов: {skipped_tracks})")
+        stats_parts.append(messages.session_skips(count=skipped_tracks))
 
     if len(session.participants) == 1:
-        stats_parts.append(f"\n**Заказчик:** <@{next(iter(session.participants))}>")
+        stats_parts.append(
+            messages.session_requester(user_id=next(iter(session.participants)))
+        )
     else:
-        stats_parts.append(f"\n**Заказчиков:** {len(session.participants)} чел.")
+        stats_parts.append(messages.session_people(count=len(session.participants)))
     return "".join(stats_parts)
 
 
@@ -121,8 +134,11 @@ def _format_track_group(group: _TrackGroup) -> str:
     return f"{status_marker}{track_str}{count_str}{status_marker}"
 
 
-def _format_recent_tracks(tracks: Sequence[TrackInfo]) -> tuple[str, int]:
+def _format_recent_tracks(
+    tracks: Sequence[TrackInfo], *, language: Language = Language.RU
+) -> tuple[str, int]:
     """Format recent session tracks with consecutive duplicates grouped."""
+    messages = MusicMessages(catalog("music", language))
     grouped = _group_consecutive_tracks(tracks)
     formatted_groups = [_format_track_group(group) for group in grouped]
     result = truncate_sequence(
@@ -131,28 +147,42 @@ def _format_recent_tracks(tracks: Sequence[TrackInfo]) -> tuple[str, int]:
         separator="\n",
         placeholder="\n...",
     )
-    return (result or "*(пусто)*", len(formatted_groups))
+    return (
+        result or messages.catalog.pgettext("ui", "*(пусто)*"),
+        len(formatted_groups),
+    )
 
 
-def build_session_summary_embed(session: MusicSession) -> discord.Embed:
+def build_session_summary_embed(
+    session: MusicSession, *, language: Language = Language.RU
+) -> discord.Embed:
     """Build the summary shown when a music session ends."""
+    messages = MusicMessages(catalog("music", language))
     embed = SafeEmbed(
-        title="Сессия закончена",
+        title=messages.catalog.pgettext("ui", "Сессия закончена"),
         color=Color.INFO,
         timestamp=session.start_time,
     )
     embed.safe_add_field(
-        name="В общем:",
-        value=_format_session_stats(session),
+        name=messages.catalog.pgettext("ui", "В общем:"),
+        value=_format_session_stats(session, language=language),
         inline=True,
     )
 
-    tracks_text, text_lines = _format_recent_tracks(session.tracks)
+    tracks_text, text_lines = _format_recent_tracks(session.tracks, language=language)
     if text_lines == 1:
         embed.set_thumbnail(url=session.tracks[-1].thumbnail_url)
-        embed.safe_add_field(name="Трек:", value=tracks_text, inline=False)
+        embed.safe_add_field(
+            name=messages.catalog.pgettext("ui", "Трек:"),
+            value=tracks_text,
+            inline=False,
+        )
     else:
-        embed.safe_add_field(name="Недавние треки:", value=tracks_text, inline=False)
+        embed.safe_add_field(
+            name=messages.catalog.pgettext("ui", "Недавние треки:"),
+            value=tracks_text,
+            inline=False,
+        )
     return embed
 
 
@@ -161,13 +191,15 @@ def build_track_added_embed(
     *,
     requester_name: str,
     requester_avatar_url: str,
+    language: Language = Language.RU,
 ) -> discord.Embed:
     """Build feedback for an added or immediately started track."""
+    messages = MusicMessages(catalog("music", language))
     track = data["track"]
     title_by_placement = {
-        "now": "Сейчас играет",
-        "next": "Добавлено в начало очереди",
-        "end": "Добавлено в очередь",
+        "now": messages.catalog.pgettext("ui", "Сейчас играет"),
+        "next": messages.catalog.pgettext("ui", "Добавлено в начало очереди"),
+        "end": messages.catalog.pgettext("ui", "Добавлено в очередь"),
     }
     embed = SafeEmbed(
         title=title_by_placement[data["placement"]],
@@ -176,9 +208,12 @@ def build_track_added_embed(
     )
     if track.artwork_url:
         embed.set_thumbnail(url=track.artwork_url)
-    embed.safe_add_field(name="Длительность", value=format_duration(track.length))
+    embed.safe_add_field(
+        name=messages.catalog.pgettext("ui", "Длительность"),
+        value=format_duration(track.length, language=language),
+    )
     embed.set_footer(
-        text=f"Запросил: {requester_name}",
+        text=messages.requester(name=requester_name),
         icon_url=requester_avatar_url,
     )
     return embed
@@ -189,19 +224,21 @@ def build_playlist_added_embed(
     *,
     requester_name: str,
     requester_avatar_url: str,
+    language: Language = Language.RU,
 ) -> discord.Embed:
     """Build feedback for an added or immediately started playlist."""
+    messages = MusicMessages(catalog("music", language))
     playlist = data["playlist"]
     playlist_name = truncate_text(
         _escape_markdown_text(playlist.name),
-        DEFAULT_LIMITS.title - len("Добавлен плейлист ****"),
+        DEFAULT_LIMITS.title - len(messages.playlist_added(name="")),
     )
     title_by_placement = {
-        "now": "Плейлист запущен",
-        "next": "Плейлист добавлен в начало очереди",
-        "end": f"Добавлен плейлист **{playlist_name}**",
+        "now": messages.catalog.pgettext("ui", "Плейлист запущен"),
+        "next": messages.catalog.pgettext("ui", "Плейлист добавлен в начало очереди"),
+        "end": messages.playlist_added(name=playlist_name),
     }
-    description = f"Треков: {len(playlist.tracks)}"
+    description = messages.track_count(count=len(playlist.tracks))
     if data["placement"] != "end":
         description = f"**{playlist_name}**\n{description}"
     embed = SafeEmbed(
@@ -210,23 +247,26 @@ def build_playlist_added_embed(
         color=Color.INFO,
     )
     duration = sum(track.length for track in playlist.tracks)
-    embed.safe_add_field(name="Длительность", value=format_duration(duration))
+    embed.safe_add_field(
+        name=messages.catalog.pgettext("ui", "Длительность"),
+        value=format_duration(duration, language=language),
+    )
     if playlist.tracks:
         embed.set_thumbnail(url=playlist.tracks[0].artwork_url or "")
     embed.set_footer(
-        text=f"Запросил: {requester_name}",
+        text=messages.requester(name=requester_name),
         icon_url=requester_avatar_url,
     )
     return embed
 
 
 def build_skip_embed(
-    skipped: Track | None,
-    next_track: Track | None,
+    skipped: Track | None, next_track: Track | None, *, language: Language = Language.RU
 ) -> discord.Embed:
     """Build feedback for a successful skip."""
+    messages = MusicMessages(catalog("music", language))
     embed = SafeEmbed(
-        title="Трек пропущен",
+        title=messages.catalog.pgettext("ui", "Трек пропущен"),
         description=(
             format_track_link(skipped.title, skipped.uri) if skipped else "???"
         ),
@@ -234,7 +274,7 @@ def build_skip_embed(
     )
     if next_track:
         embed.safe_add_field(
-            name="Далее",
+            name=messages.catalog.pgettext("ui", "Далее"),
             value=format_track_link(next_track.title, next_track.uri),
             inline=False,
         )
@@ -243,21 +283,21 @@ def build_skip_embed(
 
 
 def build_rotate_embed(
-    moved_track: Track,
-    next_track: Track | None,
+    moved_track: Track, next_track: Track | None, *, language: Language = Language.RU
 ) -> discord.Embed:
     """Build feedback for moving the current track to the queue end."""
+    messages = MusicMessages(catalog("music", language))
     embed = SafeEmbed(
-        title="Трек перемещён в конец",
+        title=messages.catalog.pgettext("ui", "Трек перемещён в конец"),
         description=format_track_link(moved_track.title, moved_track.uri),
         color=Color.INFO,
     )
     embed.safe_add_field(
-        name="Далее",
+        name=messages.catalog.pgettext("ui", "Далее"),
         value=(
             format_track_link(next_track.title, next_track.uri)
             if next_track
-            else "*Тот же самый трек*"
+            else messages.catalog.pgettext("ui", "*Тот же самый трек*")
         ),
         inline=False,
     )
@@ -265,31 +305,38 @@ def build_rotate_embed(
     return embed
 
 
-def build_repeat_embed(new_mode: RepeatMode | str | None) -> discord.Embed:
+def build_repeat_embed(
+    new_mode: RepeatMode | str | None, *, language: Language = Language.RU
+) -> discord.Embed:
     """Build feedback for a repeat-mode change."""
+    messages = MusicMessages(catalog("music", language))
     match new_mode:
         case RepeatMode.OFF:
-            message = "Повтор **отключён**"
+            message = messages.catalog.pgettext("ui", "Повтор **отключён**")
         case RepeatMode.QUEUE:
-            message = "Повтор очереди **включён**"
+            message = messages.catalog.pgettext("ui", "Повтор очереди **включён**")
         case RepeatMode.TRACK:
-            message = "Повтор трека **включён**"
+            message = messages.catalog.pgettext("ui", "Повтор трека **включён**")
         case _:
-            message = "Режим повтора **неизвестен**"
+            message = messages.catalog.pgettext("ui", "Режим повтора **неизвестен**")
     return discord.Embed(
-        title="Залупливание",
+        title=messages.catalog.pgettext("ui", "Залупливание"),
         description=message,
         color=Color.INFO,
     )
 
 
-def build_track_exception_embed(payload: TrackExceptionPayload) -> discord.Embed:
+def build_track_exception_embed(
+    payload: TrackExceptionPayload, *, language: Language = Language.RU
+) -> discord.Embed:
     """Build the user-facing notification for a track exception."""
+    messages = MusicMessages(catalog("music", language))
     embed = SafeEmbed(
-        title="Не удалось воспроизвести трек",
+        title=messages.catalog.pgettext("ui", "Не удалось воспроизвести трек"),
         description=(
-            f"{format_track_link(payload.track.title, payload.track.uri)}\n"
-            "**Причина:** Источник временно недоступен или не ответил."
+            messages.track_exception(
+                link=format_track_link(payload.track.title, payload.track.uri)
+            )
         ),
         color=Color.WARNING,
     )

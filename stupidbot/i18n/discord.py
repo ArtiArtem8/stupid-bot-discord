@@ -75,3 +75,21 @@ async def error_context(interaction: discord.Interaction) -> PresentationContext
         logger.debug("Preferences lookup failed", exc_info=True)
         # The first attempt installed a fallback and prohibited a database retry.
         return await interaction_context(interaction, private=True)
+
+
+async def guild_context(client: discord.Client, guild_id: int) -> PresentationContext:
+    """Resolve the shared audience for a background delivery or public controller."""
+    guild = client.get_guild(guild_id)
+    locale = guild.preferred_locale if guild is not None else None
+    repository: object = getattr(client, "preferences_repository", None)
+    preferences = (
+        await repository.get(PreferenceScope.GUILD, guild_id)
+        if isinstance(repository, PreferencesRepository)
+        else None
+    )
+    return resolve_context(
+        language=preferences.language if preferences is not None else None,
+        timezone=preferences.timezone if preferences is not None else None,
+        locale=locale.value if isinstance(locale, discord.Locale) else None,
+        fallback_timezone=fallback_timezone(),
+    )

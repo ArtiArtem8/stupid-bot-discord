@@ -2,17 +2,22 @@
 
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from discord import ui
 
 from stupidbot.discord_ui.pagination import BasePaginator
 from stupidbot.features.music.discord.views import SessionSummaryView
 from stupidbot.features.music.runtime.session import MusicSession
+from stupidbot.i18n.policy import Language, PresentationContext
 
 
 class TestSessionSummaryView(unittest.IsolatedAsyncioTestCase):
     async def test_empty_session_shows_private_warning(self) -> None:
-        view = SessionSummaryView(session=MusicSession(guild_id=1))
+        view = SessionSummaryView(
+            session=MusicSession(guild_id=1),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         interaction = MagicMock()
         interaction.client = MagicMock()
         interaction.client.block_manager = MagicMock()
@@ -44,7 +49,9 @@ class TestSessionSummaryView(unittest.IsolatedAsyncioTestCase):
                 requester_id=42,
                 channel_id=100,
             )
-        view = SessionSummaryView(session=session)
+        view = SessionSummaryView(
+            session=session, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
         interaction = MagicMock()
         interaction.client = MagicMock()
         interaction.client.block_manager = MagicMock()
@@ -77,7 +84,10 @@ class TestSessionSummaryView(unittest.IsolatedAsyncioTestCase):
             self.assertIn(f"Track {index}", combined)
 
     async def test_timeout_removes_view_from_summary_message(self) -> None:
-        view = SessionSummaryView(session=MusicSession(guild_id=1))
+        view = SessionSummaryView(
+            session=MusicSession(guild_id=1),
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         message = MagicMock()
         message.edit = AsyncMock()
         view.message = message

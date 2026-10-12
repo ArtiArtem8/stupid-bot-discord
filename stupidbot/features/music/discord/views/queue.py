@@ -24,16 +24,19 @@ from stupidbot.discord_ui.pagination import (
 from stupidbot.discord_ui.theme import Color
 from stupidbot.features.music.discord.feedback import send_warning
 from stupidbot.features.music.discord.presentation import format_track_link
+from stupidbot.features.music.messages import MusicMessages
 from stupidbot.features.music.playback.models import (
     QueueEntry,
     QueueSnapshot,
     RepeatMode,
 )
 from stupidbot.features.music.results import (
-    MUSIC_RECOVERING_MESSAGE,
     MusicResult,
     MusicResultReason,
 )
+from stupidbot.i18n.catalog import catalog, pgettext_noop
+from stupidbot.i18n.discord import interaction_context
+from stupidbot.i18n.policy import PresentationContext
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +46,10 @@ type QueuedEntriesRemoveCallback = Callable[
     Awaitable[MusicResult[tuple[QueueEntry, ...]]],
 ]
 
-STALE_QUEUE_REQUEST_MESSAGE = (
+STALE_QUEUE_REQUEST_MESSAGE = pgettext_noop(
+    "stale_queue",
     "Ничего из этого запроса уже не ожидает в очереди. "
-    "Возможно, треки уже запустились или очередь была изменена."
+    "Возможно, треки уже запустились или очередь была изменена.",
 )
 
 
@@ -60,30 +64,39 @@ class QueueUndoView(discord.ui.View):
         requester_id: int,
         remove_callback: QueuedEntriesRemoveCallback,
         timeout: float,
+        context: PresentationContext,
     ) -> None:
         super().__init__(timeout=timeout)
+        self.context = context
+        self.messages = MusicMessages(catalog("music", context.language))
         self.guild_id = guild_id
         self.expected_entries = expected_entries
         self.requester_id = requester_id
         self.remove_callback = remove_callback
         self.remove_button = CallbackButton[Self](
             self.remove,
-            label="Удалить",
+            label=self.messages.catalog.pgettext("ui", "Удалить"),
             style=DANGER,
         )
         self.add_item(self.remove_button)
 
     @override
     async def interaction_check(self, interaction: Interaction) -> bool:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         if interaction.user.id == self.requester_id:
             return True
         await interaction.response.send_message(
-            "Удалить из очереди может только автор запроса.",
+            messages.catalog.pgettext(
+                "ui", "Удалить из очереди может только автор запроса."
+            ),
             ephemeral=True,
         )
         return False
 
     async def remove(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         if not await check_component_access(interaction):
             return
         await ack_component(interaction)
@@ -99,22 +112,26 @@ class QueueUndoView(discord.ui.View):
             self.requester_id,
         )
         if not result.is_success and result.reason is MusicResultReason.RECOVERING:
-            await interaction.followup.send(MUSIC_RECOVERING_MESSAGE, ephemeral=True)
+            await interaction.followup.send(
+                messages.failure(MusicResultReason.RECOVERING), ephemeral=True
+            )
             return
         if not result.is_success or not result.data:
             self.stop()
             await message.edit(view=None)
             await interaction.followup.send(
-                STALE_QUEUE_REQUEST_MESSAGE,
+                messages.catalog.pgettext("stale_queue", STALE_QUEUE_REQUEST_MESSAGE),
                 ephemeral=True,
             )
             return
 
         removed = result.data
         self.stop()
-        description = f"Треков: {len(removed)}" if len(removed) > 1 else ""
+        description = (
+            self.messages.track_count(count=len(removed)) if len(removed) > 1 else ""
+        )
         embed = FeedbackUI.make_embed(
-            title="Удалено из очереди",
+            title=self.messages.catalog.pgettext("ui", "Удалено из очереди"),
             description=description,
             feedback_type=FeedbackType.SUCCESS,
         )
@@ -153,8 +170,15 @@ class QueueUndoView(discord.ui.View):
 class QueuePaginationAdapter(PaginationData):
     """Adapts music queue data for the paginator."""
 
-    def __init__(self, snapshot: QueueSnapshot, page_size: int = 20) -> None:
+    def __init__(
+        self,
+        snapshot: QueueSnapshot,
+        page_size: int = 20,
+        *,
+        context: PresentationContext,
+    ) -> None:
         self.snapshot = snapshot
+        self.messages = MusicMessages(catalog("music", context.language))
         self.page_size = page_size
         self._paginator = self._build_paginator(snapshot)
 
@@ -185,47 +209,59 @@ class QueuePaginationAdapter(PaginationData):
 
     @override
     def make_embed(self, page: int) -> discord.Embed:
-        embed = discord.Embed(title="Очередь воспроизведения", color=Color.INFO)
+        embed = discord.Embed(
+            title=self.messages.catalog.pgettext("ui", "Очередь воспроизведения"),
+            color=Color.INFO,
+        )
         current = self.snapshot.current
 
         if current:
             track = current.track
             embed.add_field(
-                name="Сейчас играет",
+                name=self.messages.catalog.pgettext("ui", "Сейчас играет"),
                 value=format_track_link(track.title, track.uri),
                 inline=False,
             )
             if track.artwork_url:
                 embed.set_thumbnail(url=track.artwork_url)
         else:
-            embed.description = "Ничего не играет."
+            embed.description = self.messages.catalog.pgettext(
+                "ui", "Ничего не играет."
+            )
 
         if 0 <= page < len(self._paginator.pages):
             embed.add_field(
-                name="Далее",
+                name=self.messages.catalog.pgettext("ui", "Далее"),
                 value=self._paginator.pages[page],
                 inline=False,
             )
 
         repeat_str = (
-            "выкл."
+            self.messages.catalog.pgettext("ui", "выкл.")
             if self.snapshot.repeat_mode is RepeatMode.OFF
             else self.snapshot.repeat_mode.value
         )
         total_pages = max(1, len(self._paginator.pages))
         embed.set_footer(
-            text=(
-                f"Стр. {page + 1}/{total_pages} • "
-                f"В очереди: {self._paginator.total_items} • "
-                f"Повтор: {repeat_str}"
+            text=self.messages.queue_footer(
+                page=page + 1,
+                pages=total_pages,
+                count=self._paginator.total_items,
+                repeat=repeat_str,
             )
         )
         return embed
 
     @override
     async def on_unauthorized(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         await send_warning(
-            interaction, "Попрошу не трогать, это не ваше сообщение.", ephemeral=True
+            interaction,
+            messages.catalog.pgettext(
+                "ui", "Попрошу не трогать, это не ваше сообщение."
+            ),
+            ephemeral=True,
         )
 
 
@@ -248,6 +284,8 @@ class QueuePaginator(BasePaginator):
         self.add_item(self.refresh_btn)
 
     async def refresh(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         if not await check_component_access(interaction):
             return
         new_data = await self.refresh_callback()
@@ -257,6 +295,8 @@ class QueuePaginator(BasePaginator):
             await self._update_view(interaction)
         else:
             await send_warning(
-                interaction, "Не удалось обновить очередь", ephemeral=True
+                interaction,
+                messages.catalog.pgettext("ui", "Не удалось обновить очередь"),
+                ephemeral=True,
             )
             self.stop()

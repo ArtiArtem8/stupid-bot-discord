@@ -29,9 +29,13 @@ from stupidbot.features.music.contracts import (
 )
 from stupidbot.features.music.discord.feedback import send_warning
 from stupidbot.features.music.errors import EXPECTED_LAVALINK_IO_ERRORS
+from stupidbot.features.music.messages import MusicMessages
 from stupidbot.features.music.playback.models import PlaybackAttempt
-from stupidbot.features.music.results import MUSIC_SERVICE_UNAVAILABLE_MESSAGE
+from stupidbot.features.music.results import MusicErrorCode
 from stupidbot.features.music.runtime.connection import ConnectionManager
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import guild_context, interaction_context
+from stupidbot.i18n.policy import PresentationContext
 
 if TYPE_CHECKING:
     from stupidbot.features.music.playback.player import MusicPlayer
@@ -180,6 +184,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         attempt: PlaybackAttempt,
     ) -> None:
         """Replace any existing guild controller with one for the current attempt."""
+        context = await guild_context(self.bot, guild_id)
         async with self._locks[guild_id]:
             logger.debug("Manager: Setup controller for guild %s", guild_id)
             if not self._owns_attempt(player, attempt):
@@ -198,6 +203,7 @@ class TrackControllerManager(ControllerManagerProtocol):
                 await self.destroy_for_guild(guild_id, reason, requesting_view=view_ref)
 
             view = TrackControllerView(
+                context=context,
                 user_id=user_id,
                 player=player,
                 guild_id=guild_id,
@@ -365,6 +371,7 @@ class TrackControllerView(ui.View):
         self,
         *,
         user_id: int,
+        context: PresentationContext,
         player: MusicPlayer,
         guild_id: int,
         attempt: PlaybackAttempt,
@@ -373,6 +380,8 @@ class TrackControllerView(ui.View):
         on_player_failure: Callable[[MusicPlayer], Awaitable[None]],
     ) -> None:
         super().__init__(timeout=None)
+        self.context = context
+        self.messages = MusicMessages(catalog("music", context.language))
         self.user_id = user_id
         self.player = player
         self.guild_id = guild_id
@@ -418,7 +427,12 @@ class TrackControllerView(ui.View):
     def make_embed(self) -> discord.Embed:
         attempt = self.player.current_attempt
         if attempt is None or attempt is not self.attempt:
-            return discord.Embed(title="Playback Stopped", color=Color.INFO)
+            return discord.Embed(
+                title=self.messages.catalog.pgettext(
+                    "ui", "Воспроизведение остановлено"
+                ),
+                color=Color.INFO,
+            )
         track = attempt.entry.track
 
         if self._is_paused_cache:
@@ -446,9 +460,11 @@ class TrackControllerView(ui.View):
         member = self.player.guild.get_member(self.user_id)
         avatar = member.display_avatar if member else None
 
-        footer = f"Запросил: {member.display_name if member else self.user_id}"
+        footer = self.messages.requester(
+            name=member.display_name if member else str(self.user_id)
+        )
         if self.player.stuck_attempt is attempt:
-            footer = f"Трек застрял, жду продолжения • {footer}"
+            footer = self.messages.stuck(requester=footer)
         embed.set_footer(
             text=footer,
             icon_url=avatar.url if avatar else None,
@@ -529,6 +545,8 @@ class TrackControllerView(ui.View):
             await self.on_stop_callback(self, reason)
 
     async def handle_player_io_error(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         try:
             await self.on_player_failure(self.player)
         except Exception:
@@ -536,7 +554,7 @@ class TrackControllerView(ui.View):
         await self._request_stop(ControllerDestroyReason.PLAYER_ERROR)
         await send_warning(
             interaction,
-            MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+            messages.failure(MusicErrorCode.MUSIC_NODE_UNAVAILABLE),
             ephemeral=True,
             delete_after=60,
         )
@@ -627,11 +645,13 @@ class TrackControllerView(ui.View):
             logger.debug("View: Could not update controller message: %s", exc)
 
     async def _check_owner(self, interaction: Interaction) -> bool:
+        context = await interaction_context(interaction, private=True)
+        messages = MusicMessages(catalog("music", context.language))
         if interaction.user.id != self.user_id:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="Это не ваш контроллер.",
+                description=messages.catalog.pgettext("ui", "Это не ваш контроллер."),
                 ephemeral=True,
                 disable_report_btn=True,
             )

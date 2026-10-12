@@ -5,6 +5,10 @@ import logging
 from discord import Interaction
 
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.features.music.messages import MusicMessages
+from stupidbot.features.music.results import MusicResultReason
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +49,9 @@ async def send_warning(
 
 async def send_warning_no_player(interaction: Interaction) -> None:
     """Send a warning feedback about there is no player."""
-    await send_warning(interaction, "Нет проигрывателя")
+    context = await interaction_context(interaction, private=True)
+    messages = MusicMessages(catalog("music", context.language))
+    await send_warning(interaction, messages.failure(MusicResultReason.NO_PLAYER))
 
 
 async def send_info(
