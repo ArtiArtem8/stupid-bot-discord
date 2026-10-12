@@ -24,9 +24,7 @@
 **StupidBot** is a Discord bot for music, voice profiles and birthday greetings.
 You can host your own instance.
 
-The interface and profile cards support Russian and English. Choose your language
-and timezone with `/settings`; administrators use `/settings-server` for public
-server messages.
+The interface and profile cards support Russian and English.
 
 **English** · [Русский](README.ru.md)
 
@@ -72,9 +70,7 @@ remain available while Lavalink is unreachable.
 `/voice-profile` shows your server-local level, XP, voice time and session count.
 Cards and their details support Russian and English. Personal cards use your
 language and timezone; public cards use the server settings. Open cards keep
-that context when refreshed. After the second successful private profile use,
-an optional settings reminder can appear at most twice, at least 14 days apart.
-Choose Later or Do not remind me; the bot does not send unsolicited DMs.
+that context when refreshed.
 Activity, People and XP buttons add details to the same message.
 
 ![Demo Listener's voice profile: Mythic level 40, 360 hours 45 minutes in voice and 80 sessions. Synthetic data.](docs/assets/profile.png)
@@ -132,6 +128,9 @@ only affects voice profiles.
 servers. `/settings-server` changes settings for public messages in the current
 server and requires Manage Server. Both editors are visible only to you.
 
+<details>
+<summary>Language priority, saving settings and reminders</summary>
+
 Choose Russian, English or **As in Discord**, enter an IANA timezone such as
 `Europe/Moscow` or `Asia/Krasnoyarsk`, check the preview and press **Save**.
 **Cancel** discards pending changes. **As in Discord** resets only the language;
@@ -150,6 +149,12 @@ Command descriptions follow your Discord client language. User text, external
 Wolfram answers and previously saved `/ask` replies stay unchanged. A new `/ask`
 answer is translated before saving; repeated questions return that saved text.
 The bot-wide uptime status remains Russian.
+
+After the second successful private profile use, an optional settings reminder
+can appear at most twice, at least 14 days apart. Choose **Later** or
+**Do not remind me**; the bot does not send unsolicited DMs.
+
+</details>
 
 ## Engineering
 
