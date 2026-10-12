@@ -15,7 +15,7 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool, ConnectionPoolEntry
 
 from stupidbot.storage.schema import storage_state
 
-SCHEMA_REVISION = "0003_application"
+SCHEMA_REVISION = "0004_preferences"
 
 
 class Database:

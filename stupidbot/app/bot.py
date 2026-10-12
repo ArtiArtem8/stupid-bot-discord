@@ -24,11 +24,14 @@ from stupidbot.features.birthdays.repository import BirthdayRepository
 from stupidbot.features.member_roles.repository import MonitorRepository
 from stupidbot.features.member_roles.restoration import ServerMonitoringManager
 from stupidbot.features.music.repository import VolumeRepository
+from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.features.reports.repository import ReportRepository
 from stupidbot.features.reports.ui import handle_report_button
 from stupidbot.features.voice.journal import VoiceJournal
 from stupidbot.features.voice.repository import VoiceRepository
 from stupidbot.features.voice.runtime import VoiceAnalytics
+from stupidbot.i18n.catalog import catalogs
+from stupidbot.i18n.commands import CommandTranslator
 from stupidbot.storage.database import Database, open_engine, validate_schema
 
 logger = logging.getLogger(__name__)
@@ -77,6 +80,7 @@ class StupidBot(commands.Bot):
         )
         self.birthday_repository = BirthdayRepository(self._database)
         self.volume_repository = VolumeRepository(self._database)
+        self.preferences_repository = PreferencesRepository(self._database)
         self.block_manager = BlockManager(BlockingRepository(self._database))
         self.question_repository = QuestionRepository(self._database)
         self.report_repository = ReportRepository(self._database)
@@ -212,6 +216,8 @@ class StupidBot(commands.Bot):
         if self._shutdown_task is not None:
             return
         FeedbackUI.configure(partial(handle_report_button, self.report_repository))
+        await asyncio.to_thread(catalogs)
+        await self.tree.set_translator(CommandTranslator())
         await self.restore_state()
         await self.cog_loader.load_cogs()
         if self._shutdown_task is not None:

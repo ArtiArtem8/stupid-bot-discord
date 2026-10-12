@@ -1,0 +1,104 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "zone_id"
+msgid "IANA-зона"
+msgstr "IANA timezone"
+
+msgctxt "command"
+msgid "Ваш язык и часовой пояс"
+msgstr "Your language and timezone"
+
+msgctxt "expired"
+msgid "Время редактирования истекло. Откройте настройки заново."
+msgstr "This editor has expired. Open settings again."
+
+msgctxt "permission"
+msgid "Для изменения настроек сервера нужно право «Управлять сервером»."
+msgstr "You need Manage Server permission to change server settings."
+
+msgctxt "cancelled"
+msgid "Изменения отменены."
+msgstr "Changes cancelled."
+
+msgctxt "discord"
+msgid "Как в Discord"
+msgstr "As in Discord"
+
+msgctxt "personal_title"
+msgid "Личные настройки"
+msgstr "Personal settings"
+
+msgctxt "zone_help"
+msgid "Например Europe/Moscow. Пустое поле — настройка установки."
+msgstr "For example Europe/Moscow. Leave blank to use the installation default."
+
+msgctxt "server_title"
+msgid "Настройки сервера"
+msgstr "Server settings"
+
+msgctxt "saved"
+msgid "Настройки сохранены."
+msgstr "Settings saved."
+
+#, python-brace-format
+msgctxt "conflict"
+msgid "Настройки уже изменены. Сейчас: {language}, {timezone}. Откройте панель заново."
+msgstr "Settings have changed. Current values: {language}, {timezone}. Open the panel again."
+
+msgctxt "invalid_zone"
+msgid "Неизвестная IANA-зона. Например: Europe/Moscow или Asia/Krasnoyarsk."
+msgstr "Unknown IANA timezone. Examples: Europe/Moscow or Asia/Krasnoyarsk."
+
+msgctxt "cancel"
+msgid "Отмена"
+msgstr "Cancel"
+
+msgctxt "closed"
+msgid "Панель уже закрыта или сохраняется. Откройте настройки заново."
+msgstr "This panel is closed or saving. Open settings again."
+
+msgctxt "save"
+msgid "Сохранить"
+msgstr "Save"
+
+msgctxt "timezone"
+msgid "Часовой пояс"
+msgstr "Timezone"
+
+msgctxt "owner_only"
+msgid "Эта панель принадлежит другому пользователю. Откройте /settings."
+msgstr "This panel belongs to someone else. Open /settings."
+
+msgctxt "command"
+msgid "Язык и часовой пояс общих сообщений сервера"
+msgstr "Language and timezone for public server messages"
+
+#, python-brace-format
+msgctxt "preview"
+msgid ""
+"Язык: **{language}**\n"
+"Часовой пояс: **{timezone}**\n"
+"Сейчас: {local_time}"
+msgstr ""
+"Language: **{language}**\n"
+"Timezone: **{timezone}**\n"
+"Current time: {local_time}"
+

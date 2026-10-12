@@ -41,6 +41,20 @@ longer registers cogs. Imported modules and assets still require a restart.
 the same CLI. SQLite maintenance uses `python -m stupidbot.storage`; the previous
 `python -m repositories.sqlite` entry remains a thin compatibility command.
 
+Translations live in each owner's `locales/` directory. Runtime uses stdlib
+gettext; Babel is a development dependency. Parameterized messages have typed
+methods in the owner's `messages.py`. Pass an explicit presentation context to
+views and renderers; do not set a global language. Personal/ephemeral responses
+resolve user preferences, while public responses resolve guild preferences.
+
+After changing message literals or PO translations, run
+`uv run --locked python -m tools.catalogs`. Commit the PO, MO, index and digest
+files together. `uv run --locked python -m tools.catalogs --check` verifies
+extraction, placeholders, plural forms, duplicates and reproducible compilation;
+the pre-push gate includes this check. Startup verifies release digests before
+loading handlers. A saved `/ask` answer is already rendered text and must never
+be retranslated on retrieval.
+
 ## Full Check
 
 Run the full pre-push hook set when you need a clean local pass:

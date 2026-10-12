@@ -1,0 +1,92 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "answer"
+msgid "..."
+msgstr "..."
+
+msgctxt "answer"
+msgid ""
+"Безумие — это точное повторение одного и того же действия. Раз за разом, в надежде на"
+" изменение. Это есть безумие."
+msgstr ""
+"Insanity is doing the exact same thing over and over again, expecting things to "
+"change. That is insanity."
+
+msgctxt "answer"
+msgid "Вероятно нет"
+msgstr "Probably not"
+
+msgctxt "answer"
+msgid "Весьма спорно"
+msgstr "Highly debatable"
+
+msgctxt "answer"
+msgid "Возможно"
+msgstr "Maybe"
+
+msgctxt "answer"
+msgid "Вы из тех людей, с кем очень приятно общаться"
+msgstr "You are one of those people who are a pleasure to talk to"
+
+msgctxt "answer"
+msgid "Вы из тех людей, с кем очень приятно прощаться"
+msgstr "You are one of those people who are a pleasure to say goodbye to"
+
+msgctxt "answer"
+msgid "Да!"
+msgstr "Yes!"
+
+msgctxt "answer"
+msgid "Зря ты спросил"
+msgstr "You should not have asked"
+
+msgctxt "answer"
+msgid "Извините, но я сегодня слишком занят для бесполезного общения"
+msgstr "Sorry, I am too busy for pointless conversation today"
+
+msgctxt "command"
+msgid "Магический шар, задай любой вопрос"
+msgstr "Magic 8-ball: ask any question"
+
+msgctxt "answer"
+msgid "Не хочу отвечать"
+msgstr "I do not want to answer"
+
+msgctxt "answer"
+msgid "Нет!"
+msgstr "No!"
+
+msgctxt "answer"
+msgid "Почти наверняка"
+msgstr "Almost certainly"
+
+msgctxt "answer"
+msgid "Предрешено"
+msgstr "It is decided"
+
+msgctxt "answer"
+msgid "Скорее да"
+msgstr "More likely yes"
+
+msgctxt "answer"
+msgid "Я не знаю"
+msgstr "I do not know"
+

@@ -18,6 +18,51 @@ from sqlalchemy import (
 metadata = MetaData()
 
 
+class PreferencesColumns(TypedColumns):
+    subject_id = Column(Integer, primary_key=True, autoincrement=False)
+    language: Column[str | None] = Column(nullable=True)
+    timezone: Column[str | None] = Column(nullable=True)
+    revision = Column(Integer, nullable=False)
+
+
+user_preferences = Table(
+    "user_preferences",
+    metadata,
+    PreferencesColumns,
+    ForeignKeyConstraint(["subject_id"], ["users.user_id"]),
+    CheckConstraint("language IS NULL OR language IN ('ru', 'en')"),
+    CheckConstraint("revision > 0"),
+)
+guild_preferences = Table(
+    "guild_preferences",
+    metadata,
+    PreferencesColumns,
+    ForeignKeyConstraint(["subject_id"], ["guilds.guild_id"]),
+    CheckConstraint("language IS NULL OR language IN ('ru', 'en')"),
+    CheckConstraint("revision > 0"),
+)
+
+
+class PreferenceRemindersColumns(TypedColumns):
+    user_id = Column(Integer, primary_key=True, autoincrement=False)
+    eligible_uses = Column(Integer, nullable=False)
+    prompt_count = Column(Integer, nullable=False)
+    last_prompt_us: Column[int | None] = Column(nullable=True)
+    dismissed = Column(Boolean, nullable=False)
+    token: Column[str | None] = Column(nullable=True)
+
+
+preference_reminders = Table(
+    "preference_reminders",
+    metadata,
+    PreferenceRemindersColumns,
+    ForeignKeyConstraint(["user_id"], ["users.user_id"]),
+    CheckConstraint("eligible_uses >= 0"),
+    CheckConstraint("prompt_count BETWEEN 0 AND 2"),
+    CheckConstraint("dismissed IN (0, 1)"),
+)
+
+
 class UsersColumns(TypedColumns):
     user_id = Column(Integer, primary_key=True, autoincrement=False)
     username: Column[str | None] = Column(nullable=True)

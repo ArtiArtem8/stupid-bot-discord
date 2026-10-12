@@ -19,7 +19,11 @@ from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAn
 
 from stupidbot.common.text import truncate_text
 from stupidbot.discord_ui.embeds import DEFAULT_LIMITS, SafeEmbed
+from stupidbot.discord_ui.messages import FeedbackMessages
 from stupidbot.discord_ui.theme import ERROR_THUMBNAIL, Color
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
+from stupidbot.i18n.policy import Language
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +61,25 @@ class ReportButtonView(View):
         on_report: ReportCallback,
         error_info: str | None = None,
         timeout: float | None = 180,
+        language: Language = Language.RU,
     ) -> None:
         super().__init__(timeout=timeout)
         self.user_id = user_id
         self.on_report = on_report
         self.error_info = error_info
+        self.report.label = catalog("discord_ui", language).pgettext(
+            "report", "Сообщить о проблеме"
+        )
 
     @discord.ui.button(label="Сообщить о проблеме", style=discord.ButtonStyle.danger)
     async def report(self, interaction: discord.Interaction, _: Button[Self]) -> None:
         if interaction.user.id != self.user_id:
+            context = await interaction_context(interaction, private=True)
             await interaction.response.send_message(
-                "Это не ваше сообщение.", ephemeral=True
+                catalog("discord_ui", context.language).pgettext(
+                    "not_yours", "Это не ваше сообщение."
+                ),
+                ephemeral=True,
             )
             return
         await self.on_report(interaction, self.error_info)
@@ -158,6 +170,7 @@ class FeedbackUI:
             error_info: Optional error information to pre-fill the report modal.
 
         """
+        context = await interaction_context(interaction, private=ephemeral)
         resolved_embed = FeedbackUI._resolve_embed(
             embed, title, description, feedback_type
         )
@@ -167,8 +180,9 @@ class FeedbackUI:
             view,
             disable_report_btn,
             error_info,
+            context.language,
         )
-        FeedbackUI._add_delete_timer(resolved_embed, delete_after)
+        FeedbackUI._add_delete_timer(resolved_embed, delete_after, context.language)
         payload = FeedbackPayload(
             resolved_embed, resolved_view, delete_after, ephemeral
         )
@@ -217,6 +231,7 @@ class FeedbackUI:
         view: object,
         disable_report_btn: bool,
         error_info: str | None,
+        language: Language = Language.RU,
     ) -> ViewDirective | View | None:
         if view is None or isinstance(view, View):
             return view
@@ -233,14 +248,21 @@ class FeedbackUI:
             interaction.user.id,
             report_callback,
             error_info=error_info,
+            language=language,
         )
 
     @staticmethod
-    def _add_delete_timer(embed: discord.Embed, delete_after: float | None) -> None:
+    def _add_delete_timer(
+        embed: discord.Embed,
+        delete_after: float | None,
+        language: Language = Language.RU,
+    ) -> None:
         if not delete_after:
             return
         expire_at = utcnow() + timedelta(seconds=delete_after)
-        timer = f"-# Удалится {format_dt(expire_at, style='R')}"
+        timer = FeedbackMessages(catalog("discord_ui", language)).deletion(
+            relative_time=format_dt(expire_at, style="R")
+        )
         # Keep the timer complete, even when external content exhausts the budget.
         name = ""
         if len(embed.fields) >= DEFAULT_LIMITS.max_fields:

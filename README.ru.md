@@ -167,7 +167,7 @@ uv sync --locked --no-dev
 | `DISCORD_BOT_TOKEN` | Обязательный токен Discord-бота. |
 | `DISCORD_BOT_OWNER_ID` | Необязательный ID владельца. |
 | `VOICE_PROBE_ENABLED` | По умолчанию `true`: сбор голосовой активности. Наблюдения хранятся в SQLite бессрочно. |
-| `VOICE_PROFILE_TIMEZONE` | Часовой пояс IANA для календарных подробностей профиля, по умолчанию `UTC`. Не меняет длительность пребывания в голосе или суммарный XP. |
+| `VOICE_PROFILE_TIMEZONE` | Часовой пояс IANA для календарных подробностей профиля; без значения — `UTC`. Для новой установки пример предлагает явно выбрать `Europe/Moscow`. При обновлении сохраните прежнее значение. Не меняет длительность пребывания в голосе или суммарный XP. |
 | `WOLFRAM_APP_ID` | [App ID WolframAlpha](https://developer.wolframalpha.com/) для `/solve` и `/plot`; остальным функциям не нужен. |
 | `LAVALINK_HOST`, `LAVALINK_PORT` | Адрес Lavalink, по умолчанию `localhost:2333`. |
 | `LAVALINK_PASSWORD`, `LAVALINK_SECURE` | Пароль и настройка TLS должны совпадать с сервером Lavalink. |

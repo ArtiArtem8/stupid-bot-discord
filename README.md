@@ -138,6 +138,16 @@ only affects voice profiles.
 
 ## Run locally
 
+`/settings` opens a private language/timezone editor. `/settings-server` edits
+the settings for public server messages and requires Manage Server. “As in
+Discord” resets only the language override. Open editors retain their original
+language and reject stale saves if another editor has committed first.
+
+For a new installation, explicitly choose the profile calendar timezone;
+the example configuration suggests `Europe/Moscow`. Keep the existing
+`VOICE_PROFILE_TIMEZONE` when upgrading. An unset value still means `UTC`,
+and birthday scheduling continues to use the host's date.
+
 You need **Python 3.12**, Git, [uv](https://docs.astral.sh/uv/getting-started/installation/)
 and a bot application from the [Discord Developer Portal](https://discord.com/developers/applications).
 Enable **Presence**, **Server Members** and **Message Content** privileged intents

@@ -9,20 +9,25 @@ from discord.utils import utcnow
 
 from stupidbot.discord_ui.exceptions import BlockedUserError
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.messages import FeedbackMessages
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import error_context
 
 logger = logging.getLogger(__name__)
 
 
 async def handle_app_command_error(
     interaction: discord.Interaction,
-    error: app_commands.AppCommandError,
+    error: Exception,
 ) -> None:
     """Send one safe response for an application-command failure."""
+    context = await error_context(interaction)
+    messages = catalog("discord_ui", context.language)
     if isinstance(error, BlockedUserError):
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.WARNING,
-            description="⛔ Доступ к командам запрещён.",
+            description=messages.pgettext("blocked", "⛔ Доступ к командам запрещён."),
             ephemeral=True,
         )
         return
@@ -30,7 +35,9 @@ async def handle_app_command_error(
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.WARNING,
-            description="Команда может быть использована только на сервере",
+            description=messages.pgettext(
+                "guild_only", "Команда может быть использована только на сервере"
+            ),
             ephemeral=True,
         )
         return
@@ -39,7 +46,9 @@ async def handle_app_command_error(
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.INFO,
-            description=(f"Время ожидания: {discord.utils.format_dt(expire_at, 'R')}"),
+            description=FeedbackMessages(messages).cooldown(
+                relative_time=discord.utils.format_dt(expire_at, "R")
+            ),
             ephemeral=True,
         )
         return
@@ -47,8 +56,10 @@ async def handle_app_command_error(
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.WARNING,
-            title="Доступ запрещён",
-            description="Проверка доступа к команде не пройдена.",
+            title=messages.pgettext("access_title", "Доступ запрещён"),
+            description=messages.pgettext(
+                "access", "Проверка доступа к команде не пройдена."
+            ),
             ephemeral=True,
         )
         return
@@ -69,9 +80,10 @@ async def handle_app_command_error(
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                title="Discord Ошибка",
-                description=(
-                    "Не удалось выполнить действие в Discord. Попробуйте ещё раз."
+                title=messages.pgettext("discord_title", "Discord Ошибка"),
+                description=messages.pgettext(
+                    "discord_error",
+                    "Не удалось выполнить действие в Discord. Попробуйте ещё раз.",
                 ),
                 delete_after=600,
                 ephemeral=True,
@@ -94,8 +106,10 @@ async def handle_app_command_error(
     await FeedbackUI.send(
         interaction,
         feedback_type=FeedbackType.ERROR,
-        title="Внутренняя ошибка",
-        description="Не удалось выполнить команду. Детали записаны в лог.",
+        title=messages.pgettext("internal_title", "Внутренняя ошибка"),
+        description=messages.pgettext(
+            "internal_error", "Не удалось выполнить команду. Детали записаны в лог."
+        ),
         delete_after=300,
         ephemeral=True,
         error_info=type(original).__name__,

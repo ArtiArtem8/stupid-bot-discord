@@ -1,6 +1,7 @@
 """Ordered application extensions; each feature has exactly one registration."""
 
 EXTENSIONS: tuple[str, ...] = (
+    "stupidbot.features.preferences.preferences_cog",
     "stupidbot.features.access.access_cog",
     "stupidbot.app.owner_cog",
     "stupidbot.features.birthdays.birthday_cog",

@@ -1,6 +1,8 @@
 from functools import lru_cache
 from string import ascii_lowercase, digits
 
+from stupidbot.i18n.catalog import pgettext_noop
+
 
 def random_answer(text: str, answers: list[str]) -> str:
     """Choose a repeatable answer derived from normalized message text.
@@ -46,24 +48,27 @@ def str_local(text: str) -> str:
 
 
 CAPABILITIES = [
-    "Вероятно нет",
-    "Весьма спорно",
-    "Возможно",
-    "Да!",
-    "Зря ты спросил",
-    "Не хочу отвечать",
-    "Нет!",
-    "Почти наверняка",
-    "Предрешено",
-    "Скорее да",
-    "Я не знаю",
+    pgettext_noop("answer", "Вероятно нет"),
+    pgettext_noop("answer", "Весьма спорно"),
+    pgettext_noop("answer", "Возможно"),
+    pgettext_noop("answer", "Да!"),
+    pgettext_noop("answer", "Зря ты спросил"),
+    pgettext_noop("answer", "Не хочу отвечать"),
+    pgettext_noop("answer", "Нет!"),
+    pgettext_noop("answer", "Почти наверняка"),
+    pgettext_noop("answer", "Предрешено"),
+    pgettext_noop("answer", "Скорее да"),
+    pgettext_noop("answer", "Я не знаю"),
 ] * 2 + [
-    "...",
-    (
+    pgettext_noop("answer", "..."),
+    pgettext_noop(
+        "answer",
         "Безумие — это точное повторение одного и того же действия. Раз "
-        "за разом, в надежде на изменение. Это есть безумие."
+        "за разом, в надежде на изменение. Это есть безумие.",
     ),
-    "Вы из тех людей, с кем очень приятно общаться",
-    "Вы из тех людей, с кем очень приятно прощаться",
-    "Извините, но я сегодня слишком занят для бесполезного общения",
+    pgettext_noop("answer", "Вы из тех людей, с кем очень приятно общаться"),
+    pgettext_noop("answer", "Вы из тех людей, с кем очень приятно прощаться"),
+    pgettext_noop(
+        "answer", "Извините, но я сегодня слишком занят для бесполезного общения"
+    ),
 ]

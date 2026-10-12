@@ -32,7 +32,9 @@ class PaginationData(Protocol):
 type ButtonCallback = Callable[[Interaction], Awaitable[None]]
 
 
-class CallbackButton[ViewT: discord.ui.View](discord.ui.Button[ViewT]):
+class CallbackButton[ViewT: discord.ui.View | discord.ui.LayoutView](
+    discord.ui.Button[ViewT]
+):
     """Button that delegates interaction handling to a typed callback."""
 
     def __init__(

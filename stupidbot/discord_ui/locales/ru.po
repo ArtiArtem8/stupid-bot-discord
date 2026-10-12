@@ -1,0 +1,71 @@
+# Russian translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: ru\n"
+"Language-Team: ru <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && "
+"(n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgctxt "deletion"
+msgid "-# Удалится {relative_time}"
+msgstr "-# Удалится {relative_time}"
+
+msgctxt "discord_title"
+msgid "Discord Ошибка"
+msgstr "Discord Ошибка"
+
+msgctxt "internal_title"
+msgid "Внутренняя ошибка"
+msgstr "Внутренняя ошибка"
+
+#, python-brace-format
+msgctxt "cooldown"
+msgid "Время ожидания: {relative_time}"
+msgstr "Время ожидания: {relative_time}"
+
+msgctxt "access_title"
+msgid "Доступ запрещён"
+msgstr "Доступ запрещён"
+
+msgctxt "guild_only"
+msgid "Команда может быть использована только на сервере"
+msgstr "Команда может быть использована только на сервере"
+
+msgctxt "discord_error"
+msgid "Не удалось выполнить действие в Discord. Попробуйте ещё раз."
+msgstr "Не удалось выполнить действие в Discord. Попробуйте ещё раз."
+
+msgctxt "internal_error"
+msgid "Не удалось выполнить команду. Детали записаны в лог."
+msgstr "Не удалось выполнить команду. Детали записаны в лог."
+
+msgctxt "access"
+msgid "Проверка доступа к команде не пройдена."
+msgstr "Проверка доступа к команде не пройдена."
+
+msgctxt "report"
+msgid "Сообщить о проблеме"
+msgstr "Сообщить о проблеме"
+
+msgctxt "not_yours"
+msgid "Это не ваше сообщение."
+msgstr "Это не ваше сообщение."
+
+msgctxt "blocked"
+msgid "⛔ Доступ к командам запрещён."
+msgstr "⛔ Доступ к командам запрещён."
+

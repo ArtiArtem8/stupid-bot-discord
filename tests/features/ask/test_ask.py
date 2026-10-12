@@ -11,7 +11,11 @@ from sqlalchemy import select
 from stupidbot.features.ask.answers import str_local
 from stupidbot.features.ask.ask_cog import QuestionCog
 from stupidbot.features.ask.repository import QuestionRepository
+from stupidbot.features.preferences.models import Preferences, PreferenceScope
+from stupidbot.features.preferences.repository import PreferencesRepository
+from stupidbot.i18n.policy import Language
 from stupidbot.storage.schema import question_answers
+from tests.features.preferences.fixtures import interaction
 from tests.storage.fixtures import temporary_database
 
 
@@ -21,6 +25,28 @@ class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):
         _, self.database = await temporary_database(self)
         self.repository = QuestionRepository(self.database)
         self.cog = QuestionCog(MagicMock(), self.repository)
+
+    async def test_saved_translation_survives_language_change(
+        self,
+    ) -> None:
+        preferences = PreferencesRepository(self.database)
+        saved = await preferences.save(
+            PreferenceScope.GUILD, 20, Preferences(Language.EN)
+        )
+        self.cog.answers = ["Да!", "Нет!"]
+        first = interaction()
+        first.client.preferences_repository = preferences
+        await self.cog.q._do_call(first, {"text": "Question?"})
+        first.response.send_message.assert_awaited_once_with("Yes!")
+        await preferences.save(
+            PreferenceScope.GUILD, 20, Preferences(Language.RU, revision=saved.revision)
+        )
+        second = interaction()
+        second.client.preferences_repository = preferences
+        queue_before = list(self.cog.answers)
+        await self.cog.q._do_call(second, {"text": "QUESTION ?"})
+        second.response.send_message.assert_awaited_once_with("Yes!")
+        self.assertEqual(self.cog.answers, queue_before)
 
     async def test_returns_existing_answer_without_rewriting_it(self) -> None:
         self.assertIsNone(await self.cog._add_to_history(1, "Question?", "answer"))

@@ -16,6 +16,8 @@ from stupidbot import settings as config
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.features.ask.answers import CAPABILITIES, random_answer, str_local
 from stupidbot.features.ask.repository import QuestionRepository
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
 
 if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
@@ -35,7 +37,9 @@ class QuestionCog(BaseCog):
 
     @app_commands.command(
         name="ask",
-        description="Магический шар, задай любой вопрос",
+        description=app_commands.locale_str(
+            "Магический шар, задай любой вопрос", domain="ask"
+        ),
     )
     async def q(self, interaction: Interaction, *, text: str) -> None:
         logger.info(
@@ -44,18 +48,22 @@ class QuestionCog(BaseCog):
             interaction.user.id,
             text,
         )
+        context = await interaction_context(interaction, private=False)
+        messages = catalog("ask", context.language)
         async with self._answer_lock:
+            candidate = messages.pgettext("answer", self.answers[0])
             prev_message = await self._add_to_history(
                 interaction.user.id,
                 text,
-                self.answers[0],
+                candidate,
             )
 
             if prev_message is not None:
                 reply = prev_message
             else:
                 self.answers.append(random_answer(text, answers=CAPABILITIES))
-                reply = self.answers.pop(0)
+                self.answers.pop(0)
+                reply = candidate
 
         if prev_message is not None:
             logger.info(
