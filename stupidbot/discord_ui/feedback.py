@@ -17,9 +17,9 @@ import discord
 from discord.ui import Button, View
 from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAny]
 
-from stupidbot import settings as config
+from stupidbot.common.text import truncate_text
 from stupidbot.discord_ui.embeds import DEFAULT_LIMITS, SafeEmbed
-from utils.text_utils import truncate_text
+from stupidbot.discord_ui.theme import ERROR_THUMBNAIL, Color
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +44,10 @@ class FeedbackPayload:
 
 
 class FeedbackType(Enum):
-    SUCCESS = config.Color.SUCCESS
-    INFO = config.Color.INFO
-    WARNING = config.Color.WARNING
-    ERROR = config.Color.ERROR
+    SUCCESS = Color.SUCCESS
+    INFO = Color.INFO
+    WARNING = Color.WARNING
+    ERROR = Color.ERROR
 
 
 class ReportButtonView(View):
@@ -96,7 +96,7 @@ class FeedbackUI:
             color=feedback_type.value,
         )
         if feedback_type is FeedbackType.ERROR:
-            embed.set_thumbnail(url=config.ERROR_THUMBNAIL)
+            embed.set_thumbnail(url=ERROR_THUMBNAIL)
         return embed
 
     @overload

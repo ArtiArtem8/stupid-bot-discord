@@ -15,12 +15,12 @@ from api.voice.profile.details import (
 )
 from api.voice.scope import VoiceScope
 from api.voice.timeline import VoiceTimeline, build_timeline
-from repositories.birthday_repository import BirthdayRepository
-from repositories.blocking_repository import BlockingRepository
-from repositories.monitor_repository import MonitorRepository
 from repositories.voice_repository import VoiceRepository
 from repositories.volume_repository import VolumeRepository
 from stupidbot.common.asyncio import run_in_thread
+from stupidbot.features.access.repository import BlockingRepository
+from stupidbot.features.birthdays.repository import BirthdayRepository
+from stupidbot.features.member_roles.repository import MonitorRepository
 from stupidbot.storage.database import SCHEMA_REVISION, Database
 from stupidbot.storage.schema import (
     question_answers,

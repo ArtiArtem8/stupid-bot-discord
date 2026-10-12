@@ -6,13 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from stupidbot.storage.schema import (
-    channels,
-    guild_members,
-    guilds,
-    roles,
-    users,
-)
+from stupidbot.storage.schema import channels, guild_members, guilds, roles, users
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 

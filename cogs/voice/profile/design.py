@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Final
 
 # Non-parsing tree/serialization APIs only; parsing always uses defusedxml.
-from xml.etree.ElementTree import Element, ElementTree, register_namespace  # nosec B405
+from xml.etree.ElementTree import Element, ElementTree, register_namespace
 
 import regex
 from defusedxml.ElementTree import fromstring

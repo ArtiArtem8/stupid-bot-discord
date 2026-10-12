@@ -16,10 +16,11 @@ from api.music.models import (
     QueueSnapshot,
     RepeatMode,
 )
-from stupidbot import settings as config
+from stupidbot.common.text import TextPaginator
 from stupidbot.discord_ui.access import check_component_access
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.interaction_flow import ack_component
+from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
 from stupidbot.discord_ui.pagination import (
     DANGER,
     PRIMARY,
@@ -27,7 +28,7 @@ from stupidbot.discord_ui.pagination import (
     CallbackButton,
     PaginationData,
 )
-from utils.text_utils import TextPaginator
+from stupidbot.discord_ui.theme import Color
 
 from ..feedback import send_warning
 from ..presentation import format_track_link
@@ -170,19 +171,19 @@ class QueuePaginationAdapter(PaginationData):
             link = format_track_link(
                 entry.track.title,
                 entry.track.uri,
-                max_length=config.MAX_EMBED_FIELD_LENGTH - len(prefix),
+                max_length=MAX_EMBED_FIELD_LENGTH - len(prefix),
             )
             lines.append(f"{prefix}{link}")
         return TextPaginator(
             lines,
             page_size=self.page_size,
-            max_length=config.MAX_EMBED_FIELD_LENGTH,
+            max_length=MAX_EMBED_FIELD_LENGTH,
             separator="\n",
         )
 
     @override
     def make_embed(self, page: int) -> discord.Embed:
-        embed = discord.Embed(title="Очередь воспроизведения", color=config.Color.INFO)
+        embed = discord.Embed(title="Очередь воспроизведения", color=Color.INFO)
         current = self.snapshot.current
 
         if current:

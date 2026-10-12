@@ -6,12 +6,12 @@ import unittest
 from collections.abc import Mapping
 from typing import Any
 
+from stupidbot.common.text import truncate_text
 from stupidbot.discord_ui.embeds import (
     CharacterLimitExceededError,
     EmbedLimits,
     SafeEmbed,
 )
-from utils.text_utils import truncate_text
 
 
 class TestSafeEmbed(unittest.TestCase):

@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from api.birthday_models import BirthdayGuildConfig, BirthdayUser
 from stupidbot.common.json import JsonObject, JsonValue
+from stupidbot.features.birthdays.models import BirthdayGuildConfig, BirthdayUser
 from tools.storage_legacy.json_input import identifier, load_object
 
 

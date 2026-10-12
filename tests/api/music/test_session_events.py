@@ -4,10 +4,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from api.music.models import MusicSession
-from api.music.session_events import (
-    dispatch_music_session_end,
-    main_session_channel_id,
-)
+from api.music.session_events import dispatch_music_session_end, main_session_channel_id
 
 
 class TestMusicSessionEvents(unittest.TestCase):

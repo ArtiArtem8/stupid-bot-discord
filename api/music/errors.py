@@ -8,7 +8,7 @@ from enum import StrEnum
 import aiohttp
 import mafic
 
-from utils.text_utils import truncate_text
+from stupidbot.common.text import truncate_text
 
 from .models import MUSIC_SERVICE_UNAVAILABLE_MESSAGE, NodeNotConnectedError
 

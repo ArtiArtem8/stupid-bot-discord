@@ -15,10 +15,7 @@ from api.music.models import (
     TrackResponseData,
 )
 from cogs.music.music_cog import MusicCog
-from cogs.music.presentation import (
-    build_playlist_added_embed,
-    build_track_added_embed,
-)
+from cogs.music.presentation import build_playlist_added_embed, build_track_added_embed
 from cogs.music.views import QueueUndoView
 from stupidbot.discord_ui.feedback import FeedbackUI
 from tests.api.music.helpers import make_entry, make_playlist, make_track

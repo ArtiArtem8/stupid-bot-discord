@@ -11,14 +11,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy import event, text
 from sqlalchemy.exc import OperationalError
 
-from cogs.birthday_cog import BirthdayCog
-from cogs.birthday_cog import setup as setup_birthdays
 from cogs.music.music_cog import MusicCog
 from cogs.music.music_cog import setup as setup_music
 from repositories.volume_repository import VolumeData
 from stupidbot.app.bot import StupidBot
 from stupidbot.app.cog_loader import CogLoader
 from stupidbot.common.asyncio import run_in_thread
+from stupidbot.features.birthdays.birthday_cog import BirthdayCog
+from stupidbot.features.birthdays.birthday_cog import setup as setup_birthdays
 from stupidbot.storage.database import Database, migrate, open_engine
 
 
@@ -64,7 +64,7 @@ class TestStorageLifecycle(unittest.IsolatedAsyncioTestCase):
             music.components.healer.volume_settings,
             music.components.service.volume_settings,
         )
-        await bot.birthday_manager.set_user_birthday(
+        await bot.birthday_repository.set_user_birthday(
             1, "Guild", 10, 2, "Member", "01-01-2000"
         )
         await bot.volume_repository.save(VolumeData(1, 0))
@@ -72,7 +72,7 @@ class TestStorageLifecycle(unittest.IsolatedAsyncioTestCase):
         reopened = self.make_bot(self.path)
         await reopened.restore_state()
         self.assertEqual(await reopened.volume_repository.get_volume(1), 0)
-        birthday = await reopened.birthday_manager.get_guild_config(1)
+        birthday = await reopened.birthday_repository.get(1)
         if birthday is None:
             self.fail("Birthday not persisted")
         self.assertEqual(birthday.users[2].birthday, "01-01-2000")

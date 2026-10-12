@@ -1,7 +1,6 @@
 """Bot configuration and environment variables."""
 
 import os
-from enum import IntEnum
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -33,30 +32,15 @@ DATA_DIR = BASE_DIR / "data"
 
 
 # --- Bot schema ---
-BOT_ICON = "https://icon-library.com/images/icon-for-discord/icon-for-discord-17.jpg"
 BOT_PREFIX = "s!"  # Legacy - all commands are slash commands currently
-
-
-class Color(IntEnum):
-    """Bot theme color palette."""
-
-    SUCCESS = 0x57F287
-    INFO = 0xFFAE00
-    WARNING = 0xFEE75C
-    ERROR = 0xED4245
-    MUSIC = 0xFFAE00
 
 
 # --- System constants ---
 ENCODING = "utf-8"
 """Default text encoding for file I/O operations."""
-DATE_FORMAT = "%d-%m-%Y"
 """Canonical format: DD-MM-YYYY."""
-MAX_EMBED_FIELD_LENGTH = 1024
 """Discord embed field character limit."""
-PAGE_SIZE = 10
 """Default number of items per page in paginated views."""
-ERROR_THUMBNAIL = "https://cdn.discordapp.com/emojis/839119737458917467.webp?size=96&animated=true"  # mm-m-m-monkey  # noqa: E501
 
 
 VOICE_PROFILE_TIMEZONE = os.getenv("VOICE_PROFILE_TIMEZONE", "UTC")

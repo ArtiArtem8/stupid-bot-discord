@@ -19,9 +19,10 @@ from api.music.models import (
     TrackInfo,
     TrackResponseData,
 )
-from stupidbot import settings as config
+from stupidbot.common.text import truncate_sequence, truncate_text
 from stupidbot.discord_ui.embeds import DEFAULT_LIMITS, SafeEmbed
-from utils.text_utils import truncate_sequence, truncate_text
+from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
+from stupidbot.discord_ui.theme import Color
 
 MAX_TIMEDELTA_DAYS = 999_999_999
 _MARKDOWN_LINK_BRACKET_RE = re.compile(r"([\[\]])")
@@ -131,7 +132,7 @@ def _format_recent_tracks(tracks: Sequence[TrackInfo]) -> tuple[str, int]:
     formatted_groups = [_format_track_group(group) for group in grouped]
     result = truncate_sequence(
         reversed(formatted_groups),
-        max_length=config.MAX_EMBED_FIELD_LENGTH,
+        max_length=MAX_EMBED_FIELD_LENGTH,
         separator="\n",
         placeholder="\n...",
     )
@@ -142,7 +143,7 @@ def build_session_summary_embed(session: MusicSession) -> discord.Embed:
     """Build the summary shown when a music session ends."""
     embed = SafeEmbed(
         title="Сессия закончена",
-        color=config.Color.INFO,
+        color=Color.INFO,
         timestamp=session.start_time,
     )
     embed.safe_add_field(
@@ -176,7 +177,7 @@ def build_track_added_embed(
     embed = SafeEmbed(
         title=title_by_placement[data["placement"]],
         description=format_track_link(track.title, track.uri),
-        color=config.Color.INFO,
+        color=Color.INFO,
     )
     if track.artwork_url:
         embed.set_thumbnail(url=track.artwork_url)
@@ -211,7 +212,7 @@ def build_playlist_added_embed(
     embed = SafeEmbed(
         title=title_by_placement[data["placement"]],
         description=description,
-        color=config.Color.INFO,
+        color=Color.INFO,
     )
     duration = sum(track.length for track in playlist.tracks)
     embed.safe_add_field(name="Длительность", value=format_duration(duration))
@@ -234,7 +235,7 @@ def build_skip_embed(
         description=(
             format_track_link(skipped.title, skipped.uri) if skipped else "???"
         ),
-        color=config.Color.INFO,
+        color=Color.INFO,
     )
     if next_track:
         embed.safe_add_field(
@@ -254,7 +255,7 @@ def build_rotate_embed(
     embed = SafeEmbed(
         title="Трек перемещён в конец",
         description=format_track_link(moved_track.title, moved_track.uri),
-        color=config.Color.INFO,
+        color=Color.INFO,
     )
     embed.safe_add_field(
         name="Далее",
@@ -283,7 +284,7 @@ def build_repeat_embed(new_mode: RepeatMode | str | None) -> discord.Embed:
     return discord.Embed(
         title="Залупливание",
         description=message,
-        color=config.Color.INFO,
+        color=Color.INFO,
     )
 
 
@@ -295,7 +296,7 @@ def build_track_exception_embed(payload: TrackExceptionPayload) -> discord.Embed
             f"{format_track_link(payload.track.title, payload.track.uri)}\n"
             "**Причина:** Источник временно недоступен или не ответил."
         ),
-        color=config.Color.WARNING,
+        color=Color.WARNING,
     )
     if payload.track.artwork_url:
         embed.set_thumbnail(url=payload.track.artwork_url)

@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from api.report_models import ReportDataDict
+from stupidbot.features.reports.models import ReportDataDict
 from stupidbot.storage.database import Database
 from stupidbot.storage.identity import (
     ensure_channel,

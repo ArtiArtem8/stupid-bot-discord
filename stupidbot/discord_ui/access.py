@@ -5,9 +5,9 @@ from typing import Protocol, runtime_checkable
 
 import discord
 
-from api.blocking import BlockManager
 from stupidbot.discord_ui.errors import handle_app_command_error
 from stupidbot.discord_ui.exceptions import BlockedUserError
+from stupidbot.features.access.operations import BlockManager
 
 logger = logging.getLogger(__name__)
 

@@ -16,11 +16,7 @@ from typing import TYPE_CHECKING
 
 from api.voice.prediction import VoiceHoursEstimate
 from api.voice.profile.calendar import ClockSpan
-from api.voice.profile.details import (
-    ActivityDetail,
-    DetailPeriod,
-    XpDetail,
-)
+from api.voice.profile.details import ActivityDetail, DetailPeriod, XpDetail
 from cogs.voice.profile.design import (
     ASSETS,
     XLINK,

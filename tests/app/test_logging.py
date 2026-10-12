@@ -40,7 +40,11 @@ class TestLoggingSetup(unittest.TestCase):
         content = (
             "секрет: мой пароль; token: chat-token; Authorization: Bearer chat-auth"
         )
-        for logger_name in ("cogs.on_message_cog", "api.reporting", "mafication.app"):
+        for logger_name in (
+            "stupidbot.app.message_events_cog",
+            "stupidbot.features.reports.ui",
+            "mafication.app",
+        ):
             with self.subTest(logger=logger_name):
                 record = logging.LogRecord(
                     logger_name, logging.INFO, "", 1, "%s", (content,), None

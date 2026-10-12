@@ -1,14 +1,15 @@
 """Ordered application extensions; each feature has exactly one registration."""
 
 EXTENSIONS: tuple[str, ...] = (
-    "cogs.admin_cog",
-    "cogs.birthday_cog",
-    "cogs.guild_monitor_cog",
-    "cogs.on_message_cog",
-    "cogs.question_cog",
-    "cogs.report_cog",
-    "cogs.wolfram_cog",
-    "cogs.command.no_prefix_cog",
+    "stupidbot.features.access.access_cog",
+    "stupidbot.app.owner_cog",
+    "stupidbot.features.birthdays.birthday_cog",
+    "stupidbot.features.member_roles.member_roles_cog",
+    "stupidbot.app.message_events_cog",
+    "stupidbot.features.ask.ask_cog",
+    "stupidbot.features.reports.report_cog",
+    "stupidbot.features.wolfram.wolfram_cog",
+    "stupidbot.features.command_help.command_help_cog",
     "cogs.music.music_cog",
     "cogs.voice.collector_cog",
     "cogs.voice.profile_cog",

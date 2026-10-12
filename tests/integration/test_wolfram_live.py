@@ -18,9 +18,9 @@ import aiohttp
 import pytest
 from PIL import Image
 
-from api.wolfram import WolframClient
 from stupidbot import settings as config
-from utils.image_utils import process_wolfram_plot
+from stupidbot.features.wolfram.client import WolframClient
+from stupidbot.features.wolfram.plot_image import process_wolfram_plot
 
 
 @pytest.mark.wolfram_live

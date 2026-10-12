@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from discord import Colour
     from discord.types.embed import EmbedType
 
-from utils.text_utils import TextPaginator, truncate_text
+from stupidbot.common.text import TextPaginator, truncate_text
 
 
 class EmbedKwargs(TypedDict, total=False):

@@ -14,7 +14,7 @@ from cogs.music.presentation import (
     build_session_summary_embed,
     format_track_link,
 )
-from stupidbot import settings as config
+from stupidbot.discord_ui.theme import Color
 from tests.api.music.helpers import make_playlist, make_track
 
 
@@ -34,7 +34,7 @@ class TestTrackLinkFormatting(unittest.TestCase):
             with self.subTest(mode=mode):
                 colour = build_repeat_embed(mode).colour
                 self.assertIsNotNone(colour)
-                self.assertEqual(colour.value if colour else None, config.Color.INFO)
+                self.assertEqual(colour.value if colour else None, Color.INFO)
 
     def test_formats_safe_and_hostile_titles_with_uri(self) -> None:
         uri = "https://good.invalid"

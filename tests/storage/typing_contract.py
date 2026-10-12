@@ -5,7 +5,7 @@ from typing import assert_type
 from sqlalchemy import Row, RowMapping, Select, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from api.birthday_models import BirthdayGuildConfig
+from stupidbot.features.birthdays.models import BirthdayGuildConfig
 from stupidbot.storage.rows import column_value
 from stupidbot.storage.schema import birthday_settings as guilds
 from stupidbot.storage.schema import reports, voice_record_states, voice_records

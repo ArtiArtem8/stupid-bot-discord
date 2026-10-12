@@ -25,12 +25,12 @@ from api.music.models import (
 from api.music.protocols import ControllerManagerProtocol
 from api.music.service.connection_manager import ConnectionManager
 from resources import RESTART_EMOJI
-from stupidbot import settings as config
 from stupidbot.common.callables import callable_name
 from stupidbot.discord_ui.access import check_component_access
 from stupidbot.discord_ui.embeds import SafeEmbed
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.interaction_flow import ack_component
+from stupidbot.discord_ui.theme import Color
 
 from ..feedback import send_warning
 
@@ -419,7 +419,7 @@ class TrackControllerView(ui.View):
     def make_embed(self) -> discord.Embed:
         attempt = self.player.current_attempt
         if attempt is None or attempt is not self.attempt:
-            return discord.Embed(title="Playback Stopped", color=config.Color.INFO)
+            return discord.Embed(title="Playback Stopped", color=Color.INFO)
         track = attempt.entry.track
 
         if self._is_paused_cache:
@@ -440,7 +440,7 @@ class TrackControllerView(ui.View):
         embed = SafeEmbed(
             title=f"{MUSIC_PLAYER_EMOJIS['musical_note']} {track.title}",
             description=description,
-            color=config.Color.INFO,
+            color=Color.INFO,
         )
         if track.artwork_url:
             embed.set_thumbnail(url=track.artwork_url)

@@ -9,10 +9,11 @@ from discord import Interaction, ui
 from discord.utils import format_dt
 
 from api.music.models import MusicSession
-from stupidbot import settings as config
+from stupidbot.common.text import TextPaginator, truncate_text
 from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
 from stupidbot.discord_ui.pagination import BasePaginator, PaginationData
-from utils.text_utils import TextPaginator, truncate_text
+from stupidbot.discord_ui.theme import Color
 
 from ..feedback import send_warning
 from ..presentation import format_track_link
@@ -41,7 +42,7 @@ class SessionPaginationAdapter(PaginationData):
         return TextPaginator(
             lines,
             page_size=self.page_size,
-            max_length=config.MAX_EMBED_FIELD_LENGTH,
+            max_length=MAX_EMBED_FIELD_LENGTH,
             separator="\n",
         )
 
@@ -55,7 +56,7 @@ class SessionPaginationAdapter(PaginationData):
 
         embed = discord.Embed(
             title="Полная история",
-            color=config.Color.INFO,
+            color=Color.INFO,
             timestamp=self.session.start_time,
             description=description,
         )

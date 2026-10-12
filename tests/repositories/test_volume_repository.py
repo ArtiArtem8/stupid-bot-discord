@@ -7,10 +7,10 @@ from typing import override
 
 from sqlalchemy import select
 
-from repositories.birthday_repository import BirthdayRepository
 from repositories.volume_repository import VolumeData, VolumeRepository
 from stupidbot import settings as config
 from stupidbot.common.asyncio import run_in_thread
+from stupidbot.features.birthdays.repository import BirthdayRepository
 from stupidbot.storage.database import (
     Database,
     copy_database,

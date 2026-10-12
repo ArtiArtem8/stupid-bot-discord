@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-from cogs.guild_monitor_cog import ServerMonitorCog
 from cogs.voice.profile.view import ProfileAction, VoiceProfileView
 from cogs.voice.profile_cog import VoiceProfileCog
-from cogs.wolfram_cog import WolframCog
 from stupidbot.app.bot import StupidBot
+from stupidbot.features.member_roles.member_roles_cog import ServerMonitorCog
+from stupidbot.features.wolfram.wolfram_cog import WolframCog
 
 
 class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):

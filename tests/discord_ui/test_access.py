@@ -8,20 +8,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 from discord.ext import commands
 
-from api.birthday import BirthdayManager
-from api.blocking import BlockManager
 from api.music.models import MusicSession, PlaybackAttempt
-from cogs.admin_cog import AdminCog
-from cogs.birthday_cog import ConfirmDeleteView
 from cogs.music.views.controller import TrackControllerView
 from cogs.music.views.queue import QueuePaginationAdapter, QueuePaginator, QueueUndoView
 from cogs.music.views.session import SessionSummaryView
 from cogs.voice.profile.view import ProfileAction, VoiceProfileView
 from cogs.voice.profile_cog import VoiceProfileCog
-from cogs.wolfram_cog import WolframCog
 from stupidbot.discord_ui.access import check_command_access
 from stupidbot.discord_ui.exceptions import BlockedUserError
 from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.features.access.access_cog import AdminCog
+from stupidbot.features.access.operations import BlockManager
+from stupidbot.features.birthdays.repository import BirthdayRepository
+from stupidbot.features.birthdays.views import ConfirmDeleteView
+from stupidbot.features.wolfram.wolfram_cog import WolframCog
 from tests.api.music.helpers import make_entry
 
 
@@ -142,7 +142,7 @@ class TestAuthorization(unittest.IsolatedAsyncioTestCase):
     async def test_birthday_confirm_does_not_modify_registration_when_blocked(
         self,
     ) -> None:
-        view = ConfirmDeleteView(10, 42, MagicMock(spec=BirthdayManager), 1)
+        view = ConfirmDeleteView(10, 42, MagicMock(spec=BirthdayRepository), 1)
         with patch.object(
             view.manager, "clear_user_birthday", new=AsyncMock()
         ) as clear:

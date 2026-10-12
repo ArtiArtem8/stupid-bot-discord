@@ -10,16 +10,7 @@ from discord import Intents
 from discord.ext import commands, tasks
 from sqlalchemy.exc import OperationalError
 
-from api.birthday import BirthdayManager
-from api.blocking import BlockManager
-from api.guild_monitoring import ServerMonitoringManager
-from api.reporting import handle_report_button
 from api.voice.analytics import VoiceAnalytics
-from repositories.birthday_repository import BirthdayRepository
-from repositories.blocking_repository import BlockingRepository
-from repositories.monitor_repository import MonitorRepository
-from repositories.question_repository import QuestionRepository
-from repositories.report_repository import ReportRepository
 from repositories.voice_journal import VoiceJournal
 from repositories.voice_repository import VoiceRepository
 from repositories.volume_repository import VolumeRepository
@@ -30,6 +21,14 @@ from stupidbot.app.uptime_repository import UptimeRepository
 from stupidbot.common.duration import format_duration_ru
 from stupidbot.discord_ui.errors import handle_app_command_error
 from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.features.access.operations import BlockManager
+from stupidbot.features.access.repository import BlockingRepository
+from stupidbot.features.ask.repository import QuestionRepository
+from stupidbot.features.birthdays.repository import BirthdayRepository
+from stupidbot.features.member_roles.repository import MonitorRepository
+from stupidbot.features.member_roles.restoration import ServerMonitoringManager
+from stupidbot.features.reports.repository import ReportRepository
+from stupidbot.features.reports.ui import handle_report_button
 from stupidbot.storage.database import Database, open_engine, validate_schema
 
 logger = logging.getLogger(__name__)
@@ -76,7 +75,7 @@ class StupidBot(commands.Bot):
         self.uptime_manager = uptime_manager or UptimeManager(
             UptimeRepository(self._database)
         )
-        self.birthday_manager = BirthdayManager(BirthdayRepository(self._database))
+        self.birthday_repository = BirthdayRepository(self._database)
         self.volume_repository = VolumeRepository(self._database)
         self.block_manager = BlockManager(BlockingRepository(self._database))
         self.question_repository = QuestionRepository(self._database)
@@ -116,7 +115,7 @@ class StupidBot(commands.Bot):
             )
             await validate_schema(self._database)
             logger.info("SQLite schema validated; storage is COMPLETE")
-            await self.birthday_manager.repo.recover_deliveries()
+            await self.birthday_repository.recover_deliveries()
             await self.uptime_manager.restore_uptime()
             await self.voice_analytics.start()
             self._prepared = True
