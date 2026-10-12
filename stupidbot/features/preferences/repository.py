@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import Table, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -22,6 +22,7 @@ from stupidbot.storage.identity import (
     utc_microseconds,
 )
 from stupidbot.storage.schema import (
+    PreferencesColumns,
     guild_preferences,
     preference_reminders,
     user_preferences,
@@ -46,19 +47,7 @@ class PreferencesRepository:
         discord_id(subject_id)
         table = user_preferences if scope is PreferenceScope.USER else guild_preferences
         async with self._database.transaction() as connection:
-            row = (
-                await connection.execute(
-                    select(table.c.language, table.c.timezone, table.c.revision).where(
-                        table.c.subject_id == subject_id
-                    )
-                )
-            ).one_or_none()
-        if row is None:
-            return Preferences()
-        language, timezone, revision = row
-        return Preferences(
-            None if language is None else Language(language), timezone, revision
-        )
+            return await _read_preferences(connection, table, subject_id)
 
     async def save(
         self, scope: PreferenceScope, subject_id: int, proposed: Preferences
@@ -71,20 +60,7 @@ class PreferencesRepository:
         discord_id(subject_id)
         table = user_preferences if scope is PreferenceScope.USER else guild_preferences
         async with self._database.transaction() as connection:
-            row = (
-                await connection.execute(
-                    select(table.c.language, table.c.timezone, table.c.revision).where(
-                        table.c.subject_id == subject_id
-                    )
-                )
-            ).one_or_none()
-            current = (
-                Preferences()
-                if row is None
-                else Preferences(
-                    None if row[0] is None else Language(row[0]), row[1], row[2]
-                )
-            )
+            current = await _read_preferences(connection, table, subject_id)
             if current.revision != proposed.revision:
                 raise PreferenceConflictError(current)
             if scope is PreferenceScope.USER:
@@ -176,6 +152,24 @@ class PreferencesRepository:
             )
             accepted = result.scalar_one_or_none() is not None
         return accepted
+
+
+async def _read_preferences(
+    connection: AsyncConnection, table: Table[PreferencesColumns], subject_id: int
+) -> Preferences:
+    row = (
+        await connection.execute(
+            select(table.c.language, table.c.timezone, table.c.revision).where(
+                table.c.subject_id == subject_id
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        return Preferences()
+    language, timezone, revision = row
+    return Preferences(
+        None if language is None else Language(language), timezone, revision
+    )
 
 
 async def _complete_setup(connection: AsyncConnection, user_id: int) -> None:

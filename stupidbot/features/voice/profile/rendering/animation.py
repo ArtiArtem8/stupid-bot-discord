@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -305,11 +306,8 @@ class CardAnimation:
                     else:
                         protect.rectangle(bounds, fill=0)
 
-    def _prepare_ornaments(self) -> None:
-        if not (self.motion.avatar_orbits or self.motion.emblem_orbits):
-            return
-        ornaments = Image.new("RGBA", (self.base.width * 2, self.base.height * 2))
-        pen = ImageDraw.Draw(ornaments)
+    def _orbit_geometry(self) -> Iterator[tuple[int, Box, float]]:
+        """Use the same paths for static outlines and moving satellites."""
         for key, number in (
             ("avatar-outline", self.motion.avatar_orbits),
             ("emblem-area", self.motion.emblem_orbits),
@@ -324,12 +322,20 @@ class CardAnimation:
                     area.height + inset * 2,
                 )
                 ratio = 0.57 if key == "emblem-area" and self.motion.prismatic else 1
-                points = [orbit(box, step / 96, ratio=ratio) for step in range(97)]
-                pen.line(
-                    [(round(x * 2), round(y * 2)) for x, y in points],
-                    fill=self.design.tokens["border"],
-                    width=2,
-                )
+                yield index, box, ratio
+
+    def _prepare_ornaments(self) -> None:
+        if not (self.motion.avatar_orbits or self.motion.emblem_orbits):
+            return
+        ornaments = Image.new("RGBA", (self.base.width * 2, self.base.height * 2))
+        pen = ImageDraw.Draw(ornaments)
+        for _, box, ratio in self._orbit_geometry():
+            points = [orbit(box, step / 96, ratio=ratio) for step in range(97)]
+            pen.line(
+                [(round(x * 2), round(y * 2)) for x, y in points],
+                fill=self.design.tokens["border"],
+                width=2,
+            )
         fixed = ornaments.resize(self.base.size, Image.Resampling.LANCZOS)
         fixed.putalpha(ImageChops.multiply(fixed.getchannel("A"), self.clip))
         self.base = self.base.copy()
@@ -357,37 +363,21 @@ class CardAnimation:
             overlay.alpha_composite(color_layer)
 
     def _draw_satellites(self, overlay: Image.Image, phase: float) -> None:
-        cfg = self.motion
-        for key, number in (
-            ("avatar-outline", cfg.avatar_orbits),
-            ("emblem-area", cfg.emblem_orbits),
-        ):
-            area = self.design.boxes[key]
-            for index in range(number):
-                inset = 6 + index * 5
-                box = Box(
-                    area.x - inset,
-                    area.y - inset,
-                    area.width + inset * 2,
-                    area.height + inset * 2,
-                )
-                ratio = 0.57 if key == "emblem-area" and cfg.prismatic else 1
-                direction = -1 if index % 2 else 1
-                centers = [
-                    (orbit(box, direction * phase, index * 0.27, ratio=ratio), index)
-                ]
-                if cfg.prismatic:
-                    centers.append(
-                        (
-                            orbit(
-                                box, direction * phase, index * 0.27 + 0.5, ratio=ratio
-                            ),
-                            index + 1,
-                        )
+        for index, box, ratio in self._orbit_geometry():
+            direction = -1 if index % 2 else 1
+            centers = [
+                (orbit(box, direction * phase, index * 0.27, ratio=ratio), index)
+            ]
+            if self.motion.prismatic:
+                centers.append(
+                    (
+                        orbit(box, direction * phase, index * 0.27 + 0.5, ratio=ratio),
+                        index + 1,
                     )
-                for (x, y), color_index in centers:
-                    sprite = self.diamonds[color_index % len(self.colors)]
-                    overlay.alpha_composite(sprite, (round(x) - 8, round(y) - 8))
+                )
+            for (x, y), color_index in centers:
+                sprite = self.diamonds[color_index % len(self.colors)]
+                overlay.alpha_composite(sprite, (round(x) - 8, round(y) - 8))
 
     def _draw_solar_rays(self, overlay: Image.Image, phase: float) -> None:
         cfg = self.motion

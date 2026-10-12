@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from typing import TypeVar
+from typing import Never, TypeVar
 
 import discord
 import mafic
@@ -382,18 +382,9 @@ class CoreMusicService:
         requester_id: int,
     ) -> MusicResult[tuple[QueueEntry, ...]]:
         """Remove exact waiting entries from the active guild player."""
-        if self._is_recovering(guild_id):
-            return MusicResult(
-                MusicResultStatus.FAILURE,
-                MUSIC_RECOVERING_MESSAGE,
-                reason=MusicResultReason.RECOVERING,
-            )
-        player = self.connection.get_player(guild_id)
-        if player is None:
-            return self._missing_player_result(
-                guild_id,
-                context="remove queued entries",
-            )
+        player = self._operation_player(guild_id, context="remove queued entries")
+        if isinstance(player, MusicResult):
+            return player
         removed = await player.remove_queued_entries(
             expected,
             requester_id=requester_id,
@@ -452,14 +443,9 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
-        if self._is_recovering(guild_id):
-            return MusicResult(
-                MusicResultStatus.FAILURE,
-                MUSIC_RECOVERING_MESSAGE,
-                reason=MusicResultReason.RECOVERING,
-            )
-        if not (player := self.connection.get_player(guild_id)):
-            return self._missing_player_result(guild_id, context="stop")
+        player = self._operation_player(guild_id, context="stop")
+        if isinstance(player, MusicResult):
+            return player
 
         try:
             await self.ui.controller.destroy_for_guild(
@@ -481,14 +467,9 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[SkipTrackData]:
-        if self._is_recovering(guild_id):
-            return MusicResult(
-                MusicResultStatus.FAILURE,
-                MUSIC_RECOVERING_MESSAGE,
-                reason=MusicResultReason.RECOVERING,
-            )
-        if not (player := self.connection.get_player(guild_id)):
-            return self._missing_player_result(guild_id, context="skip")
+        player = self._operation_player(guild_id, context="skip")
+        if isinstance(player, MusicResult):
+            return player
 
         try:
             skipped_attempt, started_attempt = await player.skip()
@@ -515,14 +496,9 @@ class CoreMusicService:
         )
 
     async def pause(self, guild_id: int) -> MusicResult[None]:
-        if self._is_recovering(guild_id):
-            return MusicResult(
-                MusicResultStatus.FAILURE,
-                MUSIC_RECOVERING_MESSAGE,
-                reason=MusicResultReason.RECOVERING,
-            )
-        if not (player := self.connection.get_player(guild_id)):
-            return self._missing_player_result(guild_id, context="pause")
+        player = self._operation_player(guild_id, context="pause")
+        if isinstance(player, MusicResult):
+            return player
         try:
             await player.pause()
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
@@ -532,14 +508,9 @@ class CoreMusicService:
         )
 
     async def resume(self, guild_id: int) -> MusicResult[None]:
-        if self._is_recovering(guild_id):
-            return MusicResult(
-                MusicResultStatus.FAILURE,
-                MUSIC_RECOVERING_MESSAGE,
-                reason=MusicResultReason.RECOVERING,
-            )
-        if not (player := self.connection.get_player(guild_id)):
-            return self._missing_player_result(guild_id, context="resume")
+        player = self._operation_player(guild_id, context="resume")
+        if isinstance(player, MusicResult):
+            return player
         try:
             await player.resume()
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
@@ -554,14 +525,9 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[None]:
-        if self._is_recovering(guild_id):
-            return MusicResult(
-                MusicResultStatus.FAILURE,
-                MUSIC_RECOVERING_MESSAGE,
-                reason=MusicResultReason.RECOVERING,
-            )
-        if not (player := self.connection.get_player(guild_id)):
-            return self._missing_player_result(guild_id, context="shuffle")
+        player = self._operation_player(guild_id, context="shuffle")
+        if isinstance(player, MusicResult):
+            return player
         await player.shuffle_queue()
 
         self._record_interaction_if_possible(guild_id, requester_id, text_channel_id)
@@ -576,15 +542,9 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RotateTrackData]:
-        if self._is_recovering(guild_id):
-            return MusicResult(
-                MusicResultStatus.FAILURE,
-                MUSIC_RECOVERING_MESSAGE,
-                reason=MusicResultReason.RECOVERING,
-            )
-        player = self.connection.get_player(guild_id)
-        if not player:
-            return self._missing_player_result(guild_id, context="rotate")
+        player = self._operation_player(guild_id, context="rotate")
+        if isinstance(player, MusicResult):
+            return player
 
         try:
             moved_attempt, started_attempt = await player.rotate_current()
@@ -641,14 +601,9 @@ class CoreMusicService:
         requester_id: int | None = None,
         text_channel_id: int | None = None,
     ) -> MusicResult[RepeatModeData]:
-        if self._is_recovering(guild_id):
-            return MusicResult(
-                MusicResultStatus.FAILURE,
-                MUSIC_RECOVERING_MESSAGE,
-                reason=MusicResultReason.RECOVERING,
-            )
-        if not (player := self.connection.get_player(guild_id)):
-            return self._missing_player_result(guild_id, context="set_repeat")
+        player = self._operation_player(guild_id, context="set_repeat")
+        if isinstance(player, MusicResult):
+            return player
 
         previous = player.repeat.mode
         if mode is None:
@@ -697,6 +652,21 @@ class CoreMusicService:
             position = player.position or 0
             total += max(0, player.current_entry.track.length - position)
         return total
+
+    def _operation_player(
+        self, guild_id: int, *, context: str
+    ) -> MusicPlayer | MusicResult[Never]:
+        """Reject mutations during recovery before looking up an active player."""
+        if self._is_recovering(guild_id):
+            return MusicResult(
+                MusicResultStatus.FAILURE,
+                MUSIC_RECOVERING_MESSAGE,
+                reason=MusicResultReason.RECOVERING,
+            )
+        player = self.connection.get_player(guild_id)
+        if player is None:
+            return self._missing_player_result(guild_id, context=context)
+        return player
 
     def _missing_player_result(
         self, guild_id: int | None = None, *, context: str | None = None

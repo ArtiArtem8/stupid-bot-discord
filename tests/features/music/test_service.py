@@ -2,6 +2,7 @@
 
 import asyncio
 import unittest
+from collections.abc import Awaitable, Callable
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,6 +17,7 @@ from stupidbot.features.music.playback.models import (
     PLAYBACK_USER_DATA_KEY,
     EnqueueOutcome,
     PlaybackAttempt,
+    PlayPlacement,
     QueueEntry,
     QueuePlacement,
     TrackRequester,
@@ -23,6 +25,7 @@ from stupidbot.features.music.playback.models import (
 from stupidbot.features.music.playback.player import MusicPlayer
 from stupidbot.features.music.results import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+    MusicErrorCode,
     MusicResult,
     MusicResultReason,
     MusicResultStatus,
@@ -496,6 +499,47 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, MusicResultStatus.SUCCESS)
         player.shuffle_queue.assert_awaited_once_with()
 
+    async def test_player_mutations_reject_recovery_before_missing_player(self) -> None:
+        operations: tuple[
+            tuple[str, Callable[[int], Awaitable[MusicResult[object]]]], ...
+        ] = (
+            ("stop", self.service.stop),
+            ("skip", self.service.skip),
+            ("pause", self.service.pause),
+            ("resume", self.service.resume),
+            ("shuffle", self.service.shuffle),
+            ("rotate", self.service.rotate),
+            ("repeat", self.service.set_repeat),
+            ("remove", lambda guild: self.service.remove_queued_entries(guild, (), 42)),
+        )
+        for healing, recovering, unavailable, reason in (
+            (True, False, True, MusicResultReason.RECOVERING),
+            (False, True, True, MusicResultReason.RECOVERING),
+            (False, False, True, MusicErrorCode.MUSIC_NODE_UNAVAILABLE),
+            (False, False, False, MusicResultReason.NO_PLAYER),
+        ):
+            self.voice_lifecycle.is_healing.return_value = healing
+            self.connection.is_recovering.return_value = recovering
+            self.connection.is_known_unavailable.return_value = unavailable
+            for name, operation in operations:
+                with self.subTest(
+                    operation=name,
+                    healing=healing,
+                    recovering=recovering,
+                    unavailable=unavailable,
+                ):
+                    self.connection.get_player.reset_mock()
+                    result = await operation(123)
+                    self.assertEqual(result.status, MusicResultStatus.FAILURE)
+                    self.assertEqual(result.reason, reason)
+                    self.assertIsNone(result.data)
+                    if healing or recovering:
+                        self.connection.get_player.assert_not_called()
+                    else:
+                        self.connection.get_player.assert_called_once_with(123)
+        self.assertEqual(self.state.mock_calls, [])
+        self.assertEqual(self.ui.mock_calls, [])
+
     async def test_late_load_does_not_enqueue_into_detached_player(self) -> None:
         player = MagicMock(spec=MusicPlayer)
         player.guild = MagicMock(id=123)
@@ -870,73 +914,9 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["placement"], "next")
         self.assertEqual(data["undo_entries"], (entry,))
 
-    async def test_play_next_playlist_enqueues_as_single_ordered_block(self) -> None:
-        guild = MagicMock(id=123)
-        tracks = [make_track("one"), make_track("two")]
-        playlist = make_playlist("Mix", tracks)
-        requester = TrackRequester(1, 2)
-        entries = tuple(
-            QueueEntry(index, track, requester) for index, track in enumerate(tracks, 1)
-        )
-        player = MagicMock()
-        player.fetch_tracks = AsyncMock(return_value=playlist)
-        player.enqueue_tracks = AsyncMock(return_value=EnqueueOutcome(entries, None))
-        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
-        self.connection.get_player.return_value = player
-
-        with patch.object(self.service, "join", join):
-            result = await self.service.play(
-                guild,
-                MagicMock(),
-                "query",
-                1,
-                2,
-                placement="next",
-            )
-
-        player.enqueue_tracks.assert_awaited_once_with(
-            tracks, TrackRequester(1, 2), placement="next"
-        )
-        self.assertIs(result.status, MusicResultStatus.SUCCESS)
-        data = result.data
-        if data is None or isinstance(data, tuple):
-            self.fail("Expected play response data")
-        if data["type"] != "playlist":
-            self.fail("Expected playlist response data")
-        self.assertEqual(data["placement"], "next")
-        self.assertEqual(data["undo_entries"], entries)
-
-    async def test_started_playlist_keeps_all_entries_available_to_undo(self) -> None:
-        guild = MagicMock(id=123)
-        tracks = [make_track("one"), make_track("two")]
-        playlist = make_playlist("Mix", tracks)
-        requester = TrackRequester(1, 2)
-        entries = tuple(
-            QueueEntry(index, track, requester) for index, track in enumerate(tracks, 1)
-        )
-        player = MagicMock()
-        player.fetch_tracks = AsyncMock(return_value=playlist)
-        player.enqueue_tracks = AsyncMock(
-            return_value=EnqueueOutcome(
-                entries,
-                PlaybackAttempt(1, entries[0]),
-            )
-        )
-        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
-        self.connection.get_player.return_value = player
-
-        with patch.object(self.service, "join", join):
-            result = await self.service.play(guild, MagicMock(), "query", 1, 2)
-
-        data = result.data
-        if data is None or isinstance(data, tuple):
-            self.fail("Expected play response data")
-        if data["type"] != "playlist":
-            self.fail("Expected playlist response data")
-        self.assertEqual(data["placement"], "now")
-        self.assertEqual(data["undo_entries"], entries)
-
-    async def test_playlist_keeps_end_when_existing_entry_started(self) -> None:
+    async def test_playlist_placement_preserves_order_and_all_undo_entries(
+        self,
+    ) -> None:
         guild = MagicMock(id=123)
         tracks = [make_track("one"), make_track("two")]
         playlist = make_playlist("Mix", tracks)
@@ -945,56 +925,40 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             QueueEntry(index, track, requester) for index, track in enumerate(tracks, 1)
         )
         existing_entry = make_entry("existing", entry_id=9, requester_id=99)
-        player = MagicMock()
-        player.fetch_tracks = AsyncMock(return_value=playlist)
-        player.enqueue_tracks = AsyncMock(
-            return_value=EnqueueOutcome(
-                entries,
-                PlaybackAttempt(1, existing_entry),
-            )
+        cases: tuple[
+            tuple[QueuePlacement, PlaybackAttempt | None, PlayPlacement], ...
+        ] = (
+            ("next", None, "next"),
+            ("end", PlaybackAttempt(1, entries[0]), "now"),
+            ("end", PlaybackAttempt(1, existing_entry), "end"),
+            ("end", None, "end"),
         )
-        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
-        self.connection.get_player.return_value = player
+        for placement, started, expected in cases:
+            with self.subTest(placement=placement, started=started):
+                player = MagicMock()
+                player.fetch_tracks = AsyncMock(return_value=playlist)
+                player.enqueue_tracks = AsyncMock(
+                    return_value=EnqueueOutcome(entries, started)
+                )
+                join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+                self.connection.get_player.return_value = player
 
-        with patch.object(self.service, "join", join):
-            result = await self.service.play(guild, MagicMock(), "query", 1, 2)
+                with patch.object(self.service, "join", join):
+                    result = await self.service.play(
+                        guild, MagicMock(), "query", 1, 2, placement=placement
+                    )
 
-        data = result.data
-        if data is None or isinstance(data, tuple):
-            self.fail("Expected play response data")
-        if data["type"] != "playlist":
-            self.fail("Expected playlist response data")
-        self.assertEqual(data["placement"], "end")
-        self.assertEqual(data["undo_entries"], entries)
-
-    async def test_play_end_playlist_keeps_end_placement(self) -> None:
-        guild = MagicMock(id=123)
-        tracks = [make_track("one"), make_track("two")]
-        playlist = make_playlist("Mix", tracks)
-        requester = TrackRequester(1, 2)
-        entries = tuple(
-            QueueEntry(index, track, requester) for index, track in enumerate(tracks, 1)
-        )
-        player = MagicMock()
-        player.fetch_tracks = AsyncMock(return_value=playlist)
-        player.enqueue_tracks = AsyncMock(return_value=EnqueueOutcome(entries, None))
-        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
-        self.connection.get_player.return_value = player
-
-        with patch.object(self.service, "join", join):
-            result = await self.service.play(guild, MagicMock(), "query", 1, 2)
-
-        player.enqueue_tracks.assert_awaited_once_with(
-            tracks, TrackRequester(1, 2), placement="end"
-        )
-        self.assertIs(result.status, MusicResultStatus.SUCCESS)
-        data = result.data
-        if data is None or isinstance(data, tuple):
-            self.fail("Expected play response data")
-        if data["type"] != "playlist":
-            self.fail("Expected playlist response data")
-        self.assertEqual(data["placement"], "end")
-        self.assertEqual(data["undo_entries"], entries)
+                player.enqueue_tracks.assert_awaited_once_with(
+                    tracks, requester, placement=placement
+                )
+                self.assertIs(result.status, MusicResultStatus.SUCCESS)
+                data = result.data
+                if data is None or isinstance(data, tuple):
+                    self.fail("Expected play response data")
+                if data["type"] != "playlist":
+                    self.fail("Expected playlist response data")
+                self.assertEqual(data["placement"], expected)
+                self.assertEqual(data["undo_entries"], entries)
 
     async def test_play_empty_playlist_returns_nothing_found(self) -> None:
         guild = MagicMock(id=123)
