@@ -8,10 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 from discord.ext import commands
 
-from api.music.models import MusicSession, PlaybackAttempt
-from cogs.music.views.controller import TrackControllerView
-from cogs.music.views.queue import QueuePaginationAdapter, QueuePaginator, QueueUndoView
-from cogs.music.views.session import SessionSummaryView
 from cogs.voice.profile.view import ProfileAction, VoiceProfileView
 from cogs.voice.profile_cog import VoiceProfileCog
 from stupidbot.discord_ui.access import check_command_access
@@ -21,8 +17,17 @@ from stupidbot.features.access.access_cog import AdminCog
 from stupidbot.features.access.operations import BlockManager
 from stupidbot.features.birthdays.repository import BirthdayRepository
 from stupidbot.features.birthdays.views import ConfirmDeleteView
+from stupidbot.features.music.discord.views.controller import TrackControllerView
+from stupidbot.features.music.discord.views.queue import (
+    QueuePaginationAdapter,
+    QueuePaginator,
+    QueueUndoView,
+)
+from stupidbot.features.music.discord.views.session import SessionSummaryView
+from stupidbot.features.music.playback.models import PlaybackAttempt
+from stupidbot.features.music.runtime.session import MusicSession
 from stupidbot.features.wolfram.wolfram_cog import WolframCog
-from tests.api.music.helpers import make_entry
+from tests.features.music.fixtures import make_entry
 
 
 class TestAuthorization(unittest.IsolatedAsyncioTestCase):

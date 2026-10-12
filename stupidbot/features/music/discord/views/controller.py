@@ -1,0 +1,750 @@
+"""Track controller views and lifecycle management."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from collections import defaultdict
+from collections.abc import Awaitable, Callable, Coroutine
+from functools import partial
+from typing import TYPE_CHECKING, Literal, Self, override
+
+import aiohttp
+import discord
+from discord import Interaction, ui
+from discord.abc import PrivateChannel
+from discord.ext import commands
+
+from resources import RESTART_EMOJI
+from stupidbot.common.callables import callable_name
+from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.embeds import SafeEmbed
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.interaction_flow import ack_component
+from stupidbot.discord_ui.theme import Color
+from stupidbot.features.music.contracts import (
+    ControllerDestroyReason,
+    ControllerManagerProtocol,
+)
+from stupidbot.features.music.discord.feedback import send_warning
+from stupidbot.features.music.errors import EXPECTED_LAVALINK_IO_ERRORS
+from stupidbot.features.music.playback.models import PlaybackAttempt
+from stupidbot.features.music.results import MUSIC_SERVICE_UNAVAILABLE_MESSAGE
+from stupidbot.features.music.runtime.connection import ConnectionManager
+
+if TYPE_CHECKING:
+    from stupidbot.features.music.playback.player import MusicPlayer
+
+logger = logging.getLogger(__name__)
+
+MUSIC_PLAYER_EMOJIS = {
+    "bar_left_full": "<:whitelineleftrounded:1447917292766626005>",
+    "bar_mid_full": "<:whiteline:1447917290782724126>",
+    "bar_right_full": "<:whitelinerightrounded:1447917295304446103>",
+    "bar_left_empty": "<:graylineleftrounded:1447917287263830157>",
+    "bar_mid_empty": "<:grayline:1447917284726411445>",
+    "bar_right_empty": "<:graylinerightrounded:1447917289067515956>",
+    "restart": RESTART_EMOJI,
+    "back_10": "<:replay10:1447914002482200720>",
+    "play": "<:play:1447913953345929311>",
+    "pause": "<:pause:1447913941672919081>",
+    "fwd_10": "<:forward10:1447913982408003595>",
+    "skip": "<:skip:1447913916842901577>",
+    "musical_note": "<:musicalnote:1447968776128565358>",
+}
+
+# Keep the seek interval aligned with the value shown by the button icons.
+_SEEK_STEP_MS = 10_000
+_MESSAGE_DELETE_RETRY_DELAYS: tuple[float, ...] = (2.0, 10.0, 30.0, 60.0, 120.0)
+
+
+class TrackControllerManager(ControllerManagerProtocol):
+    def __init__(
+        self,
+        bot: commands.Bot,
+        connection_manager: ConnectionManager,
+    ) -> None:
+        self.bot = bot
+        self.connection = connection_manager
+        self.controllers: dict[int, TrackControllerView] = {}
+        self._active_messages: dict[int, tuple[int, int]] = {}
+        self._locks = defaultdict(asyncio.Lock)
+        self._message_delete_tasks: dict[tuple[int, int], asyncio.Task[None]] = {}
+        self._closing = False
+
+    async def _safe_delete_message(self, channel_id: int, message_id: int) -> None:
+        """Try deletion immediately; schedule bounded retries only while open."""
+        key = (channel_id, message_id)
+        if key in self._message_delete_tasks:
+            return
+        result = await self._delete_message_once(channel_id, message_id)
+        if result != "retry" or self._closing or key in self._message_delete_tasks:
+            return
+
+        task = asyncio.create_task(
+            self._retry_message_delete(channel_id, message_id),
+            name=f"music-controller-delete-{channel_id}-{message_id}",
+        )
+        self._message_delete_tasks[key] = task
+        task.add_done_callback(partial(self._message_delete_finished, key))
+
+    async def _delete_message_once(
+        self, channel_id: int, message_id: int
+    ) -> Literal["done", "retry", "failed"]:
+        try:
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                channel = await self.bot.fetch_channel(channel_id)
+            if isinstance(
+                channel, (discord.ForumChannel, discord.CategoryChannel, PrivateChannel)
+            ):
+                logger.warning(
+                    "Controller cleanup abandoned: unsupported channel %s, message %s",
+                    channel_id,
+                    message_id,
+                )
+                return "failed"
+            partial_msg = channel.get_partial_message(message_id)
+            await partial_msg.delete()
+        except discord.NotFound:
+            return "done"
+        except discord.HTTPException as exc:
+            retryable = exc.status == 429 or 500 <= exc.status < 600
+            logger.warning(
+                "Controller message %s cleanup in channel %s: HTTP %s, code %s (%s)",
+                message_id,
+                channel_id,
+                exc.status,
+                exc.code,
+                "retryable" if retryable else "abandoned",
+            )
+            return "retry" if retryable else "failed"
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            logger.debug(
+                "Controller message %s cleanup in channel %s failed transiently (%s)",
+                message_id,
+                channel_id,
+                type(exc).__name__,
+            )
+            return "retry"
+        return "done"
+
+    async def _retry_message_delete(self, channel_id: int, message_id: int) -> None:
+        # Detached message IDs no longer participate in guild controller ownership.
+        for delay in _MESSAGE_DELETE_RETRY_DELAYS:
+            await asyncio.sleep(delay)
+            if await self._delete_message_once(channel_id, message_id) != "retry":
+                return
+        logger.warning(
+            "Controller message %s cleanup in channel %s abandoned after %s attempts",
+            message_id,
+            channel_id,
+            len(_MESSAGE_DELETE_RETRY_DELAYS) + 1,
+        )
+
+    def _message_delete_finished(
+        self, key: tuple[int, int], task: asyncio.Task[None]
+    ) -> None:
+        self._message_delete_tasks.pop(key, None)
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception:
+            logger.exception(
+                "Controller cleanup failed unexpectedly: channel %s message %s",
+                *key,
+            )
+
+    async def cleanup(self) -> None:
+        """Close admission and drain active views and owned deletion retries."""
+        self._closing = True
+        tasks = tuple(self._message_delete_tasks.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        for guild_id in self.controllers.keys() | self._active_messages.keys():
+            await self.destroy_for_guild(
+                guild_id, ControllerDestroyReason.VOICE_DISCONNECT
+            )
+
+    @override
+    async def create_for_user(
+        self,
+        *,
+        guild_id: int,
+        user_id: int,
+        channel: discord.abc.Messageable,
+        player: MusicPlayer,
+        attempt: PlaybackAttempt,
+    ) -> None:
+        """Replace any existing guild controller with one for the current attempt."""
+        async with self._locks[guild_id]:
+            logger.debug("Manager: Setup controller for guild %s", guild_id)
+            if not self._owns_attempt(player, attempt):
+                logger.debug("Manager: Aborting stale controller creation")
+                return
+
+            await self._cleanup_existing(
+                guild_id, ControllerDestroyReason.TRACK_CHANGED
+            )
+            if not self._owns_attempt(player, attempt):
+                return
+
+            async def on_view_stop_callback(
+                view_ref: TrackControllerView, reason: ControllerDestroyReason
+            ) -> None:
+                await self.destroy_for_guild(guild_id, reason, requesting_view=view_ref)
+
+            view = TrackControllerView(
+                user_id=user_id,
+                player=player,
+                guild_id=guild_id,
+                attempt=attempt,
+                on_stop_callback=on_view_stop_callback,
+                on_player_failure=self.connection.invalidate_player,
+            )
+
+            try:
+                view.update_buttons_state()
+                msg = await channel.send(
+                    embed=view.make_embed(), view=view, silent=True
+                )
+                if not self._owns_attempt(player, attempt):
+                    view.stop()
+                    await self._safe_delete_message(msg.channel.id, msg.id)
+                    return
+
+                view.message = msg
+                self.controllers[guild_id] = view
+                self._active_messages[guild_id] = (msg.channel.id, msg.id)
+
+                view.start_updater()
+                logger.debug(
+                    "Manager: Controller active for attempt %s", attempt.attempt_id
+                )
+
+            except Exception:
+                logger.exception("Failed to send controller")
+                view.stop()
+
+    def _owns_attempt(self, player: MusicPlayer, attempt: PlaybackAttempt) -> bool:
+        return (
+            not self._closing
+            and self.connection.is_current_player(player)
+            and player.current_attempt is attempt
+        )
+
+    @override
+    async def refresh_for_attempt(
+        self, player: MusicPlayer, attempt: PlaybackAttempt
+    ) -> None:
+        async with self._locks[player.guild.id]:
+            view = self.controllers.get(player.guild.id)
+            if (
+                view is None
+                or view.player is not player
+                or view.attempt is not attempt
+                or not self._owns_attempt(player, attempt)
+            ):
+                return
+        await view.refresh_status()
+
+    @override
+    async def destroy_for_guild(
+        self,
+        guild_id: int,
+        reason: ControllerDestroyReason,
+        requesting_view: TrackControllerView | None = None,
+        *,
+        expected_attempt_id: int | None = None,
+        expected_player: MusicPlayer | None = None,
+    ) -> None:
+        """Destroys the controller for a guild.
+
+        If requesting_view is provided, only destroys if current active view.
+        """
+        async with self._locks[guild_id]:
+            current_view = self.controllers.get(guild_id)
+            if (
+                expected_player is not None
+                and current_view
+                and current_view.player is not expected_player
+            ):
+                return
+
+            if requesting_view and current_view != requesting_view:
+                logger.debug(
+                    "Manager: Ignoring %s destroy request from stale view for guild %s",
+                    reason.value,
+                    guild_id,
+                )
+                return
+            if (
+                expected_attempt_id is not None
+                and current_view
+                and current_view.attempt_id != expected_attempt_id
+            ):
+                logger.debug(
+                    "Manager: Ignoring %s destroy for old attempt in guild %s",
+                    reason.value,
+                    guild_id,
+                )
+                return
+
+            await self._cleanup_existing(guild_id, reason)
+
+    async def _cleanup_existing(
+        self, guild_id: int, reason: ControllerDestroyReason
+    ) -> None:
+        """Clean up controller resources while the guild lock is held."""
+        logger.debug(
+            "Manager: Destroying controller for guild %s (reason=%s)",
+            guild_id,
+            reason.value,
+        )
+        controller = self.controllers.pop(guild_id, None)
+        if controller:
+            try:
+                await controller.close()
+            except Exception:
+                logger.exception("Error stopping controller")
+
+        message_info = self._active_messages.pop(guild_id, None)
+        if message_info:
+            logger.debug("Manager: Cleaning up message for guild %s", guild_id)
+            chan_id, msg_id = message_info
+            try:
+                await self._safe_delete_message(chan_id, msg_id)
+            except Exception:
+                logger.exception(
+                    "Failed to delete controller message %s in channel %s",
+                    msg_id,
+                    chan_id,
+                )
+
+
+type ButtonCallback = Callable[
+    ["TrackControllerView", Interaction, ui.Button["TrackControllerView"]],
+    Coroutine[object, object, None],
+]
+
+
+def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
+    """Handle exceptions raised by controller button callbacks.
+
+    Catches mafic.PlayerNotConnected and mafic.PlayerException exceptions,
+    stopping the view and calling the on_stop_callback if provided.
+    Logs any unhandled exceptions.
+
+    """
+    func_name = callable_name(func)
+
+    async def wrapper(
+        self: TrackControllerView,
+        interaction: Interaction,
+        button: ui.Button[TrackControllerView],
+    ) -> None:
+        try:
+            await func(self, interaction, button)
+        except EXPECTED_LAVALINK_IO_ERRORS as exc:
+            logger.warning("Player IO error in %s: %s", func_name, type(exc).__name__)
+            await self.handle_player_io_error(interaction)
+        except Exception:
+            logger.exception("Unhandled error in %s", func_name)
+            self.stop()
+            if self.on_stop_callback:
+                await self.on_stop_callback(self, ControllerDestroyReason.PLAYER_ERROR)
+
+    return wrapper
+
+
+class TrackControllerView(ui.View):
+    def __init__(
+        self,
+        *,
+        user_id: int,
+        player: MusicPlayer,
+        guild_id: int,
+        attempt: PlaybackAttempt,
+        on_stop_callback: Callable[[Self, ControllerDestroyReason], Awaitable[None]]
+        | None,
+        on_player_failure: Callable[[MusicPlayer], Awaitable[None]],
+    ) -> None:
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.player = player
+        self.guild_id = guild_id
+        self.attempt = attempt
+        self.on_stop_callback = on_stop_callback
+        self.on_player_failure = on_player_failure
+
+        self.message: discord.Message | None = None
+        self._task: asyncio.Task[None] | None = None
+        self.update_interval = 20
+        self._running = True
+
+        self._is_paused_cache: bool = False
+        self._pause_start_time: float | None = None
+        self._frozen_position: int = 0
+        self._max_pause_duration = 900
+        self._last_update_time: float = 0
+        self._min_update_delay: float = 1.0
+
+    @property
+    def attempt_id(self) -> int:
+        return self.attempt.attempt_id
+
+    @override
+    def stop(self) -> None:
+        """Stop the updater loop and interaction."""
+        logger.debug("Stopping %s", self.__class__.__name__)
+        self._running = False
+        if (
+            self._task
+            and self._task is not asyncio.current_task()
+            and not self._task.cancelling()
+        ):
+            self._task.cancel()
+        super().stop()
+
+    async def close(self) -> None:
+        """Stop interactions and finish the updater before releasing its player."""
+        self.stop()
+        if self._task is not None and self._task is not asyncio.current_task():
+            await asyncio.gather(self._task, return_exceptions=True)
+
+    def make_embed(self) -> discord.Embed:
+        attempt = self.player.current_attempt
+        if attempt is None or attempt is not self.attempt:
+            return discord.Embed(title="Playback Stopped", color=Color.INFO)
+        track = attempt.entry.track
+
+        if self._is_paused_cache:
+            pos = self._frozen_position
+        else:
+            pos = self.player.position or 0
+
+        length = track.length
+        pos = max(0, min(pos, length))
+
+        bar = self._make_bar(pos, length)
+        cur_min, cur_sec = divmod(pos // 1000, 60)
+        rem_ms = length - pos
+        rem_min, rem_sec = divmod(rem_ms // 1000, 60)
+
+        description = f"`{cur_min}:{cur_sec:02d}` {bar} `-{rem_min}:{rem_sec:02d}`"
+
+        embed = SafeEmbed(
+            title=f"{MUSIC_PLAYER_EMOJIS['musical_note']} {track.title}",
+            description=description,
+            color=Color.INFO,
+        )
+        if track.artwork_url:
+            embed.set_thumbnail(url=track.artwork_url)
+        member = self.player.guild.get_member(self.user_id)
+        avatar = member.display_avatar if member else None
+
+        footer = f"Запросил: {member.display_name if member else self.user_id}"
+        if self.player.stuck_attempt is attempt:
+            footer = f"Трек застрял, жду продолжения • {footer}"
+        embed.set_footer(
+            text=footer,
+            icon_url=avatar.url if avatar else None,
+        )
+        return embed
+
+    async def refresh_status(self) -> None:
+        """Show a status change immediately, preserving the live controls."""
+        await self._safe_update(force=True)
+
+    def _make_bar(self, pos: int, length: int, width: int = 10) -> str:
+        if length <= 0:
+            ratio = 0
+        else:
+            ratio = max(0, min(1, pos / length))
+
+        filled_count = int(ratio * width)
+        if ratio >= 1.0:
+            filled_count = width
+
+        empty_count = max(0, width - filled_count)
+
+        start_cap = (
+            MUSIC_PLAYER_EMOJIS["bar_left_full"]
+            if filled_count > 0
+            else MUSIC_PLAYER_EMOJIS["bar_left_empty"]
+        )
+        end_cap = (
+            MUSIC_PLAYER_EMOJIS["bar_right_full"]
+            if width > 0 and filled_count == width
+            else MUSIC_PLAYER_EMOJIS["bar_right_empty"]
+        )
+
+        middle = (MUSIC_PLAYER_EMOJIS["bar_mid_full"] * filled_count) + (
+            MUSIC_PLAYER_EMOJIS["bar_mid_empty"] * empty_count
+        )
+        return f"{start_cap}{middle}{end_cap}"
+
+    def start_updater(self) -> None:
+        self._task = asyncio.create_task(self._loop())
+
+    async def _loop(self) -> None:
+        """Background loop to update embed and check track state."""
+        failure_count = 0
+        max_failures = 3
+
+        try:
+            while self._running:
+                await asyncio.sleep(self.update_interval)
+
+                current_attempt = self.player.current_attempt
+
+                if not current_attempt:
+                    failure_count = await self._handle_missing_track(
+                        failure_count, max_failures
+                    )
+                    if failure_count is None:
+                        return
+                    continue
+
+                if await self._handle_track_change(current_attempt):
+                    return
+
+                failure_count = 0
+
+                if await self._handle_pause_state():
+                    return
+
+        except asyncio.CancelledError:
+            logger.debug("View Loop Cancelled")
+            raise
+        except Exception:
+            logger.exception("View loop failed")
+
+    async def _request_stop(self, reason: ControllerDestroyReason) -> None:
+        self.stop()
+        if self.on_stop_callback:
+            await self.on_stop_callback(self, reason)
+
+    async def handle_player_io_error(self, interaction: Interaction) -> None:
+        try:
+            await self.on_player_failure(self.player)
+        except Exception:
+            logger.exception("Failed to invalidate controller player")
+        await self._request_stop(ControllerDestroyReason.PLAYER_ERROR)
+        await send_warning(
+            interaction,
+            MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
+            ephemeral=True,
+            delete_after=60,
+        )
+
+    async def _handle_missing_track(
+        self, failure_count: int, max_failures: int
+    ) -> int | None:
+        failure_count += 1
+        if failure_count >= max_failures:
+            logger.debug("View: Player empty. Requesting stop.")
+            await self._request_stop(ControllerDestroyReason.TRACK_END)
+            return None
+        return failure_count
+
+    async def _handle_track_change(self, current_attempt: PlaybackAttempt) -> bool:
+        if current_attempt is self.attempt:
+            return False
+
+        logger.debug(
+            "View: Track changed (%s -> %s). Requesting stop.",
+            self.attempt_id,
+            current_attempt.attempt_id,
+        )
+        await self._request_stop(ControllerDestroyReason.TRACK_CHANGED)
+        return True
+
+    async def _handle_pause_state(self) -> bool:
+        if self.player.paused:
+            return await self._handle_paused_state()
+        return await self._handle_resumed_state()
+
+    async def _handle_paused_state(self) -> bool:
+        if not self._is_paused_cache:
+            self._is_paused_cache = True
+            self._pause_start_time = time.monotonic()
+            self._frozen_position = self.player.position or 0
+            await self._safe_update(force=True)
+            return False
+
+        if self._pause_start_time and (
+            time.monotonic() - self._pause_start_time > self._max_pause_duration
+        ):
+            logger.debug("View: Paused too long. Requesting stop.")
+            await self._request_stop(ControllerDestroyReason.TIMEOUT)
+            return True
+
+        return False
+
+    async def _handle_resumed_state(self) -> bool:
+        if self._is_paused_cache:
+            self._is_paused_cache = False
+            self._pause_start_time = None
+            await self._safe_update(force=True)
+            return False
+
+        await self._safe_update()
+        return False
+
+    def update_buttons_state(self) -> None:
+        for child in self.children:
+            if isinstance(child, ui.Button) and child.custom_id == "btn_pause_resume":
+                child.emoji = (
+                    MUSIC_PLAYER_EMOJIS["play"]
+                    if self.player.paused
+                    else MUSIC_PLAYER_EMOJIS["pause"]
+                )
+                break
+
+    async def _safe_update(self, force: bool = False) -> None:
+        """Update the message without exceeding the local rate limit."""
+        if not self.message:
+            logger.debug("View: Message not found. Stopping.")
+            self.stop()
+            return
+
+        now = time.monotonic()
+        if not force and (now - self._last_update_time < self._min_update_delay):
+            return
+
+        try:
+            self.update_buttons_state()
+            await self.message.edit(embed=self.make_embed(), view=self)
+            self._last_update_time = now
+        except discord.NotFound:
+            logger.debug("View: Message deleted externally. Stopping.")
+            await self._request_stop(ControllerDestroyReason.MESSAGE_DELETED)
+        except discord.HTTPException as exc:
+            logger.debug("View: Could not update controller message: %s", exc)
+
+    async def _check_owner(self, interaction: Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description="Это не ваш контроллер.",
+                ephemeral=True,
+                disable_report_btn=True,
+            )
+            return False
+        return True
+
+    async def _prepare_action(self, interaction: Interaction) -> PlaybackAttempt | None:
+        if not await self._check_owner(interaction):
+            return None
+        if not await check_component_access(interaction):
+            return None
+        await ack_component(interaction)
+        if self.player.current_attempt is not self.attempt:
+            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
+            return None
+        return self.attempt
+
+    async def _seek_and_refresh(self, expected: PlaybackAttempt, position: int) -> None:
+        if not await self.player.seek_attempt(expected, position):
+            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
+            return
+        if self._is_paused_cache:
+            self._frozen_position = position
+        await self._safe_update(force=True)
+
+    @ui.button(
+        emoji=MUSIC_PLAYER_EMOJIS["restart"],
+        style=discord.ButtonStyle.secondary,
+        custom_id="btn_restart",
+    )
+    @handle_view_errors
+    async def restart(self, interaction: Interaction, _: ui.Button[Self]) -> None:
+        expected = await self._prepare_action(interaction)
+        if expected is None:
+            return
+        await self._seek_and_refresh(expected, 0)
+
+    @ui.button(
+        emoji=MUSIC_PLAYER_EMOJIS["back_10"],
+        style=discord.ButtonStyle.secondary,
+        custom_id="btn_back10",
+    )
+    @handle_view_errors
+    async def back10(self, interaction: Interaction, _: ui.Button[Self]) -> None:
+        expected = await self._prepare_action(interaction)
+        if expected is None:
+            return
+        pos = (
+            self._frozen_position
+            if self._is_paused_cache
+            else (self.player.position or 0)
+        )
+        await self._seek_and_refresh(expected, max(pos - _SEEK_STEP_MS, 0))
+
+    @ui.button(
+        emoji=MUSIC_PLAYER_EMOJIS["pause"],
+        style=discord.ButtonStyle.secondary,
+        custom_id="btn_pause_resume",
+    )
+    @handle_view_errors
+    async def pause_resume(self, interaction: Interaction, _: ui.Button[Self]) -> None:
+        expected = await self._prepare_action(interaction)
+        if expected is None:
+            return
+        frozen_position = self.player.position or 0
+        paused = await self.player.toggle_pause_for_attempt(expected)
+        if paused is None:
+            await self._request_stop(ControllerDestroyReason.STALE_VIEW)
+            return
+        if paused:
+            self._is_paused_cache = True
+            self._frozen_position = frozen_position
+            self._pause_start_time = time.monotonic()
+        else:
+            self._is_paused_cache = False
+            self._pause_start_time = None
+        await self._safe_update(force=True)
+
+    @ui.button(
+        emoji=MUSIC_PLAYER_EMOJIS["fwd_10"],
+        style=discord.ButtonStyle.secondary,
+        custom_id="btn_fwd10",
+    )
+    @handle_view_errors
+    async def forward10(self, interaction: Interaction, _: ui.Button[Self]) -> None:
+        expected = await self._prepare_action(interaction)
+        if expected is None:
+            return
+        pos = (
+            self._frozen_position
+            if self._is_paused_cache
+            else (self.player.position or 0)
+        )
+        position = min(
+            pos + _SEEK_STEP_MS,
+            expected.entry.track.length,
+        )
+        await self._seek_and_refresh(expected, position)
+
+    @ui.button(
+        emoji=MUSIC_PLAYER_EMOJIS["skip"],
+        style=discord.ButtonStyle.secondary,
+        custom_id="btn_skip",
+    )
+    @handle_view_errors
+    async def skip(self, interaction: Interaction, _: ui.Button[Self]) -> None:
+        expected = await self._prepare_action(interaction)
+        if expected is None:
+            return
+        ended, _started = await self.player.skip(expected=expected)
+        reason = (
+            ControllerDestroyReason.SKIP
+            if ended is expected
+            else ControllerDestroyReason.STALE_VIEW
+        )
+        await self._request_stop(reason)

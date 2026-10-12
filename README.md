@@ -120,10 +120,10 @@ only affects voice profiles.
 
 ## Engineering
 
-- **Playback state survives overlapping events.** [MusicPlayer](api/music/player.py)
+- **Playback state survives overlapping events.** [MusicPlayer](stupidbot/features/music/playback/player.py)
   serializes queue transitions and gives each playback attempt an identity.
-  [Event handlers](api/music/service/playback_events.py) use it to distinguish
-  delayed events from current playback. [Composition](cogs/music/composition.py)
+  [Event handlers](stupidbot/features/music/runtime/playback_events.py) use it to distinguish
+  delayed events from current playback. [Composition](stupidbot/features/music/composition.py)
   connects the player, recovery and Discord UI.
 - **Profiles read a timeline held in memory.** [VoiceAnalytics](api/voice/analytics.py)
   restores it at startup and updates it after journal writes commit. Normal
@@ -176,7 +176,7 @@ For profiles, install **Inkscape** on the bot host and keep the bundled
 account. Missing Inkscape or fonts makes the profile command unavailable;
 the rest of the bot can start. See [renderer setup](docs/voice/profile-card.md#setup).
 Custom application emoji IDs in [resources.py](resources.py) and the
-[music controller](cogs/music/views/controller.py) must be usable by your bot.
+[music controller](stupidbot/features/music/discord/views/controller.py) must be usable by your bot.
 
 ### Prepare the database and start
 

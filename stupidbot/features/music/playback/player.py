@@ -1,0 +1,503 @@
+"""Custom Music Player extending Mafic Player."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from collections import deque
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, override
+
+import discord
+import mafic
+from mafic.typings.incoming import PlayerUpdateState
+
+from stupidbot.features.music.playback.models import (
+    PLAYBACK_USER_DATA_KEY,
+    EnqueueOutcome,
+    PlaybackAttempt,
+    QueueEntry,
+    QueuePlacement,
+    RepeatMode,
+    Track,
+    TrackEndOutcome,
+    TrackRequester,
+)
+from stupidbot.features.music.playback.queue import QueueManager, RepeatManager
+
+if TYPE_CHECKING:
+    from discord.abc import Connectable
+
+logger = logging.getLogger(__name__)
+
+
+class MusicPlayer(mafic.Player[discord.Client]):
+    """Mafic player owning queue-entry and playback-attempt transitions."""
+
+    _stuck_attempt: PlaybackAttempt | None = None
+    _stuck_position: int = 0
+
+    @property
+    @override
+    def position(self) -> int:
+        """Use reported milliseconds while stalled; otherwise use Mafic's estimate."""
+        # Recovery seals the player before reading its position for the snapshot.
+        if (
+            self._stuck_attempt is not None
+            and self._stuck_attempt is self._current_attempt
+        ):
+            return self._position
+        return super().position
+
+    @property
+    def stuck_attempt(self) -> PlaybackAttempt | None:
+        """Return the stalled current attempt until real Lavalink progress resumes."""
+        if self._is_stale or self._stuck_attempt is not self._current_attempt:
+            return None
+        return self._stuck_attempt
+
+    def mark_stuck(self, expected: PlaybackAttempt) -> bool:
+        """Mark a live current attempt at its last reported Lavalink position."""
+        if self._is_stale or self._current_attempt is not expected:
+            return False
+        self._stuck_attempt = expected
+        self._stuck_position = self._position
+        return True
+
+    @override
+    def update_state(self, state: PlayerUpdateState) -> None:
+        super().update_state(state)
+        if self.stuck_attempt is not None and state["connected"]:
+            if not self.paused and self._position > self._stuck_position:
+                self._stuck_attempt = None
+            # A backward seek establishes a new baseline for reported progress.
+            self._stuck_position = self._position
+
+    def __init__(self, client: discord.Client, channel: Connectable) -> None:
+        super().__init__(client, channel)
+        self.queue = QueueManager()
+        self.repeat = RepeatManager()
+        self._next_entry_id = 1
+        self._next_attempt_id = 1
+        self._current_attempt: PlaybackAttempt | None = None
+        self._pending_end_attempts: deque[PlaybackAttempt] = deque()
+        self._exception_attempt_ids: set[int] = set()
+        self._transition_lock = asyncio.Lock()
+        self._is_stale = False
+
+    @property
+    def current_attempt(self) -> PlaybackAttempt | None:
+        return self._current_attempt
+
+    @property
+    def current_entry(self) -> QueueEntry | None:
+        attempt = self._current_attempt
+        return attempt.entry if attempt is not None else None
+
+    @property
+    def is_stale(self) -> bool:
+        """Return whether this player has been detached from the active lifecycle."""
+        return self._is_stale
+
+    def mark_stale(self) -> None:
+        """Mark this player as no longer safe for reuse."""
+        self._is_stale = True
+
+    async def seal_for_recovery(self) -> None:
+        """Finish an accepted transition, then freeze the snapshot source."""
+        async with self._transition_lock:
+            self._is_stale = True
+
+    def clear_queue(self) -> None:
+        self.queue.clear()
+        logger.debug("Cleared queue for guild %s", self.guild.id)
+
+    def clear_state(self) -> None:
+        self.clear_queue()
+
+    def queue_snapshot(self) -> tuple[QueueEntry, ...]:
+        return self.queue.snapshot()
+
+    async def shuffle_queue(self) -> None:
+        """Shuffle after pending transitions finish, including their rollback."""
+        async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            self.queue.shuffle()
+
+    def resolve_current_attempt(self, event_token: str) -> PlaybackAttempt | None:
+        """Resolve the current attempt from its transport token."""
+        attempt = self._current_attempt
+        return (
+            attempt
+            if attempt is not None and attempt.event_token == event_token
+            else None
+        )
+
+    async def resolve_track_start(self, event_token: str) -> PlaybackAttempt | None:
+        """Classify a track-start event while holding the transition lock."""
+        async with self._transition_lock:
+            if self._is_stale:
+                return None
+            return self.resolve_current_attempt(event_token)
+
+    async def resolve_exception_attempt(
+        self, event_token: str
+    ) -> PlaybackAttempt | None:
+        """Resolve exception/stuck events from their transport token."""
+        async with self._transition_lock:
+            return self._resolve_exception_attempt_unlocked(event_token)
+
+    async def claim_track_exception(self, event_token: str) -> PlaybackAttempt | None:
+        """Resolve and deduplicate an exception for a live attempt."""
+        async with self._transition_lock:
+            attempt = self._resolve_exception_attempt_unlocked(event_token)
+            if attempt is None or attempt.attempt_id in self._exception_attempt_ids:
+                return None
+            self._exception_attempt_ids.add(attempt.attempt_id)
+            return attempt
+
+    def _resolve_exception_attempt_unlocked(
+        self, event_token: str
+    ) -> PlaybackAttempt | None:
+        if self._is_stale:
+            return None
+        current = self.resolve_current_attempt(event_token)
+        if current is not None:
+            return current
+        for attempt in self._pending_end_attempts:
+            if attempt.event_token == event_token:
+                return attempt
+        return None
+
+    def _new_entry(self, track: Track, requester: TrackRequester | None) -> QueueEntry:
+        entry = QueueEntry(self._next_entry_id, track, requester)
+        self._next_entry_id += 1
+        return entry
+
+    async def _start_entry_unlocked(
+        self,
+        entry: QueueEntry,
+        *,
+        start_time: int = 0,
+        volume: int | None = None,
+        pause: bool = False,
+    ) -> PlaybackAttempt:
+        """Create and start one attempt while the transition lock is held."""
+        previous = self._current_attempt
+        attempt = PlaybackAttempt(self._next_attempt_id, entry)
+        self._next_attempt_id += 1
+        self._current_attempt = attempt
+        try:
+            await self.play(
+                entry.track,
+                start_time=start_time,
+                volume=volume,
+                pause=pause,
+                user_data={PLAYBACK_USER_DATA_KEY: attempt.event_token},
+            )
+        except (Exception, asyncio.CancelledError):
+            self._current_attempt = previous
+            raise
+        return attempt
+
+    async def enqueue_tracks(
+        self,
+        tracks: Sequence[Track],
+        requester: TrackRequester | None,
+        *,
+        placement: QueuePlacement,
+    ) -> EnqueueOutcome:
+        """Create entries, enqueue them, and start one if idle."""
+        if not tracks:
+            return EnqueueOutcome((), None)
+        async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            entries = tuple(self._new_entry(track, requester) for track in tracks)
+            if placement == "end":
+                self.queue.extend(entries)
+            else:
+                self.queue.extend_front(entries)
+            if self._current_attempt is not None:
+                return EnqueueOutcome(entries, None)
+            queued_state = self.queue.snapshot()
+            entry = self.queue.pop_next()
+            if entry is None:
+                return EnqueueOutcome(entries, None)
+            try:
+                started = await self._start_entry_unlocked(entry)
+            except (Exception, asyncio.CancelledError):
+                self.queue.restore(queued_state)
+                raise
+            return EnqueueOutcome(entries, started)
+
+    async def remove_queued_entries(
+        self,
+        expected: Sequence[QueueEntry],
+        *,
+        requester_id: int,
+    ) -> tuple[QueueEntry, ...]:
+        """Remove exact waiting requests without affecting playback."""
+        async with self._transition_lock:
+            if self._is_stale or not expected:
+                return ()
+            expected_ids = {entry.request_id for entry in expected}
+            live_entries = tuple(
+                entry for entry in self.queue if entry.request_id in expected_ids
+            )
+            if any(
+                entry.requester is None or entry.requester.user_id != requester_id
+                for entry in live_entries
+            ):
+                return ()
+            return self.queue.remove_entries(live_entries)
+
+    async def skip(
+        self,
+        *,
+        expected: PlaybackAttempt | None = None,
+    ) -> tuple[PlaybackAttempt | None, PlaybackAttempt | None]:
+        """Replace current playback with the next entry, ignoring repeat."""
+        async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            ended = self._current_attempt
+            if ended is None:
+                return None, None
+            if expected is not None and ended is not expected:
+                return None, None
+            old_queue = self.queue.snapshot()
+            old_pending = self._pending_end_attempts.copy()
+            self._pending_end_attempts.append(ended)
+            self._current_attempt = None
+            next_entry = self.queue.pop_next()
+            try:
+                if next_entry is None:
+                    await super().stop()
+                    return ended, None
+                started = await self._start_entry_unlocked(next_entry)
+                return ended, started
+            except (Exception, asyncio.CancelledError):
+                self._current_attempt = ended
+                self._pending_end_attempts = old_pending
+                self.queue.restore(old_queue)
+                raise
+
+    async def rotate_current(
+        self,
+    ) -> tuple[PlaybackAttempt | None, PlaybackAttempt | None]:
+        """Move the current entry to the queue tail and start the next entry."""
+        async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            ended = self._current_attempt
+            if ended is None:
+                return None, None
+            old_queue = self.queue.snapshot()
+            old_pending = self._pending_end_attempts.copy()
+            self.queue.append(ended.entry)
+            self._pending_end_attempts.append(ended)
+            self._current_attempt = None
+            next_entry = self.queue.pop_next()
+            try:
+                if next_entry is None:
+                    return ended, None
+                started = await self._start_entry_unlocked(next_entry)
+                return ended, started
+            except (Exception, asyncio.CancelledError):
+                self._current_attempt = ended
+                self._pending_end_attempts = old_pending
+                self.queue.restore(old_queue)
+                raise
+
+    async def stop_and_clear(self) -> None:
+        """Clear queued state and stop playback atomically."""
+        async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            old_queue = self.queue.snapshot()
+            old_pending = self._pending_end_attempts.copy()
+            ended = self._current_attempt
+            self.queue.clear()
+            if ended is not None:
+                self._pending_end_attempts.append(ended)
+                self._current_attempt = None
+            try:
+                await super().stop()
+            except (Exception, asyncio.CancelledError):
+                self.queue.restore(old_queue)
+                self._pending_end_attempts = old_pending
+                self._current_attempt = ended
+                raise
+
+    async def start_queued_if_idle(self) -> PlaybackAttempt | None:
+        """Start one queued entry if no attempt is active."""
+        async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            return await self._start_queued_if_idle_unlocked()
+
+    async def _start_queued_if_idle_unlocked(self) -> PlaybackAttempt | None:
+        # Pending attempts only attribute delayed events. The current attempt
+        # alone determines whether this player is busy.
+        if self._current_attempt is not None:
+            return None
+        entry = self.queue.pop_next()
+        if entry is None:
+            return None
+        try:
+            return await self._start_entry_unlocked(entry)
+        except (Exception, asyncio.CancelledError):
+            self.queue.prepend(entry)
+            raise
+
+    async def handle_track_end(
+        self,
+        event_token: str,
+        reason: mafic.EndReason,
+    ) -> TrackEndOutcome:
+        """Classify one Mafic end event and perform any required transition."""
+        async with self._transition_lock:
+            if self._is_stale:
+                return TrackEndOutcome(None, None, True)
+            old_queue = self.queue.snapshot()
+            old_pending = self._pending_end_attempts.copy()
+            old_current = self._current_attempt
+
+            pending = self._pop_pending_match_unlocked(event_token)
+            if pending is not None:
+                self._exception_attempt_ids.discard(pending.attempt_id)
+                return TrackEndOutcome(pending, None, False)
+
+            current = self.resolve_current_attempt(event_token)
+            if current is None:
+                return TrackEndOutcome(None, None, True)
+
+            self._current_attempt = None
+            try:
+                started = await self._transition_after_current_end_unlocked(
+                    current, reason
+                )
+            except (Exception, asyncio.CancelledError):
+                self.queue.restore(old_queue)
+                self._pending_end_attempts = old_pending
+                self._current_attempt = old_current
+                raise
+            self._exception_attempt_ids.discard(current.attempt_id)
+            return TrackEndOutcome(current, started, False)
+
+    def _pop_pending_match_unlocked(self, event_token: str) -> PlaybackAttempt | None:
+        for index, attempt in enumerate(self._pending_end_attempts):
+            if attempt.event_token == event_token:
+                del self._pending_end_attempts[index]
+                return attempt
+        return None
+
+    async def _transition_after_current_end_unlocked(
+        self, ended: PlaybackAttempt, reason: mafic.EndReason
+    ) -> PlaybackAttempt | None:
+        match reason:
+            case mafic.EndReason.FINISHED:
+                if self.repeat.mode is RepeatMode.TRACK:
+                    return await self._start_entry_unlocked(ended.entry)
+                if self.repeat.mode is RepeatMode.QUEUE:
+                    self.queue.append(ended.entry)
+                return await self._start_queued_if_idle_unlocked()
+            case mafic.EndReason.LOAD_FAILED:
+                return await self._start_queued_if_idle_unlocked()
+            case (
+                mafic.EndReason.STOPPED
+                | mafic.EndReason.REPLACED
+                | mafic.EndReason.CLEANUP
+            ):
+                return None
+
+    async def invalidate_if_current_attempt(self, expected: PlaybackAttempt) -> bool:
+        """Atomically claim an expected attempt for player teardown."""
+        async with self._transition_lock:
+            if self._current_attempt is not expected:
+                return False
+            self._current_attempt = None
+            self._exception_attempt_ids.discard(expected.attempt_id)
+            self._is_stale = True
+            return True
+
+    async def seek_attempt(self, expected: PlaybackAttempt, position: int) -> bool:
+        """Seek only while the expected attempt owns this player."""
+        async with self._transition_lock:
+            if self._is_stale or self._current_attempt is not expected:
+                return False
+            await self.seek(position)
+            return self._current_attempt is expected and not self._is_stale
+
+    async def toggle_pause_for_attempt(self, expected: PlaybackAttempt) -> bool | None:
+        """Toggle pause for the expected attempt and return its new state."""
+        async with self._transition_lock:
+            if self._is_stale or self._current_attempt is not expected:
+                return None
+            paused = not self.paused
+            await self.update(pause=paused)
+            if self._is_stale or self._current_attempt is not expected:
+                return None
+            return paused
+
+    async def restore_attempt_state(
+        self,
+        expected: PlaybackAttempt,
+        *,
+        volume: int,
+        pause: bool,
+    ) -> bool:
+        """Restore playback state only for the expected attempt."""
+        async with self._transition_lock:
+            if self._is_stale or self._current_attempt is not expected:
+                return False
+            await self.update(volume=volume, pause=pause)
+            return self._current_attempt is expected and not self._is_stale
+
+    def restore_entries(
+        self, current: QueueEntry | None, queued: Sequence[QueueEntry]
+    ) -> None:
+        """Restore entry identity into a fresh runtime player."""
+        self.queue.restore(queued)
+        max_id = max(
+            (entry.entry_id for entry in (*queued, current) if entry is not None),
+            default=0,
+        )
+        self._next_entry_id = max_id + 1
+
+    async def restore_playback(
+        self,
+        entry: QueueEntry,
+        *,
+        start_time: int,
+        volume: int,
+        pause: bool,
+    ) -> PlaybackAttempt:
+        """Create a fresh runtime attempt for a restored queue entry."""
+        async with self._transition_lock:
+            if self._is_stale:
+                raise mafic.PlayerNotConnected
+            previous = self._current_attempt
+            self._current_attempt = None
+            try:
+                started = await self._start_entry_unlocked(
+                    entry,
+                    start_time=start_time,
+                    volume=volume,
+                    pause=pause,
+                )
+            except (Exception, asyncio.CancelledError):
+                self._current_attempt = previous
+                raise
+            if previous is not None:
+                self._exception_attempt_ids.discard(previous.attempt_id)
+            return started
+
+
+def music_player_factory(
+    client: discord.Client, connectable: Connectable
+) -> MusicPlayer:
+    """Create a custom Mafic Player."""
+    return MusicPlayer(client, connectable)

@@ -8,9 +8,9 @@ from typing import override
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from repositories.volume_repository import VolumeData, VolumeRepository
 from stupidbot.features.birthdays.models import BirthdayDelivery
 from stupidbot.features.birthdays.repository import BirthdayRepository
+from stupidbot.features.music.repository import VolumeData, VolumeRepository
 from stupidbot.storage.database import Database, open_engine
 from stupidbot.storage.identity import ensure_channel
 from stupidbot.storage.schema import (

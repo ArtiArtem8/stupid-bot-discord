@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from typing import cast
 
-from repositories.volume_repository import VolumeData
 from stupidbot.common.json import JsonObject, JsonValue, is_json_object
+from stupidbot.features.music.repository import VolumeData
 
 
 def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

@@ -7,7 +7,6 @@ from decimal import Decimal
 from pathlib import Path
 
 from api.voice.model import VoiceJournalRecord
-from repositories.volume_repository import VolumeData
 from stupidbot.common.json import JsonObject, JsonValue
 from stupidbot.features.access.models import (
     BlockedUser,
@@ -16,6 +15,7 @@ from stupidbot.features.access.models import (
 )
 from stupidbot.features.birthdays.models import BirthdayGuildConfig
 from stupidbot.features.member_roles.models import MonitorSettings
+from stupidbot.features.music.repository import VolumeData
 from stupidbot.features.reports.models import ReportDataDict
 from stupidbot.storage.identity import discord_id, utc_microseconds
 from tools.storage_legacy.birthdays import load_birthdays

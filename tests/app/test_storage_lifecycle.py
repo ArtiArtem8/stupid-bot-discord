@@ -11,14 +11,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy import event, text
 from sqlalchemy.exc import OperationalError
 
-from cogs.music.music_cog import MusicCog
-from cogs.music.music_cog import setup as setup_music
-from repositories.volume_repository import VolumeData
 from stupidbot.app.bot import StupidBot
 from stupidbot.app.cog_loader import CogLoader
 from stupidbot.common.asyncio import run_in_thread
 from stupidbot.features.birthdays.birthday_cog import BirthdayCog
 from stupidbot.features.birthdays.birthday_cog import setup as setup_birthdays
+from stupidbot.features.music.discord.music_cog import MusicCog
+from stupidbot.features.music.discord.music_cog import setup as setup_music
+from stupidbot.features.music.repository import VolumeData
 from stupidbot.storage.database import Database, migrate, open_engine
 
 

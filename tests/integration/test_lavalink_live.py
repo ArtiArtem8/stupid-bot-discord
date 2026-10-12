@@ -23,8 +23,8 @@ import discord
 import mafic
 import pytest
 
-from api.music.models import PLAYBACK_USER_DATA_KEY
 from stupidbot import settings as config
+from stupidbot.features.music.playback.models import PLAYBACK_USER_DATA_KEY
 
 
 def _random_snowflake() -> int:

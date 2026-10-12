@@ -13,7 +13,6 @@ from sqlalchemy.exc import OperationalError
 from api.voice.analytics import VoiceAnalytics
 from repositories.voice_journal import VoiceJournal
 from repositories.voice_repository import VoiceRepository
-from repositories.volume_repository import VolumeRepository
 from stupidbot import settings as config
 from stupidbot.app.cog_loader import CogLoader
 from stupidbot.app.uptime import UptimeManager
@@ -27,6 +26,7 @@ from stupidbot.features.ask.repository import QuestionRepository
 from stupidbot.features.birthdays.repository import BirthdayRepository
 from stupidbot.features.member_roles.repository import MonitorRepository
 from stupidbot.features.member_roles.restoration import ServerMonitoringManager
+from stupidbot.features.music.repository import VolumeRepository
 from stupidbot.features.reports.repository import ReportRepository
 from stupidbot.features.reports.ui import handle_report_button
 from stupidbot.storage.database import Database, open_engine, validate_schema

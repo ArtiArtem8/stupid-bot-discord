@@ -334,7 +334,7 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
         extensions = [call.args[0] for call in load.call_args_list]
         self.assertEqual(extensions.count("cogs.voice.collector_cog"), 1)
         self.assertNotIn("cogs.voice_probe_cog", extensions)
-        self.assertIn("cogs.music.music_cog", extensions)
+        self.assertIn("stupidbot.features.music.discord.music_cog", extensions)
 
     async def test_extension_unload_drains_the_registered_collectors_journal(
         self,

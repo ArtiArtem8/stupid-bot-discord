@@ -125,11 +125,11 @@ People показывает время с другими участниками,
 
 ## Инженерные решения
 
-- **Состояние плеера учитывает конкурирующие события.** [MusicPlayer](api/music/player.py)
+- **Состояние плеера учитывает конкурирующие события.** [MusicPlayer](stupidbot/features/music/playback/player.py)
   выполняет изменения очереди последовательно и присваивает каждой попытке
-  воспроизведения идентификатор. [Обработчики](api/music/service/playback_events.py)
+  воспроизведения идентификатор. [Обработчики](stupidbot/features/music/runtime/playback_events.py)
   по нему отличают запоздавшие события от текущего воспроизведения.
-  [Composition](cogs/music/composition.py) связывает плеер, восстановление
+  [Composition](stupidbot/features/music/composition.py) связывает плеер, восстановление
   и интерфейс Discord.
 - **Профили читают временную шкалу из памяти.** [VoiceAnalytics](api/voice/analytics.py)
   восстанавливает её при запуске и обновляет после фиксации записей журнала.
@@ -181,7 +181,7 @@ uv sync --locked --no-dev
 записи службы. Без Inkscape или шрифтов команда профиля недоступна; остальные
 функции могут запускаться. Подробнее: [настройка рендерера](docs/voice/profile-card.md#setup).
 Пользовательские emoji приложения из [resources.py](resources.py) и
-[музыкального контроллера](cogs/music/views/controller.py) должны быть доступны вашему боту.
+[музыкального контроллера](stupidbot/features/music/discord/views/controller.py) должны быть доступны вашему боту.
 
 ### Подготовка базы и запуск
 
