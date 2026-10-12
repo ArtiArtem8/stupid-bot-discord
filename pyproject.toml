@@ -136,7 +136,6 @@ ignore = ["D100", "D101", "D102", "D104", "D107", "RUF001"]
 "tests/features/birthdays/test_helpers.py" = ["N818"]
 "stupidbot/features/birthdays/dates.py" = ["DTZ007"]
 "stupidbot/features/birthdays/presentation.py" = ["DTZ007"]
-"utils/json_utils.py" = ["DTZ005"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

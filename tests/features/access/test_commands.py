@@ -3,21 +3,31 @@
 from __future__ import annotations
 
 import unittest
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
 from stupidbot.discord_ui.pagination import BasePaginator
 from stupidbot.features.access.access_cog import AdminCog
-from stupidbot.features.access.models import BlockedUser
+from stupidbot.features.access.models import BlockedUser, BlockHistoryEntry
 from stupidbot.features.access.presentation import BlockedListPages, format_blocked_user
 from stupidbot.i18n.policy import Language
 
 
 class TestBlockedPages(unittest.TestCase):
     def test_english_labels_keep_names_and_audit_reasons_unchanged(self) -> None:
-        user = BlockedUser(1, "Иван", None)
-        user.add_block_entry(99, "Повторный спам")
+        user = BlockedUser(
+            1,
+            "Иван",
+            None,
+            block_history=[
+                BlockHistoryEntry(
+                    99, "Повторный спам", datetime(2026, 1, 1, tzinfo=UTC)
+                )
+            ],
+            blocked=True,
+        )
         entry = format_blocked_user(user, None, show_details=True, language=Language.EN)
         pages = BlockedListPages([entry], show_details=True, language=Language.EN)
         embed = pages.make_embed(0)
@@ -63,10 +73,21 @@ class TestBlockedList(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sent.kwargs["ephemeral"])
 
     async def test_sends_blocked_members_and_departed_users_with_details(self) -> None:
-        present = BlockedUser(1, "Stored name", None)
-        present.add_block_entry(99, "Present reason")
-        departed = BlockedUser(2, "Departed name", None)
-        departed.add_block_entry(99, "Departed reason")
+        moment = datetime(2026, 1, 1, tzinfo=UTC)
+        present = BlockedUser(
+            1,
+            "Stored name",
+            None,
+            block_history=[BlockHistoryEntry(99, "Present reason", moment)],
+            blocked=True,
+        )
+        departed = BlockedUser(
+            2,
+            "Departed name",
+            None,
+            block_history=[BlockHistoryEntry(99, "Departed reason", moment)],
+            blocked=True,
+        )
         unblocked = BlockedUser(3, "Unblocked name", None)
         manager = MagicMock(
             get_guild_users=AsyncMock(return_value=[present, departed, unblocked])

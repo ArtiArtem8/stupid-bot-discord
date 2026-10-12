@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import TYPE_CHECKING, Final, Never
 
 import aiohttp
@@ -22,15 +21,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _PI_APPROXIMATION_RE = re.compile(r"(?<![\w.])3\.14159\d*(?![\w.])")
-
-
-class PodType(StrEnum):
-    """Standard Wolfram Pod IDs for logic routing."""
-
-    INPUT = "Input"
-    RESULT = "Result"
-    SOLUTION = "Solution"
-    PLOT = "Plot"
 
 
 def format_math_text(text: str) -> str:

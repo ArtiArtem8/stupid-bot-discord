@@ -1,7 +1,4 @@
-"""Birthday state and numeric calendar projections without Discord objects.
-
-Existing BirthdayUser and BirthdayGuildConfig domain methods are retained.
-"""
+"""Birthday state and numeric calendar projections without Discord objects."""
 
 from __future__ import annotations
 
@@ -57,9 +54,6 @@ class BirthdayUser:
         except ValueError:
             return None
 
-    def birth_day_month(self) -> str:
-        return self.birthday[:5] if self.has_birthday() else ""
-
     def was_congratulated_today(self, today: date) -> bool:
         today_str = format_storage_date(today)
         return today_str in self.was_congrats
@@ -86,19 +80,6 @@ class BirthdayGuildConfig:
 
     def get_user(self, user_id: int) -> BirthdayUser | None:
         return self.users.get(user_id)
-
-    def get_or_create_user(self, user_id: int, name: str) -> BirthdayUser:
-        if user_id not in self.users:
-            self.users[user_id] = BirthdayUser(user_id, name, "", [])
-        else:
-            self.users[user_id].name = name
-        return self.users[user_id]
-
-    def remove_user(self, user_id: int) -> bool:
-        if user_id in self.users:
-            del self.users[user_id]
-            return True
-        return False
 
     def get_birthdays_today(self, today: date) -> list[BirthdayUser]:
         """Return users due for a congratulation on ``today``.

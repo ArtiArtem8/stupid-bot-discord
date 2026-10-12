@@ -113,11 +113,6 @@ class StateManager:
                 expired.append((guild_id, info["reason"]))
         return expired
 
-    def clear_expired_timers(self, expired_guild_ids: list[int]) -> None:
-        """Clear the specified expired timers."""
-        for guild_id in expired_guild_ids:
-            self.empty_channel_timers.pop(guild_id, None)
-
     def check_auto_leave(self) -> list[int]:
         """Check for guilds that have been empty for too long."""
         from stupidbot import settings as config

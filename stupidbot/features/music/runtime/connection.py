@@ -790,16 +790,6 @@ class ConnectionManager:
         )
         await self._detach_voice_client_after_failed_connect(guild)
 
-    def _bot_voice_channel(
-        self, guild: discord.Guild
-    ) -> discord.VoiceChannel | discord.StageChannel | None:
-        me = guild.me
-        voice = getattr(me, "voice", None)
-        channel = getattr(voice, "channel", None)
-        if isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
-            return channel
-        return None
-
     async def detach_stale_voice_client(
         self, guild: discord.Guild, voice_client: discord.VoiceProtocol
     ) -> None:

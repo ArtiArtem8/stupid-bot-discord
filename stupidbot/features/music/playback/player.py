@@ -112,9 +112,6 @@ class MusicPlayer(mafic.Player[discord.Client]):
         self.queue.clear()
         logger.debug("Cleared queue for guild %s", self.guild.id)
 
-    def clear_state(self) -> None:
-        self.clear_queue()
-
     def queue_snapshot(self) -> tuple[QueueEntry, ...]:
         return self.queue.snapshot()
 

@@ -7,7 +7,6 @@ from typing import override
 
 from stupidbot.common.text import (
     TextPaginator,
-    format_list,
     truncate_sequence,
     truncate_text,
 )
@@ -18,22 +17,6 @@ class TestTextUtils(unittest.TestCase):
     @override
     def setUp(self) -> None:
         str_local.cache_clear()
-
-    def test_format_list_theme_newline_first_item(self) -> None:
-        items = ["aaaa", "bbbb", "cccc"]
-        out = format_list(items, cut=6, theme=True)
-
-        self.assertEqual(out[0], "aaaa\n")
-        self.assertEqual(out[1], "bbbb, ")
-        self.assertEqual(out[2], "cccc")
-
-    def test_format_list_cut_exceeded_adds_comma_newline(self) -> None:
-        items = ["aa", "bb", "cc"]
-        out = format_list(items, cut=3, theme=False)
-
-        self.assertEqual(out[0], "aa, ")
-        self.assertEqual(out[1], "bb,\n")
-        self.assertEqual(out[2], "cc")
 
     def test_truncate_text_no_truncation(self) -> None:
         self.assertEqual(truncate_text("abc", 3), "abc")

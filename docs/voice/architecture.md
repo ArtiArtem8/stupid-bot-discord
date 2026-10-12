@@ -120,7 +120,7 @@ client option when `VOICE_PROBE_ENABLED=true`. The collector's sole private API
 access is `guild._voice_states`, needed to retain unresolved channel IDs in cache
 snapshots. Unresolved channel IDs make a snapshot non-authoritative.
 
-The ordinary Cog loader discovers the collector and profile command. Collector
+The explicit extension list registers the collector and profile command. Collector
 shutdown drains the journal; profile shutdown drains media work and closes its
 native renderer. See [profile cards](profile-card.md) for host setup and caching.
 

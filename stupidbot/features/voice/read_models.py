@@ -81,21 +81,3 @@ class VoiceXpBreakdown:
             + self.video_bonus
             - self.bonus_cap_reduction
         )
-
-
-@dataclass(frozen=True, slots=True)
-class UserVoiceSummary:
-    """A user summary; presence remains guild-additive, XP uses temporal MAX."""
-
-    user_id: int
-    presence: PresenceStat
-    companions: tuple[CompanionStat, ...]
-    bots: BotStat
-    activity: ActivityProfile
-    xp_breakdown: VoiceXpBreakdown
-    xp_policy_version: str
-
-    @property
-    def xp(self) -> Fraction:
-        """Return XP without rounding or duplicating the breakdown's total."""
-        return self.xp_breakdown.total

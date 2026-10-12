@@ -3,41 +3,6 @@ from collections.abc import Iterable
 from typing import Literal
 
 
-def format_list(strlist: list[str], cut: int, theme: bool = True) -> list[str]:
-    """Insert separators and line breaks into a list of display fragments.
-
-    The input list is mutated in place and returned. ``cut`` is a soft running
-    width: it decides where to append a comma and newline but does not truncate
-    long items.
-    When ``theme`` is true and the first two items would cross ``cut``, the first
-    item receives a trailing newline instead of a comma.
-
-    Args:
-        strlist: Fragments to modify.
-        cut: Soft line-width threshold in characters.
-        theme: Apply the special first-item handling.
-
-    Returns:
-        The same list instance after separator insertion.
-    """
-    line_width = 0
-    last_index = len(strlist) - 1
-    for index, fragment in enumerate(strlist):
-        line_width += len(fragment)
-        if index == 0 and theme:
-            if last_index > 0 and line_width + len(strlist[1]) > cut:
-                strlist[index] += "\n"
-                line_width = 0
-        elif index == last_index:
-            break
-        elif line_width > cut:
-            line_width = 0
-            strlist[index] += ",\n"
-        else:
-            strlist[index] += ", "
-    return strlist
-
-
 def truncate_text(
     text: str,
     width: int,

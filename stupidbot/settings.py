@@ -74,10 +74,8 @@ FUZZY_THRESHOLD_DEFAULT = 90
 """Minimum fuzzy match score to consider a match (0-100)."""
 FUZZY_MATCH_LIMIT = 10
 """Maximum number of fuzzy search results to return."""
-SUGGESTION_THRESHOLD = 25
-"""Minimum score to show as a suggestion (0-100)."""
 
-# question_cog.py
+# ask_cog.py
 MAX_ANSWER_SAMPLE_SIZE = 8
 """Maximum number of answer samples to consider."""
 

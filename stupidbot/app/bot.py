@@ -38,10 +38,6 @@ from stupidbot.storage.database import Database, open_engine, validate_schema
 logger = logging.getLogger(__name__)
 
 
-class DevServer:
-    id = 748606123065475134
-
-
 class StupidBot(commands.Bot):
     """Own cogs, background tasks, uptime and the shared database.
 
