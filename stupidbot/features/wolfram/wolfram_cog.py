@@ -299,16 +299,17 @@ class WolframCog(BaseCog):
         context = await interaction_context(interaction, private=True)
         messages = WolframMessages(catalog("wolfram", context.language))
         if not result.success:
+            if result.failure_reason is not None:
+                description = messages.failure(result.failure_reason)
+            else:
+                description = result.error_msg or messages.catalog.pgettext(
+                    "ui", "Wolfram could not understand the input."
+                )
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
                 title=messages.catalog.pgettext("ui", "No Results"),
-                description=(
-                    result.error_msg
-                    or messages.catalog.pgettext(
-                        "ui", "Wolfram could not understand the input."
-                    )
-                ),
+                description=description,
                 ephemeral=True,
             )
             return

@@ -18,6 +18,18 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
+msgctxt "no_results"
+msgid "No results found"
+msgstr "No results found"
+
+msgctxt "unknown_api_error"
+msgid "Unknown API Error"
+msgstr "Unknown API Error"
+
+msgctxt "invalid_response"
+msgid "Invalid XML response"
+msgstr "Invalid XML response"
+
 msgctxt "ui"
 msgid "API Error"
 msgstr "API Error"

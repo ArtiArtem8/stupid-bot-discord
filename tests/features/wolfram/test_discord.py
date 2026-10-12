@@ -31,6 +31,50 @@ from stupidbot.features.wolfram.wolfram_cog import (
 
 
 class TestWolframCog(unittest.IsolatedAsyncioTestCase):
+    async def test_local_parser_failures_translate_but_external_text_is_preserved(
+        self,
+    ) -> None:
+        cog, _ = self._make_cog()
+        parser = WolframClient("test-app-id", session=MagicMock())
+        cases = (
+            (
+                '<queryresult success="false" />',
+                "No results found",
+                "Ничего не найдено",
+            ),
+            (
+                '<queryresult success="false"><error /></queryresult>',
+                "Unknown API Error",
+                "Неизвестная ошибка API",
+            ),
+            ("<queryresult", "Invalid XML response", "Некорректный XML-ответ"),
+            (
+                '<queryresult success="false"><error><msg>No results found</msg>'
+                "</error></queryresult>",
+                "No results found",
+                "No results found",
+            ),
+        )
+        for xml, english, russian in cases:
+            result = parser._parse_xml(xml)
+            for locale, expected in (
+                (discord.Locale.american_english, english),
+                (discord.Locale.russian, russian),
+            ):
+                with self.subTest(xml=xml, locale=locale):
+                    interaction, _ = self._make_interaction()
+                    interaction.locale = locale
+                    with patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback:
+                        await cog._send_query_result(
+                            interaction,
+                            result,
+                            query="x",
+                            wolfram_query="solve x",
+                            mode="solve",
+                        )
+                    self.assertEqual(feedback.call_args.kwargs["description"], expected)
+                    self.assertTrue(feedback.call_args.kwargs["ephemeral"])
+
     async def test_public_result_and_private_receipt_use_separate_languages(
         self,
     ) -> None:

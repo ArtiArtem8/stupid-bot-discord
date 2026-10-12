@@ -6,6 +6,8 @@
     "command\u0004Solve a mathematical equation",
     "command\u0004Solve with Wolfram",
     "graph\u0004Graph generated: {url}",
+    "invalid_response\u0004Invalid XML response",
+    "no_results\u0004No results found",
     "plot\u0004{mention} [Wolfram]({url}) **Plot:** `{query}`",
     "query\u0004Query: `{query}`",
     "results\u0004Results: {url}",
@@ -27,6 +29,7 @@
     "ui\u0004Wolfram could not understand the input.",
     "ui\u0004Wolfram request stopped during reload. Please try again.",
     "ui\u0004Wolfram|Alpha is temporarily rate-limited. Please try again later.",
-    "ui\u0004Wolfram|Alpha request failed. Please try again later."
+    "ui\u0004Wolfram|Alpha request failed. Please try again later.",
+    "unknown_api_error\u0004Unknown API Error"
   ]
 }

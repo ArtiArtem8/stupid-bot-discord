@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import TYPE_CHECKING, Final, Never
 
 import aiohttp
@@ -66,6 +67,14 @@ class Pod:
         return format_math_text("\n".join(texts))
 
 
+class WolframFailureReason(StrEnum):
+    """Identify bot-generated fallback messages separately from external text."""
+
+    NO_RESULTS = "no_results"
+    UNKNOWN_API_ERROR = "unknown_api_error"
+    INVALID_RESPONSE = "invalid_response"
+
+
 @dataclass(frozen=True, slots=True)
 class WolframResult:
     """The parsed response from the API."""
@@ -73,6 +82,7 @@ class WolframResult:
     success: bool
     pods: Sequence[Pod] = field(default_factory=tuple)
     error_msg: str | None = None
+    failure_reason: WolframFailureReason | None = field(default=None, kw_only=True)
 
     @property
     def plot_url(self) -> str | None:
@@ -126,13 +136,18 @@ def _parse_unsuccessful_result(root: Element) -> WolframResult:
     """Read the API error, with a fallback for absent or empty messages."""
     error = root.find("error")
     if error is None:
-        return WolframResult(success=False, error_msg="No results found")
+        return WolframResult(
+            success=False,
+            error_msg="No results found",
+            failure_reason=WolframFailureReason.NO_RESULTS,
+        )
 
     message = error.find("msg")
     error_msg = message.text.strip() if message is not None and message.text else ""
     return WolframResult(
         success=False,
         error_msg=error_msg or "Unknown API Error",
+        failure_reason=None if error_msg else WolframFailureReason.UNKNOWN_API_ERROR,
     )
 
 
@@ -298,7 +313,11 @@ class WolframClient:
         try:
             root = ET.fromstring(xml_content, forbid_dtd=True)
         except (ET.ParseError, DefusedXmlException):
-            return WolframResult(success=False, error_msg="Invalid XML response")
+            return WolframResult(
+                success=False,
+                error_msg="Invalid XML response",
+                failure_reason=WolframFailureReason.INVALID_RESPONSE,
+            )
 
         if root.get("success") != "true":
             return _parse_unsuccessful_result(root)
