@@ -6,10 +6,10 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 
-import config
-from repositories.sqlite.database import Database
-from repositories.sqlite.identity import discord_id, ensure_guild
-from repositories.sqlite.schema import music_settings
+from stupidbot import settings as config
+from stupidbot.storage.database import Database
+from stupidbot.storage.identity import discord_id, ensure_guild
+from stupidbot.storage.schema import music_settings
 
 
 @dataclass(frozen=True, slots=True)

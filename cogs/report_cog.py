@@ -8,13 +8,13 @@ from discord import Interaction, app_commands
 from discord.ext import commands
 
 from api.reporting import ReportModal
-from framework.base_cog import BaseCog
-from framework.checks import is_owner_app
-from framework.feedback_ui import FeedbackType, FeedbackUI
 from repositories.report_repository import ReportRepository
+from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.checks import is_owner_app
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 
 if TYPE_CHECKING:
-    from framework.bot import StupidBot
+    from stupidbot.app.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 

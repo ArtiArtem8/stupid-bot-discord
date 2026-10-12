@@ -14,7 +14,6 @@ from discord.ext import commands, tasks
 from discord.ui import Button
 from sqlalchemy.exc import SQLAlchemyError
 
-import config
 from api.birthday import (
     BirthdayManager,
     create_birthday_list_embed,
@@ -22,15 +21,16 @@ from api.birthday import (
     safe_fetch_member,
 )
 from api.birthday_models import BirthdayDelivery, BirthdayGuildConfig, BirthdayUser
-from framework.authorization import check_component_access
-from framework.base_cog import BaseCog
-from framework.feedback_ui import FeedbackType, FeedbackUI
 from resources import BIRTHDAY_WISHES
+from stupidbot import settings as config
+from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.embeds import SafeEmbed
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from utils.birthday_utils import is_birthday_today
-from utils.embeds import SafeEmbed
 
 if TYPE_CHECKING:
-    from framework.bot import StupidBot
+    from stupidbot.app.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 

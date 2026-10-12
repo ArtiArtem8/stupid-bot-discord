@@ -20,12 +20,12 @@ from api.voice.model import (
     VoiceStateSnapshot,
 )
 from api.voice.timeline import build_timeline
-from repositories.sqlite.database import Database, migrate, open_engine
-from repositories.sqlite.schema import voice_batches
 from repositories.voice_journal import Submission, VoiceJournal
 from repositories.voice_repository import VoiceRepository
+from stupidbot.common.asyncio import run_in_thread
+from stupidbot.storage.database import Database, migrate, open_engine
+from stupidbot.storage.schema import voice_batches
 from tests.api.voice.examples import at, human, record
-from utils.asyncio_utils import run_in_thread
 
 
 class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):

@@ -18,7 +18,7 @@ from api.music.models import (
 )
 from api.music.service.core_service import CoreMusicService
 from cogs.music.music_cog import MusicCog, _format_voice_result_message
-from framework.feedback_ui import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 
 
 class _ResponseStub:

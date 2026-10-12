@@ -8,10 +8,10 @@ import discord
 from discord import Interaction, ui
 from discord.utils import format_dt
 
-import config
 from api.music.models import MusicSession
-from framework.authorization import check_component_access
-from framework.pagination import BasePaginator, PaginationData
+from stupidbot import settings as config
+from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.pagination import BasePaginator, PaginationData
 from utils.text_utils import TextPaginator, truncate_text
 
 from ..feedback import send_warning

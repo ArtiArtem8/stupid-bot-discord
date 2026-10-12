@@ -119,7 +119,7 @@ class StateManager:
 
     def check_auto_leave(self) -> list[int]:
         """Check for guilds that have been empty for too long."""
-        import config
+        from stupidbot import settings as config
 
         expired_timers = self.get_expired_timers(config.MUSIC_AUTO_LEAVE_TIMEOUT)
         expired_guild_ids = [guild_id for guild_id, _ in expired_timers]

@@ -24,8 +24,7 @@ from api.progression.appearance import TIER_ORDER, LevelAppearance, LevelTier
 from api.voice.profile.model import VoiceProfile
 from cogs.voice.profile.raster import Box, NativeRasterizer
 from cogs.voice.profile.theme import TIER_EMBLEM
-from utils.json_types import JsonObject, is_json_object
-from utils.json_utils import get_json
+from stupidbot.common.json import JsonObject, get_json, is_json_object
 
 SVG: Final = "http://www.w3.org/2000/svg"
 XLINK: Final = "http://www.w3.org/1999/xlink"

@@ -7,15 +7,15 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from api.blocking_models import BlockedUser, BlockHistoryEntry, NameHistoryEntry
-from repositories.sqlite.database import Database
-from repositories.sqlite.identity import (
+from stupidbot.storage.database import Database
+from stupidbot.storage.identity import (
     ensure_member,
     ensure_user,
     from_microseconds,
     observe_username,
     utc_microseconds,
 )
-from repositories.sqlite.schema import (
+from stupidbot.storage.schema import (
     block_events,
     member_blocks,
     member_name_observations,

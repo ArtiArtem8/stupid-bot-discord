@@ -12,7 +12,7 @@ from PIL import Image, ImageChops, ImageDraw
 
 from cogs.voice.profile.design import BoundDesign, json_object, property_value
 from cogs.voice.profile.raster import Box
-from utils.json_utils import get_json
+from stupidbot.common.json import get_json
 
 if TYPE_CHECKING:
     from cogs.voice.profile.avatar import AnimatedAvatar

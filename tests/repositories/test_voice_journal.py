@@ -20,7 +20,7 @@ from api.voice.timeline import build_timeline
 from repositories.voice_journal import JournalWriteError, Submission, VoiceJournal
 from repositories.voice_repository import VoiceRepository
 from tests.api.voice.examples import START, at, human, record
-from tests.storage import temporary_database
+from tests.storage.fixtures import temporary_database
 
 
 class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):

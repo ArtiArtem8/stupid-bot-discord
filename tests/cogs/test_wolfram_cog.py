@@ -11,7 +11,6 @@ import aiohttp
 import discord
 from discord.ext import commands
 
-import config
 from api.wolfram import (
     Pod,
     SubPod,
@@ -26,7 +25,8 @@ from cogs.wolfram_cog import (
     _build_text_results_embed,
     _normalize_query,
 )
-from framework.feedback_ui import FeedbackType, FeedbackUI
+from stupidbot import settings as config
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from utils.image_utils import ImageOutputTooLargeError
 
 

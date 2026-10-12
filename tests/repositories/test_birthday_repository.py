@@ -10,15 +10,15 @@ from sqlalchemy.exc import IntegrityError
 
 from api.birthday_models import BirthdayDelivery
 from repositories.birthday_repository import BirthdayRepository
-from repositories.sqlite.database import Database, open_engine
-from repositories.sqlite.identity import ensure_channel
-from repositories.sqlite.schema import (
+from repositories.volume_repository import VolumeData, VolumeRepository
+from stupidbot.storage.database import Database, open_engine
+from stupidbot.storage.identity import ensure_channel
+from stupidbot.storage.schema import (
     birthday_deliveries,
     birthday_settings,
     music_settings,
 )
-from repositories.volume_repository import VolumeData, VolumeRepository
-from tests.storage import temporary_database
+from tests.storage.fixtures import temporary_database
 
 
 class TestBirthdayRepository(unittest.IsolatedAsyncioTestCase):

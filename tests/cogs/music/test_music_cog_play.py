@@ -20,7 +20,7 @@ from cogs.music.presentation import (
     build_track_added_embed,
 )
 from cogs.music.views import QueueUndoView
-from framework.feedback_ui import FeedbackUI
+from stupidbot.discord_ui.feedback import FeedbackUI
 from tests.api.music.helpers import make_entry, make_playlist, make_track
 
 

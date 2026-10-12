@@ -12,7 +12,7 @@ from api.voice.model import (
     VoiceSnapshot,
     VoiceStateSnapshot,
 )
-from utils.json_types import JsonObject
+from stupidbot.common.json import JsonObject
 
 
 def encode_record(record: VoiceJournalRecord) -> str:

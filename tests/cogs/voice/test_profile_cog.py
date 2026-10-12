@@ -17,7 +17,6 @@ from discord.ext import commands
 from PIL import Image
 
 import cogs.voice.collector_cog
-import config
 from api.voice.analytics import VoiceAnalytics
 from api.voice.model import VoiceCheckpoint, VoiceSnapshot
 from api.voice.timeline import VoiceReplayState, VoiceTimeline
@@ -28,13 +27,14 @@ from cogs.voice.profile.media import ProfileMedia, RenderBusyError
 from cogs.voice.profile.raster import Box
 from cogs.voice.profile.view import ProfileAction, VoiceProfileView
 from cogs.voice.profile_cog import ProfileSnapshot, VoiceProfileCog
-from framework.bot import StupidBot
-from framework.feedback_ui import FeedbackUI
 from repositories.voice_repository import VoiceRepository
+from stupidbot import settings as config
+from stupidbot.app.bot import StupidBot
+from stupidbot.discord_ui.feedback import FeedbackUI
 from tests.api.voice.examples import human, record
 from tests.cogs.voice.profile.test_details_support import profile_request
 from tests.cogs.voice.profile.test_media import profile_at
-from tests.storage import temporary_database
+from tests.storage.fixtures import temporary_database
 
 
 def interaction(user_id: int = 10, *, guild: bool = True) -> MagicMock:

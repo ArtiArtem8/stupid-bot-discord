@@ -7,7 +7,7 @@ from discord import ui
 
 from api.music.models import MusicSession
 from cogs.music.views import SessionSummaryView
-from framework.pagination import BasePaginator
+from stupidbot.discord_ui.pagination import BasePaginator
 
 
 class TestSessionSummaryView(unittest.IsolatedAsyncioTestCase):

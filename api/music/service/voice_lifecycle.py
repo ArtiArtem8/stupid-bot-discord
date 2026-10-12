@@ -18,7 +18,7 @@ from api.music.service.connection_manager import ConnectionManager
 from api.music.service.state_manager import StateManager
 from api.music.service.ui_orchestrator import UIOrchestrator
 from api.music.session_events import dispatch_music_session_end
-from utils.asyncio_utils import cancel_and_wait
+from stupidbot.common.asyncio import cancel_and_wait
 
 logger = logging.getLogger(__name__)
 

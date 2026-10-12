@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 import aiohttp
 
-import config
 from api.wolfram import (
     Pod,
     SubPod,
@@ -18,6 +17,7 @@ from api.wolfram import (
     WolframResult,
     format_math_text,
 )
+from stupidbot import settings as config
 
 _MINIMAL_PLOT_XML = (
     '<queryresult success="true" error="false">'

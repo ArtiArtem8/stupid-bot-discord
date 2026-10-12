@@ -7,7 +7,7 @@ from typing import TypedDict
 
 import discord
 
-import config
+from stupidbot import settings as config
 from utils.birthday_utils import (
     calculate_days_until_birthday,
     format_birthday_date,

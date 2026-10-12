@@ -20,7 +20,6 @@ import discord
 from discord.ext import commands, tasks
 from discord.utils import utcnow
 
-import config
 from api.voice.model import (
     GapReason,
     ObservationGap,
@@ -33,10 +32,11 @@ from api.voice.model import (
     VoiceStateSnapshot,
 )
 from repositories.voice_journal import Submission, VoiceJournal
-from utils.json_types import JsonObject, JsonValue, is_json_object
+from stupidbot import settings as config
+from stupidbot.common.json import JsonObject, JsonValue, is_json_object
 
 if TYPE_CHECKING:
-    from framework.bot import StupidBot
+    from stupidbot.app.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 

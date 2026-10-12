@@ -3,8 +3,8 @@
 from pathlib import Path
 
 from api.birthday_models import BirthdayGuildConfig, BirthdayUser
+from stupidbot.common.json import JsonObject, JsonValue
 from tools.storage_legacy.json_input import identifier, load_object
-from utils.json_types import JsonObject, JsonValue
 
 
 def _string(data: JsonObject, field: str) -> str:

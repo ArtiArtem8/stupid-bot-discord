@@ -10,8 +10,8 @@ import discord
 
 from api.blocking_models import BlockedUser
 from cogs.admin_cog import AdminCog, BlockedListPages
-from framework.feedback_ui import FeedbackUI
-from framework.pagination import BasePaginator
+from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.discord_ui.pagination import BasePaginator
 
 
 class TestDeleteMessage(unittest.IsolatedAsyncioTestCase):

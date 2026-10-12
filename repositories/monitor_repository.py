@@ -6,15 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 
 from api.monitor_models import MemberSnapshot, MonitorSettings
-from repositories.sqlite.database import Database
-from repositories.sqlite.identity import (
+from stupidbot.storage.database import Database
+from stupidbot.storage.identity import (
     ensure_guild,
     ensure_member,
     ensure_role,
     from_microseconds,
     utc_microseconds,
 )
-from repositories.sqlite.schema import (
+from stupidbot.storage.schema import (
     monitor_settings,
     role_snapshot_roles,
     role_snapshots,

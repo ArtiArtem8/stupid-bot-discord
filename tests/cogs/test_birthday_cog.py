@@ -14,10 +14,10 @@ from api.birthday import BirthdayManager
 from api.birthday_models import BirthdayDelivery, BirthdayGuildConfig, BirthdayUser
 from cogs import birthday_cog as birthday_module
 from cogs.birthday_cog import BirthdayCog
-from framework.feedback_ui import FeedbackUI
 from repositories.birthday_repository import BirthdayRepository
-from repositories.sqlite.schema import birthday_deliveries
-from tests.storage import temporary_database
+from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.storage.schema import birthday_deliveries
+from tests.storage.fixtures import temporary_database
 
 
 class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):

@@ -21,7 +21,7 @@ from cogs.command.prefix_suggestions import (
 )
 
 if TYPE_CHECKING:
-    from framework.bot import StupidBot
+    from stupidbot.app.bot import StupidBot
 
 
 class PrefixBlockerCog(commands.Cog):

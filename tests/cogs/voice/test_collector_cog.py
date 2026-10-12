@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 import discord
 from discord.ext import commands
 
-import config
 from api.voice.metrics.presence import presence
 from api.voice.model import (
     GapReason,
@@ -25,13 +24,14 @@ from cogs.voice.collector_cog import (
     _cached_state,
     normalize_voice_state,
 )
-from framework.bot import StupidBot
-from framework.cog_loader import CogLoader
 from repositories.voice_journal import VoiceJournal
 from repositories.voice_repository import VoiceRepository
+from stupidbot import settings as config
+from stupidbot.app.bot import StupidBot
+from stupidbot.app.cog_loader import CogLoader
+from stupidbot.common.json import JsonObject
 from tests.api.voice.examples import START, at
-from tests.storage import temporary_database
-from utils.json_types import JsonObject
+from tests.storage.fixtures import temporary_database
 
 if TYPE_CHECKING:
     from discord.types.guild import Guild as GuildPayload

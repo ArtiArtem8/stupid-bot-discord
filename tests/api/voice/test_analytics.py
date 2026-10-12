@@ -14,7 +14,7 @@ from api.voice.timeline import VoiceReplayState, build_timeline
 from repositories.voice_journal import VoiceJournal
 from repositories.voice_repository import VoiceCommit, VoiceHistory, VoiceRepository
 from tests.api.voice.examples import human, record
-from tests.storage import temporary_database
+from tests.storage.fixtures import temporary_database
 
 
 class TestVoiceAnalytics(unittest.IsolatedAsyncioTestCase):

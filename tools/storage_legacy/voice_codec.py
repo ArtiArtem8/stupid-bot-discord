@@ -14,8 +14,8 @@ from api.voice.model import (
     VoiceSnapshot,
     VoiceStateSnapshot,
 )
+from stupidbot.common.json import JsonObject, JsonValue, is_json_object
 from tools.storage_legacy.json_input import unique_object
-from utils.json_types import JsonObject, JsonValue, is_json_object
 
 
 def decode_record(line: str) -> VoiceJournalRecord:

@@ -12,9 +12,6 @@ from discord import app_commands
 from cogs.voice.profile.attachments import detail_embed, retained_attachments
 from cogs.voice.profile.detail_models import ProfileLook
 from cogs.voice.profile.media import RenderBusyError
-from framework.authorization import check_component_access
-from framework.error_handler import handle_app_command_error
-from framework.feedback_ui import FeedbackType, FeedbackUI
 from resources import (
     RESTART_EMOJI,
     SOCIAL_EMOJI,
@@ -22,6 +19,9 @@ from resources import (
     TRASH_EMOJI,
     XP_EMOJI,
 )
+from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.errors import handle_app_command_error
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 
 logger = logging.getLogger(__name__)
 

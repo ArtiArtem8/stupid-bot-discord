@@ -9,8 +9,7 @@ from PIL import Image
 
 from cogs.voice.profile.design import BoundDesign, json_object
 from cogs.voice.profile.raster import Box
-from utils.json_types import JsonObject
-from utils.json_utils import get_json
+from stupidbot.common.json import JsonObject, get_json
 
 
 @dataclass(frozen=True, slots=True)

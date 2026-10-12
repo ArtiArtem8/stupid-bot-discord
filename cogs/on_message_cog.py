@@ -13,12 +13,12 @@ from discord.ext import commands
 from rapidfuzz.process import extract
 from rapidfuzz.utils import default_process
 
-import config
 from api.blocking import BlockManager
 from resources import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
+from stupidbot import settings as config
 
 if TYPE_CHECKING:
-    from framework.bot import StupidBot
+    from stupidbot.app.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 

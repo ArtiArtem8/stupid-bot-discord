@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import cast
 
 from repositories.volume_repository import VolumeData
-from utils.json_types import JsonObject, JsonValue, is_json_object
+from stupidbot.common.json import JsonObject, JsonValue, is_json_object
 
 
 def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

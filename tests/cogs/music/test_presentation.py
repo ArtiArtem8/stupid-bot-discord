@@ -2,7 +2,6 @@
 
 import unittest
 
-import config
 from api.music.models import (
     MusicSession,
     PlaylistResponseData,
@@ -15,6 +14,7 @@ from cogs.music.presentation import (
     build_session_summary_embed,
     format_track_link,
 )
+from stupidbot import settings as config
 from tests.api.music.helpers import make_playlist, make_track
 
 

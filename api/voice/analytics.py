@@ -9,7 +9,7 @@ from functools import partial
 from api.voice.model import VoiceJournalRecord
 from api.voice.timeline import VoiceReplayState, VoiceTimeline
 from repositories.voice_repository import VoiceCommit, VoiceHistory, VoiceRepository
-from utils.asyncio_utils import run_in_thread
+from stupidbot.common.asyncio import run_in_thread
 
 logger = logging.getLogger(__name__)
 

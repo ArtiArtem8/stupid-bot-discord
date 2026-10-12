@@ -6,7 +6,7 @@ Manual run::
     LAVALINK_LIVE_TRACK_QUERY="Never Gonna Give You Up" \
     uv run pytest -m lavalink_live -q
 
-The regular Lavalink connection variables are read from ``config.py``. The test
+The Lavalink connection variables are read from ``stupidbot/settings.py``. The test
 uses generated client and guild IDs and does not require a Discord voice channel.
 """
 
@@ -23,8 +23,8 @@ import discord
 import mafic
 import pytest
 
-import config
 from api.music.models import PLAYBACK_USER_DATA_KEY
+from stupidbot import settings as config
 
 
 def _random_snowflake() -> int:

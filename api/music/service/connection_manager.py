@@ -15,7 +15,6 @@ import mafic
 from discord.ext import commands
 from discord.utils import maybe_coroutine
 
-import config
 from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
 from api.music.models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
@@ -24,7 +23,8 @@ from api.music.models import (
     VoiceJoinResult,
 )
 from api.music.player import MusicPlayer, music_player_factory
-from utils.asyncio_utils import cancel_and_wait
+from stupidbot import settings as config
+from stupidbot.common.asyncio import cancel_and_wait
 
 logger = logging.getLogger(__name__)
 

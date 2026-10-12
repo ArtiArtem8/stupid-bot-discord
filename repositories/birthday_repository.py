@@ -9,17 +9,17 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-import config
 from api.birthday_models import BirthdayDelivery, BirthdayGuildConfig, BirthdayUser
-from repositories.sqlite.database import Database
-from repositories.sqlite.identity import (
+from stupidbot import settings as config
+from stupidbot.storage.database import Database
+from stupidbot.storage.identity import (
     discord_id,
     ensure_channel,
     ensure_guild,
     ensure_member,
     ensure_role,
 )
-from repositories.sqlite.schema import (
+from stupidbot.storage.schema import (
     birthday_deliveries,
     birthday_history,
     birthday_settings,

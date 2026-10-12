@@ -16,7 +16,6 @@ from discord import Interaction, ui
 from discord.abc import PrivateChannel
 from discord.ext import commands
 
-import config
 from api.music.errors import EXPECTED_LAVALINK_IO_ERRORS
 from api.music.models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
@@ -25,12 +24,13 @@ from api.music.models import (
 )
 from api.music.protocols import ControllerManagerProtocol
 from api.music.service.connection_manager import ConnectionManager
-from framework.authorization import check_component_access
-from framework.feedback_ui import FeedbackType, FeedbackUI
-from framework.interaction_flow import ack_component
 from resources import RESTART_EMOJI
-from utils.callables import callable_name
-from utils.embeds import SafeEmbed
+from stupidbot import settings as config
+from stupidbot.common.callables import callable_name
+from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.embeds import SafeEmbed
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.interaction_flow import ack_component
 
 from ..feedback import send_warning
 

@@ -14,7 +14,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import config
 from api.voice.analytics import AnalyticsUnavailableError, VoiceAnalytics
 from api.voice.profile.build import build_profile
 from api.voice.profile.details import (
@@ -40,8 +39,9 @@ from cogs.voice.profile.media import (
     RenderBusyError,
 )
 from cogs.voice.profile.view import ProfileDetail, VoiceProfileView
-from framework.base_cog import BaseCog
-from framework.feedback_ui import FeedbackType, FeedbackUI
+from stupidbot import settings as config
+from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 
 logger = logging.getLogger(__name__)
 _TIMELINE_REQUEST_LIMIT = 4

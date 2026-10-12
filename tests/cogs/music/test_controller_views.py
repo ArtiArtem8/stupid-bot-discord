@@ -12,7 +12,7 @@ from discord import Client, Interaction, ui
 from api.music.models import ControllerDestroyReason, PlaybackAttempt
 from cogs.music.views import TrackControllerManager, TrackControllerView
 from cogs.music.views import controller as controller_module
-from framework.feedback_ui import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from tests.api.music.helpers import make_entry
 
 

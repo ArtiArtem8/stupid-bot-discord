@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, patch
 
 import discord
 
-import config
 from api.birthday import (
     BirthdayManager,
     create_birthday_list_embed,
@@ -18,6 +17,7 @@ from api.birthday import (
     safe_fetch_member,
 )
 from api.birthday_models import BirthdayListEntry
+from stupidbot import settings as config
 
 
 class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):

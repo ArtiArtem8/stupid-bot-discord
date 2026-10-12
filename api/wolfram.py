@@ -12,8 +12,8 @@ import aiohttp
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
-import config
 from resources import WOLFRAM_IGNORED_PATTERNS, WOLFRAM_IGNORED_TITLES
+from stupidbot import settings as config
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

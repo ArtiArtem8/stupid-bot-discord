@@ -7,8 +7,8 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from api.report_models import ReportDataDict
-from repositories.sqlite.database import Database
-from repositories.sqlite.identity import (
+from stupidbot.storage.database import Database
+from stupidbot.storage.identity import (
     ensure_channel,
     ensure_member,
     ensure_user,
@@ -16,8 +16,8 @@ from repositories.sqlite.identity import (
     observe_username,
     utc_microseconds,
 )
-from repositories.sqlite.rows import column_value
-from repositories.sqlite.schema import report_settings, reports
+from stupidbot.storage.rows import column_value
+from stupidbot.storage.schema import report_settings, reports
 
 
 async def _existing(

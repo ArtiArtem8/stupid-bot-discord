@@ -8,7 +8,7 @@ from typing import override
 from sqlalchemy import event
 
 from repositories.blocking_repository import BlockingRepository
-from tests.storage import temporary_database
+from tests.storage.fixtures import temporary_database
 
 
 class TestBlockingRepository(unittest.IsolatedAsyncioTestCase):

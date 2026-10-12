@@ -8,11 +8,11 @@ import discord
 from discord.webhook.async_ import async_context
 from sqlalchemy import select
 
-import config
 from api.reporting import ReportModal, _build_report_data, _notify_report, submit_report
 from repositories.report_repository import ReportRepository
-from repositories.sqlite.schema import reports
-from tests.storage import temporary_database
+from stupidbot import settings as config
+from stupidbot.storage.schema import reports
+from tests.storage.fixtures import temporary_database
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):

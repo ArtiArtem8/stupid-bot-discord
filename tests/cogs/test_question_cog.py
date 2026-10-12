@@ -10,8 +10,8 @@ from sqlalchemy import select
 
 from cogs.question_cog import QuestionCog
 from repositories.question_repository import QuestionRepository
-from repositories.sqlite.schema import question_answers
-from tests.storage import temporary_database
+from stupidbot.storage.schema import question_answers
+from tests.storage.fixtures import temporary_database
 from utils.text_utils import str_local
 
 

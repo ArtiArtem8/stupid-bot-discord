@@ -9,7 +9,6 @@ from typing import Self, override
 import discord
 from discord import Interaction
 
-import config
 from api.music.models import (
     MUSIC_RECOVERING_MESSAGE,
     MusicResult,
@@ -17,10 +16,11 @@ from api.music.models import (
     QueueSnapshot,
     RepeatMode,
 )
-from framework.authorization import check_component_access
-from framework.feedback_ui import FeedbackType, FeedbackUI
-from framework.interaction_flow import ack_component
-from framework.pagination import (
+from stupidbot import settings as config
+from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.interaction_flow import ack_component
+from stupidbot.discord_ui.pagination import (
     DANGER,
     PRIMARY,
     BasePaginator,

@@ -136,10 +136,10 @@ People показывает время с другими участниками,
   В штатном режиме профили используют снимки без SQL-запросов к сырой истории.
   [Архитектура голосовой подсистемы](docs/voice/architecture.md) описывает
   сессии, пробелы в наблюдениях и восстановление.
-- **Одна база и явный порядок завершения работы.** [Database](repositories/sqlite/database.py)
+- **Одна база и явный порядок завершения работы.** [Database](stupidbot/storage/database.py)
   обслуживает все функции с постоянными данными. При выключении бот останавливает
   источники записей, завершает принятые записи голосовой истории и сохраняет uptime,
-  затем дожидается транзакций и закрывает базу. [Документация хранилища](repositories/sqlite/README.md)
+  затем дожидается транзакций и закрывает базу. [Документация хранилища](docs/storage/README.md)
   описывает явные миграции, офлайн-импорт, резервные копии и восстановление.
 
 ## Локальный запуск
@@ -189,15 +189,15 @@ uv sync --locked --no-dev
 
 ```bash
 uv run --locked --no-dev python -c "from pathlib import Path; Path('data').mkdir(exist_ok=True)"
-uv run --locked --no-dev python -m repositories.sqlite --database data/app.sqlite migrate
-uv run --locked --no-dev python -m repositories.sqlite --database data/app.sqlite check
+uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite migrate
+uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite check
 uv run --locked --no-dev main.py
 ```
 
 > [!IMPORTANT]
 > Запуск требует подготовленной базы. Отсутствующие, несовместимые и
 > незавершённые файлы отклоняются. Для существующей установки сначала изучите
-> [миграцию и восстановление](repositories/sqlite/README.md):
+> [миграцию и восстановление](docs/storage/README.md):
 > команды выше не импортируют старые данные.
 
 Другой подготовленный файл можно выбрать так:
@@ -217,9 +217,9 @@ uv run --locked --no-dev main.py --database /path/to/app.sqlite
 в [настройке профилей](docs/voice/profile-card.md#setup).
 
 Рабочие файлы используют `data/` и временные каталоги рендерера. Резервные копии
-создаются отдельными командами обслуживания SQLite. В [config.py](config.py)
+создаются отдельными командами обслуживания SQLite. В [stupidbot.settings.py](stupidbot.settings.py)
 находятся эксплуатационные константы, в [resources.py](resources.py) — статические
-строки; [настройка логирования](utils/logging_setup.py) управляет журналами.
+строки; [настройка логирования](stupidbot/app/logging.py) управляет журналами.
 
 Отслеживание выделения памяти по умолчанию выключено.
 `uv run --locked --no-dev main.py --tracemalloc` включает его для диагностики,

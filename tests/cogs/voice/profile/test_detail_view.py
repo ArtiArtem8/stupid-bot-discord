@@ -11,7 +11,7 @@ import discord
 from cogs.voice.profile import view as view_module
 from cogs.voice.profile.media import RenderBusyError
 from cogs.voice.profile.view import ProfileAction, ProfileDetail, VoiceProfileView
-from framework.feedback_ui import FeedbackUI
+from stupidbot.discord_ui.feedback import FeedbackUI
 from tests.cogs.voice.test_profile_cog import interaction
 
 

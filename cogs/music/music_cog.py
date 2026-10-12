@@ -8,7 +8,6 @@ import discord
 from discord import Interaction, Member, app_commands
 from discord.ext import commands, tasks
 
-import config
 from api.music.models import (
     MUSIC_RECOVERING_MESSAGE,
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
@@ -23,10 +22,11 @@ from api.music.models import (
     VoiceCheckResult,
     VoiceJoinResult,
 )
-from framework.base_cog import BaseCog
-from framework.feedback_ui import FeedbackType, FeedbackUI
-from framework.interaction_flow import run_with_defer
 from repositories.volume_repository import VolumeStore
+from stupidbot import settings as config
+from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.interaction_flow import run_with_defer
 
 from .composition import create_music_components
 from .feedback import (
@@ -53,7 +53,7 @@ from .views import (
 )
 
 if TYPE_CHECKING:
-    from framework.bot import StupidBot
+    from stupidbot.app.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 

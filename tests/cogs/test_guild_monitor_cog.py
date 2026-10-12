@@ -13,9 +13,9 @@ from api.guild_monitoring import (
 )
 from api.monitor_models import MemberSnapshot
 from cogs.guild_monitor_cog import ServerMonitorCog
-from framework.feedback_ui import FeedbackType, FeedbackUI
 from repositories.monitor_repository import MonitorRepository
-from tests.storage import temporary_database
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from tests.storage.fixtures import temporary_database
 
 
 class TestGuildMonitorCog(unittest.IsolatedAsyncioTestCase):

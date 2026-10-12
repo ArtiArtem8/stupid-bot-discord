@@ -7,12 +7,12 @@ from datetime import datetime
 
 import discord
 
-import config
 from api.birthday_models import (
     BirthdayGuildConfig,
     BirthdayListEntry,
 )
 from repositories.birthday_repository import BirthdayRepository
+from stupidbot import settings as config
 from utils.birthday_utils import format_storage_date
 from utils.text_utils import TextPaginator, truncate_text
 

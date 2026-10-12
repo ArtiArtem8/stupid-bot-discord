@@ -12,14 +12,14 @@ from typing import TYPE_CHECKING
 from discord import Interaction, app_commands
 from discord.ext import commands
 
-import config
-from framework.base_cog import BaseCog
 from repositories.question_repository import QuestionRepository
 from resources import CAPABILITIES
+from stupidbot import settings as config
+from stupidbot.discord_ui.base_cog import BaseCog
 from utils.text_utils import random_answer, str_local
 
 if TYPE_CHECKING:
-    from framework.bot import StupidBot
+    from stupidbot.app.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 

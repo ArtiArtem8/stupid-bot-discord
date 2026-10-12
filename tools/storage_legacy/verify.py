@@ -18,17 +18,17 @@ from api.voice.timeline import VoiceTimeline, build_timeline
 from repositories.birthday_repository import BirthdayRepository
 from repositories.blocking_repository import BlockingRepository
 from repositories.monitor_repository import MonitorRepository
-from repositories.sqlite.database import SCHEMA_REVISION, Database
-from repositories.sqlite.schema import (
+from repositories.voice_repository import VoiceRepository
+from repositories.volume_repository import VolumeRepository
+from stupidbot.common.asyncio import run_in_thread
+from stupidbot.storage.database import SCHEMA_REVISION, Database
+from stupidbot.storage.schema import (
     question_answers,
     report_settings,
     reports,
     runtime_checkpoint,
 )
-from repositories.voice_repository import VoiceRepository
-from repositories.volume_repository import VolumeRepository
 from tools.storage_legacy.sources import LegacyData
-from utils.asyncio_utils import run_in_thread
 
 
 async def verify_import(database: Database, data: LegacyData) -> None:

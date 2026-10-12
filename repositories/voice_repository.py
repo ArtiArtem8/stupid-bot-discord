@@ -22,8 +22,9 @@ from api.voice.model import (
     VoiceSnapshot,
     VoiceStateSnapshot,
 )
-from repositories.sqlite.database import Database
-from repositories.sqlite.identity import (
+from stupidbot.common.asyncio import run_in_thread
+from stupidbot.storage.database import Database
+from stupidbot.storage.identity import (
     discord_id,
     ensure_channel,
     ensure_guild,
@@ -31,14 +32,13 @@ from repositories.sqlite.identity import (
     from_microseconds,
     utc_microseconds,
 )
-from repositories.sqlite.schema import (
+from stupidbot.storage.schema import (
     voice_batches,
     voice_record_states,
     voice_records,
     voice_revisions,
     voice_shared_revision,
 )
-from utils.asyncio_utils import run_in_thread
 
 
 class RecordValues(TypedDict):

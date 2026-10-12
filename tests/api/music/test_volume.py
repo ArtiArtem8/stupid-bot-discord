@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from api.music.volume import VolumeSettings
 from repositories.volume_repository import VolumeRepository
-from tests.storage import temporary_database
+from tests.storage.fixtures import temporary_database
 
 
 class TestVolumeOrdering(unittest.IsolatedAsyncioTestCase):

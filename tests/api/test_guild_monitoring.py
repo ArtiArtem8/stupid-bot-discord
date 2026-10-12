@@ -13,7 +13,7 @@ import discord
 from api.guild_monitoring import ServerMonitoringManager
 from api.monitor_models import MemberSnapshot
 from repositories.monitor_repository import MonitorRepository
-from tests.storage import temporary_database
+from tests.storage.fixtures import temporary_database
 
 
 @dataclass(frozen=True, slots=True)

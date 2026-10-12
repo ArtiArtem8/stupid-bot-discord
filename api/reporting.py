@@ -9,11 +9,11 @@ import discord
 from discord import DMChannel, Interaction
 from discord.ui import Modal, TextInput
 
-import config
 from api.report_models import ReportDataDict
-from framework.feedback_ui import FeedbackType, FeedbackUI
 from repositories.report_repository import ReportRepository
-from utils.embeds import SafeEmbed
+from stupidbot import settings as config
+from stupidbot.discord_ui.embeds import SafeEmbed
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 
 logger = logging.getLogger(__name__)
 

@@ -130,10 +130,10 @@ only affects voice profiles.
   profile requests use snapshots without querying raw history in SQL.
   [Voice architecture](docs/voice/architecture.md) explains how sessions,
   observation gaps and recovery work.
-- **One database, an explicit shutdown sequence.** [Database](repositories/sqlite/database.py)
+- **One database, an explicit shutdown sequence.** [Database](stupidbot/storage/database.py)
   serves all durable features. Shutdown stops producers, finishes accepted
   voice writes and saves uptime before draining transactions and closing the
-  database. [Storage documentation](repositories/sqlite/README.md) covers
+  database. [Storage documentation](docs/storage/README.md) covers
   explicit migrations, offline import, backups and recovery.
 
 ## Run locally
@@ -184,14 +184,14 @@ For a **new installation**, create and validate the SQLite database:
 
 ```bash
 uv run --locked --no-dev python -c "from pathlib import Path; Path('data').mkdir(exist_ok=True)"
-uv run --locked --no-dev python -m repositories.sqlite --database data/app.sqlite migrate
-uv run --locked --no-dev python -m repositories.sqlite --database data/app.sqlite check
+uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite migrate
+uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite check
 uv run --locked --no-dev main.py
 ```
 
 > [!IMPORTANT]
 > Startup requires a prepared database. It rejects missing, incompatible or
-> unfinished files. For an existing installation, follow [storage migration and recovery](repositories/sqlite/README.md)
+> unfinished files. For an existing installation, follow [storage migration and recovery](docs/storage/README.md)
 > before starting; the commands above do not import legacy data.
 
 To use a different prepared file:
@@ -211,9 +211,9 @@ to 30 seconds. Renderer paths, font cache permissions and `INKSCAPE_BIN` are
 documented in [profile setup](docs/voice/profile-card.md#setup).
 
 Runtime files use `data/` and temporary renderer directories. Backups are explicit
-SQLite maintenance operations. [config.py](config.py) contains operational
+SQLite maintenance operations. [stupidbot.settings.py](stupidbot.settings.py) contains operational
 constants, [resources.py](resources.py) contains static strings, and
-[logging setup](utils/logging_setup.py) configures logs.
+[logging setup](stupidbot/app/logging.py) configures logs.
 
 Allocation tracing is off by default. `uv run --locked --no-dev main.py --tracemalloc`
 enables it for diagnostics, with additional CPU and memory overhead.

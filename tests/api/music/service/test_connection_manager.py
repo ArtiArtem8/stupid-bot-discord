@@ -11,7 +11,6 @@ import aiohttp
 import discord
 import mafic
 
-import config
 from api.music.models import (
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
     NodeNotConnectedError,
@@ -20,6 +19,7 @@ from api.music.models import (
 from api.music.player import MusicPlayer, music_player_factory
 from api.music.service import connection_manager as connection_module
 from api.music.service.connection_manager import ConnectionManager, _AvailabilityResult
+from stupidbot import settings as config
 
 
 class _FakeMusicPlayer:

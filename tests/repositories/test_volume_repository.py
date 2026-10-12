@@ -7,19 +7,19 @@ from typing import override
 
 from sqlalchemy import select
 
-import config
 from repositories.birthday_repository import BirthdayRepository
-from repositories.sqlite.database import (
+from repositories.volume_repository import VolumeData, VolumeRepository
+from stupidbot import settings as config
+from stupidbot.common.asyncio import run_in_thread
+from stupidbot.storage.database import (
     Database,
     copy_database,
     migrate,
     open_engine,
     validate_schema,
 )
-from repositories.sqlite.schema import music_settings
-from repositories.volume_repository import VolumeData, VolumeRepository
-from tests.storage import temporary_database
-from utils.asyncio_utils import run_in_thread
+from stupidbot.storage.schema import music_settings
+from tests.storage.fixtures import temporary_database
 
 
 class TestVolumeRepository(unittest.IsolatedAsyncioTestCase):

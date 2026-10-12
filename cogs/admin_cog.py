@@ -18,19 +18,19 @@ from discord import app_commands
 from discord.ext import commands
 from discord.utils import format_dt
 
-import config
 from api.blocking import BlockManager
 from api.blocking_models import BlockedUser, NameHistoryEntry
-from framework.base_cog import BaseCog
-from framework.checks import is_owner_app
-from framework.feedback_ui import FeedbackType, FeedbackUI
-from framework.pagination import BasePaginator
 from resources import ACTION_TITLES
-from utils.embeds import SafeEmbed
+from stupidbot import settings as config
+from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.checks import is_owner_app
+from stupidbot.discord_ui.embeds import SafeEmbed
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.pagination import BasePaginator
 from utils.text_utils import TextPaginator, truncate_sequence, truncate_text
 
 if TYPE_CHECKING:
-    from framework.bot import StupidBot
+    from stupidbot.app.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 

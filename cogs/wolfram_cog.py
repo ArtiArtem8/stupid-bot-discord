@@ -24,16 +24,16 @@ import discord
 from discord import File, Interaction, app_commands
 from discord.ext import commands
 
-import config
 from api.wolfram import (
     WolframAPIError,
     WolframClient,
     WolframRateLimitError,
     WolframResult,
 )
-from framework.base_cog import BaseCog
-from framework.feedback_ui import FeedbackType, FeedbackUI
-from utils.embeds import CharacterLimitExceededError, SafeEmbed
+from stupidbot import settings as config
+from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.embeds import CharacterLimitExceededError, SafeEmbed
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from utils.image_utils import ImageProcessingError, process_wolfram_plot
 
 logger = logging.getLogger(__name__)

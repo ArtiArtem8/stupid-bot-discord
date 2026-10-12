@@ -10,7 +10,6 @@ from itertools import groupby
 
 import discord
 
-import config
 from api.music.models import (
     MusicSession,
     PlaylistResponseData,
@@ -20,7 +19,8 @@ from api.music.models import (
     TrackInfo,
     TrackResponseData,
 )
-from utils.embeds import DEFAULT_LIMITS, SafeEmbed
+from stupidbot import settings as config
+from stupidbot.discord_ui.embeds import DEFAULT_LIMITS, SafeEmbed
 from utils.text_utils import truncate_sequence, truncate_text
 
 MAX_TIMEDELTA_DAYS = 999_999_999

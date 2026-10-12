@@ -3,9 +3,9 @@
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 
-from repositories.sqlite.database import Database
-from repositories.sqlite.identity import ensure_user
-from repositories.sqlite.schema import question_answers
+from stupidbot.storage.database import Database
+from stupidbot.storage.identity import ensure_user
+from stupidbot.storage.schema import question_answers
 
 
 class QuestionRepository:

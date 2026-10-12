@@ -8,13 +8,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-import config
 from api.guild_monitoring import ServerMonitoringManager
-from framework.base_cog import BaseCog
-from framework.feedback_ui import FeedbackType, FeedbackUI
+from stupidbot import settings as config
+from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 
 if TYPE_CHECKING:
-    from framework.bot import StupidBot
+    from stupidbot.app.bot import StupidBot
 
 logger = logging.getLogger(__name__)
 

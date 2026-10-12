@@ -2,8 +2,8 @@
 
 from datetime import date, datetime
 
-import config
 from resources import MONTH_NAMES_RU
+from stupidbot import settings as config
 
 
 def format_storage_date(value: date) -> str:

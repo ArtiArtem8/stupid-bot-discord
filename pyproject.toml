@@ -143,7 +143,7 @@ convention = "google"
 max-complexity = 8
 
 [tool.ruff.lint.isort]
-known-first-party = ["cogs", "utils"]
+known-first-party = ["stupidbot", "api", "cogs", "repositories", "utils"]
 
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
@@ -164,7 +164,7 @@ markers = [
 ]
 
 [tool.basedpyright]
-exclude = ["**/.venv/**"]
+exclude = ["**/.venv/**", "stupidbot-architecture"]
 # Allow compile-time concatenation of adjacent string literals.
 reportImplicitStringConcatenation = "none"
 reportUnannotatedClassAttribute = "none"

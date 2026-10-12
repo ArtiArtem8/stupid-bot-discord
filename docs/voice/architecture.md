@@ -111,7 +111,7 @@ and v2 JSONL/gzip formats
 from offline copies; it rejects conflicting alternate files and unknown schemas.
 Legacy events map to observations, presence maps to snapshots and heartbeats to
 checkpoints. Missing population/flags remain unknown. Resume/drop/clock/drift
-markers map to conservative gaps. The original files remain untouched. See [storage operations](../../repositories/sqlite/README.md).
+markers map to conservative gaps. The original files remain untouched. See [storage operations](../../docs/storage/README.md).
 
 ## Discord integration
 
