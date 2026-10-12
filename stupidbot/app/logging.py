@@ -116,10 +116,6 @@ def setup_logging(encoding: str = "utf-8") -> None:
                 "level": "INFO",
                 "propagate": False,
             },
-            "utils": {
-                "level": "DEBUG",
-                "propagate": True,
-            },
         },
     }
 

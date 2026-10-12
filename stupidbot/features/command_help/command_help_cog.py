@@ -28,6 +28,8 @@ from stupidbot.i18n.policy import Language
 if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
 
+logger = logging.getLogger(__name__)
+
 
 class PrefixBlockerCog(commands.Cog):
     """Redirect users from prefix commands to slash commands."""
@@ -35,7 +37,6 @@ class PrefixBlockerCog(commands.Cog):
     def __init__(self, bot: commands.Bot, block_manager: BlockManager) -> None:
         self.bot = bot
         self.block_manager = block_manager
-        self.logger = logging.getLogger("PrefixBlockerCog")
         self._app_cmd_cache: dict[
             int | None, tuple[float, dict[str, app_commands.AppCommand]]
         ] = {}
@@ -184,7 +185,7 @@ class PrefixBlockerCog(commands.Cog):
                 silent=True,
             )
         except discord.HTTPException as exc:
-            self.logger.warning(
+            logger.warning(
                 "Discord rejected prefix warning (HTTP %s, code %s)",
                 exc.status,
                 exc.code,

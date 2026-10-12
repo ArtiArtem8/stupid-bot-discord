@@ -1,6 +1,5 @@
 """Owner-only diagnostics and message management commands."""
 
-import logging
 from typing import TYPE_CHECKING, NoReturn, override
 
 import discord
@@ -14,8 +13,6 @@ from stupidbot.i18n.discord import interaction_context
 
 if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
-
-logger = logging.getLogger(__name__)
 
 
 class OwnerCog(BaseCog):

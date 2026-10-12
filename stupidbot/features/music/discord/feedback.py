@@ -1,7 +1,5 @@
 """Discord feedback helpers for the music cog."""
 
-import logging
-
 from discord import Interaction
 
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
@@ -9,8 +7,6 @@ from stupidbot.features.music.messages import MusicMessages
 from stupidbot.features.music.results import MusicResultReason
 from stupidbot.i18n.catalog import catalog
 from stupidbot.i18n.discord import interaction_context
-
-logger = logging.getLogger(__name__)
 
 
 async def send_error(

@@ -8,7 +8,7 @@ from stupidbot import settings as config
 from stupidbot.app.bot import StupidBot
 from stupidbot.app.logging import setup_logging
 
-logger = logging.getLogger("StupidBot")
+logger = logging.getLogger(__name__)
 
 
 class Arguments(argparse.Namespace):

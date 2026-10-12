@@ -1,6 +1,5 @@
 """Issue-report commands and owner-only report-channel configuration."""
 
-import logging
 from typing import TYPE_CHECKING
 
 import discord
@@ -18,8 +17,6 @@ from stupidbot.i18n.discord import interaction_context
 
 if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
-
-logger = logging.getLogger(__name__)
 
 
 def get_cooldown_key(interaction: Interaction) -> tuple[int | None, int]:
