@@ -3,7 +3,8 @@
 import json
 from datetime import datetime, timedelta
 
-from api.voice.model import (
+from stupidbot.common.json import JsonObject, JsonValue, is_json_object
+from stupidbot.features.voice.facts import (
     GapReason,
     ObservationGap,
     VoiceCheckpoint,
@@ -14,7 +15,6 @@ from api.voice.model import (
     VoiceSnapshot,
     VoiceStateSnapshot,
 )
-from stupidbot.common.json import JsonObject, JsonValue, is_json_object
 from tools.storage_legacy.json_input import unique_object
 
 

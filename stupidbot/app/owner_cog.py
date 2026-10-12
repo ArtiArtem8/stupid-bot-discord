@@ -1,12 +1,4 @@
-"""Administrative commands for user blocking and management.
-
-Provides:
-- Blocking/unblocking users from bot access
-- Viewing detailed block history
-- Listing all blocked users
-- Tracking name changes over time
-
-"""
+"""Owner-only diagnostics and message management commands."""
 
 import logging
 from typing import TYPE_CHECKING, NoReturn, override

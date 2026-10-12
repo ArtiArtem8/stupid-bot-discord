@@ -125,7 +125,7 @@ only affects voice profiles.
   [Event handlers](stupidbot/features/music/runtime/playback_events.py) use it to distinguish
   delayed events from current playback. [Composition](stupidbot/features/music/composition.py)
   connects the player, recovery and Discord UI.
-- **Profiles read a timeline held in memory.** [VoiceAnalytics](api/voice/analytics.py)
+- **Profiles read a timeline held in memory.** [VoiceAnalytics](stupidbot/features/voice/runtime.py)
   restores it at startup and updates it after journal writes commit. Normal
   profile requests use snapshots without querying raw history in SQL.
   [Voice architecture](docs/voice/architecture.md) explains how sessions,
@@ -172,10 +172,10 @@ configure the source plugins you need. Follow its installation guide for the
 Java requirement of your Lavalink version.
 
 For profiles, install **Inkscape** on the bot host and keep the bundled
-[Inter fonts](resources/fonts/). Verify `inkscape --version` under the service
+[Inter fonts](stupidbot/assets/fonts/). Verify `inkscape --version` under the service
 account. Missing Inkscape or fonts makes the profile command unavailable;
 the rest of the bot can start. See [renderer setup](docs/voice/profile-card.md#setup).
-Custom application emoji IDs in [resources.py](resources.py) and the
+Custom application emoji IDs in [shared emoji references](stupidbot/discord_ui/emojis.py) and the
 [music controller](stupidbot/features/music/discord/views/controller.py) must be usable by your bot.
 
 ### Prepare the database and start
@@ -211,8 +211,8 @@ to 30 seconds. Renderer paths, font cache permissions and `INKSCAPE_BIN` are
 documented in [profile setup](docs/voice/profile-card.md#setup).
 
 Runtime files use `data/` and temporary renderer directories. Backups are explicit
-SQLite maintenance operations. [stupidbot.settings.py](stupidbot.settings.py) contains operational
-constants, [resources.py](resources.py) contains static strings, and
+SQLite maintenance operations. [stupidbot/settings.py](stupidbot/settings.py) contains operational
+constants, [shared emoji references](stupidbot/discord_ui/emojis.py) contains shared control emoji, and
 [logging setup](stupidbot/app/logging.py) configures logs.
 
 Allocation tracing is off by default. `uv run --locked --no-dev main.py --tracemalloc`
@@ -230,5 +230,5 @@ basedpyright, ty, pytest and prek checks. Technical documentation is in English.
 [MIT](LICENSE). Banner artwork uses the bot's profile emblem and music palette;
 editable SVG sources are in [docs/assets/](docs/assets/).
 Some interface icons are from [Icons8](https://icons8.com);
-their files are in [resources/emojis/](resources/emojis/). Inter is distributed
-under the [SIL Open Font License](resources/fonts/OFL.txt).
+their files are in [stupidbot/discord_ui/assets/emojis/](stupidbot/discord_ui/assets/emojis/). Inter is distributed
+under the [SIL Open Font License](stupidbot/assets/fonts/OFL.txt).

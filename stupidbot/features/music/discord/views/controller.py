@@ -16,10 +16,10 @@ from discord import Interaction, ui
 from discord.abc import PrivateChannel
 from discord.ext import commands
 
-from resources import RESTART_EMOJI
 from stupidbot.common.callables import callable_name
 from stupidbot.discord_ui.access import check_component_access
 from stupidbot.discord_ui.embeds import SafeEmbed
+from stupidbot.discord_ui.emojis import RESTART_EMOJI
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.interaction_flow import ack_component
 from stupidbot.discord_ui.theme import Color

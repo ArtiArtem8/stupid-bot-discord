@@ -1,15 +1,4 @@
-"""Wolfram Alpha integration for mathematical problem solving.
-
-Features:
-- Asynchronous HTTP calls via aiohttp
-- Strict XML parsing for stability
-- Specialized mathematical output formatting
-- Image optimization pipeline
-- Type-safe architecture (Python 3.12+)
-
-Requirements:
-    WOLFRAM_APP_ID environment variable must be set
-"""
+"""Wolfram attribution links and bounded text result embeds."""
 
 from __future__ import annotations
 

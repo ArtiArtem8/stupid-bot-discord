@@ -1,4 +1,4 @@
-"""Proposed extraction of existing birthday calendar rules."""
+"""Birthday calendar rules and storage date normalization."""
 
 from __future__ import annotations
 

@@ -144,7 +144,7 @@ convention = "google"
 max-complexity = 8
 
 [tool.ruff.lint.isort]
-known-first-party = ["stupidbot", "api", "cogs", "repositories", "utils"]
+known-first-party = ["stupidbot", "tools"]
 
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false

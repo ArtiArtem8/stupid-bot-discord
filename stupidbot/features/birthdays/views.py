@@ -1,4 +1,4 @@
-"""Birthday commands and daily congratulation orchestration."""
+"""Versioned confirmation before removing a saved birthday."""
 
 import logging
 from typing import Self

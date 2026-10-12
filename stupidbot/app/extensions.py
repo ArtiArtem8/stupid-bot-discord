@@ -11,6 +11,6 @@ EXTENSIONS: tuple[str, ...] = (
     "stupidbot.features.wolfram.wolfram_cog",
     "stupidbot.features.command_help.command_help_cog",
     "stupidbot.features.music.discord.music_cog",
-    "cogs.voice.collector_cog",
-    "cogs.voice.profile_cog",
+    "stupidbot.features.voice.discord.collector_cog",
+    "stupidbot.features.voice.discord.profile_cog",
 )

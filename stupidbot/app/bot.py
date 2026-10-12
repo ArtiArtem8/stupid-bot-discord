@@ -10,9 +10,6 @@ from discord import Intents
 from discord.ext import commands, tasks
 from sqlalchemy.exc import OperationalError
 
-from api.voice.analytics import VoiceAnalytics
-from repositories.voice_journal import VoiceJournal
-from repositories.voice_repository import VoiceRepository
 from stupidbot import settings as config
 from stupidbot.app.cog_loader import CogLoader
 from stupidbot.app.uptime import UptimeManager
@@ -29,6 +26,9 @@ from stupidbot.features.member_roles.restoration import ServerMonitoringManager
 from stupidbot.features.music.repository import VolumeRepository
 from stupidbot.features.reports.repository import ReportRepository
 from stupidbot.features.reports.ui import handle_report_button
+from stupidbot.features.voice.journal import VoiceJournal
+from stupidbot.features.voice.repository import VoiceRepository
+from stupidbot.features.voice.runtime import VoiceAnalytics
 from stupidbot.storage.database import Database, open_engine, validate_schema
 
 logger = logging.getLogger(__name__)

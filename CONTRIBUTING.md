@@ -15,9 +15,31 @@ uv run --locked prek install --force
 - Add or update tests when behavior changes.
 - Let the installed hooks run before pushing.
 
-`uv run main.py --watch` reloads a loaded extension when its entry file changes.
+`uv run --locked main.py --watch` reloads a loaded extension when its entry file changes.
 It does not track imported shared modules or assets. Use a controlled restart
 for those changes in production; the watcher does not provide system-wide hot reload.
+
+## Code ownership
+
+Runtime code lives in `stupidbot/`. `app/` owns startup, the explicit extension
+list in `app/extensions.py`, message logging, and shutdown. `settings.py` keeps
+environment settings and the repository-relative data root; `storage/` owns
+the shared SQLite lifecycle and migrations. `common/` contains shared pure
+helpers and static JSON reading, while `discord_ui/` owns shared interaction,
+authorization, feedback, and pagination behavior.
+
+Each directory under `features/` keeps its commands, models, presentation, and
+repository together. Music separates `playback/`, `runtime/`, and `discord/`;
+voice separates facts and analytics, `discord/`, and `profile/rendering/`.
+SVG assets live beside their renderer; bundled fonts live in `stupidbot/assets/`.
+Tests follow the same owners under `tests/features/`, `tests/app/`,
+`tests/discord_ui/`, `tests/common/`, and `tests/storage/`.
+
+Add each extension once to `stupidbot/app/extensions.py`. Folder scanning no
+longer registers cogs. Imported modules and assets still require a restart.
+`main.py` remains a supported clone-and-run entry; `python -m stupidbot` invokes
+the same CLI. SQLite maintenance uses `python -m stupidbot.storage`; the previous
+`python -m repositories.sqlite` entry remains a thin compatibility command.
 
 ## Full Check
 

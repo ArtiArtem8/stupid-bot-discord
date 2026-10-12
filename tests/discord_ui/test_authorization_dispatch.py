@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-from cogs.voice.profile.view import ProfileAction, VoiceProfileView
-from cogs.voice.profile_cog import VoiceProfileCog
 from stupidbot.app.bot import StupidBot
 from stupidbot.features.member_roles.member_roles_cog import ServerMonitorCog
+from stupidbot.features.voice.discord.profile_cog import VoiceProfileCog
+from stupidbot.features.voice.discord.view import ProfileAction, VoiceProfileView
 from stupidbot.features.wolfram.wolfram_cog import WolframCog
 
 

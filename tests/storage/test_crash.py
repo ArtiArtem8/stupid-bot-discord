@@ -9,12 +9,12 @@ from tempfile import TemporaryDirectory
 
 from sqlalchemy import event
 
-from api.voice.model import VoiceSnapshot
-from repositories.voice_repository import VoiceRepository
+from stupidbot.features.voice.facts import VoiceSnapshot
+from stupidbot.features.voice.repository import VoiceRepository
 from stupidbot.storage.database import Database, migrate, open_engine
 from stupidbot.storage.identity import ensure_guild
 from stupidbot.storage.schema import music_settings
-from tests.api.voice.examples import record
+from tests.features.voice.fixtures import record
 from tests.storage.fixtures import temporary_database
 
 

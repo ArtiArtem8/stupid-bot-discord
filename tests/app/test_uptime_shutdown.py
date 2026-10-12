@@ -10,14 +10,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
-from api.voice.model import VoiceLifecycle, VoiceSnapshot
-from repositories.voice_repository import VoiceRepository
 from stupidbot.app.bot import StupidBot
 from stupidbot.app.cog_loader import CogLoader
 from stupidbot.common.asyncio import run_in_thread
+from stupidbot.features.voice.facts import VoiceLifecycle, VoiceSnapshot
+from stupidbot.features.voice.repository import VoiceRepository
 from stupidbot.storage.database import Database, migrate, open_engine
 from stupidbot.storage.schema import runtime_checkpoint
-from tests.api.voice.examples import record
+from tests.features.voice.fixtures import record
 from tests.storage.fixtures import temporary_database
 
 

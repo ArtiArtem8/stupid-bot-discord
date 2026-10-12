@@ -12,13 +12,13 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from api.voice.model import VoiceCheckpoint, VoiceSnapshot
-from repositories.voice_repository import VoiceRepository
 from stupidbot.common.json import JsonObject
+from stupidbot.features.voice.facts import VoiceCheckpoint, VoiceSnapshot
+from stupidbot.features.voice.repository import VoiceRepository
 from stupidbot.storage.database import Database, open_engine, validate_schema
 from stupidbot.storage.schema import reports, uptime_periods, users
-from tests.api.voice.examples import human, record
-from tests.repositories.legacy_voice import encode_record
+from tests.features.voice.fixtures import human, record
+from tests.tools.storage_legacy.fixtures import encode_record
 from tools import migrate_storage_once
 from tools.migrate_storage_once import Arguments, migrate_snapshot
 from tools.storage_legacy.import_features import report_time

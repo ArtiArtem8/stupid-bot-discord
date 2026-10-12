@@ -39,7 +39,7 @@ this never merges underlying intervals or adds time or XP. A short break within
 a grouped session remains empty whenever the display resolution allows it.
 On DST dates an asterisk and outlined clock-change span mark skipped or repeated
 times. Repeated local times share one position, while totals keep their true
-elapsed duration. Calendar projection lives in `api.voice.profile.calendar`;
+elapsed duration. Calendar projection lives in `stupidbot.features.voice.profile.calendar`;
 pixel geometry stays in the SVG and renderer.
 
 `Top days` uses total observed voice time per weekday across completed Monday-to-
@@ -88,7 +88,7 @@ hours onward.
 The next-level estimate divides exact remaining XP by pooled XP per voice hour
 over the same 30 local dates. Longer observations contribute proportionally more
 than short ones; inactive dates contribute neither XP nor voice hours.
-`api.voice.prediction` uses the canonical XP and level projections.
+`stupidbot.features.voice.prediction` uses the canonical XP and level projections.
 
 The small neutral caption below lifetime XP explicitly says "in voice" and shows
 approximate hours, or minutes below one hour. It is omitted with less than one
@@ -109,13 +109,13 @@ See [voice history](architecture.md#sessions-and-companions) for session groupin
 
 Install Inkscape on the bot host and check `inkscape --version` under the service
 account. Keep `Inter.ttf`, `Inter-600.ttf`, `Inter-750.ttf` and their `OFL.txt`
-license under `resources/fonts/`. Inkscape uses system fallback fonts for glyphs
+license under `stupidbot/assets/fonts/`. Inkscape uses system fallback fonts for glyphs
 outside Inter, including CJK and emoji. FFmpeg and gifsicle are not required.
 
 | Setting | Default and purpose |
 | --- | --- |
 | `INKSCAPE_BIN` | Optional executable path; otherwise PATH and conventional Windows installation directories are checked. |
-| `PROFILE_FONT_DIR` | Font directory, default `resources/fonts/` relative to the repository. |
+| `PROFILE_FONT_DIR` | Font directory, default `stupidbot/assets/fonts/` relative to the repository. |
 | `PROFILE_CACHE_DIR` | Optional cache root. Its `fontconfig/` directory holds the font cache; the default is the service user's application cache. |
 | `VOICE_PROFILE_TIMEZONE` | Calendar timezone for recent details and visible label, default `UTC`; invalid names fall back to UTC. It does not change lifetime XP or elapsed voice time. |
 
@@ -124,7 +124,7 @@ and the font cache. Missing Inkscape or fonts disables the profile command;
 the rest of the bot can start. The command returns an unavailable message and
 logs the initialization failure. After fixing setup, restart or reload the Cog.
 
-Buttons use the custom emoji references in `resources.py`: `statistic` for
+Buttons use the custom emoji references in `stupidbot/features/voice/discord/view.py`: `statistic` for
 Activity, `social` for People, `xp` for XP, and the shared `restart` and `trash`
 controls for Refresh and Delete. Emoji IDs are bound directly to the buttons;
 startup does not fetch or discover emojis by name.
@@ -172,7 +172,7 @@ application-owned analytics; profile reload closes its media resources.
 
 ## Editing artwork
 
-Runtime artwork lives under `cogs/voice/profile/assets/`. Voice Profile Studio
+Runtime artwork lives under `stupidbot/features/voice/profile/rendering/assets/`. Voice Profile Studio
 is a separate editor project; the bot uses its exported SVG and JSON assets.
 Preserve canvas dimensions, layer and element IDs, and local resource references.
 
@@ -195,7 +195,7 @@ The ordinary test suite does not require Inkscape. Run the native check on a hos
 where it is installed:
 
 ```sh
-VOICE_PROFILE_NATIVE=1 uv run --locked pytest -q tests/cogs/voice/profile/test_native.py
+VOICE_PROFILE_NATIVE=1 uv run --locked pytest -q tests/features/voice/profile/rendering/test_native.py
 ```
 
 In PowerShell, set `$env:VOICE_PROFILE_NATIVE = '1'` before the same pytest command

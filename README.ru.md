@@ -131,7 +131,7 @@ People показывает время с другими участниками,
   по нему отличают запоздавшие события от текущего воспроизведения.
   [Composition](stupidbot/features/music/composition.py) связывает плеер, восстановление
   и интерфейс Discord.
-- **Профили читают временную шкалу из памяти.** [VoiceAnalytics](api/voice/analytics.py)
+- **Профили читают временную шкалу из памяти.** [VoiceAnalytics](stupidbot/features/voice/runtime.py)
   восстанавливает её при запуске и обновляет после фиксации записей журнала.
   В штатном режиме профили используют снимки без SQL-запросов к сырой истории.
   [Архитектура голосовой подсистемы](docs/voice/architecture.md) описывает
@@ -177,10 +177,10 @@ uv sync --locked --no-dev
 для выбранной версии Lavalink.
 
 Для профилей установите **Inkscape** на хост бота и сохраните поставляемые
-[шрифты Inter](resources/fonts/). Проверьте `inkscape --version` от имени учётной
+[шрифты Inter](stupidbot/assets/fonts/). Проверьте `inkscape --version` от имени учётной
 записи службы. Без Inkscape или шрифтов команда профиля недоступна; остальные
 функции могут запускаться. Подробнее: [настройка рендерера](docs/voice/profile-card.md#setup).
-Пользовательские emoji приложения из [resources.py](resources.py) и
+Пользовательские emoji приложения из [shared emoji references](stupidbot/discord_ui/emojis.py) и
 [музыкального контроллера](stupidbot/features/music/discord/views/controller.py) должны быть доступны вашему боту.
 
 ### Подготовка базы и запуск
@@ -217,9 +217,10 @@ uv run --locked --no-dev main.py --database /path/to/app.sqlite
 в [настройке профилей](docs/voice/profile-card.md#setup).
 
 Рабочие файлы используют `data/` и временные каталоги рендерера. Резервные копии
-создаются отдельными командами обслуживания SQLite. В [stupidbot.settings.py](stupidbot.settings.py)
-находятся эксплуатационные константы, в [resources.py](resources.py) — статические
-строки; [настройка логирования](stupidbot/app/logging.py) управляет журналами.
+создаются отдельными командами обслуживания SQLite. В [stupidbot/settings.py](stupidbot/settings.py)
+находятся эксплуатационные константы, в [общих эмодзи](stupidbot/discord_ui/emojis.py) —
+ссылки на элементы управления; [настройка логирования](stupidbot/app/logging.py)
+управляет журналами. Тексты остальных функций находятся рядом с их кодом.
 
 Отслеживание выделения памяти по умолчанию выключено.
 `uv run --locked --no-dev main.py --tracemalloc` включает его для диагностики,
@@ -238,5 +239,5 @@ uv run --locked --no-dev main.py --database /path/to/app.sqlite
 [MIT](LICENSE). Баннер использует эмблему профиля и музыкальную палитру бота;
 редактируемые SVG находятся в [docs/assets/](docs/assets/).
 Часть иконок интерфейса предоставлена [Icons8](https://icons8.com);
-файлы находятся в [resources/emojis/](resources/emojis/). Inter распространяется
-по [SIL Open Font License](resources/fonts/OFL.txt).
+файлы находятся в [stupidbot/discord_ui/assets/emojis/](stupidbot/discord_ui/assets/emojis/). Inter распространяется
+по [SIL Open Font License](stupidbot/assets/fonts/OFL.txt).

@@ -18,10 +18,10 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import insert
 
-from api.voice.model import VoiceObservation, VoiceSnapshot
-from repositories.voice_repository import VoiceRepository
 from stupidbot.common.asyncio import run_in_thread
 from stupidbot.common.json import JsonObject
+from stupidbot.features.voice.facts import VoiceObservation, VoiceSnapshot
+from stupidbot.features.voice.repository import VoiceRepository
 from stupidbot.storage.database import Database, migrate, open_engine
 from stupidbot.storage.identity import discord_id
 from stupidbot.storage.schema import migration_sources, storage_state

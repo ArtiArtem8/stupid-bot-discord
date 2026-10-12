@@ -23,16 +23,14 @@
         "**/site-packages/**"
     ],
     "python.autoComplete.extraPaths": [
-        "./cogs",
-        "./utils"
+        "."
     ],
     "python.analysis.ignore": [
         ".venv",
         "**/Lib/**",
     ],
     "python.analysis.extraPaths": [
-        "./cogs",
-        "./utils"
+        "."
     ],
     "launch": {
         "configurations": [

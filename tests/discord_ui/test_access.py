@@ -8,8 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 from discord.ext import commands
 
-from cogs.voice.profile.view import ProfileAction, VoiceProfileView
-from cogs.voice.profile_cog import VoiceProfileCog
 from stupidbot.discord_ui.access import check_command_access
 from stupidbot.discord_ui.exceptions import BlockedUserError
 from stupidbot.discord_ui.feedback import FeedbackUI
@@ -26,6 +24,8 @@ from stupidbot.features.music.discord.views.queue import (
 from stupidbot.features.music.discord.views.session import SessionSummaryView
 from stupidbot.features.music.playback.models import PlaybackAttempt
 from stupidbot.features.music.runtime.session import MusicSession
+from stupidbot.features.voice.discord.profile_cog import VoiceProfileCog
+from stupidbot.features.voice.discord.view import ProfileAction, VoiceProfileView
 from stupidbot.features.wolfram.wolfram_cog import WolframCog
 from tests.features.music.fixtures import make_entry
 

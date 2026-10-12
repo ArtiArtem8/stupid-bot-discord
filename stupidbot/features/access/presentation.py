@@ -1,12 +1,4 @@
-"""Administrative commands for user blocking and management.
-
-Provides:
-- Blocking/unblocking users from bot access
-- Viewing detailed block history
-- Listing all blocked users
-- Tracking name changes over time
-
-"""
+"""Block history and access management presentation."""
 
 from collections.abc import Sequence
 from enum import StrEnum
