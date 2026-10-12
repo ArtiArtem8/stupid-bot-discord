@@ -1,5 +1,6 @@
 """Exercise the editor's observable save, authorization and expiration behavior."""
 
+import asyncio
 from dataclasses import replace
 from typing import override
 from unittest import IsolatedAsyncioTestCase
@@ -66,6 +67,28 @@ class SettingsViewTests(IsolatedAsyncioTestCase):
         request.edit_original_response.assert_not_awaited()
         self.assertFalse(self.view.closed)
         self.assertFalse(self.view.saving)
+
+    async def test_acknowledgement_failure_releases_save_state_without_writing(
+        self,
+    ) -> None:
+        self.view.proposed = Preferences(Language.EN)
+        for error in (OSError("unavailable"), asyncio.CancelledError()):
+            with self.subTest(error=type(error).__name__):
+                request = interaction()
+                request.response.defer.side_effect = error
+                with self.assertRaises(type(error)):
+                    await self.view.save(request)
+                self.assertFalse(self.view.saving)
+                self.assertFalse(self.view.closed)
+                request.edit_original_response.assert_not_awaited()
+                self.assertEqual(
+                    await self.repository.get(PreferenceScope.USER, 10), Preferences()
+                )
+        await self.view.save(interaction())
+        self.assertEqual(
+            await self.repository.get(PreferenceScope.USER, 10),
+            Preferences(Language.EN, revision=1),
+        )
 
     async def test_conflict_shows_current_values_without_overwriting_them(self) -> None:
         saved = await self.repository.save(

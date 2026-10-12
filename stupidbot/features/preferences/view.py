@@ -236,9 +236,9 @@ class SettingsView(discord.ui.LayoutView):
         """Acknowledge before SQL and confirm only after the transaction commits."""
         self.saving = True
         proposed = self.proposed
-        await interaction.response.defer()
-        interaction.extras["stupidbot.preferences.failed"] = True
         try:
+            await interaction.response.defer()
+            interaction.extras["stupidbot.preferences.failed"] = True
             saved = await self.repository.save(self.scope, self.subject_id, proposed)
         except PreferenceConflictError as error:
             current = error.current
