@@ -23,6 +23,8 @@ DOMAINS = (
     "features/music",
     "features/reports",
     "features/wolfram",
+    "features/command_help",
+    "features/greetings",
 )
 
 

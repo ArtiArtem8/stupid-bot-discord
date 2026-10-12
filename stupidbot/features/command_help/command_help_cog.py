@@ -11,7 +11,9 @@ from discord import Message, app_commands
 from discord.ext import commands
 from discord.utils import format_dt, utcnow
 
+from stupidbot.discord_ui.messages import FeedbackMessages
 from stupidbot.features.access.operations import BlockManager
+from stupidbot.features.command_help.messages import CommandHelpMessages
 from stupidbot.features.command_help.suggestions import (
     Command,
     Suggestion,
@@ -19,6 +21,9 @@ from stupidbot.features.command_help.suggestions import (
     find_prefix_suggestions,
     is_guild_command,
 )
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import message_context
+from stupidbot.i18n.policy import Language
 
 if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
@@ -120,8 +125,11 @@ class PrefixBlockerCog(commands.Cog):
             self._get_visible_commands(message),
             in_guild=message.guild is not None,
         )
-        response = await self._build_prefix_warning(message, suggestions)
-        await self._send_prefix_warning(message, response)
+        context = await message_context(self.bot, message)
+        response = await self._build_prefix_warning(
+            message, suggestions, language=context.language
+        )
+        await self._send_prefix_warning(message, response, language=context.language)
 
     async def _extract_prefix_query(self, message: Message) -> str | None:
         prefixes = await self.bot.get_prefix(message)
@@ -132,9 +140,16 @@ class PrefixBlockerCog(commands.Cog):
         return message.content[len(used) :].strip() or None
 
     async def _build_prefix_warning(
-        self, message: Message, suggestions: SuggestionPair
+        self,
+        message: Message,
+        suggestions: SuggestionPair,
+        *,
+        language: Language = Language.RU,
     ) -> str:
-        response = "Префиксы убраны; воспользуйтесь слэш-командами."
+        messages = CommandHelpMessages(catalog("command_help", language))
+        response = messages.catalog.pgettext(
+            "prefix_removed", "Префиксы убраны; воспользуйтесь слэш-командами."
+        )
         primary = suggestions.primary
         if primary is None:
             return response
@@ -143,18 +158,24 @@ class PrefixBlockerCog(commands.Cog):
             alternative = await self._format_suggestion(
                 message, suggestions.alternative
             )
-            return (
-                f"{response}\n-# возможно, вы искали {primary_text} или {alternative}"
+            suffix = messages.alternatives(
+                primary=primary_text, alternative=alternative
             )
-        if primary.score >= 90.0:
-            return f"{response}\n-# попробуйте {primary_text}"
-        return f"{response}\n-# возможно {primary_text}"
+        else:
+            suffix = messages.suggestion(
+                command=primary_text, confident=primary.score >= 90.0
+            )
+        return f"{response}\n{suffix}"
 
-    async def _send_prefix_warning(self, message: Message, response: str) -> None:
+    async def _send_prefix_warning(
+        self, message: Message, response: str, *, language: Language = Language.RU
+    ) -> None:
         try:
             delete_after = 30
             dt = utcnow() + timedelta(seconds=delete_after)
-            timer = f"-# Удалится {format_dt(dt, 'R')}"
+            timer = FeedbackMessages(catalog("discord_ui", language)).deletion(
+                relative_time=format_dt(dt, "R")
+            )
             await message.reply(
                 f"{response}\n\n{timer}",
                 mention_author=False,

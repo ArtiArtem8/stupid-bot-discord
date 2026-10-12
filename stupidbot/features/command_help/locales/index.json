@@ -1,0 +1,8 @@
+{
+  "keys": [
+    "alternatives\u0004-# возможно, вы искали {primary} или {alternative}",
+    "maybe\u0004-# возможно {command}",
+    "prefix_removed\u0004Префиксы убраны; воспользуйтесь слэш-командами.",
+    "try\u0004-# попробуйте {command}"
+  ]
+}

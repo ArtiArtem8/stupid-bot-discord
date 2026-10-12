@@ -93,3 +93,27 @@ async def guild_context(client: discord.Client, guild_id: int) -> PresentationCo
         locale=locale.value if isinstance(locale, discord.Locale) else None,
         fallback_timezone=fallback_timezone(),
     )
+
+
+async def message_context(
+    client: discord.Client, message: discord.Message
+) -> PresentationContext:
+    """Resolve public guild replies or personal DM replies without a Discord locale.
+
+    Gateway messages do not carry the author's locale. DM replies therefore use
+    the personal override and then Russian; guild replies use the guild locale.
+    """
+    if message.guild is not None:
+        return await guild_context(client, message.guild.id)
+    repository: object = getattr(client, "preferences_repository", None)
+    preferences = (
+        await repository.get(PreferenceScope.USER, message.author.id)
+        if isinstance(repository, PreferencesRepository)
+        else None
+    )
+    return resolve_context(
+        language=preferences.language if preferences is not None else None,
+        timezone=preferences.timezone if preferences is not None else None,
+        locale=None,
+        fallback_timezone=fallback_timezone(),
+    )

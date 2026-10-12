@@ -11,6 +11,8 @@ from rapidfuzz.utils import default_process
 
 from stupidbot import settings as config
 from stupidbot.features.access.operations import BlockManager
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import message_context
 
 from .phrases import EVENING_ANSWERS, EVENING_QUEST, MORNING_ANSWERS, MORNING_QUEST
 
@@ -45,11 +47,20 @@ class Greetings:
             return
         res = self.process_fuzzy_message(message, MORNING_QUEST, MORNING_ANSWERS)
         if res:
-            await message.channel.send(res)
+            await self._send_answer(message, res)
             return
         res = self.process_fuzzy_message(message, EVENING_QUEST, EVENING_ANSWERS)
         if res:
-            await message.channel.send(res)
+            await self._send_answer(message, res)
+
+    async def _send_answer(self, message: Message, answer: str) -> None:
+        context = await message_context(self.bot, message)
+        text = (
+            answer
+            if answer.startswith("https://")
+            else catalog("greetings", context.language).pgettext("answer", answer)
+        )
+        await message.channel.send(text)
 
     def process_fuzzy_message(
         self,
