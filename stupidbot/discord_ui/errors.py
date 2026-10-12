@@ -1,4 +1,4 @@
-"""Global application-command error routing."""
+"""Shared error routing for commands and explicitly delegated UI callbacks."""
 
 import logging
 from datetime import timedelta
@@ -20,7 +20,7 @@ async def handle_app_command_error(
     interaction: discord.Interaction,
     error: Exception,
 ) -> None:
-    """Send one safe response for an application-command failure."""
+    """Send one private response; unwrap command failures before classification."""
     context = await error_context(interaction)
     messages = catalog("discord_ui", context.language)
     if isinstance(error, BlockedUserError):
@@ -62,38 +62,30 @@ async def handle_app_command_error(
         )
         return
 
-    if isinstance(error, app_commands.CommandInvokeError):
-        original = error.original
-        if isinstance(original, discord.DiscordException):
-            logger.error(
-                "Discord command failed: command=%r guild=%s channel=%s user=%s "
-                "interaction=%s",
-                interaction.command,
-                interaction.guild_id,
-                interaction.channel_id,
-                interaction.user.id,
-                interaction.id,
-                exc_info=original,
-            )
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.ERROR,
-                title=messages.pgettext("discord_title", "Discord error"),
-                description=messages.pgettext(
-                    "discord_error",
-                    "Could not complete the action in Discord. Please try again.",
-                ),
-                delete_after=600,
-                ephemeral=True,
-                error_info=type(original).__name__,
-            )
-            return
+    original = (
+        error.original if isinstance(error, app_commands.CommandInvokeError) else error
+    )
+    if isinstance(original, discord.DiscordException) and not isinstance(
+        original, app_commands.AppCommandError
+    ):
+        category = "Discord command failed"
+        title = messages.pgettext("discord_title", "Discord error")
+        description = messages.pgettext(
+            "discord_error",
+            "Could not complete the action in Discord. Please try again.",
+        )
+        delete_after = 600
     else:
-        original = error
+        category = "Unhandled command failure"
+        title = messages.pgettext("internal_title", "Internal error")
+        description = messages.pgettext(
+            "internal_error", "Could not complete the command. Details were logged."
+        )
+        delete_after = 300
 
     logger.error(
-        "Unhandled command failure: command=%r guild=%s channel=%s "
-        "user=%s interaction=%s",
+        "%s: command=%r guild=%s channel=%s user=%s interaction=%s",
+        category,
         interaction.command,
         interaction.guild_id,
         interaction.channel_id,
@@ -104,11 +96,9 @@ async def handle_app_command_error(
     await FeedbackUI.send(
         interaction,
         feedback_type=FeedbackType.ERROR,
-        title=messages.pgettext("internal_title", "Internal error"),
-        description=messages.pgettext(
-            "internal_error", "Could not complete the command. Details were logged."
-        ),
-        delete_after=300,
+        title=title,
+        description=description,
+        delete_after=delete_after,
         ephemeral=True,
         error_info=type(original).__name__,
     )

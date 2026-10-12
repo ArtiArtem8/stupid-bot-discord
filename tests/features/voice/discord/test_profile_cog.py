@@ -754,7 +754,7 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
         self.assertIn("HTTP 503", logs.output[0])
         self.assertTrue(view.is_finished())
 
-    async def test_control_errors_use_global_feedback_with_original_cause(self) -> None:
+    async def test_control_errors_preserve_type_for_global_feedback(self) -> None:
         view = VoiceProfileView(
             10,
             AsyncMock(),
@@ -768,9 +768,7 @@ class TestVoiceProfileView(unittest.IsolatedAsyncioTestCase):
             view_module, "handle_app_command_error", AsyncMock()
         ) as handle:
             await view.on_error(item, error, view.buttons[ProfileAction.DELETE])
-        handle.assert_awaited_once()
-        self.assertIs(handle.call_args.args[0], item)
-        self.assertIs(handle.call_args.args[1].__cause__, error)
+        handle.assert_awaited_once_with(item, error)
 
     async def test_delete_waits_for_refresh_before_removing_card(self) -> None:
         started, release, deletion_deferred = (

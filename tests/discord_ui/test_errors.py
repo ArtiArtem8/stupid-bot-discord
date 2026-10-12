@@ -142,6 +142,30 @@ class TestAppCommandErrors(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["error_info"], "DiscordException")
         self.assertNotIn("private Discord detail", str(kwargs))
 
+    async def test_unwrapped_component_discord_error_has_the_same_safe_feedback(
+        self,
+    ) -> None:
+        interaction = MagicMock(spec=discord.Interaction)
+        error = discord.Forbidden(
+            MagicMock(status=403, reason="Forbidden"), "private permission detail"
+        )
+        send = AsyncMock()
+        with (
+            patch.object(FeedbackUI, "send", send),
+            self.assertLogs("stupidbot.discord_ui.errors", level="ERROR") as logs,
+        ):
+            await handle_app_command_error(interaction, error)
+
+        send.assert_awaited_once()
+        kwargs = _feedback_kwargs(send)
+        self.assertEqual(kwargs["title"], "Discord Ошибка")
+        self.assertEqual(kwargs["delete_after"], 600)
+        self.assertEqual(kwargs["error_info"], "Forbidden")
+        self.assertTrue(kwargs["ephemeral"])
+        self.assertNotIn("private permission detail", str(kwargs))
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn("private permission detail", logs.output[0])
+
     async def test_unexpected_app_command_error_text_stays_out_of_feedback(
         self,
     ) -> None:

@@ -178,10 +178,13 @@ class BasePaginator(ManagedView):
         self.prev_btn.disabled = is_first_page or disable_nav
         self.next_btn.disabled = is_last_page or disable_nav
 
-    async def _update_view(self, interaction: Interaction) -> None:
-        total_pages = await self.get_total_pages()
-        if total_pages > 0:
-            self.page = min(self.page, total_pages - 1)
+    async def _update_view(
+        self, interaction: Interaction, *, total_pages: int | None = None
+    ) -> None:
+        # Navigation reuses the page count that established its target.
+        if total_pages is None:
+            total_pages = await self.get_total_pages()
+        self.page = max(0, min(self.page, total_pages - 1))
         self._update_buttons(total_pages)
         try:
             await interaction.response.edit_message(embed=self.make_embed(), view=self)
@@ -198,17 +201,13 @@ class BasePaginator(ManagedView):
 
     async def next_page(self, interaction: Interaction) -> None:
         total_pages = await self.get_total_pages()
-        if total_pages <= 1:
-            return
-        self.page = min(self.page + 1, total_pages - 1)
-        await self._update_view(interaction)
+        self.page += 1
+        await self._update_view(interaction, total_pages=total_pages)
 
     async def last_page(self, interaction: Interaction) -> None:
         total_pages = await self.get_total_pages()
-        if total_pages <= 1:
-            return
         self.page = total_pages - 1
-        await self._update_view(interaction)
+        await self._update_view(interaction, total_pages=total_pages)
 
     async def close(self, interaction: Interaction) -> None:
         """Close the paginator."""

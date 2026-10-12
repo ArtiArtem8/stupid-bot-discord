@@ -10,7 +10,6 @@ from enum import StrEnum
 from typing import Self, override
 
 import discord
-from discord import app_commands
 
 from stupidbot.discord_ui.access import check_component_access
 from stupidbot.discord_ui.emojis import RESTART_EMOJI, TRASH_EMOJI
@@ -271,9 +270,7 @@ class VoiceProfileView(discord.ui.View):
         _item: discord.ui.Item[Self],
         /,
     ) -> None:
-        wrapped = app_commands.AppCommandError("Voice profile interaction failed")
-        wrapped.__cause__ = error
-        await handle_app_command_error(interaction, wrapped)
+        await handle_app_command_error(interaction, error)
 
 
 @dataclass(frozen=True, slots=True)
