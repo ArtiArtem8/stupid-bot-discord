@@ -24,12 +24,15 @@
 **StupidBot** is a Discord bot for music, voice profiles and birthday greetings.
 You can host your own instance.
 
-The interface is mostly Russian; profile cards also use English.
+The interface and profile cards support Russian and English. Choose your language
+and timezone with `/settings`; administrators use `/settings-server` for public
+server messages.
 
 **English** · [Русский](README.ru.md)
 
 [Music](#music) · [Voice profiles](#voice-profiles) · [Birthdays](#birthdays) ·
-[Engineering](#engineering) · [Run locally](#run-locally) · [Contributing](#contributing)
+[Language and timezone](#language-and-timezone) · [Engineering](#engineering) ·
+[Run locally](#run-locally) · [Contributing](#contributing)
 
 ## Music
 
@@ -123,6 +126,31 @@ only affects voice profiles.
 | Feedback | `/report` stores a report; `/set-report-channel` configures notifications. |
 | Chat replies | Greeting reactions and guidance from legacy prefix commands to slash commands. |
 
+## Language and timezone
+
+`/settings` opens your personal language and timezone settings, shared across
+servers. `/settings-server` changes settings for public messages in the current
+server and requires Manage Server. Both editors are visible only to you.
+
+Choose Russian, English or **As in Discord**, enter an IANA timezone such as
+`Europe/Moscow` or `Asia/Krasnoyarsk`, check the preview and press **Save**.
+**Cancel** discards pending changes. **As in Discord** resets only the language;
+leaving the timezone field blank restores the installation default. Open editors
+keep their original display language and reject a save if another editor has
+already changed those settings.
+
+Private replies and personal profile cards use your settings; public messages
+and cards use the server settings. The language preference takes priority over
+the corresponding Discord locale, with Russian as the fallback for unsupported
+or unavailable locales. Personal and server settings are independent. Profile
+calendar dates use the selected audience's timezone or `VOICE_PROFILE_TIMEZONE`
+when no override is set; Discord does not supply a timezone.
+
+Command descriptions follow your Discord client language. User text, external
+Wolfram answers and previously saved `/ask` replies stay unchanged. A new `/ask`
+answer is translated before saving; repeated questions return that saved text.
+The bot-wide uptime status remains Russian.
+
 ## Engineering
 
 - **Playback state survives overlapping events.** [MusicPlayer](stupidbot/features/music/playback/player.py)
@@ -143,15 +171,6 @@ only affects voice profiles.
 
 ## Run locally
 
-`/settings` opens a private language/timezone editor. `/settings-server` edits
-the settings for public server messages and requires Manage Server. “As in
-Discord” resets only the language override. Open editors retain their original
-language and reject stale saves if another editor has committed first.
-
-Bot messages, controls, command descriptions and profile labels support Russian
-and English. Responses prefer the selected audience's override, then its Discord
-locale, then Russian; private and server settings are independent. User text,
-Wolfram answers and previously saved `/ask` replies are kept unchanged.
 Existing deployments must [review guild languages before cutover](docs/storage/README.md#backup-restore-and-rollback).
 
 For a new installation, explicitly choose the profile calendar timezone;
@@ -183,7 +202,7 @@ starting the bot.
 | `DISCORD_BOT_TOKEN` | Required Discord bot token. |
 | `DISCORD_BOT_OWNER_ID` | Optional owner ID. |
 | `VOICE_PROBE_ENABLED` | `true` by default; enables voice collection. Observations are retained indefinitely in SQLite. |
-| `VOICE_PROFILE_TIMEZONE` | IANA timezone for profile calendar details, default `UTC`. Does not change elapsed voice time or lifetime XP. |
+| `VOICE_PROFILE_TIMEZONE` | Default IANA timezone for profile calendar details when no personal/server override is set; `UTC` if unset. Does not change elapsed voice time or lifetime XP. |
 | `WOLFRAM_APP_ID` | [WolframAlpha App ID](https://developer.wolframalpha.com/) for `/solve` and `/plot`; optional for other features. |
 | `LAVALINK_HOST`, `LAVALINK_PORT` | Lavalink address, default `localhost:2333`. |
 | `LAVALINK_PASSWORD`, `LAVALINK_SECURE` | Match the Lavalink server's password and TLS configuration. |
