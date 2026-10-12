@@ -2,7 +2,74 @@ import asyncio
 import contextvars
 import unittest
 
-from stupidbot.common.asyncio import cancel_and_wait, run_in_thread
+from stupidbot.common.asyncio import cancel_and_wait, run_in_thread, wait_for_completion
+
+
+class TestWaitForCompletion(unittest.IsolatedAsyncioTestCase):
+    async def test_successful_and_already_completed_tasks_return_their_result(
+        self,
+    ) -> None:
+        async def work() -> int:
+            return 42
+
+        task = asyncio.create_task(work())
+        self.assertEqual(await wait_for_completion(task), 42)
+        self.assertEqual(await wait_for_completion(task), 42)
+
+    async def test_cancelled_waiter_drains_work_and_preserves_task_failure(
+        self,
+    ) -> None:
+        async def work(release: asyncio.Event, failure: OSError | None) -> None:
+            await release.wait()
+            if failure is not None:
+                raise failure
+
+        async def wait(task: asyncio.Task[None], entered: asyncio.Event) -> None:
+            entered.set()
+            await wait_for_completion(task)
+
+        for fail in (False, True):
+            with self.subTest(fail=fail):
+                entered, release = asyncio.Event(), asyncio.Event()
+                failure = OSError("drain failed")
+
+                task = asyncio.create_task(work(release, failure if fail else None))
+                waiter = asyncio.create_task(wait(task, entered))
+                await entered.wait()
+                waiter.cancel()
+                # The marker runs after the cancellation is delivered to the waiter.
+                delivered = asyncio.Event()
+                asyncio.get_running_loop().call_soon(delivered.set)
+                await delivered.wait()
+                self.assertFalse(waiter.done())
+                self.assertEqual(task.cancelling(), 0)
+                waiter.cancel()
+                release.set()
+                if fail:
+                    with self.assertRaises(OSError) as raised:
+                        await waiter
+                    self.assertIs(raised.exception, failure)
+                else:
+                    with self.assertRaises(asyncio.CancelledError):
+                        await waiter
+                self.assertTrue(task.done())
+
+    async def test_independent_task_cancellation_propagates_without_retry(self) -> None:
+        entered = asyncio.Event()
+
+        async def work() -> None:
+            entered.set()
+            await asyncio.Event().wait()
+
+        task = asyncio.create_task(work())
+        waiter = asyncio.create_task(wait_for_completion(task))
+        await entered.wait()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await asyncio.wait_for(waiter, timeout=1)
+        self.assertTrue(task.cancelled())
+        with self.assertRaises(asyncio.CancelledError):
+            await wait_for_completion(task)
 
 
 class TestCancelAndWait(unittest.IsolatedAsyncioTestCase):

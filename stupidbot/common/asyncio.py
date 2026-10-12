@@ -8,6 +8,27 @@ from collections.abc import Callable
 logger = logging.getLogger(__name__)
 
 
+async def wait_for_completion[T](task: asyncio.Task[T]) -> T:
+    """Join an owned task before propagating cancellation of its caller.
+
+    Shield the task from repeated caller cancellation without cancelling it or
+    taking ownership of its creation. The caller must pass a separate task.
+    Return its result on success. Task failure or independent cancellation takes
+    precedence over delayed caller cancellation, which propagates after success.
+    A task that never finishes also prevents its cancelled waiter from finishing.
+    """
+    cancellation: asyncio.CancelledError | None = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            cancellation = error
+    result = task.result()
+    if cancellation is not None:
+        raise cancellation
+    return result
+
+
 async def cancel_and_wait(task: asyncio.Task[object]) -> None:
     """Request task cancellation once and wait for its cleanup to finish.
 

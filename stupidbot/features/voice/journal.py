@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from uuid import uuid4
 
+from stupidbot.common.asyncio import wait_for_completion
 from stupidbot.features.voice.facts import GapReason, ObservationGap, VoiceJournalRecord
 from stupidbot.features.voice.runtime import VoiceAnalytics
 
@@ -114,15 +115,7 @@ class VoiceJournal:
         if self._close_task is None:
             self._closing = True
             self._close_task = asyncio.create_task(self._drain())
-        cancellation: asyncio.CancelledError | None = None
-        while not self._close_task.done():
-            try:
-                await asyncio.shield(self._close_task)
-            except asyncio.CancelledError as error:
-                cancellation = error
-        self._close_task.result()
-        if cancellation is not None:
-            raise cancellation
+        await wait_for_completion(self._close_task)
 
     async def _drain(self) -> None:
         if self._writer is not None:

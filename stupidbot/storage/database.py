@@ -13,6 +13,7 @@ from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, ConnectionPoolEntry
 
+from stupidbot.common.asyncio import wait_for_completion
 from stupidbot.storage.schema import storage_state
 
 SCHEMA_REVISION = "0004_preferences"
@@ -54,15 +55,7 @@ class Database:
         """Reject new work and finish draining even when a close caller cancels."""
         if self._closing is None:
             self._closing = asyncio.create_task(self._dispose_when_drained())
-        cancellation: asyncio.CancelledError | None = None
-        while not self._closing.done():
-            try:
-                await asyncio.shield(self._closing)
-            except asyncio.CancelledError as error:
-                cancellation = error
-        self._closing.result()
-        if cancellation is not None:
-            raise cancellation
+        await wait_for_completion(self._closing)
 
     async def _dispose_when_drained(self) -> None:
         await self._drained.wait()

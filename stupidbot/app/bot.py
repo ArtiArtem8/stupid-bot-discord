@@ -15,6 +15,7 @@ from stupidbot.app.cog_loader import CogLoader
 from stupidbot.app.messages import AppMessages
 from stupidbot.app.uptime import UptimeManager
 from stupidbot.app.uptime_repository import UptimeRepository
+from stupidbot.common.asyncio import wait_for_completion
 from stupidbot.discord_ui.errors import handle_app_command_error
 from stupidbot.discord_ui.feedback import FeedbackUI
 from stupidbot.features.access.operations import BlockManager
@@ -136,15 +137,7 @@ class StupidBot(commands.Bot):
         """
         if self._shutdown_task is None:
             self._shutdown_task = asyncio.create_task(self._close_owned_work())
-        cancellation: asyncio.CancelledError | None = None
-        while not self._shutdown_task.done():
-            try:
-                await asyncio.shield(self._shutdown_task)
-            except asyncio.CancelledError as error:
-                cancellation = error
-        self._shutdown_task.result()
-        if cancellation is not None:
-            raise cancellation
+        await wait_for_completion(self._shutdown_task)
 
     async def _close_owned_work(self) -> None:
         try:
