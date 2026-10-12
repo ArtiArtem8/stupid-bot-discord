@@ -1,0 +1,114 @@
+# Russian translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: ru\n"
+"Language-Team: ru <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && "
+"(n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "ui"
+msgid "Cannot delete messages in this channel."
+msgstr "Невозможно удалить сообщение в этом канале."
+
+msgctxt "command"
+msgid "Delete a message by ID (owner only)"
+msgstr "Удалить сообщение по ID (только владелец)."
+
+msgctxt "ui"
+msgid "Deleted."
+msgstr "Удалено."
+
+msgctxt "command"
+msgid "ID of the message to delete"
+msgstr "ID сообщения для удаления"
+
+msgctxt "ui"
+msgid "Insufficient permissions."
+msgstr "Нет прав."
+
+msgctxt "ui"
+msgid "Message not found."
+msgstr "Сообщение не найдено."
+
+msgctxt "command"
+msgid "Test error handling"
+msgstr "Тестирование ошибок"
+
+#, python-brace-format
+msgctxt "presence"
+msgid "life for {duration}."
+msgstr "жизнь уже {duration}."
+
+#, python-brace-format
+msgctxt "day"
+msgid "{count:d} day"
+msgid_plural "{count:d} days"
+msgstr[0] "{count:d} день"
+msgstr[1] "{count:d} дня"
+msgstr[2] "{count:d} дней"
+
+#, python-brace-format
+msgctxt "hour"
+msgid "{count:d} hour"
+msgid_plural "{count:d} hours"
+msgstr[0] "{count:d} час"
+msgstr[1] "{count:d} часа"
+msgstr[2] "{count:d} часов"
+
+#, python-brace-format
+msgctxt "minute"
+msgid "{count:d} minute"
+msgid_plural "{count:d} minutes"
+msgstr[0] "{count:d} минуту"
+msgstr[1] "{count:d} минуты"
+msgstr[2] "{count:d} минут"
+
+#, python-brace-format
+msgctxt "month"
+msgid "{count:d} month"
+msgid_plural "{count:d} months"
+msgstr[0] "{count:d} месяц"
+msgstr[1] "{count:d} месяца"
+msgstr[2] "{count:d} месяцев"
+
+#, python-brace-format
+msgctxt "second"
+msgid "{count:d} second"
+msgid_plural "{count:d} seconds"
+msgstr[0] "{count:d} секунду"
+msgstr[1] "{count:d} секунды"
+msgstr[2] "{count:d} секунд"
+
+#, python-brace-format
+msgctxt "week"
+msgid "{count:d} week"
+msgid_plural "{count:d} weeks"
+msgstr[0] "{count:d} неделю"
+msgstr[1] "{count:d} недели"
+msgstr[2] "{count:d} недель"
+
+#, python-brace-format
+msgctxt "year"
+msgid "{count:d} year"
+msgid_plural "{count:d} years"
+msgstr[0] "{count:d} год"
+msgstr[1] "{count:d} года"
+msgstr[2] "{count:d} лет"
+
+#, python-brace-format
+msgctxt "join"
+msgid "{first} and {last}"
+msgstr "{first} и {last}"

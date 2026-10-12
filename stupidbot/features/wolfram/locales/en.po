@@ -1,0 +1,151 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "ui"
+msgid "API Error"
+msgstr "API Error"
+
+msgctxt "ui"
+msgid "API Rate Limit Error"
+msgstr "API Rate Limit Error"
+
+msgctxt "ui"
+msgid "API-Key Error"
+msgstr "API-Key Error"
+
+msgctxt "ui"
+msgid "Cannot upload images in this context."
+msgstr "Cannot upload images in this context."
+
+msgctxt "command"
+msgid "Equation to solve (e.g. x^2 + 2x + 1 = 0)"
+msgstr "Equation to solve (e.g. x^2 + 2x + 1 = 0)"
+
+msgctxt "ui"
+msgid "Expression:"
+msgstr "Expression:"
+
+msgctxt "ui"
+msgid "Failed to process graph image."
+msgstr "Failed to process graph image."
+
+msgctxt "command"
+msgid "Function to plot (e.g. sin(x)/x)"
+msgstr "Function to plot (e.g. sin(x)/x)"
+
+#, python-brace-format
+msgctxt "graph"
+msgid "Graph generated: {url}"
+msgstr "Graph generated: {url}"
+
+msgctxt "ui"
+msgid "Image Error"
+msgstr "Image Error"
+
+msgctxt "ui"
+msgid "Internal Error"
+msgstr "Internal Error"
+
+msgctxt "invalid_response"
+msgid "Invalid XML response"
+msgstr "Invalid XML response"
+
+msgctxt "ui"
+msgid "No Plot"
+msgstr "No Plot"
+
+msgctxt "ui"
+msgid "No Results"
+msgstr "No Results"
+
+msgctxt "ui"
+msgid ""
+"No displayable results found.\n"
+"All results were filtered out."
+msgstr ""
+"No displayable results found.\n"
+"All results were filtered out."
+
+msgctxt "ui"
+msgid "No graph generated."
+msgstr "No graph generated."
+
+msgctxt "no_results"
+msgid "No results found"
+msgstr "No results found"
+
+msgctxt "command"
+msgid "Plot a mathematical function"
+msgstr "Plot a mathematical function"
+
+msgctxt "ui"
+msgid "Query empty or too long."
+msgstr "Query empty or too long."
+
+#, python-brace-format
+msgctxt "query"
+msgid "Query: `{query}`"
+msgstr "Query: `{query}`"
+
+#, python-brace-format
+msgctxt "results"
+msgid "Results: {url}"
+msgstr "Results: {url}"
+
+msgctxt "ui"
+msgid "Session not initialized."
+msgstr "Session not initialized."
+
+msgctxt "command"
+msgid "Solve a mathematical equation"
+msgstr "Solve a mathematical equation"
+
+msgctxt "command"
+msgid "Solve with Wolfram"
+msgstr "Solve with Wolfram"
+
+msgctxt "ui"
+msgid "The API key is not set."
+msgstr "The API key is not set."
+
+msgctxt "unknown_api_error"
+msgid "Unknown API Error"
+msgstr "Unknown API Error"
+
+msgctxt "ui"
+msgid "Wolfram could not understand the input."
+msgstr "Wolfram could not understand the input."
+
+msgctxt "ui"
+msgid "Wolfram request stopped during reload. Please try again."
+msgstr "Wolfram request stopped during reload. Please try again."
+
+msgctxt "ui"
+msgid "Wolfram|Alpha is temporarily rate-limited. Please try again later."
+msgstr "Wolfram|Alpha is temporarily rate-limited. Please try again later."
+
+msgctxt "ui"
+msgid "Wolfram|Alpha request failed. Please try again later."
+msgstr "Wolfram|Alpha request failed. Please try again later."
+
+#, python-brace-format
+msgctxt "plot"
+msgid "{mention} [Wolfram]({url}) **Plot:** `{query}`"
+msgstr "{mention} [Wolfram]({url}) **Plot:** `{query}`"

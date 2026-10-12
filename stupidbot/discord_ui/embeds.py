@@ -1,0 +1,244 @@
+from __future__ import annotations
+
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import datetime
+from typing import TYPE_CHECKING, Self, TypedDict, Unpack, override
+
+import discord
+
+if TYPE_CHECKING:
+    from discord import Colour
+    from discord.types.embed import EmbedType
+
+from stupidbot.common.text import TextPaginator, truncate_text
+from stupidbot.discord_ui.messages import FeedbackMessages
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.policy import Language
+
+
+class EmbedKwargs(TypedDict, total=False):
+    colour: int | Colour | None
+    color: int | Colour | None
+    title: str | None
+    type: EmbedType
+    url: str | None
+    description: str | None
+    timestamp: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class EmbedLimits:
+    """Discord embed character and field-count limits."""
+
+    title: int = 256
+    description: int = 4096
+    field_name: int = 256
+    field_value: int = 1024
+    footer: int = 2048
+    author_name: int = 256
+    max_fields: int = 25
+    max_total: int = 6000
+
+
+DEFAULT_LIMITS = EmbedLimits()
+
+
+class CharacterLimitExceededError(ValueError):
+    """Raised when the total character limit of the embed is exceeded."""
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(f"Embed total character limit reached ({limit}).")
+        self.limit = limit
+
+
+class SafeEmbed(discord.Embed):
+    """Discord embed that applies configured text and field limits.
+
+    Construction and setter overrides truncate supported text fields. Field
+    helpers truncate per-field content and check field-count and aggregate
+    budgets. Exhausted budgets raise a limit-specific error in strict mode; in
+    non-strict mode, a field is omitted or its name and value are truncated.
+    """
+
+    def __init__(
+        self,
+        *,
+        limits: EmbedLimits = DEFAULT_LIMITS,
+        **kwargs: Unpack[EmbedKwargs],
+    ) -> None:
+        super().__init__(**kwargs)
+        self._limits = limits
+
+        if self.title:
+            self.title = truncate_text(self.title, min(limits.title, limits.max_total))
+        if self.description:
+            self.description = truncate_text(
+                self.description,
+                min(limits.description, limits.max_total - len(self.title or "")),
+            )
+
+    @override
+    def set_footer(
+        self, *, text: str | None = None, icon_url: str | None = None
+    ) -> Self:
+        if text is not None:
+            remaining = self._limits.max_total - len(self) + len(self.footer.text or "")
+            text = truncate_text(str(text), max(0, min(self._limits.footer, remaining)))
+        return super().set_footer(text=text, icon_url=icon_url)
+
+    @override
+    def set_author(
+        self, *, name: str, url: str | None = None, icon_url: str | None = None
+    ) -> Self:
+        remaining = self._limits.max_total - len(self) + len(self.author.name or "")
+        name = truncate_text(
+            str(name), max(0, min(self._limits.author_name, remaining))
+        )
+        return super().set_author(name=name, url=url, icon_url=icon_url)
+
+    def safe_add_field(
+        self, *, name: str, value: str, inline: bool = True, strict: bool = True
+    ) -> Self:
+        """Add one field without exceeding per-field or aggregate limits.
+
+        Args:
+            name: Field name; overlong text is truncated.
+            value: Field value; overlong text is truncated.
+            inline: Forwarded to Discord's field layout.
+            strict: Raise when field count or total embed size is exhausted.
+
+        Returns:
+            This embed for method chaining.
+
+        Raises:
+            ValueError: If no field slot remains in strict mode.
+            CharacterLimitExceededError: If the aggregate character budget is
+                exhausted in strict mode.
+        """
+        name = truncate_text(str(name), self._limits.field_name)
+        value = truncate_text(str(value), self._limits.field_value)
+
+        if len(self.fields) >= self._limits.max_fields:
+            if strict:
+                raise ValueError(
+                    f"Embed field limit reached ({self._limits.max_fields})."
+                )
+            return self
+
+        projected = len(self) + len(name) + len(value)
+        if projected > self._limits.max_total:
+            if strict:
+                raise CharacterLimitExceededError(self._limits.max_total)
+            name = truncate_text(name, max(0, self._limits.max_total - len(self)))
+            remaining = max(0, self._limits.max_total - (len(self) + len(name)))
+            value = truncate_text(value, min(self._limits.field_value, remaining))
+
+        return super().add_field(name=name, value=value, inline=inline)
+
+    def add_field_pages(
+        self,
+        *,
+        name: str,
+        lines: Iterable[str],
+        inline: bool = False,
+        page_size: int = 20,
+        separator: str = "\n",
+        strict: bool = True,
+        language: Language = Language.RU,
+    ) -> Self:
+        """Paginate lines into repeated embed fields.
+
+        ``page_size`` limits lines per field while the embed field-value limit
+        supplies the character budget. Later field names receive a localized page
+        suffix. In non-strict mode, aggregate overflow truncates the final added
+        value, while pages beyond the field-count limit are omitted.
+        """
+        paginator = TextPaginator(
+            lines,
+            page_size=page_size,
+            max_length=self._limits.field_value,
+            separator=separator,
+        )
+
+        for idx, page in enumerate(paginator.pages, 1):
+            if len(self.fields) >= self._limits.max_fields:
+                if strict:
+                    raise ValueError(
+                        f"Embed field limit reached ({self._limits.max_fields})."
+                    )
+                break
+
+            page_name = (
+                name
+                if idx == 1
+                else FeedbackMessages(catalog("discord_ui", language)).page(
+                    name=name, page=idx
+                )
+            )
+            self.safe_add_field(
+                name=page_name, value=page, inline=inline, strict=strict
+            )
+
+        return self
+
+    def add_code_field(
+        self,
+        *,
+        name: str,
+        value: str,
+        lang: str = "",
+        inline: bool = False,
+        strict: bool = True,
+    ) -> Self:
+        """Add a field whose value remains inside a complete code fence.
+
+        Reserve the language tag and fences before truncating the content.
+        Non-strict fields also respect the remaining aggregate budget and are
+        omitted if the name and a complete fence cannot fit. Strict mode rejects
+        a field limit smaller than the fence; aggregate overflow still raises
+        CharacterLimitExceededError through safe_add_field.
+        """
+        name = truncate_text(str(name), self._limits.field_name)
+        budget = self._limits.field_value
+        if not strict:
+            budget = min(budget, self._limits.max_total - len(self) - len(name))
+        # Two three-backtick fences, the language tag, and two newlines.
+        overhead = len(lang) + 8
+        if budget < overhead:
+            if strict:
+                raise ValueError("Code fence exceeds the embed field limit")
+            return self
+
+        value = truncate_text(value, budget - overhead)
+        code_value = f"```{lang}\n{value}\n```"
+        return self.safe_add_field(
+            name=name, value=code_value, inline=inline, strict=strict
+        )
+
+    def add_field_if(
+        self,
+        condition: object,
+        *,
+        name: str,
+        value: str,
+        inline: bool = False,
+        strict: bool = True,
+    ) -> Self:
+        """Add a field when ``condition`` is truthy.
+
+        Args:
+            condition: Value controlling whether the field is added.
+            name: Field name.
+            value: Field value.
+            inline: Forwarded to Discord's field layout.
+            strict: Forwarded to :meth:`safe_add_field`.
+
+        Returns:
+            This embed whether or not a field was added.
+        """
+        if condition:
+            return self.safe_add_field(
+                name=name, value=value, inline=inline, strict=strict
+            )
+        return self

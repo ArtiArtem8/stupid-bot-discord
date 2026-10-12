@@ -1,0 +1,1663 @@
+"""Tests for queue-entry and playback-attempt transitions."""
+
+import asyncio
+import unittest
+from collections import deque
+from dataclasses import replace
+from typing import cast
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
+
+import aiohttp
+import mafic
+from discord.types.voice import VoiceServerUpdate as VoiceServerUpdatePayload
+
+from stupidbot.features.music.playback.models import (
+    PLAYBACK_USER_DATA_KEY,
+    PlaybackAttempt,
+    QueueEntry,
+    RepeatMode,
+    TrackEndOutcome,
+    TrackRequester,
+)
+from stupidbot.features.music.playback.player import MusicPlayer
+from stupidbot.features.music.playback.queue import QueueManager, RepeatManager
+from tests.features.music.fixtures import make_entry, make_track
+
+
+def _make_player(*, current: QueueEntry | None = None) -> MusicPlayer:
+    player = object.__new__(MusicPlayer)
+    player.queue = QueueManager()
+    player.repeat = RepeatManager(RepeatMode.OFF)
+    player._next_entry_id = (current.entry_id + 1) if current else 1
+    player._next_attempt_id = 2 if current else 1
+    player._current_attempt = PlaybackAttempt(1, current) if current else None
+    player._pending_end_attempts = deque()
+    player._exception_attempt_ids = set()
+    player._transition_lock = asyncio.Lock()
+    player._is_stale = False
+    player._current = current.track if current else None
+    player._paused = False
+    player.guild = MagicMock(id=123)
+    return player
+
+
+def _tracks(player: MusicPlayer) -> list[mafic.Track]:
+    return [entry.track for entry in player.queue]
+
+
+def _require_attempt(attempt: PlaybackAttempt | None) -> PlaybackAttempt:
+    if attempt is None:
+        raise AssertionError("expected playback attempt")
+    return attempt
+
+
+def _current_token(player: MusicPlayer) -> str:
+    return _require_attempt(player.current_attempt).event_token
+
+
+def _require_entry(entry: QueueEntry | None) -> QueueEntry:
+    if entry is None:
+        raise AssertionError("expected queue entry")
+    return entry
+
+
+def _require_requester(entry: QueueEntry) -> TrackRequester:
+    if entry.requester is None:
+        raise AssertionError("expected requester")
+    return entry.requester
+
+
+class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
+    async def test_track_end_waiting_behind_recovery_keeps_sealed_state(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        attempt = _require_attempt(player.current_attempt)
+        queued = make_entry("queued", entry_id=2)
+        player.queue.append(queued)
+        sealing = asyncio.Event()
+        ending = asyncio.Event()
+
+        async def seal() -> None:
+            sealing.set()
+            await player.seal_for_recovery()
+
+        async def end() -> TrackEndOutcome:
+            ending.set()
+            return await player.handle_track_end(
+                attempt.event_token, mafic.EndReason.FINISHED
+            )
+
+        with patch.object(player, "play", new=AsyncMock()) as play:
+            async with player._transition_lock:
+                seal_task = asyncio.create_task(seal())
+                await sealing.wait()
+                end_task = asyncio.create_task(end())
+                await ending.wait()
+            await seal_task
+            outcome = await end_task
+
+        self.assertTrue(outcome.is_stale)
+        self.assertIsNone(outcome.ended_attempt)
+        self.assertIs(player.current_attempt, attempt)
+        self.assertEqual(player.queue_snapshot(), (queued,))
+        play.assert_not_awaited()
+
+    async def test_sealed_player_rejects_exception_correlation(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        token = _current_token(player)
+        await player.seal_for_recovery()
+
+        self.assertIsNone(await player.resolve_exception_attempt(token))
+        self.assertIsNone(await player.claim_track_exception(token))
+        self.assertEqual(player._exception_attempt_ids, set())
+
+    def test_stuck_position_does_not_advance_with_wall_time(self) -> None:
+        player = _make_player(current=make_entry("current", length=60_000))
+        player._node_player_ready_event = asyncio.Event()
+        player._connected = True
+        player._position = 1000
+        player._last_update = 0
+        attempt = _require_attempt(player.current_attempt)
+        with patch("mafic.player.time", return_value=10.0):
+            self.assertEqual(player.position, 11_000)
+            player.mark_stuck(attempt)
+            self.assertEqual(player.position, 1000)
+            player.update_state(
+                {"time": 9000, "position": 1000, "connected": True, "ping": 1}
+            )
+            self.assertEqual(player.position, 1000)
+            player.update_state(
+                {"time": 9000, "position": 2000, "connected": True, "ping": 1}
+            )
+            self.assertIsNone(player.stuck_attempt)
+            self.assertEqual(player.position, 3000)
+
+    async def test_stuck_status_clears_after_backward_seek_and_reported_progress(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current", length=120_000))
+        player._node_player_ready_event = asyncio.Event()
+        player._position = 60_000
+        attempt = _require_attempt(player.current_attempt)
+        player.mark_stuck(attempt)
+        with patch.object(player, "seek", new_callable=AsyncMock):
+            self.assertTrue(await player.seek_attempt(attempt, 10_000))
+        self.assertIs(player.stuck_attempt, attempt)
+        player.update_state(
+            {"time": 100, "position": 10_000, "connected": True, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+        player.update_state(
+            {"time": 200, "position": 11_000, "connected": True, "ping": 1}
+        )
+        self.assertIsNone(player.stuck_attempt)
+
+    def test_stuck_status_does_not_clear_on_paused_or_disconnected_progress(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current"))
+        player._node_player_ready_event = asyncio.Event()
+        player._position = 1000
+        attempt = _require_attempt(player.current_attempt)
+        player.mark_stuck(attempt)
+        player._paused = True
+        player.update_state(
+            {"time": 100, "position": 2000, "connected": True, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+        player._paused = False
+        player.update_state(
+            {"time": 200, "position": 3000, "connected": False, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+
+    def test_stuck_status_requires_reported_progress_from_the_current_attempt(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current", length=60_000))
+        player._node_player_ready_event = asyncio.Event()
+        player._position = 1000
+        attempt = _require_attempt(player.current_attempt)
+        self.assertTrue(player.mark_stuck(attempt))
+        player.update_state(
+            {"time": 100, "position": 1000, "connected": True, "ping": 1}
+        )
+        self.assertIs(player.stuck_attempt, attempt)
+        self.assertFalse(player.mark_stuck(PlaybackAttempt(2, make_entry("old"))))
+        player.update_state(
+            {"time": 200, "position": 1100, "connected": True, "ping": 1}
+        )
+        self.assertIsNone(player.stuck_attempt)
+
+    async def test_enqueue_waiting_on_transition_rejects_detached_player(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        await player._transition_lock.acquire()
+        task = asyncio.create_task(
+            player.enqueue_tracks([make_track("late")], None, placement="end")
+        )
+        player.mark_stale()
+        player._transition_lock.release()
+        with self.assertRaises(mafic.PlayerNotConnected):
+            await task
+        self.assertEqual(player.queue_snapshot(), ())
+
+    async def test_old_undo_cannot_remove_replacement_players_request(self) -> None:
+        old = make_entry("old", entry_id=1, requester_id=10)
+        live = make_entry("new", entry_id=1, requester_id=20)
+        player = _make_player()
+        player.queue.append(live)
+        self.assertEqual(
+            await player.remove_queued_entries((old,), requester_id=10), ()
+        )
+        self.assertEqual(player.queue_snapshot(), (live,))
+
+    async def test_shuffle_waits_for_skip_commit_or_rollback(self) -> None:
+        for cancel_skip in (False, True):
+            with self.subTest(cancel_skip=cancel_skip):
+                await self._assert_shuffle_after_skip(cancel_skip=cancel_skip)
+
+    async def _assert_shuffle_after_skip(self, *, cancel_skip: bool) -> None:
+        player = _make_player(current=make_entry("A"))
+        for entry_id, name in enumerate(("B", "C", "D"), 2):
+            player.queue.append(make_entry(name, entry_id=entry_id))
+        playing = asyncio.Event()
+        finish_play = asyncio.Event()
+        shuffling = asyncio.Event()
+
+        async def play(*_args: object, **_kwargs: object) -> None:
+            playing.set()
+            await finish_play.wait()
+
+        async def shuffle() -> None:
+            shuffling.set()
+            await player.shuffle_queue()
+
+        def reverse(entries: list[QueueEntry]) -> None:
+            entries.reverse()
+
+        with (
+            patch.object(player, "play", new=AsyncMock(side_effect=play)),
+            patch(
+                "stupidbot.features.music.playback.queue.random.shuffle",
+                side_effect=reverse,
+            ),
+        ):
+            skip_task = asyncio.create_task(player.skip())
+            shuffle_task: asyncio.Task[None] | None = None
+            try:
+                await playing.wait()
+                shuffle_task = asyncio.create_task(shuffle())
+                await shuffling.wait()
+                self.assertFalse(shuffle_task.done())
+                if cancel_skip:
+                    skip_task.cancel()
+                    with self.assertRaises(asyncio.CancelledError):
+                        await skip_task
+                else:
+                    finish_play.set()
+                    await skip_task
+                await shuffle_task
+            finally:
+                skip_task.cancel()
+                if shuffle_task is not None:
+                    shuffle_task.cancel()
+                    await asyncio.gather(shuffle_task, return_exceptions=True)
+                await asyncio.gather(skip_task, return_exceptions=True)
+        self.assertEqual(
+            [entry.track.identifier for entry in player.queue],
+            ["D", "C", "B"] if cancel_skip else ["D", "C"],
+        )
+
+    def test_new_player_starts_not_stale_and_can_be_marked_stale(self) -> None:
+        with patch.object(mafic.Player, "__init__", return_value=None):
+            player = MusicPlayer(MagicMock(), MagicMock())
+        self.assertFalse(player.is_stale)
+        player.mark_stale()
+        self.assertTrue(player.is_stale)
+
+    async def test_play_sends_exact_attempt_token_in_user_data(self) -> None:
+        player = _make_player()
+        with patch.object(player, "play", new=AsyncMock()) as play:
+            outcome = await player.enqueue_tracks(
+                (make_track("tagged"),), None, placement="end"
+            )
+
+        attempt = _require_attempt(outcome.started_attempt)
+        await_args = play.await_args
+        if await_args is None:
+            self.fail("MusicPlayer did not call Mafic play")
+        self.assertEqual(
+            await_args.kwargs["user_data"],
+            {PLAYBACK_USER_DATA_KEY: attempt.event_token},
+        )
+
+    async def test_same_source_attempts_are_resolved_only_by_token(self) -> None:
+        first = make_entry("same", entry_id=1)
+        second = make_entry("same", entry_id=2)
+        player = _make_player(current=first)
+        first_attempt = _require_attempt(player.current_attempt)
+        player.queue.append(second)
+        with patch.object(player, "play", new=AsyncMock()):
+            _ended, second_attempt = await player.skip()
+
+        self.assertIs(
+            await player.resolve_exception_attempt(first_attempt.event_token),
+            first_attempt,
+        )
+        self.assertIs(
+            await player.resolve_exception_attempt(
+                _require_attempt(second_attempt).event_token
+            ),
+            second_attempt,
+        )
+
+    async def test_seek_attempt_waits_for_lock_and_refuses_replacement(self) -> None:
+        expected_entry = make_entry("expected", entry_id=1)
+        replacement_entry = make_entry("replacement", entry_id=2)
+        player = _make_player(current=expected_entry)
+        expected = _require_attempt(player.current_attempt)
+        replacement = PlaybackAttempt(2, replacement_entry)
+        entered = asyncio.Event()
+
+        async def guarded_seek() -> bool:
+            entered.set()
+            return await player.seek_attempt(expected, 4_000)
+
+        await player._transition_lock.acquire()
+        with patch.object(player, "seek", new=AsyncMock()) as seek_mock:
+            task = asyncio.create_task(guarded_seek())
+            await entered.wait()
+            player._current_attempt = replacement
+            player._transition_lock.release()
+            sought = await task
+
+        self.assertFalse(sought)
+        self.assertIs(player.current_attempt, replacement)
+        seek_mock.assert_not_awaited()
+
+    async def test_seek_attempt_allows_expected_attempt_with_empty_mafic_cache(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("old"))
+        old_attempt = _require_attempt(player.current_attempt)
+        replacement = PlaybackAttempt(2, make_entry("replacement", entry_id=2))
+        player._pending_end_attempts.append(old_attempt)
+        player._current_attempt = replacement
+        player._current = None
+
+        with patch.object(player, "seek", new=AsyncMock()) as seek_mock:
+            result = await player.seek_attempt(replacement, 10_000)
+
+        self.assertTrue(result)
+        self.assertIs(player.current_attempt, replacement)
+        self.assertEqual(list(player._pending_end_attempts), [old_attempt])
+        seek_mock.assert_awaited_once_with(10_000)
+
+    async def test_expected_skip_waits_for_lock_and_refuses_replacement(
+        self,
+    ) -> None:
+        expected_entry = make_entry("expected", entry_id=1)
+        queued_entry = make_entry("queued", entry_id=2)
+        replacement_entry = make_entry("replacement", entry_id=3)
+        pending = PlaybackAttempt(99, make_entry("pending", entry_id=99))
+        player = _make_player(current=expected_entry)
+        expected = _require_attempt(player.current_attempt)
+        replacement = PlaybackAttempt(2, replacement_entry)
+        player.queue.append(queued_entry)
+        player._pending_end_attempts.append(pending)
+        queue_before = player.queue.snapshot()
+        pending_before = player._pending_end_attempts.copy()
+        entered = asyncio.Event()
+
+        async def guarded_skip() -> tuple[
+            PlaybackAttempt | None, PlaybackAttempt | None
+        ]:
+            entered.set()
+            return await player.skip(expected=expected)
+
+        await player._transition_lock.acquire()
+        with (
+            patch.object(mafic.Player, "stop", new=AsyncMock()) as stop_mock,
+            patch.object(player, "play", new=AsyncMock()) as play_mock,
+        ):
+            task = asyncio.create_task(guarded_skip())
+            await entered.wait()
+            self.assertFalse(task.done())
+            player._current_attempt = replacement
+            player._transition_lock.release()
+            result = await task
+
+        self.assertEqual(result, (None, None))
+        self.assertIs(player.current_attempt, replacement)
+        self.assertEqual(player.queue.snapshot(), queue_before)
+        self.assertEqual(player._pending_end_attempts, pending_before)
+        stop_mock.assert_not_awaited()
+        play_mock.assert_not_awaited()
+
+    async def test_toggle_pause_waits_for_lock_and_refuses_replacement(self) -> None:
+        player = _make_player(current=make_entry("expected"))
+        expected = _require_attempt(player.current_attempt)
+        replacement = PlaybackAttempt(2, make_entry("replacement", entry_id=2))
+        entered = asyncio.Event()
+
+        async def guarded_toggle() -> bool | None:
+            entered.set()
+            return await player.toggle_pause_for_attempt(expected)
+
+        await player._transition_lock.acquire()
+        with (
+            patch.object(player, "update", new=AsyncMock()) as update_mock,
+            patch.object(player, "pause", new=AsyncMock()) as pause_mock,
+            patch.object(player, "resume", new=AsyncMock()) as resume_mock,
+        ):
+            task = asyncio.create_task(guarded_toggle())
+            await entered.wait()
+            self.assertFalse(task.done())
+            player._current_attempt = replacement
+            player._transition_lock.release()
+            paused = await task
+
+        self.assertIsNone(paused)
+        self.assertIs(player.current_attempt, replacement)
+        update_mock.assert_not_awaited()
+        pause_mock.assert_not_awaited()
+        resume_mock.assert_not_awaited()
+
+    async def test_toggle_pause_uses_one_update_and_returns_new_state(self) -> None:
+        player = _make_player(current=make_entry("expected"))
+        expected = _require_attempt(player.current_attempt)
+
+        for initial, new_state in ((False, True), (True, False)):
+            with self.subTest(initial=initial):
+                player._paused = initial
+                with patch.object(player, "update", new=AsyncMock()) as update_mock:
+                    paused = await player.toggle_pause_for_attempt(expected)
+
+                self.assertIs(paused, new_state)
+                update_mock.assert_awaited_once_with(pause=new_state)
+
+    async def test_restore_attempt_state_refuses_replacement(self) -> None:
+        expected_entry = make_entry("expected", entry_id=1)
+        replacement_entry = make_entry("replacement", entry_id=2)
+        player = _make_player(current=expected_entry)
+        expected = _require_attempt(player.current_attempt)
+        replacement = PlaybackAttempt(2, replacement_entry)
+        entered = asyncio.Event()
+
+        async def guarded_restore() -> bool:
+            entered.set()
+            return await player.restore_attempt_state(
+                expected,
+                volume=65,
+                pause=True,
+            )
+
+        await player._transition_lock.acquire()
+        with patch.object(player, "update", new=AsyncMock()) as update_mock:
+            task = asyncio.create_task(guarded_restore())
+            await entered.wait()
+            player._current_attempt = replacement
+            player._transition_lock.release()
+            restored = await task
+
+        self.assertFalse(restored)
+        self.assertIs(player.current_attempt, replacement)
+        update_mock.assert_not_awaited()
+
+    async def test_restore_attempt_state_uses_one_player_update(self) -> None:
+        player = _make_player(current=make_entry("expected"))
+        expected = _require_attempt(player.current_attempt)
+
+        with patch.object(player, "update", new=AsyncMock()) as update_mock:
+            restored = await player.restore_attempt_state(
+                expected,
+                volume=65,
+                pause=True,
+            )
+
+        self.assertTrue(restored)
+        update_mock.assert_awaited_once_with(volume=65, pause=True)
+
+    async def test_enqueue_tracks_with_next_adds_single_track_to_front(self) -> None:
+        current = make_entry("current")
+        existing = make_entry("existing", entry_id=2)
+        track = make_track("next")
+        player = _make_player(current=current)
+        player.queue.append(existing)
+        await player.enqueue_tracks((track,), None, placement="next")
+        self.assertEqual(_tracks(player), [track, existing.track])
+
+    async def test_enqueue_tracks_with_next_preserves_playlist_order_at_front(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current"))
+        existing = make_entry("existing", entry_id=9)
+        player.queue.append(existing)
+        tracks = [make_track("one"), make_track("two"), make_track("three")]
+        await player.enqueue_tracks(tracks, None, placement="next")
+        self.assertEqual(_tracks(player), [*tracks, existing.track])
+
+    async def test_enqueue_tracks_with_end_adds_playlist_to_back(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        existing = make_entry("existing", entry_id=9)
+        player.queue.append(existing)
+        tracks = [make_track("one"), make_track("two")]
+        await player.enqueue_tracks(tracks, None, placement="end")
+        self.assertEqual(_tracks(player), [existing.track, *tracks])
+
+    async def test_end_enqueue_starts_existing_head_and_keeps_new_entry_waiting(
+        self,
+    ) -> None:
+        player = _make_player()
+        existing = make_entry("existing", entry_id=9)
+        new_track = make_track("new")
+        player.queue.append(existing)
+
+        with patch.object(player, "play", new=AsyncMock()) as play:
+            outcome = await player.enqueue_tracks(
+                (new_track,),
+                TrackRequester(42),
+                placement="end",
+            )
+
+        started = _require_attempt(outcome.started_attempt)
+        self.assertIs(started.entry, existing)
+        self.assertEqual(len(outcome.entries), 1)
+        new_entry = outcome.entries[0]
+        self.assertIs(new_entry.track, new_track)
+        self.assertFalse(outcome.started_from_enqueue)
+        self.assertTrue(outcome.has_waiting_entries)
+        self.assertEqual(list(player.queue), [new_entry])
+        self.assertIs(player.current_entry, existing)
+        play.assert_awaited_once_with(
+            existing.track,
+            start_time=0,
+            volume=None,
+            pause=False,
+            user_data=ANY,
+        )
+
+    async def test_next_enqueue_starts_new_entry_before_existing_head(self) -> None:
+        player = _make_player()
+        existing = make_entry("existing", entry_id=9)
+        new_track = make_track("new")
+        player.queue.append(existing)
+
+        with patch.object(player, "play", new=AsyncMock()) as play:
+            outcome = await player.enqueue_tracks(
+                (new_track,),
+                TrackRequester(42),
+                placement="next",
+            )
+
+        started = _require_attempt(outcome.started_attempt)
+        new_entry = outcome.entries[0]
+        self.assertIs(started.entry, new_entry)
+        self.assertTrue(outcome.started_from_enqueue)
+        self.assertFalse(outcome.has_waiting_entries)
+        self.assertEqual(list(player.queue), [existing])
+        self.assertIs(player.current_entry, new_entry)
+        play.assert_awaited_once_with(
+            new_track,
+            start_time=0,
+            volume=None,
+            pause=False,
+            user_data=ANY,
+        )
+
+    async def test_enqueue_tracks_with_empty_sequence_returns_empty_outcome(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("current"))
+        outcome = await player.enqueue_tracks((), None, placement="end")
+        self.assertEqual(outcome.entries, ())
+        self.assertIsNone(outcome.started_attempt)
+        self.assertTrue(player.queue.is_empty)
+
+    async def test_enqueue_tracks_returns_created_entries_and_started_attempt(
+        self,
+    ) -> None:
+        first, second = make_track("first"), make_track("second")
+        player = _make_player()
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            outcome = await player.enqueue_tracks(
+                (first, second), None, placement="end"
+            )
+        started = _require_attempt(outcome.started_attempt)
+        self.assertEqual(len(outcome.entries), 2)
+        self.assertIs(started.entry, outcome.entries[0])
+        self.assertIs(outcome.entries[0].track, first)
+        self.assertIs(outcome.entries[1].track, second)
+        self.assertEqual(len({entry.entry_id for entry in outcome.entries}), 2)
+        self.assertEqual(list(player.queue), [outcome.entries[1]])
+        play_mock.assert_awaited_once_with(
+            first, start_time=0, volume=None, pause=False, user_data=ANY
+        )
+
+    async def test_enqueue_tracks_does_not_call_public_advance_recursively(
+        self,
+    ) -> None:
+        player = _make_player()
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            await player.enqueue_tracks((make_track("first"),), None, placement="end")
+        play_mock.assert_awaited_once()
+
+    async def test_enqueue_tracks_does_not_interrupt_playing_track(self) -> None:
+        current = make_entry("current")
+        queued = make_track("queued")
+        player = _make_player(current=current)
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            outcome = await player.enqueue_tracks((queued,), None, placement="end")
+        self.assertIsNone(outcome.started_attempt)
+        self.assertIs(player.current_entry, current)
+        play_mock.assert_not_awaited()
+
+    async def test_repeated_next_request_goes_before_previous_next_block(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        first = [make_track("one"), make_track("two")]
+        second = [make_track("three"), make_track("four")]
+        await player.enqueue_tracks(first, None, placement="next")
+        await player.enqueue_tracks(second, None, placement="next")
+        self.assertEqual(_tracks(player), [*second, *first])
+
+    async def test_remove_queued_entries_removes_single_entry(self) -> None:
+        expected = make_entry("expected", entry_id=2, requester_id=42)
+        player = _make_player(current=make_entry("current"))
+        player.queue.append(expected)
+
+        removed = await player.remove_queued_entries((expected,), requester_id=42)
+
+        self.assertEqual(removed, (expected,))
+        self.assertTrue(player.queue.is_empty)
+
+    async def test_remove_queued_entries_with_empty_expected_changes_nothing(
+        self,
+    ) -> None:
+        queued = make_entry("queued", entry_id=2, requester_id=42)
+        player = _make_player(current=make_entry("current"))
+        player.queue.append(queued)
+
+        removed = await player.remove_queued_entries((), requester_id=42)
+
+        self.assertEqual(removed, ())
+        self.assertEqual(list(player.queue), [queued])
+
+    async def test_remove_queued_entries_removes_entire_waiting_playlist(
+        self,
+    ) -> None:
+        current = make_entry("other-current", requester_id=99)
+        player = _make_player(current=current)
+        tracks = (make_track("one"), make_track("two"), make_track("three"))
+        outcome = await player.enqueue_tracks(
+            tracks,
+            TrackRequester(42),
+            placement="end",
+        )
+
+        removed = await player.remove_queued_entries(
+            outcome.entries,
+            requester_id=42,
+        )
+
+        self.assertEqual(removed, outcome.entries)
+        self.assertTrue(player.queue.is_empty)
+        self.assertIs(player.current_entry, current)
+
+    async def test_remove_queued_entries_ignores_playlist_entry_now_playing(
+        self,
+    ) -> None:
+        player = _make_player()
+        tracks = (make_track("one"), make_track("two"), make_track("three"))
+        with patch.object(player, "play", new=AsyncMock()):
+            outcome = await player.enqueue_tracks(
+                tracks,
+                TrackRequester(42),
+                placement="end",
+            )
+
+        removed = await player.remove_queued_entries(
+            outcome.entries,
+            requester_id=42,
+        )
+
+        self.assertEqual(removed, outcome.entries[1:])
+        self.assertIs(player.current_entry, outcome.entries[0])
+        self.assertTrue(player.queue.is_empty)
+
+    async def test_remove_queued_entries_removes_only_playlist_remainder(
+        self,
+    ) -> None:
+        entries = tuple(
+            make_entry(identifier, entry_id=index, requester_id=42)
+            for index, identifier in enumerate(("one", "two", "three", "four"), 1)
+        )
+        player = _make_player(current=entries[2])
+        player.queue.append(entries[3])
+
+        removed = await player.remove_queued_entries(entries, requester_id=42)
+
+        self.assertEqual(removed, (entries[3],))
+        self.assertIs(player.current_entry, entries[2])
+
+    async def test_remove_queued_entries_preserves_repeat_and_current_attempt(
+        self,
+    ) -> None:
+        current = make_entry("current", entry_id=1, requester_id=42)
+        queued = make_entry("queued", entry_id=2, requester_id=42)
+        player = _make_player(current=current)
+        player.repeat.mode = RepeatMode.QUEUE
+        player.queue.append(queued)
+        current_attempt = _require_attempt(player.current_attempt)
+
+        removed = await player.remove_queued_entries(
+            (current, queued),
+            requester_id=42,
+        )
+
+        self.assertEqual(removed, (queued,))
+        self.assertIs(player.current_attempt, current_attempt)
+        self.assertIs(player.current_entry, current)
+        self.assertIs(player.repeat.mode, RepeatMode.QUEUE)
+
+        player.queue.append(current)
+        self.assertEqual(list(player.queue), [current])
+
+    async def test_remove_queued_entries_preserves_other_requests_in_order(
+        self,
+    ) -> None:
+        requested = (
+            make_entry("requested-one", entry_id=2, requester_id=42),
+            make_entry("requested-two", entry_id=4, requester_id=42),
+        )
+        others = (
+            make_entry("other-user", entry_id=3, requester_id=99),
+            make_entry("other-request", entry_id=5, requester_id=42),
+        )
+        player = _make_player(current=make_entry("current"))
+        player.queue.extend((requested[0], others[0], requested[1], others[1]))
+
+        removed = await player.remove_queued_entries(requested, requester_id=42)
+
+        self.assertEqual(removed, requested)
+        self.assertEqual(list(player.queue), list(others))
+
+    async def test_remove_queued_entries_keeps_equal_tracks_from_other_request(
+        self,
+    ) -> None:
+        other = make_entry("same", entry_id=2, requester_id=42)
+        expected = make_entry("same", entry_id=3, requester_id=42)
+        player = _make_player(current=make_entry("current"))
+        player.queue.extend((other, expected))
+
+        removed = await player.remove_queued_entries((expected,), requester_id=42)
+
+        self.assertEqual(removed, (expected,))
+        self.assertEqual(list(player.queue), [other])
+
+    async def test_remove_queued_entries_follows_playlist_entries_after_shuffle(
+        self,
+    ) -> None:
+        requested = (
+            make_entry("one", entry_id=2, requester_id=42),
+            make_entry("two", entry_id=3, requester_id=42),
+        )
+        other = make_entry("other", entry_id=4, requester_id=99)
+        player = _make_player(current=make_entry("current"))
+        player.queue.extend((*requested, other))
+
+        def reverse_entries(entries: list[QueueEntry]) -> None:
+            entries.reverse()
+
+        with patch(
+            "stupidbot.features.music.playback.queue.random.shuffle",
+            side_effect=reverse_entries,
+        ):
+            player.queue.shuffle()
+
+        removed = await player.remove_queued_entries(requested, requester_id=42)
+
+        self.assertEqual(removed, tuple(reversed(requested)))
+        self.assertEqual(list(player.queue), [other])
+
+    async def test_remove_queued_entries_rejects_mixed_requesters_atomically(
+        self,
+    ) -> None:
+        own = make_entry("own", entry_id=2, requester_id=42)
+        foreign = make_entry("foreign", entry_id=3, requester_id=99)
+        player = _make_player(current=make_entry("current"))
+        player.queue.extend((own, foreign))
+
+        removed = await player.remove_queued_entries(
+            (own, foreign),
+            requester_id=42,
+        )
+
+        self.assertEqual(removed, ())
+        self.assertEqual(list(player.queue), [own, foreign])
+
+    async def test_reconstructed_entries_remove_matches_with_same_ids(
+        self,
+    ) -> None:
+        old_entries = (
+            make_entry("old-one", entry_id=1, requester_id=42),
+            make_entry("old-two", entry_id=2, requester_id=42),
+        )
+        replacements = (
+            replace(old_entries[0], track=make_track("new-one")),
+            replace(old_entries[1], track=make_track("new-two")),
+        )
+        new_player = _make_player(current=make_entry("current", entry_id=3))
+        new_player.queue.extend(replacements)
+
+        removed = await new_player.remove_queued_entries(
+            old_entries,
+            requester_id=42,
+        )
+
+        self.assertEqual(removed, replacements)
+        self.assertEqual(list(new_player.queue), [])
+
+    async def test_concurrent_remove_queued_entries_has_one_nonempty_result(
+        self,
+    ) -> None:
+        expected = (
+            make_entry("one", entry_id=2, requester_id=42),
+            make_entry("two", entry_id=3, requester_id=42),
+        )
+        player = _make_player(current=make_entry("current"))
+        player.queue.extend(expected)
+
+        results = await asyncio.gather(
+            player.remove_queued_entries(expected, requester_id=42),
+            player.remove_queued_entries(expected, requester_id=42),
+        )
+
+        self.assertEqual(sum(bool(result) for result in results), 1)
+        self.assertTrue(player.queue.is_empty)
+
+    async def test_stale_player_cannot_remove_queued_entries(self) -> None:
+        expected = make_entry("expected", entry_id=2, requester_id=42)
+        player = _make_player(current=make_entry("current"))
+        player.queue.append(expected)
+        player.mark_stale()
+
+        removed = await player.remove_queued_entries((expected,), requester_id=42)
+
+        self.assertEqual(removed, ())
+        self.assertEqual(list(player.queue), [expected])
+
+    async def test_concurrent_idle_enqueue_starts_only_one_initial_track(self) -> None:
+        player = _make_player()
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def play(*_args: object, **_kwargs: object) -> None:
+            entered.set()
+            await release.wait()
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=play)) as mocked:
+            first = asyncio.create_task(
+                player.enqueue_tracks((make_track("first"),), None, placement="end")
+            )
+            await entered.wait()
+            second = asyncio.create_task(
+                player.enqueue_tracks((make_track("second"),), None, placement="end")
+            )
+            await asyncio.sleep(0)
+            release.set()
+            first_result, second_result = await asyncio.gather(first, second)
+        self.assertIsNotNone(first_result.started_attempt)
+        self.assertIsNone(second_result.started_attempt)
+        self.assertEqual(mocked.await_count, 1)
+        self.assertEqual([track.identifier for track in _tracks(player)], ["second"])
+
+    async def test_stale_end_off_does_not_replace_track_started_by_enqueue(
+        self,
+    ) -> None:
+        player = _make_player()
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def play(*_args: object, **_kwargs: object) -> None:
+            entered.set()
+            await release.wait()
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=play)):
+            enqueue = asyncio.create_task(
+                player.enqueue_tracks((make_track("new"),), None, placement="end")
+            )
+            await entered.wait()
+            stale_end = asyncio.create_task(
+                player.handle_track_end("stale-token", mafic.EndReason.FINISHED)
+            )
+            await asyncio.sleep(0)
+            self.assertFalse(stale_end.done())
+            release.set()
+            _, outcome = await asyncio.gather(enqueue, stale_end)
+        self.assertTrue(outcome.is_stale)
+        self.assertEqual(_require_entry(player.current_entry).track.identifier, "new")
+
+    async def test_stale_end_queue_does_not_append_or_interrupt_current(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("replacement"))
+        player.repeat.mode = RepeatMode.QUEUE
+        before = player.queue.snapshot()
+        outcome = await player.handle_track_end(
+            "previous-token", mafic.EndReason.FINISHED
+        )
+        self.assertTrue(outcome.is_stale)
+        self.assertEqual(player.queue.snapshot(), before)
+
+    async def test_stale_end_track_does_not_replay_or_reorder_queue(
+        self,
+    ) -> None:
+        player = _make_player(current=make_entry("replacement"))
+        player.repeat.mode = RepeatMode.TRACK
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            outcome = await player.handle_track_end(
+                "previous-token", mafic.EndReason.FINISHED
+            )
+        self.assertTrue(outcome.is_stale)
+        play_mock.assert_not_awaited()
+
+    async def test_repeat_track_creates_new_attempt_for_each_finished_end(
+        self,
+    ) -> None:
+        entry = make_entry("previous")
+        player = _make_player(current=entry)
+        player.repeat.mode = RepeatMode.TRACK
+        with patch.object(player, "play", new=AsyncMock()):
+            first = await player.handle_track_end(
+                _current_token(player), mafic.EndReason.FINISHED
+            )
+            second = await player.handle_track_end(
+                _require_attempt(first.started_attempt).event_token,
+                mafic.EndReason.FINISHED,
+            )
+        first_started = _require_attempt(first.started_attempt)
+        second_started = _require_attempt(second.started_attempt)
+        self.assertEqual(first_started.entry, entry)
+        self.assertEqual(second_started.entry, entry)
+        self.assertNotEqual(first_started.attempt_id, second_started.attempt_id)
+
+    async def test_start_queued_if_idle_with_no_current_starts_next_track(self) -> None:
+        player = _make_player()
+        queued = make_entry("next")
+        player.queue.append(queued)
+        with patch.object(player, "play", new=AsyncMock()):
+            started = await player.start_queued_if_idle()
+        self.assertEqual(_require_attempt(started).entry, queued)
+
+    async def test_load_failed_with_repeat_off_starts_next_and_preserves_queue(
+        self,
+    ) -> None:
+        await self._assert_load_failed_advances(RepeatMode.OFF)
+
+    async def test_load_failed_ignores_repeat_track(self) -> None:
+        await self._assert_load_failed_advances(RepeatMode.TRACK)
+
+    async def test_load_failed_ignores_repeat_queue_and_preserves_remaining(
+        self,
+    ) -> None:
+        await self._assert_load_failed_advances(RepeatMode.QUEUE)
+
+    async def _assert_load_failed_advances(self, mode: RepeatMode) -> None:
+        failed = make_entry("failed")
+        next_entry = make_entry("next", entry_id=2)
+        remaining = make_entry("remaining", entry_id=3)
+        player = _make_player(current=failed)
+        player.repeat.mode = mode
+        player.queue.extend((next_entry, remaining))
+        with patch.object(player, "play", new=AsyncMock()):
+            outcome = await player.handle_track_end(
+                _current_token(player), mafic.EndReason.LOAD_FAILED
+            )
+        self.assertEqual(_require_attempt(outcome.started_attempt).entry, next_entry)
+        self.assertEqual(player.queue.snapshot(), (remaining,))
+        self.assertNotIn(failed, player.queue)
+
+    async def test_load_failed_with_empty_queue_stops_player(self) -> None:
+        failed = make_entry("failed")
+        player = _make_player(current=failed)
+        outcome = await player.handle_track_end(
+            _current_token(player), mafic.EndReason.LOAD_FAILED
+        )
+        self.assertIsNone(outcome.started_attempt)
+        self.assertIsNone(player.current_attempt)
+
+    async def test_force_skip_ignores_repeat_track_mode(self) -> None:
+        await self._assert_skip_mode(RepeatMode.TRACK)
+
+    async def test_advance_with_empty_queue_stops_player(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        with patch.object(mafic.Player, "stop", new=AsyncMock()) as stop_mock:
+            _, started = await player.skip()
+        self.assertIsNone(started)
+        stop_mock.assert_awaited_once()
+
+    async def test_skip_starts_next_track(self) -> None:
+        await self._assert_skip_mode(RepeatMode.OFF)
+
+    async def test_fast_finish_advances_before_delayed_replaced_event(self) -> None:
+        first = make_entry("first", entry_id=1)
+        second = make_entry("second", entry_id=2)
+        third = make_entry("third", entry_id=3)
+        player = _make_player(current=first)
+        player.queue.extend((second, third))
+
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            skipped, second_attempt = await player.skip()
+            second_end = await player.handle_track_end(
+                _require_attempt(second_attempt).event_token,
+                mafic.EndReason.FINISHED,
+            )
+            self.assertEqual(
+                [attempt.entry for attempt in player._pending_end_attempts],
+                [first],
+            )
+            first_end = await player.handle_track_end(
+                _require_attempt(skipped).event_token,
+                mafic.EndReason.REPLACED,
+            )
+
+        self.assertEqual(_require_attempt(skipped).entry, first)
+        self.assertEqual(_require_attempt(second_attempt).entry, second)
+        self.assertEqual(_require_attempt(second_end.started_attempt).entry, third)
+        self.assertEqual(_require_attempt(first_end.ended_attempt).entry, first)
+        self.assertIsNone(first_end.started_attempt)
+        self.assertEqual(player.current_entry, third)
+        self.assertEqual(list(player._pending_end_attempts), [])
+        self.assertTrue(player.queue.is_empty)
+        self.assertEqual(play_mock.await_count, 2)
+        play_mock.assert_any_await(
+            second.track, start_time=0, volume=None, pause=False, user_data=ANY
+        )
+        play_mock.assert_any_await(
+            third.track, start_time=0, volume=None, pause=False, user_data=ANY
+        )
+
+    async def _assert_skip_mode(self, mode: RepeatMode) -> None:
+        current = make_entry("current")
+        next_entry = make_entry("next", entry_id=2)
+        player = _make_player(current=current)
+        player.repeat.mode = mode
+        player.queue.append(next_entry)
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            skipped, started = await player.skip()
+        self.assertEqual(_require_attempt(skipped).entry, current)
+        self.assertEqual(_require_attempt(started).entry, next_entry)
+        self.assertEqual(player.current_entry, next_entry)
+        self.assertEqual(player._pending_end_attempts[0].entry, current)
+        play_mock.assert_awaited_once_with(
+            next_entry.track,
+            start_time=0,
+            volume=None,
+            pause=False,
+            user_data=ANY,
+        )
+
+    async def test_skip_with_empty_queue_stops_once_via_advance(self) -> None:
+        current = make_entry("current", requester_id=7)
+        player = _make_player(current=current)
+        with patch.object(mafic.Player, "stop", new=AsyncMock()):
+            skipped, started = await player.skip()
+        self.assertEqual(_require_attempt(skipped).entry, current)
+        self.assertIsNone(started)
+        outcome = await player.handle_track_end(
+            _require_attempt(skipped).event_token, mafic.EndReason.STOPPED
+        )
+        ended = _require_attempt(outcome.ended_attempt)
+        self.assertEqual(_require_requester(ended.entry).user_id, 7)
+
+    async def test_skip_uses_current_under_lock_without_stale_end_guard(self) -> None:
+        first = make_entry("same")
+        second = make_entry("same", entry_id=2)
+        player = _make_player(current=first)
+        player.queue.append(second)
+        with patch.object(player, "play", new=AsyncMock()):
+            skipped, _started = await player.skip()
+        outcome = await player.handle_track_end(
+            _require_attempt(skipped).event_token, mafic.EndReason.STOPPED
+        )
+        self.assertEqual(_require_attempt(outcome.ended_attempt).entry, first)
+        self.assertEqual(player.current_entry, second)
+
+    async def test_equal_source_end_uses_pending_attempt_token(
+        self,
+    ) -> None:
+        first = make_entry("same", entry_id=1, requester_id=10)
+        second = make_entry("same", entry_id=2, requester_id=20)
+        player = _make_player(current=first)
+        player.queue.append(second)
+        with patch.object(player, "play", new=AsyncMock()):
+            skipped, _started = await player.skip()
+
+        outcome = await player.handle_track_end(
+            _require_attempt(skipped).event_token, mafic.EndReason.STOPPED
+        )
+
+        self.assertEqual(_require_attempt(outcome.ended_attempt).entry, first)
+        self.assertEqual(player.current_entry, second)
+        self.assertEqual(
+            _require_requester(_require_entry(player.current_entry)).user_id, 20
+        )
+
+    async def test_skip_waiting_behind_enqueue_returns_actual_transition(
+        self,
+    ) -> None:
+        player = _make_player()
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def play(*_args: object, **_kwargs: object) -> None:
+            entered.set()
+            await release.wait()
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=play)):
+            enqueue = asyncio.create_task(
+                player.enqueue_tracks(
+                    (make_track("first"), make_track("second")),
+                    None,
+                    placement="end",
+                )
+            )
+            await entered.wait()
+            skip = asyncio.create_task(player.skip())
+            release.set()
+            enqueued, (skipped, started) = await asyncio.gather(enqueue, skip)
+        self.assertEqual(
+            _require_attempt(enqueued.started_attempt).entry,
+            _require_attempt(skipped).entry,
+        )
+        self.assertEqual(_require_attempt(started).entry.track.identifier, "second")
+
+    async def test_skip_ignores_track_and_queue_repeat_modes(self) -> None:
+        for mode in RepeatMode:
+            with self.subTest(mode=mode):
+                await self._assert_skip_mode(mode)
+
+    async def test_rotate_current_preserves_queue_order_and_returns_started(
+        self,
+    ) -> None:
+        current = make_entry("current")
+        next_entry = make_entry("next", entry_id=2)
+        existing = make_entry("existing", entry_id=3)
+        player = _make_player(current=current)
+        player.queue.extend((next_entry, existing))
+        with patch.object(player, "play", new=AsyncMock()):
+            moved, started = await player.rotate_current()
+        self.assertEqual(_require_attempt(moved).entry, current)
+        self.assertEqual(_require_attempt(started).entry, next_entry)
+        self.assertEqual(player.queue.snapshot(), (existing, current))
+
+    async def test_rotate_current_with_empty_queue_restarts_current(self) -> None:
+        current = make_entry("current")
+        player = _make_player(current=current)
+        with patch.object(player, "play", new=AsyncMock()):
+            moved, started = await player.rotate_current()
+        self.assertEqual(_require_attempt(moved).entry, current)
+        self.assertEqual(_require_attempt(started).entry, current)
+        self.assertNotEqual(
+            _require_attempt(player.current_attempt).attempt_id,
+            player._pending_end_attempts[0].attempt_id,
+        )
+
+    async def test_stop_and_clear_clears_queue_and_calls_base_stop(self) -> None:
+        current = make_entry("current")
+        player = _make_player(current=current)
+        player.queue.append(make_entry("queued", entry_id=2))
+        with patch.object(mafic.Player, "stop", new=AsyncMock()) as stop_mock:
+            await player.stop_and_clear()
+        self.assertTrue(player.queue.is_empty)
+        self.assertIsNone(player.current_attempt)
+        self.assertEqual(player._pending_end_attempts[0].entry, current)
+        stop_mock.assert_awaited_once()
+
+    async def test_stop_then_enqueue_starts_track_before_delayed_end_event(
+        self,
+    ) -> None:
+        for reason in (mafic.EndReason.STOPPED, mafic.EndReason.REPLACED):
+            with self.subTest(reason=reason):
+                current = make_entry("current")
+                queued = make_track("queued-after-stop")
+                player = _make_player(current=current)
+                with (
+                    patch.object(mafic.Player, "stop", new=AsyncMock()),
+                    patch.object(player, "play", new=AsyncMock()) as play_mock,
+                ):
+                    await player.stop_and_clear()
+                    enqueue_outcome = await player.enqueue_tracks(
+                        (queued,), None, placement="end"
+                    )
+                    ended = player._pending_end_attempts[0]
+                    outcome = await player.handle_track_end(ended.event_token, reason)
+
+                started = _require_attempt(enqueue_outcome.started_attempt)
+                self.assertEqual(started.entry.track, queued)
+                self.assertEqual(_require_attempt(outcome.ended_attempt).entry, current)
+                self.assertIsNone(outcome.started_attempt)
+                self.assertEqual(player.current_entry, started.entry)
+                self.assertEqual(play_mock.await_count, 1)
+
+    async def test_multiple_pending_attempts_do_not_block_current_finish(self) -> None:
+        first = make_entry("first", entry_id=1)
+        second = make_entry("second", entry_id=2)
+        third = make_entry("third", entry_id=3)
+        fourth = make_entry("fourth", entry_id=4)
+        player = _make_player(current=first)
+        player.queue.extend((second, third, fourth))
+
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            first_attempt, _ = await player.skip()
+            second_attempt, _ = await player.skip()
+            third_attempt = _require_attempt(player.current_attempt)
+            third_end = await player.handle_track_end(
+                third_attempt.event_token, mafic.EndReason.FINISHED
+            )
+
+            self.assertEqual(
+                [attempt.entry for attempt in player._pending_end_attempts],
+                [first, second],
+            )
+            self.assertEqual(_require_attempt(third_end.started_attempt).entry, fourth)
+            self.assertEqual(player.current_entry, fourth)
+
+            first_end = await player.handle_track_end(
+                _require_attempt(first_attempt).event_token,
+                mafic.EndReason.REPLACED,
+            )
+            second_end = await player.handle_track_end(
+                _require_attempt(second_attempt).event_token,
+                mafic.EndReason.STOPPED,
+            )
+
+        self.assertIsNone(first_end.started_attempt)
+        self.assertIsNone(second_end.started_attempt)
+        self.assertEqual(player.current_entry, fourth)
+        self.assertEqual(list(player._pending_end_attempts), [])
+        self.assertTrue(player.queue.is_empty)
+        self.assertEqual(play_mock.await_count, 3)
+
+    async def test_current_cleanup_does_not_start_queued_entry(self) -> None:
+        current = make_entry("current")
+        queued = make_entry("queued", entry_id=2)
+        player = _make_player(current=current)
+        player.queue.append(queued)
+        token = _current_token(player)
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            outcome = await player.handle_track_end(token, mafic.EndReason.CLEANUP)
+        self.assertIsNone(outcome.started_attempt)
+        self.assertEqual(player.queue.snapshot(), (queued,))
+        play_mock.assert_not_awaited()
+
+    async def test_pending_cleanup_does_not_start_queued_entry(self) -> None:
+        current = make_entry("current")
+        player = _make_player(current=current)
+        with patch.object(mafic.Player, "stop", new=AsyncMock()):
+            await player.stop_and_clear()
+        pending = player._pending_end_attempts[0]
+        player.queue.append(make_entry("queued", entry_id=2))
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            outcome = await player.handle_track_end(
+                pending.event_token, mafic.EndReason.CLEANUP
+            )
+        self.assertIsNone(outcome.started_attempt)
+        play_mock.assert_not_awaited()
+
+    async def test_current_replaced_does_not_start_queued_entry(self) -> None:
+        current = make_entry("current")
+        queued = make_entry("queued", entry_id=2)
+        player = _make_player(current=current)
+        player.queue.append(queued)
+        token = _current_token(player)
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            outcome = await player.handle_track_end(token, mafic.EndReason.REPLACED)
+        self.assertIsNone(outcome.started_attempt)
+        self.assertEqual(player.queue.snapshot(), (queued,))
+        play_mock.assert_not_awaited()
+
+    async def test_pending_replaced_does_not_start_queued_entry(self) -> None:
+        current = make_entry("current")
+        player = _make_player(current=current)
+        with patch.object(mafic.Player, "stop", new=AsyncMock()):
+            await player.stop_and_clear()
+        pending = player._pending_end_attempts[0]
+        player.queue.append(make_entry("queued", entry_id=2))
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            outcome = await player.handle_track_end(
+                pending.event_token, mafic.EndReason.REPLACED
+            )
+        self.assertIsNone(outcome.started_attempt)
+        play_mock.assert_not_awaited()
+
+    async def test_exception_matching_prefers_current_over_equal_pending(self) -> None:
+        pending = make_entry("same", entry_id=1, requester_id=10)
+        current = make_entry("same", entry_id=2, requester_id=20)
+        player = _make_player(current=pending)
+        player.queue.append(current)
+        with patch.object(player, "play", new=AsyncMock()):
+            await player.skip()
+
+        resolved = await player.claim_track_exception(_current_token(player))
+
+        self.assertEqual(_require_attempt(resolved).entry, current)
+        self.assertEqual(
+            _require_requester(_require_attempt(resolved).entry).user_id, 20
+        )
+
+    async def test_matching_rejects_wrong_token_for_same_source_track(self) -> None:
+        current = make_entry("same")
+        player = _make_player(current=current)
+
+        outcome = await player.handle_track_end("wrong-token", mafic.EndReason.FINISHED)
+
+        self.assertTrue(outcome.is_stale)
+        self.assertEqual(player.current_entry, current)
+
+    async def test_start_queued_if_idle_starts_track_after_stopped_lifecycle(
+        self,
+    ) -> None:
+        player = _make_player()
+        queued = make_entry("queued")
+        player.queue.append(queued)
+        with patch.object(player, "play", new=AsyncMock()):
+            started = await player.start_queued_if_idle()
+        self.assertEqual(_require_attempt(started).entry, queued)
+
+    async def test_start_queued_if_idle_with_empty_queue_does_not_play_or_stop(
+        self,
+    ) -> None:
+        player = _make_player()
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            self.assertIsNone(await player.start_queued_if_idle())
+        play_mock.assert_not_awaited()
+
+    async def test_start_queued_if_idle_preserves_existing_current(self) -> None:
+        current = make_entry("current")
+        queued = make_entry("queued", entry_id=2)
+        player = _make_player(current=current)
+        player.queue.append(queued)
+        self.assertIsNone(await player.start_queued_if_idle())
+        self.assertEqual(player.queue.snapshot(), (queued,))
+
+    async def test_repeat_track_replays_previous_track(self) -> None:
+        current = make_entry("current")
+        player = _make_player(current=current)
+        player.repeat.mode = RepeatMode.TRACK
+        with patch.object(player, "play", new=AsyncMock()) as play_mock:
+            outcome = await player.handle_track_end(
+                _current_token(player), mafic.EndReason.FINISHED
+            )
+        self.assertEqual(_require_attempt(outcome.started_attempt).entry, current)
+        play_mock.assert_awaited_once_with(
+            current.track, start_time=0, volume=None, pause=False, user_data=ANY
+        )
+
+    async def test_repeat_queue_appends_previous_track_and_starts_next(self) -> None:
+        current = make_entry("current")
+        next_entry = make_entry("next", entry_id=2)
+        player = _make_player(current=current)
+        player.repeat.mode = RepeatMode.QUEUE
+        player.queue.append(next_entry)
+        with patch.object(player, "play", new=AsyncMock()):
+            outcome = await player.handle_track_end(
+                _current_token(player), mafic.EndReason.FINISHED
+            )
+        self.assertEqual(_require_attempt(outcome.started_attempt).entry, next_entry)
+        self.assertEqual(player.queue.snapshot(), (current,))
+
+    async def test_requester_collision_creates_distinct_entries(self) -> None:
+        track = make_track("same")
+        player = _make_player(current=make_entry("current"))
+        await player.enqueue_tracks((track,), TrackRequester(10), placement="end")
+        await player.enqueue_tracks((track,), TrackRequester(20), placement="end")
+        first, second = player.queue.snapshot()
+        self.assertNotEqual(first.entry_id, second.entry_id)
+        self.assertEqual(first.requester.user_id, 10)
+        self.assertEqual(second.requester.user_id, 20)
+
+    async def test_playlist_entries_share_requester_and_preserve_order(self) -> None:
+        player = _make_player(current=make_entry("current"))
+        requester = TrackRequester(10)
+        tracks = [make_track("one"), make_track("two"), make_track("three")]
+        await player.enqueue_tracks(tracks, requester, placement="next")
+        entries = player.queue.snapshot()
+        self.assertEqual([entry.track for entry in entries], tracks)
+        self.assertTrue(all(entry.requester is requester for entry in entries))
+        self.assertEqual(len({entry.entry_id for entry in entries}), 3)
+
+    async def test_rotate_failure_rolls_back_all_local_state(self) -> None:
+        await self._assert_manual_failure_rolls_back("rotate")
+
+    async def test_skip_failure_rolls_back_all_local_state(self) -> None:
+        await self._assert_manual_failure_rolls_back("skip")
+
+    async def _assert_manual_failure_rolls_back(self, operation: str) -> None:
+        current = make_entry("current")
+        queued = make_entry("queued", entry_id=2)
+        player = _make_player(current=current)
+        player.queue.append(queued)
+        with patch.object(player, "play", new=AsyncMock(side_effect=RuntimeError)):
+            with self.assertRaises(RuntimeError):
+                if operation == "rotate":
+                    await player.rotate_current()
+                else:
+                    await player.skip()
+        self.assertEqual(player.current_entry, current)
+        self.assertEqual(player.queue.snapshot(), (queued,))
+        self.assertEqual(list(player._pending_end_attempts), [])
+
+    async def test_repeat_queue_failure_rolls_back_all_local_state(self) -> None:
+        current = make_entry("current")
+        queued = make_entry("queued", entry_id=2)
+        player = _make_player(current=current)
+        player.repeat.mode = RepeatMode.QUEUE
+        player.queue.append(queued)
+        token = _current_token(player)
+        with patch.object(player, "play", new=AsyncMock(side_effect=RuntimeError)):
+            with self.assertRaises(RuntimeError):
+                await player.handle_track_end(token, mafic.EndReason.FINISHED)
+        self.assertEqual(player.current_entry, current)
+        self.assertEqual(player.queue.snapshot(), (queued,))
+
+    async def test_repeat_track_failure_rolls_back_all_local_state(self) -> None:
+        current = make_entry("current")
+        player = _make_player(current=current)
+        player.repeat.mode = RepeatMode.TRACK
+        token = _current_token(player)
+        with patch.object(player, "play", new=AsyncMock(side_effect=RuntimeError)):
+            with self.assertRaises(RuntimeError):
+                await player.handle_track_end(token, mafic.EndReason.FINISHED)
+        self.assertEqual(player.current_entry, current)
+        self.assertTrue(player.queue.is_empty)
+
+    async def test_queued_idle_start_failure_returns_entry_to_front(self) -> None:
+        player = _make_player()
+        queued = make_entry("queued")
+        player.queue.append(queued)
+        with patch.object(player, "play", new=AsyncMock(side_effect=RuntimeError)):
+            with self.assertRaises(RuntimeError):
+                await player.start_queued_if_idle()
+        self.assertIsNone(player.current_entry)
+        self.assertEqual(player.queue.snapshot(), (queued,))
+
+    async def test_idle_enqueue_failure_preserves_new_playlist_entries(self) -> None:
+        player = _make_player()
+        tracks = (make_track("one"), make_track("two"))
+        requester = TrackRequester(7)
+        with patch.object(player, "play", new=AsyncMock(side_effect=RuntimeError)):
+            with self.assertRaises(RuntimeError):
+                await player.enqueue_tracks(tracks, requester, placement="end")
+        entries = player.queue.snapshot()
+        self.assertEqual([entry.track for entry in entries], list(tracks))
+        self.assertTrue(all(entry.requester is requester for entry in entries))
+        self.assertIsNone(player.current_entry)
+
+    async def test_restore_entries_preserves_ids_and_new_entry_is_distinct(
+        self,
+    ) -> None:
+        player = _make_player()
+        current = make_entry("current", entry_id=8)
+        queued = make_entry("queued", entry_id=12)
+        player.restore_entries(current, [queued])
+
+        with patch.object(player, "play", new=AsyncMock()):
+            started = await player.restore_playback(
+                current, start_time=0, volume=50, pause=True
+            )
+            await player.enqueue_tracks((make_track("new"),), None, placement="end")
+
+        self.assertEqual(started.attempt_id, 1)
+        self.assertNotIn(player.queue.snapshot()[-1].entry_id, {8, 12})
+
+    async def test_repeated_restore_replaces_current_without_creating_pending(
+        self,
+    ) -> None:
+        player = _make_player()
+        entry = make_entry("restored")
+        unrelated = PlaybackAttempt(99, make_entry("unrelated", entry_id=99))
+        player._pending_end_attempts.append(unrelated)
+        with patch.object(player, "play", new=AsyncMock()):
+            first = await player.restore_playback(
+                entry, start_time=0, volume=50, pause=False
+            )
+            player._exception_attempt_ids.add(first.attempt_id)
+            second = await player.restore_playback(
+                entry, start_time=0, volume=50, pause=False
+            )
+            outcome = await player.handle_track_end(
+                second.event_token, mafic.EndReason.FINISHED
+            )
+
+        self.assertEqual(list(player._pending_end_attempts), [unrelated])
+        self.assertNotIn(first.attempt_id, player._exception_attempt_ids)
+        self.assertEqual(outcome.ended_attempt, second)
+        self.assertIsNone(player.current_attempt)
+
+    async def test_repeated_restore_failure_restores_current_and_pending(self) -> None:
+        player = _make_player()
+        entry = make_entry("restored")
+        unrelated = PlaybackAttempt(99, make_entry("unrelated", entry_id=99))
+        player._pending_end_attempts.append(unrelated)
+        with patch.object(
+            player,
+            "play",
+            new=AsyncMock(side_effect=[None, RuntimeError("failed")]),
+        ):
+            first = await player.restore_playback(
+                entry, start_time=0, volume=50, pause=False
+            )
+            player._exception_attempt_ids.add(first.attempt_id)
+            with self.assertRaises(RuntimeError):
+                await player.restore_playback(
+                    entry, start_time=0, volume=50, pause=False
+                )
+
+        self.assertIs(player.current_attempt, first)
+        self.assertEqual(list(player._pending_end_attempts), [unrelated])
+        self.assertIn(first.attempt_id, player._exception_attempt_ids)
+
+    async def test_idle_enqueue_cancellation_restores_playlist_entries(self) -> None:
+        player = _make_player()
+        tracks = (make_track("one"), make_track("two"))
+        requester = TrackRequester(7, 8)
+        entered = asyncio.Event()
+        never_finish = asyncio.Event()
+
+        async def blocked_play(*_args: object, **_kwargs: object) -> None:
+            entered.set()
+            await never_finish.wait()
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=blocked_play)):
+            task = asyncio.create_task(
+                player.enqueue_tracks(tracks, requester, placement="end")
+            )
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        entries = player.queue.snapshot()
+        self.assertIsNone(player.current_attempt)
+        self.assertEqual([entry.track for entry in entries], list(tracks))
+        self.assertTrue(all(entry.requester is requester for entry in entries))
+
+    async def test_skip_cancellation_restores_transition_state(self) -> None:
+        current = make_entry("current")
+        next_entry = make_entry("next", entry_id=2)
+        unrelated = PlaybackAttempt(99, make_entry("unrelated", entry_id=99))
+        player = _make_player(current=current)
+        player.queue.append(next_entry)
+        player._pending_end_attempts.append(unrelated)
+        entered = asyncio.Event()
+        never_finish = asyncio.Event()
+
+        async def blocked_play(*_args: object, **_kwargs: object) -> None:
+            entered.set()
+            await never_finish.wait()
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=blocked_play)):
+            task = asyncio.create_task(player.skip())
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        self.assertEqual(player.current_entry, current)
+        self.assertEqual(list(player._pending_end_attempts), [unrelated])
+        self.assertEqual(player.queue.snapshot(), (next_entry,))
+        self.assertNotIn(current, player.queue)
+
+    async def test_repeat_queue_cancellation_restores_transition_state(self) -> None:
+        current = make_entry("current")
+        next_entry = make_entry("next", entry_id=2)
+        player = _make_player(current=current)
+        player.repeat.mode = RepeatMode.QUEUE
+        player.queue.append(next_entry)
+        token = _current_token(player)
+        entered = asyncio.Event()
+        never_finish = asyncio.Event()
+
+        async def blocked_play(*_args: object, **_kwargs: object) -> None:
+            entered.set()
+            await never_finish.wait()
+
+        with patch.object(player, "play", new=AsyncMock(side_effect=blocked_play)):
+            task = asyncio.create_task(
+                player.handle_track_end(token, mafic.EndReason.FINISHED)
+            )
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        self.assertEqual(player.current_entry, current)
+        self.assertEqual(player.queue.snapshot(), (next_entry,))
+        self.assertEqual(list(player._pending_end_attempts), [])
+
+    async def test_repeated_restore_cancellation_restores_previous_attempt(
+        self,
+    ) -> None:
+        player = _make_player()
+        entry = make_entry("restored")
+        unrelated = PlaybackAttempt(99, make_entry("unrelated", entry_id=99))
+        entered = asyncio.Event()
+        never_finish = asyncio.Event()
+        play_count = 0
+
+        async def second_play_blocks(*_args: object, **_kwargs: object) -> None:
+            nonlocal play_count
+            play_count += 1
+            if play_count == 1:
+                return
+            entered.set()
+            await never_finish.wait()
+
+        with patch.object(
+            player, "play", new=AsyncMock(side_effect=second_play_blocks)
+        ):
+            first = await player.restore_playback(
+                entry, start_time=0, volume=50, pause=False
+            )
+            player._pending_end_attempts.append(unrelated)
+            player._exception_attempt_ids.add(first.attempt_id)
+            task = asyncio.create_task(
+                player.restore_playback(entry, start_time=0, volume=50, pause=False)
+            )
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        self.assertIs(player.current_attempt, first)
+        self.assertEqual(list(player._pending_end_attempts), [unrelated])
+        self.assertIn(first.attempt_id, player._exception_attempt_ids)
+
+    async def test_voice_server_update_propagates_error_without_cleanup(
+        self,
+    ) -> None:
+        player = object.__new__(MusicPlayer)
+        with (
+            patch.object(player, "cleanup") as cleanup,
+            patch.object(
+                mafic.Player,
+                "on_voice_server_update",
+                new=AsyncMock(side_effect=aiohttp.ClientConnectionError("down")),
+            ),
+            self.assertRaises(aiohttp.ClientConnectionError),
+        ):
+            await player.on_voice_server_update(
+                cast(VoiceServerUpdatePayload, object())
+            )
+        cleanup.assert_not_called()
+
+    async def test_update_propagates_error_without_cleanup(self) -> None:
+        player = object.__new__(MusicPlayer)
+        with (
+            patch.object(player, "cleanup") as cleanup,
+            patch.object(
+                mafic.Player,
+                "update",
+                new=AsyncMock(side_effect=mafic.HTTPNotFound("Session not found")),
+            ),
+            self.assertRaises(mafic.HTTPNotFound),
+        ):
+            await player.update(pause=True)
+        cleanup.assert_not_called()

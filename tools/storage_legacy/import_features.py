@@ -7,9 +7,9 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from api.report_models import ReportDataDict
-from repositories.sqlite.database import Database
-from repositories.sqlite.identity import (
+from stupidbot.features.reports.models import ReportDataDict
+from stupidbot.storage.database import Database
+from stupidbot.storage.identity import (
     ensure_channel,
     ensure_guild,
     ensure_member,
@@ -17,7 +17,7 @@ from repositories.sqlite.identity import (
     ensure_user,
     utc_microseconds,
 )
-from repositories.sqlite.schema import (
+from stupidbot.storage.schema import (
     birthday_history,
     birthday_settings,
     block_events,

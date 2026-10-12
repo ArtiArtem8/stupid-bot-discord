@@ -1,0 +1,152 @@
+# Russian translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: ru\n"
+"Language-Team: ru <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && "
+"(n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "ui"
+msgid "API Error"
+msgstr "Ошибка API"
+
+msgctxt "ui"
+msgid "API Rate Limit Error"
+msgstr "Ограничение запросов API"
+
+msgctxt "ui"
+msgid "API-Key Error"
+msgstr "Ошибка ключа API"
+
+msgctxt "ui"
+msgid "Cannot upload images in this context."
+msgstr "Здесь невозможно отправить изображение."
+
+msgctxt "command"
+msgid "Equation to solve (e.g. x^2 + 2x + 1 = 0)"
+msgstr "Уравнение для решения (например, x^2 + 2x + 1 = 0)"
+
+msgctxt "ui"
+msgid "Expression:"
+msgstr "Выражение:"
+
+msgctxt "ui"
+msgid "Failed to process graph image."
+msgstr "Не удалось обработать изображение графика."
+
+msgctxt "command"
+msgid "Function to plot (e.g. sin(x)/x)"
+msgstr "Функция для графика (например, sin(x)/x)"
+
+#, python-brace-format
+msgctxt "graph"
+msgid "Graph generated: {url}"
+msgstr "График построен: {url}"
+
+msgctxt "ui"
+msgid "Image Error"
+msgstr "Ошибка изображения"
+
+msgctxt "ui"
+msgid "Internal Error"
+msgstr "Внутренняя ошибка"
+
+msgctxt "invalid_response"
+msgid "Invalid XML response"
+msgstr "Некорректный XML-ответ"
+
+msgctxt "ui"
+msgid "No Plot"
+msgstr "Нет графика"
+
+msgctxt "ui"
+msgid "No Results"
+msgstr "Нет результатов"
+
+msgctxt "ui"
+msgid ""
+"No displayable results found.\n"
+"All results were filtered out."
+msgstr ""
+"Нет результатов для отображения.\n"
+"Все результаты были отфильтрованы."
+
+msgctxt "ui"
+msgid "No graph generated."
+msgstr "График не построен."
+
+msgctxt "no_results"
+msgid "No results found"
+msgstr "Ничего не найдено"
+
+msgctxt "command"
+msgid "Plot a mathematical function"
+msgstr "Построить график функции"
+
+msgctxt "ui"
+msgid "Query empty or too long."
+msgstr "Запрос пустой или слишком длинный."
+
+#, python-brace-format
+msgctxt "query"
+msgid "Query: `{query}`"
+msgstr "Запрос: `{query}`"
+
+#, python-brace-format
+msgctxt "results"
+msgid "Results: {url}"
+msgstr "Результаты: {url}"
+
+msgctxt "ui"
+msgid "Session not initialized."
+msgstr "Сессия не инициализирована."
+
+msgctxt "command"
+msgid "Solve a mathematical equation"
+msgstr "Решить математическое уравнение"
+
+msgctxt "command"
+msgid "Solve with Wolfram"
+msgstr "Решить с Wolfram"
+
+msgctxt "ui"
+msgid "The API key is not set."
+msgstr "Ключ API не задан."
+
+msgctxt "unknown_api_error"
+msgid "Unknown API Error"
+msgstr "Неизвестная ошибка API"
+
+msgctxt "ui"
+msgid "Wolfram could not understand the input."
+msgstr "Wolfram не смог понять запрос."
+
+msgctxt "ui"
+msgid "Wolfram request stopped during reload. Please try again."
+msgstr "Запрос к Wolfram остановлен при перезагрузке. Попробуйте ещё раз."
+
+msgctxt "ui"
+msgid "Wolfram|Alpha is temporarily rate-limited. Please try again later."
+msgstr "Wolfram|Alpha временно ограничил запросы. Попробуйте позже."
+
+msgctxt "ui"
+msgid "Wolfram|Alpha request failed. Please try again later."
+msgstr "Не удалось выполнить запрос к Wolfram|Alpha. Попробуйте позже."
+
+#, python-brace-format
+msgctxt "plot"
+msgid "{mention} [Wolfram]({url}) **Plot:** `{query}`"
+msgstr "{mention} [Wolfram]({url}) **График:** `{query}`"

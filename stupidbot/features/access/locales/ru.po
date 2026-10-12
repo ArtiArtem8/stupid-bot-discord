@@ -1,0 +1,255 @@
+# Russian translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: ru\n"
+"Language-Team: ru <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && "
+"(n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "ui"
+msgid " • Detailed block information"
+msgstr " • Детальная информация о блокировках"
+
+#, python-brace-format
+msgctxt "blocked_status"
+msgid ""
+"**Blocked**\n"
+"• Administrator: <@{admin_id:d}>\n"
+"• Date: {timestamp}\n"
+"• Reason: {reason}\n"
+msgstr ""
+"**Заблокирован**\n"
+"• Администратор: <@{admin_id:d}>\n"
+"• Дата: {timestamp}\n"
+"• Причина: {reason}\n"
+
+#, python-brace-format
+msgctxt "user"
+msgid "**User:** {identity}"
+msgstr "**Пользователь:** {identity}"
+
+msgctxt "ui"
+msgid "Block"
+msgstr "Блокировка"
+
+msgctxt "command"
+msgid "Block a user from using the bot"
+msgstr "Заблокировать пользователя от использования бота."
+
+#, python-brace-format
+msgctxt "list_title"
+msgid "Blocked users ({count:d})"
+msgstr "Заблокированные пользователи ({count:d})"
+
+msgctxt "ui"
+msgid "Current status"
+msgstr "Текущий статус"
+
+msgctxt "ui"
+msgid "Full block history"
+msgstr "Полная история блокировок"
+
+msgctxt "ui"
+msgid "Name history"
+msgstr "История имён"
+
+msgctxt "ui"
+msgid "Not blocked"
+msgstr "Не заблокирован"
+
+msgctxt "ui"
+msgid "Not specified"
+msgstr "Не указана"
+
+msgctxt "ui"
+msgid "Only the command author can use these pages."
+msgstr "Эти страницы доступны только автору команды."
+
+#, python-brace-format
+msgctxt "list_footer"
+msgid "Page {page:d}/{pages:d}{detail}"
+msgstr "Страница {page:d}/{pages:d}{detail}"
+
+msgctxt "ui"
+msgid "Reason"
+msgstr "Причина"
+
+msgctxt "command"
+msgid "Reason for blocking"
+msgstr "Причина блокировки"
+
+msgctxt "command"
+msgid "Reason for unblocking"
+msgstr "Причина снятия блокировки"
+
+msgctxt "ui"
+msgid "Recent events"
+msgstr "Последние события"
+
+#, python-brace-format
+msgctxt "danger"
+msgid "Risk level: {level}"
+msgstr "Уровень проблемности: {level}"
+
+msgctxt "command"
+msgid "Show additional information"
+msgstr "Показать дополнительную информацию"
+
+msgctxt "command"
+msgid "Show all blocked users"
+msgstr "Показать всех заблокированных пользователей"
+
+msgctxt "command"
+msgid "Show detailed block information for a user"
+msgstr "Показать подробную информацию о блокировках пользователя."
+
+msgctxt "command"
+msgid "Show this message only to you"
+msgstr "Скрыть сообщение от других пользователей"
+
+msgctxt "ui"
+msgid "Statistics"
+msgstr "Статистика"
+
+msgctxt "ui"
+msgid "There are no blocked users."
+msgstr "Нет заблокированных пользователей."
+
+msgctxt "ui"
+msgid "Unblock"
+msgstr "Разблокировка"
+
+msgctxt "command"
+msgid "Unblock a user from using the bot"
+msgstr "Снять блокировку использования бота с пользователя."
+
+#, python-brace-format
+msgctxt "departed"
+msgid "User has left the server `{user_id:d}`"
+msgstr "Пользователь покинул сервер `{user_id:d}`"
+
+msgctxt "command"
+msgid "User to block from this bot"
+msgstr "Пользователь, которого надо лишить доступа к этому боту"
+
+msgctxt "command"
+msgid "User to show information for"
+msgstr "Пользователь для просмотра информации"
+
+msgctxt "command"
+msgid "User to unblock"
+msgstr "Пользователь, с которого снимается блокировка"
+
+#, python-brace-format
+msgctxt "event"
+msgid ""
+"{icon} **{action}** {timestamp}\n"
+"• Admin: <@{admin_id:d}>\n"
+"• Reason: {reason}"
+msgstr ""
+"{icon} **{action}** {timestamp}\n"
+"• Админ: <@{admin_id:d}>\n"
+"• Причина: {reason}"
+
+#, python-brace-format
+msgctxt "blocked"
+msgid "{mention} has been blocked"
+msgstr "{mention} был заблокирован"
+
+#, python-brace-format
+msgctxt "unblocked"
+msgid "{mention} has been unblocked"
+msgstr "{mention} был разблокирован"
+
+#, python-brace-format
+msgctxt "no_history"
+msgid "{mention} has no block history."
+msgstr "{mention} не имеет истории блокировок."
+
+#, python-brace-format
+msgctxt "already_blocked"
+msgid "{mention} is already blocked."
+msgstr "{mention} уже заблокирован."
+
+#, python-brace-format
+msgctxt "not_blocked"
+msgid "{mention} is not blocked."
+msgstr "{mention} не заблокирован."
+
+#, python-brace-format
+msgctxt "name_event"
+msgid ""
+"{timestamp}:\n"
+"• Name: {name}"
+msgstr ""
+"{timestamp}:\n"
+"• Имя: {name}"
+
+#, python-brace-format
+msgctxt "admin"
+msgid "• Administrator: <@{admin_id:d}>"
+msgstr "• Администратор: <@{admin_id:d}>"
+
+#, python-brace-format
+msgctxt "current_name"
+msgid "• Current name: {name}"
+msgstr "• Текущее имя: {name}"
+
+#, python-brace-format
+msgctxt "first_block"
+msgid "• First block: {timestamp}"
+msgstr "• Первая блокировка: {timestamp}"
+
+#, python-brace-format
+msgctxt "last_block"
+msgid "• Last block: {timestamp}"
+msgstr "• Последняя блокировка: {timestamp}"
+
+#, python-brace-format
+msgctxt "last_unblock"
+msgid "• Last unblock: {timestamp}"
+msgstr "• Последняя разблокировка: {timestamp}"
+
+msgctxt "ui"
+msgid "• No block history."
+msgstr "• История блокировок отсутствует."
+
+#, python-brace-format
+msgctxt "reason"
+msgid "• Reason: {reason}"
+msgstr "• Причина: {reason}"
+
+#, python-brace-format
+msgctxt "blocks"
+msgid "• Total blocks: {count:d}"
+msgstr "• Всего блокировок: {count:d}"
+
+#, python-brace-format
+msgctxt "unblocks"
+msgid "• Total unblocks: {count:d}"
+msgstr "• Всего разблокировок: {count:d}"
+
+msgctxt "ui"
+msgid "🔴 High"
+msgstr "🔴 Высокий"
+
+msgctxt "ui"
+msgid "🟠 Medium"
+msgstr "🟠 Средний"
+
+msgctxt "ui"
+msgid "🟢 Low"
+msgstr "🟢 Низкий"

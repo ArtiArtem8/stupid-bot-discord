@@ -1,0 +1,17 @@
+{
+  "keys": [
+    "access\u0004The command access check failed.",
+    "access_title\u0004Access denied",
+    "blocked\u0004⛔ You cannot use commands.",
+    "cooldown\u0004Please wait: {relative_time}",
+    "deletion\u0004-# Deletes {relative_time}",
+    "discord_error\u0004Could not complete the action in Discord. Please try again.",
+    "discord_title\u0004Discord error",
+    "guild_only\u0004This command can only be used in a server",
+    "internal_error\u0004Could not complete the command. Details were logged.",
+    "internal_title\u0004Internal error",
+    "not_yours\u0004This is not your message.",
+    "page\u0004{name} (page {page:d})",
+    "report\u0004Report a problem"
+  ]
+}

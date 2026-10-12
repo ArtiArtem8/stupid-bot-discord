@@ -1,0 +1,95 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgctxt "channel"
+msgid "**Channel:** {name}"
+msgstr "**Channel:** {name}"
+
+#, python-brace-format
+msgctxt "guild"
+msgid "**Server:** {name}"
+msgstr "**Server:** {name}"
+
+#, python-brace-format
+msgctxt "receipt"
+msgid "-# Your personal ID: `{report_id}`"
+msgstr "-# Your personal ID: `{report_id}`"
+
+msgctxt "ui"
+msgid "Could not finish processing the report. Details have been logged."
+msgstr "Could not finish processing the report. Details have been logged."
+
+msgctxt "ui"
+msgid "Describe what happened..."
+msgstr "Describe what happened..."
+
+msgctxt "ui"
+msgid "Description"
+msgstr "Description"
+
+msgctxt "ui"
+msgid "Direct messages"
+msgstr "Direct messages"
+
+msgctxt "ui"
+msgid "Location"
+msgstr "Location"
+
+msgctxt "ui"
+msgid "Problem description"
+msgstr "Problem description"
+
+msgctxt "ui"
+msgid "Report"
+msgstr "Report"
+
+msgctxt "command"
+msgid "Report a bug or problem"
+msgstr "Report a bug or problem"
+
+msgctxt "command"
+msgid "Report channel"
+msgstr "Report channel"
+
+#, python-brace-format
+msgctxt "destination"
+msgid "Report channel set to {mention}"
+msgstr "Report channel set to {mention}"
+
+msgctxt "ui"
+msgid "Sender"
+msgstr "Sender"
+
+msgctxt "command"
+msgid "Set the report channel (developers only)"
+msgstr "Set the report channel (developers only)"
+
+msgctxt "ui"
+msgid "Submit a bug report"
+msgstr "Submit a bug report"
+
+msgctxt "ui"
+msgid "Thank you for the report!"
+msgstr "Thank you for the report!"
+
+msgctxt "ui"
+msgid "Unknown channel"
+msgstr "Unknown channel"

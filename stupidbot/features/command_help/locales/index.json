@@ -1,0 +1,8 @@
+{
+  "keys": [
+    "alternatives\u0004-# perhaps you were looking for {primary} or {alternative}",
+    "maybe\u0004-# perhaps {command}",
+    "prefix_removed\u0004Prefix commands have been removed; please use slash commands.",
+    "try\u0004-# try {command}"
+  ]
+}

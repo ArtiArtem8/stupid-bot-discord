@@ -18,11 +18,13 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import insert
 
-from api.voice.model import VoiceObservation, VoiceSnapshot
-from repositories.sqlite.database import Database, migrate, open_engine
-from repositories.sqlite.identity import discord_id
-from repositories.sqlite.schema import migration_sources, storage_state
-from repositories.voice_repository import VoiceRepository
+from stupidbot.common.asyncio import run_in_thread
+from stupidbot.common.json import JsonObject
+from stupidbot.features.voice.facts import VoiceObservation, VoiceSnapshot
+from stupidbot.features.voice.repository import VoiceRepository
+from stupidbot.storage.database import Database, migrate, open_engine
+from stupidbot.storage.identity import discord_id
+from stupidbot.storage.schema import migration_sources, storage_state
 from tools.storage_legacy.import_features import (
     birth_date,
     import_features,
@@ -30,8 +32,6 @@ from tools.storage_legacy.import_features import (
 )
 from tools.storage_legacy.sources import LegacyData, read_sources
 from tools.storage_legacy.verify import verify_import
-from utils.asyncio_utils import run_in_thread
-from utils.json_types import JsonObject
 
 
 class Arguments(argparse.Namespace):

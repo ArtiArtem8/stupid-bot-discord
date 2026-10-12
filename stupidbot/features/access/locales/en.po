@@ -1,0 +1,254 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "ui"
+msgid " • Detailed block information"
+msgstr " • Detailed block information"
+
+#, python-brace-format
+msgctxt "blocked_status"
+msgid ""
+"**Blocked**\n"
+"• Administrator: <@{admin_id:d}>\n"
+"• Date: {timestamp}\n"
+"• Reason: {reason}\n"
+msgstr ""
+"**Blocked**\n"
+"• Administrator: <@{admin_id:d}>\n"
+"• Date: {timestamp}\n"
+"• Reason: {reason}\n"
+
+#, python-brace-format
+msgctxt "user"
+msgid "**User:** {identity}"
+msgstr "**User:** {identity}"
+
+msgctxt "ui"
+msgid "Block"
+msgstr "Block"
+
+msgctxt "command"
+msgid "Block a user from using the bot"
+msgstr "Block a user from using the bot"
+
+#, python-brace-format
+msgctxt "list_title"
+msgid "Blocked users ({count:d})"
+msgstr "Blocked users ({count:d})"
+
+msgctxt "ui"
+msgid "Current status"
+msgstr "Current status"
+
+msgctxt "ui"
+msgid "Full block history"
+msgstr "Full block history"
+
+msgctxt "ui"
+msgid "Name history"
+msgstr "Name history"
+
+msgctxt "ui"
+msgid "Not blocked"
+msgstr "Not blocked"
+
+msgctxt "ui"
+msgid "Not specified"
+msgstr "Not specified"
+
+msgctxt "ui"
+msgid "Only the command author can use these pages."
+msgstr "Only the command author can use these pages."
+
+#, python-brace-format
+msgctxt "list_footer"
+msgid "Page {page:d}/{pages:d}{detail}"
+msgstr "Page {page:d}/{pages:d}{detail}"
+
+msgctxt "ui"
+msgid "Reason"
+msgstr "Reason"
+
+msgctxt "command"
+msgid "Reason for blocking"
+msgstr "Reason for blocking"
+
+msgctxt "command"
+msgid "Reason for unblocking"
+msgstr "Reason for unblocking"
+
+msgctxt "ui"
+msgid "Recent events"
+msgstr "Recent events"
+
+#, python-brace-format
+msgctxt "danger"
+msgid "Risk level: {level}"
+msgstr "Risk level: {level}"
+
+msgctxt "command"
+msgid "Show additional information"
+msgstr "Show additional information"
+
+msgctxt "command"
+msgid "Show all blocked users"
+msgstr "Show all blocked users"
+
+msgctxt "command"
+msgid "Show detailed block information for a user"
+msgstr "Show detailed block information for a user"
+
+msgctxt "command"
+msgid "Show this message only to you"
+msgstr "Show this message only to you"
+
+msgctxt "ui"
+msgid "Statistics"
+msgstr "Statistics"
+
+msgctxt "ui"
+msgid "There are no blocked users."
+msgstr "There are no blocked users."
+
+msgctxt "ui"
+msgid "Unblock"
+msgstr "Unblock"
+
+msgctxt "command"
+msgid "Unblock a user from using the bot"
+msgstr "Unblock a user from using the bot"
+
+#, python-brace-format
+msgctxt "departed"
+msgid "User has left the server `{user_id:d}`"
+msgstr "User has left the server `{user_id:d}`"
+
+msgctxt "command"
+msgid "User to block from this bot"
+msgstr "User to block from this bot"
+
+msgctxt "command"
+msgid "User to show information for"
+msgstr "User to show information for"
+
+msgctxt "command"
+msgid "User to unblock"
+msgstr "User to unblock"
+
+#, python-brace-format
+msgctxt "event"
+msgid ""
+"{icon} **{action}** {timestamp}\n"
+"• Admin: <@{admin_id:d}>\n"
+"• Reason: {reason}"
+msgstr ""
+"{icon} **{action}** {timestamp}\n"
+"• Admin: <@{admin_id:d}>\n"
+"• Reason: {reason}"
+
+#, python-brace-format
+msgctxt "blocked"
+msgid "{mention} has been blocked"
+msgstr "{mention} has been blocked"
+
+#, python-brace-format
+msgctxt "unblocked"
+msgid "{mention} has been unblocked"
+msgstr "{mention} has been unblocked"
+
+#, python-brace-format
+msgctxt "no_history"
+msgid "{mention} has no block history."
+msgstr "{mention} has no block history."
+
+#, python-brace-format
+msgctxt "already_blocked"
+msgid "{mention} is already blocked."
+msgstr "{mention} is already blocked."
+
+#, python-brace-format
+msgctxt "not_blocked"
+msgid "{mention} is not blocked."
+msgstr "{mention} is not blocked."
+
+#, python-brace-format
+msgctxt "name_event"
+msgid ""
+"{timestamp}:\n"
+"• Name: {name}"
+msgstr ""
+"{timestamp}:\n"
+"• Name: {name}"
+
+#, python-brace-format
+msgctxt "admin"
+msgid "• Administrator: <@{admin_id:d}>"
+msgstr "• Administrator: <@{admin_id:d}>"
+
+#, python-brace-format
+msgctxt "current_name"
+msgid "• Current name: {name}"
+msgstr "• Current name: {name}"
+
+#, python-brace-format
+msgctxt "first_block"
+msgid "• First block: {timestamp}"
+msgstr "• First block: {timestamp}"
+
+#, python-brace-format
+msgctxt "last_block"
+msgid "• Last block: {timestamp}"
+msgstr "• Last block: {timestamp}"
+
+#, python-brace-format
+msgctxt "last_unblock"
+msgid "• Last unblock: {timestamp}"
+msgstr "• Last unblock: {timestamp}"
+
+msgctxt "ui"
+msgid "• No block history."
+msgstr "• No block history."
+
+#, python-brace-format
+msgctxt "reason"
+msgid "• Reason: {reason}"
+msgstr "• Reason: {reason}"
+
+#, python-brace-format
+msgctxt "blocks"
+msgid "• Total blocks: {count:d}"
+msgstr "• Total blocks: {count:d}"
+
+#, python-brace-format
+msgctxt "unblocks"
+msgid "• Total unblocks: {count:d}"
+msgstr "• Total unblocks: {count:d}"
+
+msgctxt "ui"
+msgid "🔴 High"
+msgstr "🔴 High"
+
+msgctxt "ui"
+msgid "🟠 Medium"
+msgstr "🟠 Medium"
+
+msgctxt "ui"
+msgid "🟢 Low"
+msgstr "🟢 Low"

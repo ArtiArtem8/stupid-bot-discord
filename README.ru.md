@@ -114,6 +114,20 @@ People показывает время с другими участниками,
 по умолчанию список виден только вызвавшему команду. Дни рождения определяются
 по локальной дате хоста; `VOICE_PROFILE_TIMEZONE` влияет только на голосовые профили.
 
+`/settings` открывает личные настройки языка и часового пояса.
+`/settings-server` настраивает общие сообщения и требует права «Управлять сервером».
+«Как в Discord» сбрасывает только язык. Личные карточки используют ваши настройки,
+общие — серверные; уже открытая карточка сохраняет язык и зону при обновлении.
+После второго успешного вызова личного профиля бот может показать подсказку о
+настройках: максимум два раза с интервалом 14 дней, с кнопками «Позже» и
+«Не напоминать». Автоматических личных сообщений нет.
+
+Сообщения бота, кнопки, описания команд и подписи профиля доступны на русском
+и английском. Приоритет языка ответа: настройка соответствующей аудитории,
+затем её язык Discord, затем русский. Текст пользователей, ответы Wolfram и
+ранее сохранённые ответы `/ask` не переводятся. Перед обновлением существующей
+установки [проверьте языки всех серверов](docs/storage/README.md#backup-restore-and-rollback).
+
 | Другие возможности | Команды и поведение |
 | --- | --- |
 | WolframAlpha | `/solve` — ответы и вычисления, `/plot` — графики. Нужен App ID. |
@@ -125,21 +139,21 @@ People показывает время с другими участниками,
 
 ## Инженерные решения
 
-- **Состояние плеера учитывает конкурирующие события.** [MusicPlayer](api/music/player.py)
+- **Состояние плеера учитывает конкурирующие события.** [MusicPlayer](stupidbot/features/music/playback/player.py)
   выполняет изменения очереди последовательно и присваивает каждой попытке
-  воспроизведения идентификатор. [Обработчики](api/music/service/playback_events.py)
+  воспроизведения идентификатор. [Обработчики](stupidbot/features/music/runtime/playback_events.py)
   по нему отличают запоздавшие события от текущего воспроизведения.
-  [Composition](cogs/music/composition.py) связывает плеер, восстановление
+  [Composition](stupidbot/features/music/composition.py) связывает плеер, восстановление
   и интерфейс Discord.
-- **Профили читают временную шкалу из памяти.** [VoiceAnalytics](api/voice/analytics.py)
+- **Профили читают временную шкалу из памяти.** [VoiceAnalytics](stupidbot/features/voice/runtime.py)
   восстанавливает её при запуске и обновляет после фиксации записей журнала.
   В штатном режиме профили используют снимки без SQL-запросов к сырой истории.
   [Архитектура голосовой подсистемы](docs/voice/architecture.md) описывает
   сессии, пробелы в наблюдениях и восстановление.
-- **Одна база и явный порядок завершения работы.** [Database](repositories/sqlite/database.py)
+- **Одна база и явный порядок завершения работы.** [Database](stupidbot/storage/database.py)
   обслуживает все функции с постоянными данными. При выключении бот останавливает
   источники записей, завершает принятые записи голосовой истории и сохраняет uptime,
-  затем дожидается транзакций и закрывает базу. [Документация хранилища](repositories/sqlite/README.md)
+  затем дожидается транзакций и закрывает базу. [Документация хранилища](docs/storage/README.md)
   описывает явные миграции, офлайн-импорт, резервные копии и восстановление.
 
 ## Локальный запуск
@@ -167,7 +181,7 @@ uv sync --locked --no-dev
 | `DISCORD_BOT_TOKEN` | Обязательный токен Discord-бота. |
 | `DISCORD_BOT_OWNER_ID` | Необязательный ID владельца. |
 | `VOICE_PROBE_ENABLED` | По умолчанию `true`: сбор голосовой активности. Наблюдения хранятся в SQLite бессрочно. |
-| `VOICE_PROFILE_TIMEZONE` | Часовой пояс IANA для календарных подробностей профиля, по умолчанию `UTC`. Не меняет длительность пребывания в голосе или суммарный XP. |
+| `VOICE_PROFILE_TIMEZONE` | Часовой пояс IANA для календарных подробностей профиля; без значения — `UTC`. Для новой установки пример предлагает явно выбрать `Europe/Moscow`. При обновлении сохраните прежнее значение. Не меняет длительность пребывания в голосе или суммарный XP. |
 | `WOLFRAM_APP_ID` | [App ID WolframAlpha](https://developer.wolframalpha.com/) для `/solve` и `/plot`; остальным функциям не нужен. |
 | `LAVALINK_HOST`, `LAVALINK_PORT` | Адрес Lavalink, по умолчанию `localhost:2333`. |
 | `LAVALINK_PASSWORD`, `LAVALINK_SECURE` | Пароль и настройка TLS должны совпадать с сервером Lavalink. |
@@ -177,11 +191,11 @@ uv sync --locked --no-dev
 для выбранной версии Lavalink.
 
 Для профилей установите **Inkscape** на хост бота и сохраните поставляемые
-[шрифты Inter](resources/fonts/). Проверьте `inkscape --version` от имени учётной
+[шрифты Inter](stupidbot/assets/fonts/). Проверьте `inkscape --version` от имени учётной
 записи службы. Без Inkscape или шрифтов команда профиля недоступна; остальные
 функции могут запускаться. Подробнее: [настройка рендерера](docs/voice/profile-card.md#setup).
-Пользовательские emoji приложения из [resources.py](resources.py) и
-[музыкального контроллера](cogs/music/views/controller.py) должны быть доступны вашему боту.
+Пользовательские emoji приложения из [shared emoji references](stupidbot/discord_ui/emojis.py) и
+[музыкального контроллера](stupidbot/features/music/discord/views/controller.py) должны быть доступны вашему боту.
 
 ### Подготовка базы и запуск
 
@@ -189,15 +203,15 @@ uv sync --locked --no-dev
 
 ```bash
 uv run --locked --no-dev python -c "from pathlib import Path; Path('data').mkdir(exist_ok=True)"
-uv run --locked --no-dev python -m repositories.sqlite --database data/app.sqlite migrate
-uv run --locked --no-dev python -m repositories.sqlite --database data/app.sqlite check
+uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite migrate
+uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite check
 uv run --locked --no-dev main.py
 ```
 
 > [!IMPORTANT]
 > Запуск требует подготовленной базы. Отсутствующие, несовместимые и
 > незавершённые файлы отклоняются. Для существующей установки сначала изучите
-> [миграцию и восстановление](repositories/sqlite/README.md):
+> [миграцию и восстановление](docs/storage/README.md):
 > команды выше не импортируют старые данные.
 
 Другой подготовленный файл можно выбрать так:
@@ -217,9 +231,10 @@ uv run --locked --no-dev main.py --database /path/to/app.sqlite
 в [настройке профилей](docs/voice/profile-card.md#setup).
 
 Рабочие файлы используют `data/` и временные каталоги рендерера. Резервные копии
-создаются отдельными командами обслуживания SQLite. В [config.py](config.py)
-находятся эксплуатационные константы, в [resources.py](resources.py) — статические
-строки; [настройка логирования](utils/logging_setup.py) управляет журналами.
+создаются отдельными командами обслуживания SQLite. В [stupidbot/settings.py](stupidbot/settings.py)
+находятся эксплуатационные константы, в [общих эмодзи](stupidbot/discord_ui/emojis.py) —
+ссылки на элементы управления; [настройка логирования](stupidbot/app/logging.py)
+управляет журналами. Тексты остальных функций находятся рядом с их кодом.
 
 Отслеживание выделения памяти по умолчанию выключено.
 `uv run --locked --no-dev main.py --tracemalloc` включает его для диагностики,
@@ -238,5 +253,5 @@ uv run --locked --no-dev main.py --database /path/to/app.sqlite
 [MIT](LICENSE). Баннер использует эмблему профиля и музыкальную палитру бота;
 редактируемые SVG находятся в [docs/assets/](docs/assets/).
 Часть иконок интерфейса предоставлена [Icons8](https://icons8.com);
-файлы находятся в [resources/emojis/](resources/emojis/). Inter распространяется
-по [SIL Open Font License](resources/fonts/OFL.txt).
+файлы находятся в [stupidbot/discord_ui/assets/emojis/](stupidbot/discord_ui/assets/emojis/). Inter распространяется
+по [SIL Open Font License](stupidbot/assets/fonts/OFL.txt).

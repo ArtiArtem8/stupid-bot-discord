@@ -1,2 +1,6 @@
 *.sh text eol=lf
 *.bat text eol=crlf
+**/locales/*.po text eol=lf
+**/locales/*.json text eol=lf
+**/locales/*.sha256 text eol=lf
+**/locales/*.mo binary

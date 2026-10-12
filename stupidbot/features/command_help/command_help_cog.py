@@ -1,0 +1,197 @@
+"""Redirect legacy prefix commands to visible slash-command suggestions."""
+
+import asyncio
+import logging
+import time
+from datetime import timedelta
+from typing import TYPE_CHECKING
+
+import discord
+from discord import Message, app_commands
+from discord.ext import commands
+from discord.utils import format_dt, utcnow
+
+from stupidbot.discord_ui.messages import FeedbackMessages
+from stupidbot.features.access.operations import BlockManager
+from stupidbot.features.command_help.messages import CommandHelpMessages
+from stupidbot.features.command_help.suggestions import (
+    Command,
+    Suggestion,
+    SuggestionPair,
+    find_prefix_suggestions,
+    is_guild_command,
+)
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import message_context
+from stupidbot.i18n.policy import Language
+
+if TYPE_CHECKING:
+    from stupidbot.app.bot import StupidBot
+
+logger = logging.getLogger(__name__)
+
+
+class PrefixBlockerCog(commands.Cog):
+    """Redirect users from prefix commands to slash commands."""
+
+    def __init__(self, bot: commands.Bot, block_manager: BlockManager) -> None:
+        self.bot = bot
+        self.block_manager = block_manager
+        self._app_cmd_cache: dict[
+            int | None, tuple[float, dict[str, app_commands.AppCommand]]
+        ] = {}
+        self._lock = asyncio.Lock()
+
+    def _requires_admin(self, cmd: Command) -> bool:
+        perms = cmd.default_permissions
+        if perms is not None:
+            return bool(perms.administrator)
+
+        return False
+
+    def _get_visible_commands(self, message: Message) -> list[Command]:
+        """Filter commands based on context (Guild/DM) and Permissions (Admin)."""
+        visible: list[Command] = []
+        is_guild = message.guild is not None
+
+        is_admin = False
+        if is_guild and isinstance(message.author, discord.Member):
+            is_admin = message.author.guild_permissions.administrator
+
+        for cmd in self.bot.tree.get_commands():
+            if not is_guild and is_guild_command(cmd):
+                continue
+            if self._requires_admin(cmd) and not is_admin:
+                continue
+            visible.append(cmd)
+
+        return visible
+
+    async def _get_app_command_map(
+        self, guild_id: int | None
+    ) -> dict[str, app_commands.AppCommand]:
+        """Fetch current AppCommands.
+
+        Cached to avoid extra HTTP traffic.
+        """
+        async with self._lock:
+            now = time.time()
+            ttl = 600
+            cached = self._app_cmd_cache.get(guild_id)
+            if cached and cached[0] > now:
+                return cached[1]
+
+            global_cmds = await self.bot.tree.fetch_commands(guild=None)
+            mapping: dict[str, app_commands.AppCommand] = {
+                c.name: c for c in global_cmds
+            }
+
+            guild = self.bot.get_guild(guild_id) if guild_id is not None else None
+            if guild is not None:
+                guild_cmds = await self.bot.tree.fetch_commands(guild=guild)
+                for command in guild_cmds:
+                    mapping[command.name] = command
+
+            self._app_cmd_cache[guild_id] = (now + ttl, mapping)
+            return mapping
+
+    async def _format_suggestion(self, message: Message, suggestion: Suggestion) -> str:
+        """Link the root command, falling back to the full local command name."""
+        guild_id = message.guild.id if message.guild else None
+        try:
+            app_map = await self._get_app_command_map(guild_id)
+            root = app_map.get(suggestion.root_name)
+            if root is None:
+                return f"`/{suggestion.key}`"
+            return root.mention
+        except discord.HTTPException:
+            return f"`/{suggestion.key}`"
+
+    @commands.Cog.listener()
+    async def on_message(self, message: Message) -> None:
+        if message.author.bot:
+            return
+
+        raw_content = await self._extract_prefix_query(message)
+        if raw_content is None:
+            return
+
+        if message.guild and await self.block_manager.is_user_blocked(
+            message.guild.id, message.author.id
+        ):
+            return
+
+        suggestions = find_prefix_suggestions(
+            raw_content,
+            self._get_visible_commands(message),
+            in_guild=message.guild is not None,
+        )
+        context = await message_context(self.bot, message)
+        response = await self._build_prefix_warning(
+            message, suggestions, language=context.language
+        )
+        await self._send_prefix_warning(message, response, language=context.language)
+
+    async def _extract_prefix_query(self, message: Message) -> str | None:
+        prefixes = await self.bot.get_prefix(message)
+        available = [prefixes] if isinstance(prefixes, str) else prefixes
+        used = next((p for p in available if message.content.startswith(p)), None)
+        if used is None:
+            return None
+        return message.content[len(used) :].strip() or None
+
+    async def _build_prefix_warning(
+        self,
+        message: Message,
+        suggestions: SuggestionPair,
+        *,
+        language: Language = Language.RU,
+    ) -> str:
+        messages = CommandHelpMessages(catalog("command_help", language))
+        response = messages.catalog.pgettext(
+            "prefix_removed",
+            "Prefix commands have been removed; please use slash commands.",
+        )
+        primary = suggestions.primary
+        if primary is None:
+            return response
+        primary_text = await self._format_suggestion(message, primary)
+        if suggestions.alternative is not None:
+            alternative = await self._format_suggestion(
+                message, suggestions.alternative
+            )
+            suffix = messages.alternatives(
+                primary=primary_text, alternative=alternative
+            )
+        else:
+            suffix = messages.suggestion(
+                command=primary_text, confident=primary.score >= 90.0
+            )
+        return f"{response}\n{suffix}"
+
+    async def _send_prefix_warning(
+        self, message: Message, response: str, *, language: Language = Language.RU
+    ) -> None:
+        try:
+            delete_after = 30
+            dt = utcnow() + timedelta(seconds=delete_after)
+            timer = FeedbackMessages(catalog("discord_ui", language)).deletion(
+                relative_time=format_dt(dt, "R")
+            )
+            await message.reply(
+                f"{response}\n\n{timer}",
+                mention_author=False,
+                delete_after=delete_after,
+                silent=True,
+            )
+        except discord.HTTPException as exc:
+            logger.warning(
+                "Discord rejected prefix warning (HTTP %s, code %s)",
+                exc.status,
+                exc.code,
+            )
+
+
+async def setup(bot: "StupidBot") -> None:
+    """Register the prefix-warning cog."""
+    await bot.add_cog(PrefixBlockerCog(bot, bot.block_manager))

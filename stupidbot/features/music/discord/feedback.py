@@ -1,0 +1,81 @@
+"""Discord feedback helpers for the music cog."""
+
+from discord import Interaction
+
+from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.features.music.messages import MusicMessages
+from stupidbot.features.music.results import MusicResultReason
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
+
+
+async def send_error(
+    interaction: Interaction,
+    message: str,
+    *,
+    ephemeral: bool = False,
+) -> None:
+    """Send an error feedback."""
+    await FeedbackUI.send(
+        interaction,
+        feedback_type=FeedbackType.ERROR,
+        description=message,
+        delete_after=600,
+        ephemeral=ephemeral,
+    )
+
+
+async def send_warning(
+    interaction: Interaction,
+    message: str,
+    title: str | None = None,
+    ephemeral: bool = True,
+    delete_after: float | None = None,
+) -> None:
+    """Send a warning feedback."""
+    await FeedbackUI.send(
+        interaction,
+        feedback_type=FeedbackType.WARNING,
+        description=message,
+        ephemeral=ephemeral,
+        title=title,
+        delete_after=delete_after,
+    )
+
+
+async def send_warning_no_player(interaction: Interaction) -> None:
+    """Send a warning feedback about there is no player."""
+    context = await interaction_context(interaction, private=True)
+    messages = MusicMessages(catalog("music", context.language))
+    await send_warning(interaction, messages.failure(MusicResultReason.NO_PLAYER))
+
+
+async def send_info(
+    interaction: Interaction,
+    message: str,
+    delete_after: float | None = 60,
+    title: str | None = None,
+    *,
+    ephemeral: bool = False,
+) -> None:
+    """Send info feedback."""
+    await FeedbackUI.send(
+        interaction,
+        feedback_type=FeedbackType.INFO,
+        description=message,
+        title=title,
+        delete_after=delete_after,
+        ephemeral=ephemeral,
+    )
+
+
+async def send_success(
+    interaction: Interaction, message: str, delete_after: float | None = 60
+) -> None:
+    """Send success feedback."""
+    await FeedbackUI.send(
+        interaction,
+        feedback_type=FeedbackType.SUCCESS,
+        description=message,
+        delete_after=delete_after,
+    )

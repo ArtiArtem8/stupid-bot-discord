@@ -67,6 +67,11 @@ remain available while Lavalink is unreachable.
 ## Voice profiles
 
 `/voice-profile` shows your server-local level, XP, voice time and session count.
+Cards and their details support Russian and English. Personal cards use your
+language and timezone; public cards use the server settings. Open cards keep
+that context when refreshed. After the second successful private profile use,
+an optional settings reminder can appear at most twice, at least 14 days apart.
+Choose Later or Do not remind me; the bot does not send unsolicited DMs.
 Activity, People and XP buttons add details to the same message.
 
 ![Demo Listener's voice profile: Mythic level 40, 360 hours 45 minutes in voice and 80 sessions. Synthetic data.](docs/assets/profile.png)
@@ -120,23 +125,39 @@ only affects voice profiles.
 
 ## Engineering
 
-- **Playback state survives overlapping events.** [MusicPlayer](api/music/player.py)
+- **Playback state survives overlapping events.** [MusicPlayer](stupidbot/features/music/playback/player.py)
   serializes queue transitions and gives each playback attempt an identity.
-  [Event handlers](api/music/service/playback_events.py) use it to distinguish
-  delayed events from current playback. [Composition](cogs/music/composition.py)
+  [Event handlers](stupidbot/features/music/runtime/playback_events.py) use it to distinguish
+  delayed events from current playback. [Composition](stupidbot/features/music/composition.py)
   connects the player, recovery and Discord UI.
-- **Profiles read a timeline held in memory.** [VoiceAnalytics](api/voice/analytics.py)
+- **Profiles read a timeline held in memory.** [VoiceAnalytics](stupidbot/features/voice/runtime.py)
   restores it at startup and updates it after journal writes commit. Normal
   profile requests use snapshots without querying raw history in SQL.
   [Voice architecture](docs/voice/architecture.md) explains how sessions,
   observation gaps and recovery work.
-- **One database, an explicit shutdown sequence.** [Database](repositories/sqlite/database.py)
+- **One database, an explicit shutdown sequence.** [Database](stupidbot/storage/database.py)
   serves all durable features. Shutdown stops producers, finishes accepted
   voice writes and saves uptime before draining transactions and closing the
-  database. [Storage documentation](repositories/sqlite/README.md) covers
+  database. [Storage documentation](docs/storage/README.md) covers
   explicit migrations, offline import, backups and recovery.
 
 ## Run locally
+
+`/settings` opens a private language/timezone editor. `/settings-server` edits
+the settings for public server messages and requires Manage Server. “As in
+Discord” resets only the language override. Open editors retain their original
+language and reject stale saves if another editor has committed first.
+
+Bot messages, controls, command descriptions and profile labels support Russian
+and English. Responses prefer the selected audience's override, then its Discord
+locale, then Russian; private and server settings are independent. User text,
+Wolfram answers and previously saved `/ask` replies are kept unchanged.
+Existing deployments must [review guild languages before cutover](docs/storage/README.md#backup-restore-and-rollback).
+
+For a new installation, explicitly choose the profile calendar timezone;
+the example configuration suggests `Europe/Moscow`. Keep the existing
+`VOICE_PROFILE_TIMEZONE` when upgrading. An unset value still means `UTC`,
+and birthday scheduling continues to use the host's date.
 
 You need **Python 3.12**, Git, [uv](https://docs.astral.sh/uv/getting-started/installation/)
 and a bot application from the [Discord Developer Portal](https://discord.com/developers/applications).
@@ -172,11 +193,11 @@ configure the source plugins you need. Follow its installation guide for the
 Java requirement of your Lavalink version.
 
 For profiles, install **Inkscape** on the bot host and keep the bundled
-[Inter fonts](resources/fonts/). Verify `inkscape --version` under the service
+[Inter fonts](stupidbot/assets/fonts/). Verify `inkscape --version` under the service
 account. Missing Inkscape or fonts makes the profile command unavailable;
 the rest of the bot can start. See [renderer setup](docs/voice/profile-card.md#setup).
-Custom application emoji IDs in [resources.py](resources.py) and the
-[music controller](cogs/music/views/controller.py) must be usable by your bot.
+Custom application emoji IDs in [shared emoji references](stupidbot/discord_ui/emojis.py) and the
+[music controller](stupidbot/features/music/discord/views/controller.py) must be usable by your bot.
 
 ### Prepare the database and start
 
@@ -184,14 +205,14 @@ For a **new installation**, create and validate the SQLite database:
 
 ```bash
 uv run --locked --no-dev python -c "from pathlib import Path; Path('data').mkdir(exist_ok=True)"
-uv run --locked --no-dev python -m repositories.sqlite --database data/app.sqlite migrate
-uv run --locked --no-dev python -m repositories.sqlite --database data/app.sqlite check
+uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite migrate
+uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite check
 uv run --locked --no-dev main.py
 ```
 
 > [!IMPORTANT]
 > Startup requires a prepared database. It rejects missing, incompatible or
-> unfinished files. For an existing installation, follow [storage migration and recovery](repositories/sqlite/README.md)
+> unfinished files. For an existing installation, follow [storage migration and recovery](docs/storage/README.md)
 > before starting; the commands above do not import legacy data.
 
 To use a different prepared file:
@@ -211,9 +232,9 @@ to 30 seconds. Renderer paths, font cache permissions and `INKSCAPE_BIN` are
 documented in [profile setup](docs/voice/profile-card.md#setup).
 
 Runtime files use `data/` and temporary renderer directories. Backups are explicit
-SQLite maintenance operations. [config.py](config.py) contains operational
-constants, [resources.py](resources.py) contains static strings, and
-[logging setup](utils/logging_setup.py) configures logs.
+SQLite maintenance operations. [stupidbot/settings.py](stupidbot/settings.py) contains operational
+constants, [shared emoji references](stupidbot/discord_ui/emojis.py) contains shared control emoji, and
+[logging setup](stupidbot/app/logging.py) configures logs.
 
 Allocation tracing is off by default. `uv run --locked --no-dev main.py --tracemalloc`
 enables it for diagnostics, with additional CPU and memory overhead.
@@ -230,5 +251,5 @@ basedpyright, ty, pytest and prek checks. Technical documentation is in English.
 [MIT](LICENSE). Banner artwork uses the bot's profile emblem and music palette;
 editable SVG sources are in [docs/assets/](docs/assets/).
 Some interface icons are from [Icons8](https://icons8.com);
-their files are in [resources/emojis/](resources/emojis/). Inter is distributed
-under the [SIL Open Font License](resources/fonts/OFL.txt).
+their files are in [stupidbot/discord_ui/assets/emojis/](stupidbot/discord_ui/assets/emojis/). Inter is distributed
+under the [SIL Open Font License](stupidbot/assets/fonts/OFL.txt).

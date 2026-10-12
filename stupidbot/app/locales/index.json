@@ -1,0 +1,20 @@
+{
+  "keys": [
+    "command\u0004Delete a message by ID (owner only)",
+    "command\u0004ID of the message to delete",
+    "command\u0004Test error handling",
+    "day\u0004{count:d} day",
+    "hour\u0004{count:d} hour",
+    "join\u0004{first} and {last}",
+    "minute\u0004{count:d} minute",
+    "month\u0004{count:d} month",
+    "presence\u0004life for {duration}.",
+    "second\u0004{count:d} second",
+    "ui\u0004Cannot delete messages in this channel.",
+    "ui\u0004Deleted.",
+    "ui\u0004Insufficient permissions.",
+    "ui\u0004Message not found.",
+    "week\u0004{count:d} week",
+    "year\u0004{count:d} year"
+  ]
+}

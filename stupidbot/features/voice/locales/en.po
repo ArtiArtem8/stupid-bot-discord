@@ -1,0 +1,468 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "activity.label"
+msgid "* DST"
+msgstr "* DST"
+
+#, python-brace-format
+msgctxt "recent_coverage"
+msgid "30-day coverage {percentage}"
+msgstr "30-day coverage {percentage}"
+
+msgctxt "xp.label"
+msgid "5+ people"
+msgstr "5+ people"
+
+msgctxt "estimate_short"
+msgid "<1 min in voice to next level"
+msgstr "<1 min in voice to next level"
+
+msgctxt "under_minute"
+msgid "<1m"
+msgstr "<1m"
+
+msgctxt "tier"
+msgid "ASCENDANT"
+msgstr "ASCENDANT"
+
+msgctxt "activity.label"
+msgid "Activity"
+msgstr "Activity"
+
+msgctxt "all_day"
+msgid "All day"
+msgstr "All day"
+
+msgctxt "all_days"
+msgid "All days"
+msgstr "All days"
+
+msgctxt "month"
+msgid "Apr"
+msgstr "Apr"
+
+msgctxt "month"
+msgid "Aug"
+msgstr "Aug"
+
+msgctxt "activity.label"
+msgid "Average session"
+msgstr "Average session"
+
+msgctxt "xp.label"
+msgid "Base"
+msgstr "Base"
+
+msgctxt "xp.label"
+msgid "Bonus limit"
+msgstr "Bonus limit"
+
+msgctxt "xp.label"
+msgid "Bonuses"
+msgstr "Bonuses"
+
+msgctxt "xp.label"
+msgid "Camera"
+msgstr "Camera"
+
+msgctxt "busy"
+msgid "Cards are busy right now. Please try again later."
+msgstr "Cards are busy right now. Please try again later."
+
+msgctxt "refresh_failed"
+msgid "Could not refresh the card. Please try again."
+msgstr "Could not refresh the card. Please try again."
+
+#, python-brace-format
+msgctxt "coverage"
+msgid "Coverage {percentage}"
+msgstr "Coverage {percentage}"
+
+msgctxt "activity.label"
+msgid "Daily activity"
+msgstr "Daily activity"
+
+msgctxt "xp.label"
+msgid "Deafened"
+msgstr "Deafened"
+
+msgctxt "month"
+msgid "Dec"
+msgstr "Dec"
+
+msgctxt "tier"
+msgid "EPIC"
+msgstr "EPIC"
+
+msgctxt "month"
+msgid "Feb"
+msgstr "Feb"
+
+msgctxt "weekday_short"
+msgid "Fri"
+msgstr "Fri"
+
+msgctxt "weekday"
+msgid "Friday"
+msgstr "Friday"
+
+#, python-brace-format
+msgctxt "history"
+msgid "History since {date}"
+msgstr "History since {date}"
+
+msgctxt "month"
+msgid "Jan"
+msgstr "Jan"
+
+msgctxt "month"
+msgid "Jul"
+msgstr "Jul"
+
+msgctxt "month"
+msgid "Jun"
+msgstr "Jun"
+
+msgctxt "tier"
+msgid "LEGENDARY"
+msgstr "LEGENDARY"
+
+msgctxt "profile.label"
+msgid "LEVEL PROGRESS"
+msgstr "LEVEL PROGRESS"
+
+msgctxt "profile.label"
+msgid "LVL"
+msgstr "LVL"
+
+msgctxt "activity.label"
+msgid "Last 30 days"
+msgstr "Last 30 days"
+
+msgctxt "people.label"
+msgid "Last 30 days"
+msgstr "Last 30 days"
+
+msgctxt "xp.label"
+msgid "Last 30 days"
+msgstr "Last 30 days"
+
+msgctxt "people.label"
+msgid "Lifetime"
+msgstr "Lifetime"
+
+msgctxt "xp.label"
+msgid "Lifetime"
+msgstr "Lifetime"
+
+#, python-brace-format
+msgctxt "lifetime_coverage"
+msgid "Lifetime coverage {percentage}"
+msgstr "Lifetime coverage {percentage}"
+
+msgctxt "tier"
+msgid "MYTHIC"
+msgstr "MYTHIC"
+
+msgctxt "month"
+msgid "Mar"
+msgstr "Mar"
+
+msgctxt "month"
+msgid "May"
+msgstr "May"
+
+msgctxt "activity.label"
+msgid "Median session"
+msgstr "Median session"
+
+msgctxt "weekday_short"
+msgid "Mon"
+msgstr "Mon"
+
+msgctxt "weekday"
+msgid "Monday"
+msgstr "Monday"
+
+msgctxt "people.label"
+msgid "Most time together"
+msgstr "Most time together"
+
+msgctxt "multiple_peaks"
+msgid "Multiple peaks"
+msgstr "Multiple peaks"
+
+msgctxt "xp.label"
+msgid "Muted"
+msgstr "Muted"
+
+msgctxt "activity.label"
+msgid "No data"
+msgstr "No data"
+
+msgctxt "no_observations"
+msgid "No observations"
+msgstr "No observations"
+
+msgctxt "history_empty"
+msgid "No observed history"
+msgstr "No observed history"
+
+msgctxt "people.label"
+msgid "No observed time together"
+msgstr "No observed time together"
+
+msgctxt "month"
+msgid "Nov"
+msgstr "Nov"
+
+msgctxt "month"
+msgid "Oct"
+msgstr "Oct"
+
+#, python-brace-format
+msgctxt "scope"
+msgid "On this server · history since {date}"
+msgstr "On this server · history since {date}"
+
+msgctxt "scope_empty"
+msgid "On this server · no observed history"
+msgstr "On this server · no observed history"
+
+msgctxt "people.label"
+msgid "One-on-one"
+msgstr "One-on-one"
+
+msgctxt "activity.label"
+msgid "Peak hours"
+msgstr "Peak hours"
+
+msgctxt "people.label"
+msgid "People"
+msgstr "People"
+
+msgctxt "tier"
+msgid "RARE"
+msgstr "RARE"
+
+msgctxt "xp.label"
+msgid "Reductions"
+msgstr "Reductions"
+
+msgctxt "profile.label"
+msgid "SESSIONS"
+msgstr "SESSIONS"
+
+msgctxt "tier"
+msgid "STARTER"
+msgstr "STARTER"
+
+msgctxt "weekday_short"
+msgid "Sat"
+msgstr "Sat"
+
+msgctxt "weekday"
+msgid "Saturday"
+msgstr "Saturday"
+
+msgctxt "month"
+msgid "Sep"
+msgstr "Sep"
+
+msgctxt "activity.label"
+msgid "Sessions"
+msgstr "Sessions"
+
+msgctxt "command"
+msgid "Show the card only to you"
+msgstr "Show the card only to you"
+
+msgctxt "activity.label"
+msgid "Solo"
+msgstr "Solo"
+
+msgctxt "xp.label"
+msgid "Solo"
+msgstr "Solo"
+
+msgctxt "xp.label"
+msgid "Streaming"
+msgstr "Streaming"
+
+msgctxt "weekday_short"
+msgid "Sun"
+msgstr "Sun"
+
+msgctxt "weekday"
+msgid "Sunday"
+msgstr "Sunday"
+
+msgctxt "tier"
+msgid "TRANSCENDENT"
+msgstr "TRANSCENDENT"
+
+msgctxt "already_refreshing"
+msgid "The card is already refreshing."
+msgstr "The card is already refreshing."
+
+msgctxt "guild_only"
+msgid "This command is only available in a server."
+msgstr "This command is only available in a server."
+
+msgctxt "not_your_card"
+msgid "This is not your card."
+msgstr "This is not your card."
+
+msgctxt "weekday_short"
+msgid "Thu"
+msgstr "Thu"
+
+msgctxt "weekday"
+msgid "Thursday"
+msgstr "Thursday"
+
+msgctxt "today"
+msgid "Today"
+msgstr "Today"
+
+msgctxt "people.label"
+msgid "Together"
+msgstr "Together"
+
+msgctxt "people.label"
+msgid "Top bot"
+msgstr "Top bot"
+
+msgctxt "activity.label"
+msgid "Top days"
+msgstr "Top days"
+
+msgctxt "activity.label"
+msgid "Total voice"
+msgstr "Total voice"
+
+msgctxt "weekday_short"
+msgid "Tue"
+msgstr "Tue"
+
+msgctxt "weekday"
+msgid "Tuesday"
+msgstr "Tuesday"
+
+msgctxt "tier"
+msgid "UNCOMMON"
+msgstr "UNCOMMON"
+
+msgctxt "unknown_user"
+msgid "Unknown user"
+msgstr "Unknown user"
+
+msgctxt "profile.label"
+msgid "VOICE TIME"
+msgstr "VOICE TIME"
+
+msgctxt "activity.label"
+msgid "Voice"
+msgstr "Voice"
+
+msgctxt "xp.label"
+msgid "Voice XP"
+msgstr "Voice XP"
+
+#, python-brace-format
+msgctxt "attachment"
+msgid "Voice profile of {display_name} on {guild_name}"
+msgstr "Voice profile of {display_name} on {guild_name}"
+
+msgctxt "unavailable"
+msgid "Voice profiles are temporarily unavailable."
+msgstr "Voice profiles are temporarily unavailable."
+
+msgctxt "weekday_short"
+msgid "Wed"
+msgstr "Wed"
+
+msgctxt "weekday"
+msgid "Wednesday"
+msgstr "Wednesday"
+
+msgctxt "people.label"
+msgid "With bots"
+msgstr "With bots"
+
+msgctxt "activity.label"
+msgid "With people"
+msgstr "With people"
+
+msgctxt "xp.label"
+msgid "With people"
+msgstr "With people"
+
+msgctxt "command"
+msgid "Your voice profile on this server"
+msgstr "Your voice profile on this server"
+
+#, python-brace-format
+msgctxt "recent_people"
+msgid "{duration} together · {count:,d} person"
+msgid_plural "{duration} together · {count:,d} people"
+msgstr[0] "{duration} together · {count:,d} person"
+msgstr[1] "{duration} together · {count:,d} people"
+
+#, python-brace-format
+msgctxt "duration"
+msgid "{hours:,d}h {minutes:02d}m"
+msgstr "{hours:,d}h {minutes:02d}m"
+
+#, python-brace-format
+msgctxt "million_hours"
+msgid "{hours:.1f}M h"
+msgstr "{hours:.1f}M h"
+
+#, python-brace-format
+msgctxt "thousand_hours"
+msgid "{hours:.1f}k h"
+msgstr "{hours:.1f}k h"
+
+#, python-brace-format
+msgctxt "short_date"
+msgid "{month} {day:02d}"
+msgstr "{month} {day:02d}"
+
+#, python-brace-format
+msgctxt "date"
+msgid "{month} {day:02d}, {year:d}"
+msgstr "{month} {day:02d}, {year:d}"
+
+#, python-brace-format
+msgctxt "estimate_hours"
+msgid "~{hours:,d} h in voice to next level"
+msgstr "~{hours:,d} h in voice to next level"
+
+#, python-brace-format
+msgctxt "estimate_fractional"
+msgid "~{hours:.1f} h in voice to next level"
+msgstr "~{hours:.1f} h in voice to next level"
+
+#, python-brace-format
+msgctxt "estimate_minutes"
+msgid "~{minutes:d} min in voice to next level"
+msgstr "~{minutes:d} min in voice to next level"

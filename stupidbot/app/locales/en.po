@@ -1,0 +1,106 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgctxt "ui"
+msgid "Cannot delete messages in this channel."
+msgstr "Cannot delete messages in this channel."
+
+msgctxt "command"
+msgid "Delete a message by ID (owner only)"
+msgstr "Delete a message by ID (owner only)"
+
+msgctxt "ui"
+msgid "Deleted."
+msgstr "Deleted."
+
+msgctxt "command"
+msgid "ID of the message to delete"
+msgstr "ID of the message to delete"
+
+msgctxt "ui"
+msgid "Insufficient permissions."
+msgstr "Insufficient permissions."
+
+msgctxt "ui"
+msgid "Message not found."
+msgstr "Message not found."
+
+msgctxt "command"
+msgid "Test error handling"
+msgstr "Test error handling"
+
+#, python-brace-format
+msgctxt "presence"
+msgid "life for {duration}."
+msgstr "life for {duration}."
+
+#, python-brace-format
+msgctxt "day"
+msgid "{count:d} day"
+msgid_plural "{count:d} days"
+msgstr[0] "{count:d} day"
+msgstr[1] "{count:d} days"
+
+#, python-brace-format
+msgctxt "hour"
+msgid "{count:d} hour"
+msgid_plural "{count:d} hours"
+msgstr[0] "{count:d} hour"
+msgstr[1] "{count:d} hours"
+
+#, python-brace-format
+msgctxt "minute"
+msgid "{count:d} minute"
+msgid_plural "{count:d} minutes"
+msgstr[0] "{count:d} minute"
+msgstr[1] "{count:d} minutes"
+
+#, python-brace-format
+msgctxt "month"
+msgid "{count:d} month"
+msgid_plural "{count:d} months"
+msgstr[0] "{count:d} month"
+msgstr[1] "{count:d} months"
+
+#, python-brace-format
+msgctxt "second"
+msgid "{count:d} second"
+msgid_plural "{count:d} seconds"
+msgstr[0] "{count:d} second"
+msgstr[1] "{count:d} seconds"
+
+#, python-brace-format
+msgctxt "week"
+msgid "{count:d} week"
+msgid_plural "{count:d} weeks"
+msgstr[0] "{count:d} week"
+msgstr[1] "{count:d} weeks"
+
+#, python-brace-format
+msgctxt "year"
+msgid "{count:d} year"
+msgid_plural "{count:d} years"
+msgstr[0] "{count:d} year"
+msgstr[1] "{count:d} years"
+
+#, python-brace-format
+msgctxt "join"
+msgid "{first} and {last}"
+msgstr "{first} and {last}"

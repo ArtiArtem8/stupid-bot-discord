@@ -5,30 +5,34 @@ from datetime import UTC, timedelta
 
 from sqlalchemy import String, select, text
 
-from api.voice.metrics.xp import VoiceXpPolicy
-from api.voice.model import VoiceJournalRecord, VoiceObservation, VoiceSnapshot
-from api.voice.profile.build import build_profile
-from api.voice.profile.details import (
+from stupidbot.common.asyncio import run_in_thread
+from stupidbot.features.access.repository import BlockingRepository
+from stupidbot.features.birthdays.repository import BirthdayRepository
+from stupidbot.features.member_roles.repository import MonitorRepository
+from stupidbot.features.music.repository import VolumeRepository
+from stupidbot.features.voice.facts import (
+    VoiceJournalRecord,
+    VoiceObservation,
+    VoiceSnapshot,
+)
+from stupidbot.features.voice.metrics.xp import VoiceXpPolicy
+from stupidbot.features.voice.profile.build import build_profile
+from stupidbot.features.voice.profile.details import (
     build_activity_detail,
     build_people_detail,
     build_xp_detail,
 )
-from api.voice.scope import VoiceScope
-from api.voice.timeline import VoiceTimeline, build_timeline
-from repositories.birthday_repository import BirthdayRepository
-from repositories.blocking_repository import BlockingRepository
-from repositories.monitor_repository import MonitorRepository
-from repositories.sqlite.database import SCHEMA_REVISION, Database
-from repositories.sqlite.schema import (
+from stupidbot.features.voice.repository import VoiceRepository
+from stupidbot.features.voice.scope import VoiceScope
+from stupidbot.features.voice.timeline import VoiceTimeline, build_timeline
+from stupidbot.storage.database import SCHEMA_REVISION, Database
+from stupidbot.storage.schema import (
     question_answers,
     report_settings,
     reports,
     runtime_checkpoint,
 )
-from repositories.voice_repository import VoiceRepository
-from repositories.volume_repository import VolumeRepository
 from tools.storage_legacy.sources import LegacyData
-from utils.asyncio_utils import run_in_thread
 
 
 async def verify_import(database: Database, data: LegacyData) -> None:

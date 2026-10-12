@@ -1,0 +1,183 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgctxt "skipped"
+msgid ""
+"\n"
+"\n"
+"Skipped {count:d} roles (deleted, inaccessible or the request failed). Existing roles"
+" not yet granted have been kept for another attempt."
+msgstr ""
+"\n"
+"\n"
+"Skipped {count:d} roles (deleted, inaccessible or the request failed). Existing roles"
+" not yet granted have been kept for another attempt."
+
+#, python-brace-format
+msgctxt "snapshot"
+msgid "- **{name}** — {count:d} roles, left {timestamp}"
+msgstr "- **{name}** — {count:d} roles, left {timestamp}"
+
+msgctxt "command"
+msgid "Days to retain snapshots. Leave empty for unlimited retention"
+msgstr "Days to retain snapshots. Leave empty for unlimited retention"
+
+msgctxt "command"
+msgid "Delete a member's saved role snapshot"
+msgstr "Delete a member's saved role snapshot"
+
+msgctxt "command"
+msgid "Disable server monitoring"
+msgstr "Disable server monitoring"
+
+msgctxt "ui"
+msgid "Disabled"
+msgstr "Disabled"
+
+msgctxt "command"
+msgid "Enable server monitoring and automatic role restoration"
+msgstr "Enable server monitoring and automatic role restoration"
+
+msgctxt "ui"
+msgid "Enabled"
+msgstr "Enabled"
+
+msgctxt "ui"
+msgid "Insufficient permissions"
+msgstr "Insufficient permissions"
+
+msgctxt "command"
+msgid "Manage server monitoring and role restoration"
+msgstr "Manage server monitoring and role restoration"
+
+msgctxt "command"
+msgid "Manually restore a member's roles"
+msgstr "Manually restore a member's roles"
+
+msgctxt "command"
+msgid "Member whose roles should be restored"
+msgstr "Member whose roles should be restored"
+
+msgctxt "command"
+msgid "Member whose snapshot should be deleted"
+msgstr "Member whose snapshot should be deleted"
+
+msgctxt "ui"
+msgid "Monitoring disabled"
+msgstr "Monitoring disabled"
+
+msgctxt "ui"
+msgid "Monitoring enabled"
+msgstr "Monitoring enabled"
+
+msgctxt "ui"
+msgid "Monitoring is already disabled on this server."
+msgstr "Monitoring is already disabled on this server."
+
+#, python-brace-format
+msgctxt "status"
+msgid "Monitoring status: {guild}"
+msgstr "Monitoring status: {guild}"
+
+msgctxt "ui"
+msgid ""
+"No roles to restore: the snapshot is missing or expired, or the roles have already "
+"been granted."
+msgstr ""
+"No roles to restore: the snapshot is missing or expired, or the roles have already "
+"been granted."
+
+#, python-brace-format
+msgctxt "missing"
+msgid "No saved roles found for {mention}."
+msgstr "No saved roles found for {mention}."
+
+#, python-brace-format
+msgctxt "recent"
+msgid "Recent members ({shown:d} of {total:d})"
+msgstr "Recent members ({shown:d} of {total:d})"
+
+#, python-brace-format
+msgctxt "restoration"
+msgid "Role restoration: {name}"
+msgstr "Role restoration: {name}"
+
+#, python-brace-format
+msgctxt "deleted"
+msgid "Role snapshot for {mention} deleted."
+msgstr "Role snapshot for {mention} deleted."
+
+#, python-brace-format
+msgctxt "restored"
+msgid "Roles restored: {count:d}"
+msgstr "Roles restored: {count:d}"
+
+msgctxt "ui"
+msgid "Saved role snapshots have been kept. Use `/monitor forget` to delete them."
+msgstr "Saved role snapshots have been kept. Use `/monitor forget` to delete them."
+
+msgctxt "command"
+msgid "Show monitoring status and saved members"
+msgstr "Show monitoring status and saved members"
+
+#, python-brace-format
+msgctxt "footer"
+msgid "Showing the first 10 of {total:d} snapshots"
+msgstr "Showing the first 10 of {total:d} snapshots"
+
+msgctxt "ui"
+msgid "Snapshots saved"
+msgstr "Snapshots saved"
+
+msgctxt "ui"
+msgid "Status"
+msgstr "Status"
+
+msgctxt "ui"
+msgid "TTL must be positive or left empty (unlimited)."
+msgstr "TTL must be positive or left empty (unlimited)."
+
+#, python-brace-format
+msgctxt "ttl"
+msgid "TTL: {days:d} days"
+msgstr "TTL: {days:d} days"
+
+msgctxt "ui"
+msgid "The bot needs the Manage Roles permission."
+msgstr "The bot needs the Manage Roles permission."
+
+#, python-brace-format
+msgctxt "enabled"
+msgid "The bot will restore members' roles when they rejoin ({retention})."
+msgstr "The bot will restore members' roles when they rejoin ({retention})."
+
+msgctxt "ui"
+msgid "unlimited"
+msgstr "unlimited"
+
+msgctxt "ui"
+msgid "unlimited retention"
+msgstr "unlimited retention"
+
+#, python-brace-format
+msgctxt "days"
+msgid "{days:d} days"
+msgstr "{days:d} days"

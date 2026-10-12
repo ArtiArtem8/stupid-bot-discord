@@ -111,7 +111,7 @@ and v2 JSONL/gzip formats
 from offline copies; it rejects conflicting alternate files and unknown schemas.
 Legacy events map to observations, presence maps to snapshots and heartbeats to
 checkpoints. Missing population/flags remain unknown. Resume/drop/clock/drift
-markers map to conservative gaps. The original files remain untouched. See [storage operations](../../repositories/sqlite/README.md).
+markers map to conservative gaps. The original files remain untouched. See [storage operations](../../docs/storage/README.md).
 
 ## Discord integration
 
@@ -120,7 +120,7 @@ client option when `VOICE_PROBE_ENABLED=true`. The collector's sole private API
 access is `guild._voice_states`, needed to retain unresolved channel IDs in cache
 snapshots. Unresolved channel IDs make a snapshot non-authoritative.
 
-The ordinary Cog loader discovers the collector and profile command. Collector
+The explicit extension list registers the collector and profile command. Collector
 shutdown drains the journal; profile shutdown drains media work and closes its
 native renderer. See [profile cards](profile-card.md) for host setup and caching.
 

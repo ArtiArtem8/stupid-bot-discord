@@ -1,0 +1,38 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgctxt "alternatives"
+msgid "-# perhaps you were looking for {primary} or {alternative}"
+msgstr "-# perhaps you were looking for {primary} or {alternative}"
+
+#, python-brace-format
+msgctxt "maybe"
+msgid "-# perhaps {command}"
+msgstr "-# perhaps {command}"
+
+#, python-brace-format
+msgctxt "try"
+msgid "-# try {command}"
+msgstr "-# try {command}"
+
+msgctxt "prefix_removed"
+msgid "Prefix commands have been removed; please use slash commands."
+msgstr "Prefix commands have been removed; please use slash commands."

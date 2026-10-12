@@ -84,4 +84,4 @@ jobs:
       - name: Native profile smoke
         env:
           VOICE_PROFILE_NATIVE: '1'
-        run: uv run --no-sync pytest -q tests/cogs/voice/profile/test_native.py
+        run: uv run --no-sync pytest -q tests/features/voice/profile/rendering/test_native.py

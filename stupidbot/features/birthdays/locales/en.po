@@ -1,0 +1,324 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgctxt "role"
+msgid ""
+"\n"
+"- Role: {mention}"
+msgstr ""
+"\n"
+"- Role: {mention}"
+
+msgctxt "wish"
+msgid ""
+"A heartfelt happy birthday! Wishing you lots of love and happiness, and many pleasant"
+" surprises. May your life be interesting and full, with all the strength you need to "
+"reach your goals!"
+msgstr ""
+"A heartfelt happy birthday! Wishing you lots of love and happiness, and many pleasant"
+" surprises. May your life be interesting and full, with all the strength you need to "
+"reach your goals!"
+
+msgctxt "ui"
+msgid "An error occurred while removing the birthday"
+msgstr "An error occurred while removing the birthday"
+
+msgctxt "month"
+msgid "April"
+msgstr "April"
+
+msgctxt "ui"
+msgid "Are you sure you want to remove your birthday?"
+msgstr "Are you sure you want to remove your birthday?"
+
+msgctxt "month"
+msgid "August"
+msgstr "August"
+
+msgctxt "command"
+msgid "Birthday (e.g. 15-05-2000 or 2000-05-15)"
+msgstr "Birthday (e.g. 15-05-2000 or 2000-05-15)"
+
+msgctxt "command"
+msgid "Birthday role (optional)"
+msgstr "Birthday role (optional)"
+
+msgctxt "ui"
+msgid "Birthdays have not been configured on this server"
+msgstr "Birthdays have not been configured on this server"
+
+#, python-brace-format
+msgctxt "title"
+msgid "Birthdays on {guild}"
+msgstr "Birthdays on {guild}"
+
+msgctxt "ui"
+msgid "Cancelled"
+msgstr "Cancelled"
+
+msgctxt "command"
+msgid "Channel for birthday wishes"
+msgstr "Channel for birthday wishes"
+
+msgctxt "command"
+msgid "Configure birthdays for this server"
+msgstr "Configure birthdays for this server"
+
+msgctxt "month"
+msgid "December"
+msgstr "December"
+
+msgctxt "ui"
+msgid "Error"
+msgstr "Error"
+
+msgctxt "month"
+msgid "February"
+msgstr "February"
+
+msgctxt "wish"
+msgid ""
+"Happy birthday to you! Wishing you a wonderful, amazing life, an ocean of love, "
+"endless happy times, good health and a great mood!"
+msgstr ""
+"Happy birthday to you! Wishing you a wonderful, amazing life, an ocean of love, "
+"endless happy times, good health and a great mood!"
+
+msgctxt "wish"
+msgid "Happy birthday!"
+msgstr "Happy birthday!"
+
+msgctxt "wish"
+msgid ""
+"Happy birthday! An ocean of happiness and smiles, and inspiration to achieve your "
+"goals. May life's colours and surprises delight you. Enjoy every day and share those "
+"feelings with others. Stay yourself: you are one of the best people on the planet!"
+msgstr ""
+"Happy birthday! An ocean of happiness and smiles, and inspiration to achieve your "
+"goals. May life's colours and surprises delight you. Enjoy every day and share those "
+"feelings with others. Stay yourself: you are one of the best people on the planet!"
+
+msgctxt "wish"
+msgid ""
+"Happy birthday! May you always live in joy, surrounded by peace and lasting "
+"happiness. Wishing you a little of everything, and may even ordinary days sometimes "
+"fill with magical events."
+msgstr ""
+"Happy birthday! May you always live in joy, surrounded by peace and lasting "
+"happiness. Wishing you a little of everything, and may even ordinary days sometimes "
+"fill with magical events."
+
+msgctxt "wish"
+msgid ""
+"Happy birthday! May your wildest wishes come true, with bright, unforgettable "
+"experiences and success in everything you start. May your days be sunny and bright, "
+"filled with smiles and happiness. Positivity in everything!"
+msgstr ""
+"Happy birthday! May your wildest wishes come true, with bright, unforgettable "
+"experiences and success in everything you start. May your days be sunny and bright, "
+"filled with smiles and happiness. Positivity in everything!"
+
+msgctxt "wish"
+msgid ""
+"Happy birthday! Wishing you a positive mood and plenty of joyful days. May you greet "
+"every morning with a smile and hope for the best. May your dreams have wings, and "
+"your plans come true!"
+msgstr ""
+"Happy birthday! Wishing you a positive mood and plenty of joyful days. May you greet "
+"every morning with a smile and hope for the best. May your dreams have wings, and "
+"your plans come true!"
+
+msgctxt "wish"
+msgid ""
+"Happy birthday! Wishing you a wonderful day surrounded by the people who love and "
+"appreciate you most, and lots of fun. Smile, enjoy being together, and may happiness "
+"fill your life."
+msgstr ""
+"Happy birthday! Wishing you a wonderful day surrounded by the people who love and "
+"appreciate you most, and lots of fun. Smile, enjoy being together, and may happiness "
+"fill your life."
+
+msgctxt "wish"
+msgid ""
+"Happy birthday! Wishing you more inspiration and energy this year. May everything you"
+" take on end in success. And plenty of good health, because with it you can do "
+"anything!"
+msgstr ""
+"Happy birthday! Wishing you more inspiration and energy this year. May everything you"
+" take on end in success. And plenty of good health, because with it you can do "
+"anything!"
+
+msgctxt "ui"
+msgid "Invalid date format. Use DD-MM-YYYY / YYYY-MM-DD"
+msgstr "Invalid date format. Use DD-MM-YYYY / YYYY-MM-DD"
+
+msgctxt "month"
+msgid "January"
+msgstr "January"
+
+msgctxt "month"
+msgid "July"
+msgstr "July"
+
+msgctxt "month"
+msgid "June"
+msgstr "June"
+
+msgctxt "command"
+msgid "List server birthdays, with the nearest first"
+msgstr "List server birthdays, with the nearest first"
+
+msgctxt "month"
+msgid "March"
+msgstr "March"
+
+msgctxt "month"
+msgid "May"
+msgstr "May"
+
+msgctxt "wish"
+msgid ""
+"May happiness always be in your hands and all sorrows pass you by! May your cherished"
+" dreams come true easily, and every moment bring joy and positivity! Discover new "
+"horizons, stride forward confidently and achieve all your goals!"
+msgstr ""
+"May happiness always be in your hands and all sorrows pass you by! May your cherished"
+" dreams come true easily, and every moment bring joy and positivity! Discover new "
+"horizons, stride forward confidently and achieve all your goals!"
+
+msgctxt "ui"
+msgid "No"
+msgstr "No"
+
+msgctxt "ui"
+msgid "No birthdays have been added."
+msgstr "No birthdays have been added."
+
+msgctxt "month"
+msgid "November"
+msgstr "November"
+
+msgctxt "month"
+msgid "October"
+msgstr "October"
+
+msgctxt "wish"
+msgid ""
+"On your birthday, I wish you a life full of happy, joyful moments, a heart warmed by "
+"kind and loving words, and loyal friends by your side!"
+msgstr ""
+"On your birthday, I wish you a life full of happy, joyful moments, a heart warmed by "
+"kind and loving words, and loyal friends by your side!"
+
+msgctxt "command"
+msgid "Remove your saved birthday"
+msgstr "Remove your saved birthday"
+
+msgctxt "month"
+msgid "September"
+msgstr "September"
+
+msgctxt "ui"
+msgid "Server configuration not found"
+msgstr "Server configuration not found"
+
+msgctxt "command"
+msgid "Set your birthday (DD-MM-YYYY or YYYY-MM-DD)"
+msgstr "Set your birthday (DD-MM-YYYY or YYYY-MM-DD)"
+
+#, python-brace-format
+msgctxt "channel"
+msgid ""
+"Settings updated:\n"
+"- Channel: {mention}"
+msgstr ""
+"Settings updated:\n"
+"- Channel: {mention}"
+
+msgctxt "command"
+msgid "Show the response only to you"
+msgstr "Show the response only to you"
+
+msgctxt "ui"
+msgid "The date has already changed or been removed. Open a new confirmation."
+msgstr "The date has already changed or been removed. Open a new confirmation."
+
+msgctxt "ui"
+msgid "There are no saved birthdays on this server."
+msgstr "There are no saved birthdays on this server."
+
+#, python-brace-format
+msgctxt "total"
+msgid "Total birthdays: {count:d}"
+msgstr "Total birthdays: {count:d}"
+
+msgctxt "ui"
+msgid "Upcoming birthdays"
+msgstr "Upcoming birthdays"
+
+#, python-brace-format
+msgctxt "page"
+msgid "Upcoming birthdays (page {page:d})"
+msgstr "Upcoming birthdays (page {page:d})"
+
+msgctxt "ui"
+msgid "Yes"
+msgstr "Yes"
+
+msgctxt "ui"
+msgid "You cannot perform this action"
+msgstr "You cannot perform this action"
+
+msgctxt "ui"
+msgid "You cannot perform this action."
+msgstr "You cannot perform this action."
+
+msgctxt "ui"
+msgid "You have not set your birthday"
+msgstr "You have not set your birthday"
+
+msgctxt "ui"
+msgid "Your birthday has been removed"
+msgstr "Your birthday has been removed"
+
+#, python-brace-format
+msgctxt "saved"
+msgid "Your birthday has been saved: {date}"
+msgstr "Your birthday has been saved: {date}"
+
+#, python-brace-format
+msgctxt "days_until"
+msgid "in {days:d} d."
+msgstr "in {days:d} d."
+
+msgctxt "ui"
+msgid "today"
+msgstr "today"
+
+#, python-brace-format
+msgctxt "date"
+msgid "{month} {day:d}"
+msgstr "{month} {day:d}"
+
+#, python-brace-format
+msgctxt "congratulations"
+msgid "🎉 HAPPY BIRTHDAY {name}"
+msgstr "🎉 HAPPY BIRTHDAY {name}"

@@ -99,3 +99,14 @@ always_run = true
 stages = ["pre-push"]
 groups = ["verify"]
 priority = "verify"
+
+[[repos.hooks]]
+id = "catalogs"
+name = "gettext catalogs"
+entry = "uv run --locked python -m tools.catalogs --check"
+language = "system"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
+groups = ["verify"]
+priority = "verify"

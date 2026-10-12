@@ -1,0 +1,74 @@
+# English translations for StupidBot.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the StupidBot project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-12 00:00+0000\n"
+"PO-Revision-Date: 2026-10-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#, python-brace-format
+msgctxt "deletion"
+msgid "-# Deletes {relative_time}"
+msgstr "-# Deletes {relative_time}"
+
+msgctxt "access_title"
+msgid "Access denied"
+msgstr "Access denied"
+
+msgctxt "discord_error"
+msgid "Could not complete the action in Discord. Please try again."
+msgstr "Could not complete the action in Discord. Please try again."
+
+msgctxt "internal_error"
+msgid "Could not complete the command. Details were logged."
+msgstr "Could not complete the command. Details were logged."
+
+msgctxt "discord_title"
+msgid "Discord error"
+msgstr "Discord error"
+
+msgctxt "internal_title"
+msgid "Internal error"
+msgstr "Internal error"
+
+#, python-brace-format
+msgctxt "cooldown"
+msgid "Please wait: {relative_time}"
+msgstr "Please wait: {relative_time}"
+
+msgctxt "report"
+msgid "Report a problem"
+msgstr "Report a problem"
+
+msgctxt "access"
+msgid "The command access check failed."
+msgstr "The command access check failed."
+
+msgctxt "guild_only"
+msgid "This command can only be used in a server"
+msgstr "This command can only be used in a server"
+
+msgctxt "not_yours"
+msgid "This is not your message."
+msgstr "This is not your message."
+
+#, python-brace-format
+msgctxt "page"
+msgid "{name} (page {page:d})"
+msgstr "{name} (page {page:d})"
+
+msgctxt "blocked"
+msgid "⛔ You cannot use commands."
+msgstr "⛔ You cannot use commands."
