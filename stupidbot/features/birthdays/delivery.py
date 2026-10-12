@@ -14,6 +14,7 @@ from discord.ext import commands
 from stupidbot.discord_ui.embeds import SafeEmbed
 from stupidbot.discord_ui.theme import BOT_ICON
 from stupidbot.features.birthdays.dates import is_birthday_today
+from stupidbot.features.birthdays.messages import BirthdayMessages
 from stupidbot.features.birthdays.models import (
     BirthdayDelivery,
     BirthdayGuildConfig,
@@ -21,6 +22,8 @@ from stupidbot.features.birthdays.models import (
 )
 from stupidbot.features.birthdays.presentation import BIRTHDAY_WISHES
 from stupidbot.features.birthdays.repository import BirthdayRepository
+from stupidbot.i18n.catalog import catalog, pgettext_noop
+from stupidbot.i18n.discord import guild_context
 
 logger = logging.getLogger(__name__)
 
@@ -210,9 +213,14 @@ class BirthdayDeliveryService:
         try:
             if not await self.repository.claim_delivery(claim):
                 return
-            wish = secrets.choice(BIRTHDAY_WISHES or ["С днём рождения!"])
+            context = await guild_context(self.bot, guild.id)
+            messages = BirthdayMessages(catalog("birthdays", context.language))
+            source = secrets.choice(
+                BIRTHDAY_WISHES or [pgettext_noop("wish", "С днём рождения!")]
+            )
+            wish = messages.catalog.pgettext("wish", source)
             embed = SafeEmbed(
-                title=f"🎉 ПОЗДРАВЛЕНИЯ {user.name}",
+                title=messages.congratulations(name=user.name),
                 description=f"{wish} {member.mention}",
                 color=discord.Color.gold(),
             )

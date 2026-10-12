@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -7,7 +8,6 @@ import discord
 
 from stupidbot.app import message_logging
 from stupidbot.app.message_events_cog import MessageEventsCog
-from stupidbot.features.greetings import responder
 from stupidbot.features.greetings.phrases import MORNING_ANSWERS
 
 
@@ -26,7 +26,7 @@ class TestGreetingPrefix(unittest.IsolatedAsyncioTestCase):
         ):
             with (
                 self.subTest(answer=answer),
-                patch.object(responder.secrets, "choice", return_value=answer),
+                patch.object(secrets, "choice", return_value=answer),
             ):
                 await cog.greetings.quest_process_message(message)
                 self.assertTrue(

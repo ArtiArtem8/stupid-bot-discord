@@ -15,12 +15,15 @@ from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.features.birthdays.dates import parse_birthday
 from stupidbot.features.birthdays.delivery import BirthdayDeliveryService
+from stupidbot.features.birthdays.messages import BirthdayMessages
 from stupidbot.features.birthdays.presentation import (
     build_birthday_list,
     create_birthday_list_embed,
 )
 from stupidbot.features.birthdays.repository import BirthdayRepository
 from stupidbot.features.birthdays.views import ConfirmDeleteView
+from stupidbot.i18n.catalog import catalog
+from stupidbot.i18n.discord import interaction_context
 
 if TYPE_CHECKING:
     from stupidbot.app.bot import StupidBot
@@ -79,20 +82,29 @@ class BirthdayCog(BaseCog):
 
     @app_commands.command(
         name="set-birthday",
-        description="Установить свой день рождения (формат: ДД-ММ-ГГГГ или ГГГГ-ММ-ДД)",
+        description=app_commands.locale_str(
+            "Установить свой день рождения (формат: ДД-ММ-ГГГГ или ГГГГ-ММ-ДД)",
+            domain="birthdays",
+        ),
     )
     @app_commands.describe(
-        date_input="Дата рождения (например: 15-05-2000 или 2000-05-15)"
+        date_input=app_commands.locale_str(
+            "Дата рождения (например: 15-05-2000 или 2000-05-15)", domain="birthdays"
+        )
     )
     @app_commands.guild_only()
     async def set_birthday(self, interaction: Interaction, date_input: str) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = BirthdayMessages(catalog("birthdays", context.language))
         try:
             normalized_date = parse_birthday(date_input)
         except ValueError:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="Неверный формат даты. Используйте ДД-ММ-ГГГГ / ГГГГ-ММ-ДД",
+                description=messages.catalog.pgettext(
+                    "ui", "Неверный формат даты. Используйте ДД-ММ-ГГГГ / ГГГГ-ММ-ДД"
+                ),
                 ephemeral=True,
             )
             return
@@ -105,7 +117,7 @@ class BirthdayCog(BaseCog):
             user_name=interaction.user.name,
             birthday=normalized_date,
         )
-        msg = f"Ваш день рождения записан: {normalized_date}"
+        msg = messages.saved(date=normalized_date)
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
@@ -115,12 +127,17 @@ class BirthdayCog(BaseCog):
 
     @app_commands.command(
         name="setup-birthdays",
-        description="Настроить систему дней рождений для сервера",
+        description=app_commands.locale_str(
+            "Настроить систему дней рождений для сервера", domain="birthdays"
+        ),
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
     @app_commands.describe(
-        channel="Канал для поздравлений", role="Роль для именинников (опционально)"
+        channel=app_commands.locale_str("Канал для поздравлений", domain="birthdays"),
+        role=app_commands.locale_str(
+            "Роль для именинников (опционально)", domain="birthdays"
+        ),
     )
     async def setup_birthdays(
         self,
@@ -128,6 +145,8 @@ class BirthdayCog(BaseCog):
         channel: discord.TextChannel,
         role: discord.Role | None = None,
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = BirthdayMessages(catalog("birthdays", context.language))
         guild = await self._require_guild(interaction)
 
         await self.manager.configure_guild(
@@ -136,9 +155,9 @@ class BirthdayCog(BaseCog):
             channel_id=channel.id,
             birthday_role_id=role.id if role else None,
         )
-        response: str = f"Настройки обновлены:\n- Канал: {channel.mention}"
+        response: str = messages.channel(mention=channel.mention)
         if role:
-            response += f"\n- Роль: {role.mention}"
+            response += messages.role(mention=role.mention)
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.SUCCESS,
@@ -147,10 +166,15 @@ class BirthdayCog(BaseCog):
         )
 
     @app_commands.command(
-        name="remove-birthday", description="Удалить свой день рождения из системы"
+        name="remove-birthday",
+        description=app_commands.locale_str(
+            "Удалить свой день рождения из системы", domain="birthdays"
+        ),
     )
     @app_commands.guild_only()
     async def remove_birthday(self, interaction: Interaction) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = BirthdayMessages(catalog("birthdays", context.language))
         guild = await self._require_guild(interaction)
         config = await self.manager.get(guild.id)
 
@@ -158,7 +182,9 @@ class BirthdayCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.ERROR,
-                description="Конфигурация сервера не найдена",
+                description=messages.catalog.pgettext(
+                    "ui", "Конфигурация сервера не найдена"
+                ),
                 ephemeral=True,
             )
             return
@@ -168,15 +194,19 @@ class BirthdayCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="Вы не установили свой день рождения",
+                description=messages.catalog.pgettext(
+                    "ui", "Вы не установили свой день рождения"
+                ),
                 ephemeral=True,
             )
             return
 
         view = ConfirmDeleteView(
-            interaction.user.id, guild.id, self.manager, user.version
+            interaction.user.id, guild.id, self.manager, user.version, context=context
         )
-        msg = "Вы уверены, что хотите удалить свой день рождения?"
+        msg = messages.catalog.pgettext(
+            "ui", "Вы уверены, что хотите удалить свой день рождения?"
+        )
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.WARNING,
@@ -187,21 +217,32 @@ class BirthdayCog(BaseCog):
 
     @app_commands.command(
         name="list-birthdays",
-        description="Список дней рождений на сервере, отсортированные по ближайшим",
+        description=app_commands.locale_str(
+            "Список дней рождений на сервере, отсортированные по ближайшим",
+            domain="birthdays",
+        ),
     )
     @app_commands.guild_only()
     @app_commands.default_permissions(administrator=True)
-    @app_commands.describe(ephemeral="Скрыть сообщение после выполнения")
+    @app_commands.describe(
+        ephemeral=app_commands.locale_str(
+            "Скрыть сообщение после выполнения", domain="birthdays"
+        )
+    )
     async def list_birthdays(
         self, interaction: Interaction, ephemeral: bool = True
     ) -> None:
+        context = await interaction_context(interaction, private=True)
+        messages = BirthdayMessages(catalog("birthdays", context.language))
         guild = await self._require_guild(interaction)
         config = await self.manager.get(guild.id)
         if not config:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="На этом сервере нет настроенной системы дней рождений",
+                description=messages.catalog.pgettext(
+                    "ui", "На этом сервере нет настроенной системы дней рождений"
+                ),
                 ephemeral=True,
             )
             return
@@ -210,27 +251,37 @@ class BirthdayCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                description="На этом сервере нет сохранённых дней рождений.",
+                description=messages.catalog.pgettext(
+                    "ui", "На этом сервере нет сохранённых дней рождений."
+                ),
                 ephemeral=True,
             )
             return
 
         today = date.today()
 
+        context = await interaction_context(interaction, private=ephemeral)
         entries = build_birthday_list(
-            config, {member.id: member.display_name for member in guild.members}, today
+            config,
+            {member.id: member.display_name for member in guild.members},
+            today,
+            language=context.language,
         )
 
         if not entries:
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description="На этом сервере нет сохранённых дней рождений.",
+                description=messages.catalog.pgettext(
+                    "ui", "На этом сервере нет сохранённых дней рождений."
+                ),
                 ephemeral=True,
             )
             return
 
-        embed = create_birthday_list_embed(guild.name, entries)
+        embed = create_birthday_list_embed(
+            guild.name, entries, language=context.language
+        )
         await FeedbackUI.send(interaction, embed=embed, ephemeral=ephemeral)
 
 

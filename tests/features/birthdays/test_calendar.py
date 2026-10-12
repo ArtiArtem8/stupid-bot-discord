@@ -8,9 +8,22 @@ from unittest.mock import Mock
 
 from stupidbot.features.birthdays.models import BirthdayGuildConfig, BirthdayUser
 from stupidbot.features.birthdays.presentation import build_birthday_list
+from stupidbot.i18n.policy import Language
 
 
 class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
+    def test_translation_does_not_change_leap_day_occurrence_or_saved_name(
+        self,
+    ) -> None:
+        config = BirthdayGuildConfig(guild_id=123, server_name="Test", channel_id=999)
+        config.users = {1: BirthdayUser(1, "Алексей", "29-02-2000")}
+        ru = build_birthday_list(config, {}, date(2025, 2, 28), language=Language.RU)
+        en = build_birthday_list(config, {}, date(2025, 2, 28), language=Language.EN)
+        self.assertEqual(ru[0]["date"], "29 февраля")
+        self.assertEqual(en[0]["date"], "February 29")
+        self.assertEqual(ru[0]["days_until"], en[0]["days_until"])
+        self.assertEqual(en[0]["name"], "Алексей")
+
     async def test_get_sorted_birthday_list_empty_users(self) -> None:
         config = BirthdayGuildConfig(guild_id=123, server_name="Test", channel_id=999)
         mock_guild = Mock()

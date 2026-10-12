@@ -160,7 +160,13 @@ class TestAuthorization(unittest.IsolatedAsyncioTestCase):
     async def test_birthday_confirm_does_not_modify_registration_when_blocked(
         self,
     ) -> None:
-        view = ConfirmDeleteView(10, 42, MagicMock(spec=BirthdayRepository), 1)
+        view = ConfirmDeleteView(
+            10,
+            42,
+            MagicMock(spec=BirthdayRepository),
+            1,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+        )
         with patch.object(
             view.manager, "clear_user_birthday", new=AsyncMock()
         ) as clear:
