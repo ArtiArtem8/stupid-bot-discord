@@ -132,7 +132,7 @@ server and requires Manage Server. Both editors are visible only to you.
 <summary>Language priority, saving settings and reminders</summary>
 
 Choose Russian, English or **As in Discord**, enter an IANA timezone such as
-`Europe/Moscow` or `Asia/Krasnoyarsk`, check the preview and press **Save**.
+`Europe/Moscow` or `UTC`, check the preview and press **Save**.
 **Cancel** discards pending changes. **As in Discord** resets only the language;
 leaving the timezone field blank restores the installation default. Open editors
 keep their original display language and reject a save if another editor has
