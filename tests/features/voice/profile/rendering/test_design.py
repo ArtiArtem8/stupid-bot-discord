@@ -22,6 +22,28 @@ from tests.features.voice.profile.test_media import profile_at
 
 
 class TestDesignXml(unittest.TestCase):
+    def test_timezone_label_uses_conventional_utc_signs(self) -> None:
+        for zone, expected in (
+            ("Etc/GMT-3", "UTC+3"),
+            ("Etc/GMT+11", "UTC-11"),
+            ("UTC", "UTC"),
+            ("Europe/Moscow", "Europe/Moscow"),
+        ):
+            with self.subTest(zone=zone):
+                raster = MagicMock(spec=NativeRasterizer)
+                raster.query.return_value = {}
+                design = bind_design(
+                    replace(profile_at(), timezone_label=zone),
+                    CardIdentity("Name", "Guild", language=Language.EN),
+                    ASSETS / "profile.svg",
+                    raster,
+                )
+                root = fromstring(design.svg)
+                label = next(
+                    node for node in root.iter() if node.get("id") == "timezone-label"
+                )
+                self.assertEqual(label.text, expected)
+
     def test_scope_label_displays_history_date_or_missing_history(self) -> None:
         for since, expected in (
             (date(2026, 9, 21), "On this server · history since Sep 21, 2026"),

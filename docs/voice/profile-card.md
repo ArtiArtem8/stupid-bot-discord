@@ -3,6 +3,10 @@
 `/voice-profile` shows your server-local XP, level, voice time and session count.
 The response is private by default. Use `private:false` to publish it in the
 channel with a trash button that deletes only the message, not its history or XP.
+Both private and public profiles use the requester's language and timezone from
+`/customize-me`. Visibility does not select server preferences. Open cards retain
+their presentation context when refreshed. Fixed UTC offsets are displayed with
+conventional signs; regional timezones retain their IANA names.
 All controls are restricted to the command owner. The main profile stays a
 standalone image attachment. Activity, People and XP each append one static PNG
 in a separate image embed in the same message, in click order. Each used button

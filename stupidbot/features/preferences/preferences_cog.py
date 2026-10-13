@@ -24,12 +24,13 @@ class PreferencesCog(BaseCog):
         self.repository = repository
 
     @app_commands.command(
-        name="settings",
+        name="customize-me",
         description=app_commands.locale_str(
-            "Your language and timezone", domain="preferences"
+            "Your language and timezone for replies and your profile",
+            domain="preferences",
         ),
     )
-    async def settings(self, interaction: discord.Interaction) -> None:
+    async def customize_me(self, interaction: discord.Interaction) -> None:
         await open_settings(interaction, self.repository, PreferenceScope.USER)
 
     @app_commands.command(

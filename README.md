@@ -67,8 +67,8 @@ remain available while Lavalink is unreachable.
 ## Voice profiles
 
 `/voice-profile` shows your server-local level, XP, voice time and session count.
-Cards and their details support Russian and English. Personal cards use your
-language and timezone; public cards use the server settings. Open cards keep
+Cards and their details support Russian and English. Both private and public
+cards use your personal language and timezone from `/customize-me`. Open cards keep
 that context when refreshed. After the second successful private profile use,
 an optional settings reminder can appear at most twice, at least 14 days apart.
 Choose Later or Do not remind me; the bot does not send unsolicited DMs.
@@ -143,14 +143,25 @@ only affects voice profiles.
 
 ## Run locally
 
-`/settings` opens a private language/timezone editor. `/settings-server` edits
+`/customize-me` opens a private language/timezone editor. `/settings-server` edits
 the settings for public server messages and requires Manage Server. “As in
 Discord” resets only the language override. Open editors retain their original
 language and reject stale saves if another editor has committed first.
 
+<details>
+<summary>Choosing a timezone and resetting settings</summary>
+
+Choose a fixed offset from `UTC-11` to `UTC+12`, or **Other…** for an IANA
+timezone such as `Europe/Moscow`. Fixed offsets do not follow daylight saving
+time. **Reset settings** restores Discord's language and the installation's
+default timezone; press **Save** to apply or **Cancel** to discard the reset.
+
+</details>
+
 Bot messages, controls, command descriptions and profile labels support Russian
 and English. Responses prefer the selected audience's override, then its Discord
-locale, then Russian; private and server settings are independent. User text,
+locale, then Russian. Voice profiles always use personal settings, including
+public cards; other public replies use server settings. User text,
 Wolfram answers and previously saved `/ask` replies are kept unchanged.
 Existing deployments must [review guild languages before cutover](docs/storage/README.md#backup-restore-and-rollback).
 

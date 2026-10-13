@@ -56,7 +56,7 @@ class ReminderView(discord.ui.View):
             await interaction.response.send_message(
                 catalog("preferences", context.language).pgettext(
                     "owner_only",
-                    "This panel belongs to someone else. Open /settings.",
+                    "This panel belongs to someone else. Open /customize-me.",
                 ),
                 ephemeral=True,
             )
@@ -86,12 +86,12 @@ class ReminderView(discord.ui.View):
         elif never:
             text = self.catalog.pgettext(
                 "reminder_disabled",
-                "I will not remind you again. Settings are available in /settings.",
+                "I will not remind you again. Settings are available in /customize-me.",
             )
         else:
             text = self.catalog.pgettext(
                 "reminder_later",
-                "Okay. Settings are available in /settings whenever you need them.",
+                "Okay. Settings are available in /customize-me whenever you need them.",
             )
         self.stop()
         await interaction.edit_original_response(content=text, view=None)
@@ -138,7 +138,7 @@ async def maybe_remind(
                 messages.pgettext(
                     "reminder",
                     "Choose a language and timezone for personal replies and your "
-                    "voice profile in /settings.",
+                    "voice profile in /customize-me.",
                 ),
                 view=view,
                 ephemeral=True,

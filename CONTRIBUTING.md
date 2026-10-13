@@ -51,7 +51,11 @@ for values; keep user content, external answers and technical identifiers intact
 Parameterized messages have typed
 methods in the owner's `messages.py`. Pass an explicit presentation context to
 views and renderers; do not set a global language. Personal/ephemeral responses
-resolve user preferences, while public responses resolve guild preferences.
+resolve user preferences, while shared public responses resolve guild preferences.
+Voice profiles use the requester's preferences regardless of visibility; the
+`private` option changes delivery only. Fixed-offset choices use IANA `Etc/GMT`
+keys internally; display them through `common.timezones.timezone_label` to avoid
+exposing their reversed POSIX signs.
 
 After changing message literals or PO translations, run
 `uv run --locked python -m tools.catalogs`. Commit the PO, MO, index and digest

@@ -148,7 +148,8 @@ class VoiceProfileCog(BaseCog):
             )
             return
         await interaction.response.defer(thinking=True, ephemeral=private)
-        context = await interaction_context(interaction, private=private)
+        # Visibility controls delivery; the profile always belongs to its requester.
+        context = await interaction_context(interaction, private=True)
         guild_id, user_id = interaction.guild.id, interaction.user.id
 
         async def refresh(button_interaction: discord.Interaction) -> None:
