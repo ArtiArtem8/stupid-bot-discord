@@ -12,7 +12,10 @@ from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackUI
 from stupidbot.features.music.contracts import TrackExceptionPayload
 from stupidbot.features.music.discord.music_cog import MusicCog
-from stupidbot.features.music.discord.presentation import build_track_added_embed
+from stupidbot.features.music.discord.presentation import (
+    build_session_summary_embed,
+    build_track_added_embed,
+)
 from stupidbot.features.music.discord.views import QueuePaginationAdapter
 from stupidbot.features.music.messages import MusicMessages
 from stupidbot.features.music.playback.models import (
@@ -77,6 +80,34 @@ class TestMusicTranslations(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             adapter.make_embed(0).footer.text, "Page 1/1 • Queued: 0 • Repeat: off"
         )
+
+    def test_queue_repeat_modes_follow_the_panel_language(self) -> None:
+        cases = (
+            (Language.RU, RepeatMode.OFF, "Повтор: выкл."),
+            (Language.RU, RepeatMode.QUEUE, "Повтор: очередь"),
+            (Language.RU, RepeatMode.TRACK, "Повтор: трек"),
+            (Language.EN, RepeatMode.OFF, "Repeat: off"),
+            (Language.EN, RepeatMode.QUEUE, "Repeat: queue"),
+            (Language.EN, RepeatMode.TRACK, "Repeat: track"),
+            (Language.KO, RepeatMode.OFF, "반복: 꺼짐"),
+            (Language.KO, RepeatMode.QUEUE, "반복: 대기열"),
+            (Language.KO, RepeatMode.TRACK, "반복: 한 곡"),
+        )
+        for language, mode, expected in cases:
+            with self.subTest(language=language, mode=mode):
+                adapter = QueuePaginationAdapter(
+                    QueueSnapshot(None, (), mode),
+                    context=PresentationContext(language, ZoneInfo("UTC")),
+                )
+                self.assertTrue(
+                    (adapter.make_embed(0).footer.text or "").endswith(expected)
+                )
+
+    def test_single_track_summary_uses_count_label(self) -> None:
+        session = MusicSession(1, tracks=[TrackInfo("Track", "https://example.com")])
+        embed = build_session_summary_embed(session, language=Language.EN)
+
+        self.assertTrue((embed.fields[0].value or "").startswith("**Tracks:** 1\n"))
 
     async def test_public_queue_failure_uses_clickers_private_language(self) -> None:
         interaction = MagicMock(

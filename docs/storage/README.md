@@ -83,11 +83,11 @@ uv run --locked python -m tools.language_rollout inventory --output guild-langua
 This reads Discord REST with `DISCORD_BOT_TOKEN`, without opening SQLite,
 connecting to the gateway, syncing commands, or sending messages. It refuses
 to replace an existing output. Keep this operator inventory outside Git.
-Review every guild's `language` (`ru` or `en`) and set its `reviewed` flag to
+Review every guild's `language` (`ru`, `en` or `ko`) and set its `reviewed` flag to
 `true`. Refresh the inventory if server membership changes before cutover.
 
 Stop the bot, back up its database using SQLite backup, and migrate a new copy
-to `0004_preferences`. Preserve the existing `VOICE_PROFILE_TIMEZONE` value;
+to the current schema (`0005_korean`). Preserve the existing `VOICE_PROFILE_TIMEZONE` value;
 an unset old value still means UTC. Preview the reviewed decisions against
 that prepared copy, then apply them as a separate deployment operation:
 

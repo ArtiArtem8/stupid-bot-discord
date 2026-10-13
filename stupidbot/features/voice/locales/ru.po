@@ -1,17 +1,15 @@
 # Russian translations for StupidBot.
-# Copyright (C) 2026 ORGANIZATION
+# Copyright (C) 2026 ArtiArtem8
 # This file is distributed under the same license as the StupidBot project.
-# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
-#
 msgid ""
 msgstr ""
-"Project-Id-Version: StupidBot VERSION\n"
-"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"Project-Id-Version: StupidBot\n"
+"Report-Msgid-Bugs-To: https://github.com/ArtiArtem8/stupid-bot-discord/issues\n"
 "POT-Creation-Date: 2026-10-12 00:00+0000\n"
 "PO-Revision-Date: 2026-10-12 00:00+0000\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Last-Translator: ArtiArtem8\n"
 "Language: ru\n"
-"Language-Team: ru <LL@li.org>\n"
+"Language-Team: ArtiArtem8\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && "
 "(n%100<10 || n%100>=20) ? 1 : 2);\n"
 "MIME-Version: 1.0\n"
@@ -86,7 +84,7 @@ msgstr "Камера"
 
 msgctxt "busy"
 msgid "Cards are busy right now. Please try again later."
-msgstr "Карточки сейчас заняты. Попробуйте чуть позже."
+msgstr "Не удаётся создать карточку прямо сейчас. Попробуйте чуть позже."
 
 msgctxt "refresh_failed"
 msgid "Could not refresh the card. Please try again."
@@ -225,11 +223,11 @@ msgstr "Нет наблюдений"
 
 msgctxt "history_empty"
 msgid "No observed history"
-msgstr "История не наблюдалась"
+msgstr "Нет наблюдений"
 
 msgctxt "people.label"
 msgid "No observed time together"
-msgstr "Совместное время не наблюдалось"
+msgstr "Нет данных о совместном времени"
 
 msgctxt "month"
 msgid "Nov"
@@ -246,7 +244,7 @@ msgstr "На этом сервере · история с {date}"
 
 msgctxt "scope_empty"
 msgid "On this server · no observed history"
-msgstr "На этом сервере · история не наблюдалась"
+msgstr "На этом сервере · нет наблюдений"
 
 msgctxt "people.label"
 msgid "One-on-one"
@@ -395,7 +393,7 @@ msgstr "Голосовой профиль {display_name} на сервере {gu
 
 msgctxt "unavailable"
 msgid "Voice profiles are temporarily unavailable."
-msgstr "Голосовая карточка временно недоступна."
+msgstr "Голосовые профили временно недоступны."
 
 msgctxt "weekday_short"
 msgid "Wed"

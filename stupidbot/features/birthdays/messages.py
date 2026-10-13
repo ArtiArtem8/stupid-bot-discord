@@ -1,4 +1,4 @@
-"""Typed birthday presentation without changing the scheduler's calendar."""
+"""Translate birthday dates, countdowns and delivery feedback."""
 
 from dataclasses import dataclass
 
@@ -30,7 +30,7 @@ class BirthdayMessages:
         )
 
     def days_until(self, *, days: int) -> str:
-        """Keep the existing compact countdown unit."""
+        """Format days remaining until a birthday."""
         return self.catalog.pgettext("days_until", "in {days:d} d.").format(days=days)
 
     def page(self, *, page: int) -> str:

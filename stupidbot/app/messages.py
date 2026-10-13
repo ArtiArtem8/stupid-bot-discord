@@ -8,7 +8,7 @@ from stupidbot.i18n.catalog import Catalog
 
 @dataclass(frozen=True, slots=True)
 class AppMessages:
-    """Use the existing uptime breakdown without introducing a second clock."""
+    """Format the uptime breakdown for the bot's presence."""
 
     catalog: Catalog
 

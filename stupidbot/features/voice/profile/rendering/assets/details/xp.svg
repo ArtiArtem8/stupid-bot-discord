@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="960" height="480" viewBox="0 0 960 480" font-family="Inter" font-weight="400">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="960" height="480" viewBox="0 0 960 480" font-family="Inter, Noto Sans KR" font-weight="400">
   <defs>
     <clipPath id="avatar-clip">
       <circle cx="56" cy="48" r="24" />

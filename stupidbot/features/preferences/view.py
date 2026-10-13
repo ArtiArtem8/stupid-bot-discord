@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import discord
 
+from stupidbot.common.timezones import timezone_label
 from stupidbot.discord_ui.access import check_component_access
 from stupidbot.discord_ui.errors import handle_app_command_error
 from stupidbot.discord_ui.pagination import CallbackButton
@@ -24,6 +25,11 @@ from stupidbot.i18n.policy import Language, PresentationContext, resolve_context
 
 logger = logging.getLogger(__name__)
 
+# Keep one of Discord's 25 select options for arbitrary regional timezones.
+_TIMEZONE_PRESETS = tuple(
+    "UTC" if offset == 0 else f"Etc/GMT{-offset:+d}" for offset in range(-11, 13)
+)
+
 
 class LanguageSelect(discord.ui.Select["SettingsView"]):
     """Select only the language override; preserve a pending timezone edit."""
@@ -37,15 +43,13 @@ class LanguageSelect(discord.ui.Select["SettingsView"]):
                     value="discord",
                     default=panel.proposed.language is None,
                 ),
-                discord.SelectOption(
-                    label="Русский",
-                    value="ru",
-                    default=panel.proposed.language is Language.RU,
-                ),
-                discord.SelectOption(
-                    label="English",
-                    value="en",
-                    default=panel.proposed.language is Language.EN,
+                *(
+                    discord.SelectOption(
+                        label=language.native_name,
+                        value=language.value,
+                        default=panel.proposed.language is language,
+                    )
+                    for language in Language
                 ),
             ]
         )
@@ -57,6 +61,51 @@ class LanguageSelect(discord.ui.Select["SettingsView"]):
             self.panel.proposed,
             language=None if value == "discord" else Language(value),
         )
+        self.panel.rebuild()
+        await interaction.response.edit_message(view=self.panel)
+
+
+class TimezoneSelect(discord.ui.Select["SettingsView"]):
+    """Choose a preset or open a modal for an arbitrary IANA timezone."""
+
+    def __init__(self, panel: "SettingsView") -> None:
+        self.panel = panel
+        current = panel.proposed.timezone
+        custom = current is not None and current not in _TIMEZONE_PRESETS
+        super().__init__(
+            placeholder=(
+                panel.catalog.pgettext("zone_inherit", "Default timezone")
+                if current is None
+                else panel.catalog.pgettext("timezone", "Timezone")
+            ),
+            options=[
+                *(
+                    discord.SelectOption(
+                        label=timezone_label(zone),
+                        value=zone,
+                        description=panel.catalog.pgettext(
+                            "fixed_offset", "Fixed offset, no daylight saving time"
+                        ),
+                        default=current == zone,
+                    )
+                    for zone in _TIMEZONE_PRESETS
+                ),
+                discord.SelectOption(
+                    label=panel.catalog.pgettext("zone_other", "Other…"),
+                    value="other",
+                    description=current if custom else None,
+                    default=custom,
+                ),
+            ],
+        )
+
+    @override
+    async def callback(self, interaction: discord.Interaction) -> None:
+        value = self.values[0]
+        if value == "other":
+            await interaction.response.send_modal(TimezoneModal(self.panel))
+            return
+        self.panel.proposed = replace(self.panel.proposed, timezone=value)
         self.panel.rebuild()
         await interaction.response.edit_message(view=self.panel)
 
@@ -80,8 +129,8 @@ class TimezoneModal(discord.ui.Modal):
                 text=panel.catalog.pgettext("zone_id", "IANA timezone"),
                 description=panel.catalog.pgettext(
                     "zone_help",
-                    "For example Europe/Moscow. Leave blank to use the installation "
-                    "default.",
+                    "For example Europe/Moscow. Leave blank to use the default "
+                    "timezone.",
                 ),
                 component=self.zone,
             )
@@ -98,8 +147,7 @@ class TimezoneModal(discord.ui.Modal):
             await interaction.response.send_message(
                 self.panel.catalog.pgettext(
                     "invalid_zone",
-                    "Unknown IANA timezone. Examples: Europe/Moscow or "
-                    "Asia/Krasnoyarsk.",
+                    "Unknown IANA timezone. Examples: Europe/Moscow or UTC.",
                 ),
                 ephemeral=True,
             )
@@ -154,43 +202,56 @@ class SettingsView(discord.ui.LayoutView):
             locale=self.audience_locale,
             fallback_timezone=self.fallback_timezone,
         )
-        title = (
-            self.catalog.pgettext("personal_title", "Personal settings")
-            if self.scope is PreferenceScope.USER
-            else self.catalog.pgettext("server_title", "Server settings")
+        language = preview.language.native_name
+        if self.scope is PreferenceScope.USER:
+            title = self.catalog.pgettext("personal_title", "Your settings")
+            scope_description = self.catalog.pgettext(
+                "personal_scope",
+                "Your language for personal replies and all your profiles, including "
+                "public ones, across all servers.\n"
+                "Timezone changes dates and charts, not XP or time in voice. "
+                "If unset, profiles use the server timezone.",
+            )
+        else:
+            title = self.catalog.pgettext("server_title", "Server settings")
+            scope_description = self.catalog.pgettext(
+                "server_scope",
+                "Language for shared messages. Timezone for profiles without a "
+                "personal timezone. Birthday schedules stay unchanged.",
+            )
+        content = discord.ui.Container(
+            discord.ui.TextDisplay(f"## {title}"),
+            discord.ui.TextDisplay(scope_description),
+            discord.ui.TextDisplay(
+                self.messages.preview(
+                    language=language,
+                    timezone=timezone_label(preview.timezone.key),
+                    local_time=datetime.now(UTC)
+                    .astimezone(preview.timezone)
+                    .strftime("%Y-%m-%d %H:%M"),
+                )
+            ),
+            discord.ui.ActionRow(LanguageSelect(self)),
+            discord.ui.ActionRow(TimezoneSelect(self)),
         )
-        self.clear_items()
-        self.add_item(
-            discord.ui.Container(
-                discord.ui.TextDisplay(f"## {title}"),
-                discord.ui.TextDisplay(
-                    self.messages.preview(
-                        language="Русский"
-                        if preview.language is Language.RU
-                        else "English",
-                        timezone=preview.timezone.key,
-                        local_time=datetime.now(UTC)
-                        .astimezone(preview.timezone)
-                        .strftime("%Y-%m-%d %H:%M"),
-                    )
+        content.add_item(
+            discord.ui.ActionRow(
+                CallbackButton[SettingsView](
+                    self.save,
+                    label=self.catalog.pgettext("save", "Save"),
+                    style=discord.ButtonStyle.success,
                 ),
-                discord.ui.ActionRow(LanguageSelect(self)),
-                discord.ui.ActionRow(
-                    CallbackButton[SettingsView](
-                        self.edit_timezone,
-                        label=self.catalog.pgettext("timezone", "Timezone"),
-                    ),
-                    CallbackButton[SettingsView](
-                        self.save,
-                        label=self.catalog.pgettext("save", "Save"),
-                        style=discord.ButtonStyle.success,
-                    ),
-                    CallbackButton[SettingsView](
-                        self.cancel, label=self.catalog.pgettext("cancel", "Cancel")
-                    ),
+                CallbackButton[SettingsView](
+                    self.cancel, label=self.catalog.pgettext("cancel", "Cancel")
+                ),
+                CallbackButton[SettingsView](
+                    self.reset,
+                    label=self.catalog.pgettext("reset", "Reset settings"),
                 ),
             )
         )
+        self.clear_items()
+        self.add_item(content)
 
     @override
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -199,7 +260,7 @@ class SettingsView(discord.ui.LayoutView):
             await interaction.response.send_message(
                 catalog("preferences", context.language).pgettext(
                     "owner_only",
-                    "This panel belongs to someone else. Open /settings.",
+                    "This panel belongs to someone else. Open /customize-me.",
                 ),
                 ephemeral=True,
             )
@@ -229,9 +290,11 @@ class SettingsView(discord.ui.LayoutView):
             return False
         return True
 
-    async def edit_timezone(self, interaction: discord.Interaction) -> None:
-        """Open a modal using the pending timezone, without committing anything."""
-        await interaction.response.send_modal(TimezoneModal(self))
+    async def reset(self, interaction: discord.Interaction) -> None:
+        """Stage default overrides, preserving the revision until Save or Cancel."""
+        self.proposed = replace(self.proposed, language=None, timezone=None)
+        self.rebuild()
+        await interaction.response.edit_message(view=self)
 
     async def save(self, interaction: discord.Interaction) -> None:
         """Acknowledge before SQL and confirm only after the transaction commits."""
@@ -246,10 +309,12 @@ class SettingsView(discord.ui.LayoutView):
             await self.finish(
                 interaction,
                 self.messages.conflict(
-                    language=current.language.value
+                    language=current.language.native_name
                     if current.language
                     else self.catalog.pgettext("discord", "As in Discord"),
-                    timezone=current.timezone or self.fallback_timezone.key,
+                    timezone=timezone_label(
+                        current.timezone or self.fallback_timezone.key
+                    ),
                 ),
             )
         else:

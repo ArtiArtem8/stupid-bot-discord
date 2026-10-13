@@ -1,4 +1,4 @@
-"""Optional authored PNG sequences attached to an SVG anchor, not a second layout."""
+"""Load bounded PNG animation sequences positioned by SVG anchors."""
 
 from __future__ import annotations
 
@@ -19,8 +19,7 @@ class AuthoredClip:
     y: int
 
     def at(self, phase: float) -> Image.Image:
-        # These are discrete authored frames. The last-to-first transition is
-        # deliberately preserved; the importer cannot invent an artist's loop.
+        # Select discrete frames without interpolating the loop boundary.
         return self.frames[min(len(self.frames) - 1, int(phase * len(self.frames)))]
 
 

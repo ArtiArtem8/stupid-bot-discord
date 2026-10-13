@@ -16,7 +16,7 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool, ConnectionPoolEntry
 from stupidbot.common.asyncio import wait_for_completion
 from stupidbot.storage.schema import storage_state
 
-SCHEMA_REVISION = "0004_preferences"
+SCHEMA_REVISION = "0005_korean"
 
 
 class Database:
@@ -84,7 +84,7 @@ def open_engine(path: Path) -> AsyncEngine:
 
     The caller owns disposal and must migrate the file before use. One checkout
     spans a complete transaction; concurrent operations wait in SQLAlchemy's
-    queue. This also serializes readers and is not a voice workload tuning claim.
+    queue, including reads.
     Do not share a checked-out connection with independently scheduled tasks.
     """
     engine = create_async_engine(

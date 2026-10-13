@@ -8,7 +8,7 @@ import discord
 from discord import Interaction, ui
 from discord.utils import format_dt
 
-from stupidbot.common.text import TextPaginator, truncate_text
+from stupidbot.common.text import TextPaginator
 from stupidbot.discord_ui.access import check_component_access
 from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
 from stupidbot.discord_ui.pagination import BasePaginator, PaginationData
@@ -46,9 +46,16 @@ class SessionPaginationAdapter(PaginationData):
         for index, track in enumerate(self.session.tracks, 1):
             timestamp = format_dt(track.end_timestamp, "T")
             marker = "~~" if track.skipped else ""
-            link = format_track_link(truncate_text(track.title, 45), track.uri)
-            requester = f"(<@{track.requester_id}>)" if track.requester_id else ""
-            lines.append(f"{timestamp} • {index}. {marker}{link}{marker} {requester}")
+            prefix = f"{timestamp} • {index}. {marker}"
+            requester = f" (<@{track.requester_id}>)" if track.requester_id else ""
+            suffix = f"{marker}{requester}"
+            link = format_track_link(
+                track.title,
+                track.uri,
+                max_length=MAX_EMBED_FIELD_LENGTH - len(prefix) - len(suffix),
+                max_title_length=45,
+            )
+            lines.append(f"{prefix}{link}{suffix}")
         return TextPaginator(
             lines,
             page_size=self.page_size,

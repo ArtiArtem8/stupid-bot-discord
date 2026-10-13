@@ -11,6 +11,29 @@ class PreferenceMessages:
 
     catalog: Catalog
 
+    def reminder(self, *, command: str) -> str:
+        """Invite personal setup with a registered command mention when available."""
+        return self.catalog.pgettext(
+            "reminder",
+            "Choose a language and timezone for personal replies and your "
+            "voice profile in {command}.",
+        ).format(command=command)
+
+    def reminder_answer(self, *, command: str, never: bool) -> str:
+        """Keep the settings command available after dismissing the controls."""
+        template = (
+            self.catalog.pgettext(
+                "reminder_disabled",
+                "I will not remind you again. Settings are available in {command}.",
+            )
+            if never
+            else self.catalog.pgettext(
+                "reminder_later",
+                "Okay. Settings are available in {command} whenever you need them.",
+            )
+        )
+        return template.format(command=command)
+
     def preview(self, *, language: str, timezone: str, local_time: str) -> str:
         """Show the pending values without changing the editor's frozen language."""
         return self.catalog.pgettext(

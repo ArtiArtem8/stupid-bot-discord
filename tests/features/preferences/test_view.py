@@ -2,20 +2,23 @@
 
 import asyncio
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from typing import override
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import PropertyMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 from zoneinfo import ZoneInfo
 
 import discord
 
 from stupidbot.features.preferences import view as view_module
 from stupidbot.features.preferences.models import Preferences, PreferenceScope
+from stupidbot.features.preferences.preferences_cog import open_settings
 from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.features.preferences.view import (
     LanguageSelect,
     SettingsView,
     TimezoneModal,
+    TimezoneSelect,
 )
 from stupidbot.i18n.policy import Language, PresentationContext
 from tests.features.preferences.fixtures import interaction
@@ -52,9 +55,27 @@ class SettingsViewTests(IsolatedAsyncioTestCase):
         self.assertIsNone(self.view.proposed.language)
         self.assertEqual(self.view.proposed.timezone, "Asia/Krasnoyarsk")
         self.assertEqual(self.view.context.language, Language.RU)
-        self.assertIn("Личные настройки", str(self.view.to_components()))
+        self.assertIn("Ваши настройки", str(self.view.to_components()))
         self.assertEqual(
             await self.repository.get(PreferenceScope.USER, 10), Preferences()
+        )
+
+    async def test_korean_selection_previews_and_saves_in_the_original_panel(
+        self,
+    ) -> None:
+        self.view.proposed = Preferences(timezone="Asia/Seoul")
+        selector = LanguageSelect(self.view)
+        self.assertIn(("한국어", "ko"), [(o.label, o.value) for o in selector.options])
+        with patch.object(
+            LanguageSelect, "values", new_callable=PropertyMock, return_value=["ko"]
+        ):
+            await selector.callback(interaction())
+        self.assertIn("한국어", str(self.view.to_components()))
+        self.assertEqual(self.view.context.language, Language.RU)
+        await self.view.save(interaction())
+        self.assertEqual(
+            await self.repository.get(PreferenceScope.USER, 10),
+            Preferences(Language.KO, "Asia/Seoul", 1),
         )
 
     async def test_commit_failure_never_claims_success(self) -> None:
@@ -67,6 +88,117 @@ class SettingsViewTests(IsolatedAsyncioTestCase):
         request.edit_original_response.assert_not_awaited()
         self.assertFalse(self.view.closed)
         self.assertFalse(self.view.saving)
+
+    async def test_offset_choices_match_their_labels_in_winter_and_summer(self) -> None:
+        selector = TimezoneSelect(self.view)
+        self.assertEqual(len(selector.options), 25)
+        offsets = []
+        for option in selector.options[:-1]:
+            hours = int(option.label.removeprefix("UTC") or "0")
+            offsets.append(hours)
+            zone = ZoneInfo(option.value)
+            for month in (1, 7):
+                with self.subTest(label=option.label, month=month):
+                    instant = datetime(2026, month, 15, tzinfo=UTC)
+                    self.assertEqual(
+                        instant.astimezone(zone).utcoffset(), timedelta(hours=hours)
+                    )
+        self.assertEqual(offsets, list(range(-11, 13)))
+        self.assertEqual(selector.options[-1].value, "other")
+
+    async def test_selecting_offset_previews_then_commits_without_changing_language(
+        self,
+    ) -> None:
+        self.view.proposed = Preferences(Language.EN)
+        selector = TimezoneSelect(self.view)
+        with patch.object(
+            TimezoneSelect,
+            "values",
+            new_callable=PropertyMock,
+            return_value=["Etc/GMT-3"],
+        ):
+            request = interaction()
+            await selector.callback(request)
+        request.response.edit_message.assert_awaited_once_with(view=self.view)
+        self.assertEqual(self.view.proposed, Preferences(Language.EN, "Etc/GMT-3"))
+        self.assertIn("UTC+3", str(self.view.to_components()))
+        self.assertEqual(
+            await self.repository.get(PreferenceScope.USER, 10), Preferences()
+        )
+        await self.view.save(interaction())
+        self.assertEqual(
+            await self.repository.get(PreferenceScope.USER, 10),
+            Preferences(Language.EN, "Etc/GMT-3", 1),
+        )
+
+    async def test_other_timezone_opens_modal_without_changing_pending_values(
+        self,
+    ) -> None:
+        self.view.proposed = Preferences(Language.EN, "Asia/Kolkata")
+        selector = TimezoneSelect(self.view)
+        self.assertTrue(selector.options[-1].default)
+        self.assertEqual(selector.options[-1].description, "Asia/Kolkata")
+        with patch.object(
+            TimezoneSelect, "values", new_callable=PropertyMock, return_value=["other"]
+        ):
+            request = interaction()
+            request.response.send_modal = AsyncMock()
+            await selector.callback(request)
+        modal = request.response.send_modal.call_args.args[0]
+        self.assertIsInstance(modal, TimezoneModal)
+        self.addCleanup(modal.stop)
+        self.assertEqual(self.view.proposed, Preferences(Language.EN, "Asia/Kolkata"))
+        request.response.edit_message.assert_not_awaited()
+
+    async def test_reset_stages_both_defaults_and_preserves_revision_until_save(
+        self,
+    ) -> None:
+        saved = await self.repository.save(
+            PreferenceScope.USER, 10, Preferences(Language.RU, "Europe/Moscow")
+        )
+        self.view.proposed = saved
+        await self.view.reset(interaction())
+        self.assertEqual(self.view.proposed, Preferences(revision=saved.revision))
+        self.assertEqual(await self.repository.get(PreferenceScope.USER, 10), saved)
+        self.assertEqual(self.view.context.language, Language.RU)
+        preview = str(self.view.to_components())
+        self.assertIn("English", preview)
+        self.assertIn("UTC", preview)
+        await self.view.save(interaction())
+        self.assertEqual(
+            await self.repository.get(PreferenceScope.USER, 10), Preferences(revision=2)
+        )
+
+    async def test_cancelling_reset_preserves_saved_overrides(self) -> None:
+        saved = await self.repository.save(
+            PreferenceScope.USER, 10, Preferences(Language.EN, "Europe/Moscow")
+        )
+        self.view.proposed = saved
+        await self.view.reset(interaction())
+        await self.view.cancel(interaction())
+        self.assertEqual(await self.repository.get(PreferenceScope.USER, 10), saved)
+
+    async def test_personal_panel_reset_previews_inherited_server_timezone(
+        self,
+    ) -> None:
+        saved = await self.repository.save(
+            PreferenceScope.USER, 10, Preferences(Language.EN, "Etc/GMT+2")
+        )
+        await self.repository.save(
+            PreferenceScope.GUILD, 20, Preferences(Language.RU, "Etc/GMT-3")
+        )
+        request = interaction()
+        request.client.preferences_repository = self.repository
+        await open_settings(request, self.repository, PreferenceScope.USER)
+        panel = request.edit_original_response.call_args.kwargs["view"]
+        if not isinstance(panel, SettingsView):
+            self.fail("Expected a settings panel")
+        self.addCleanup(panel.stop)
+        self.assertIn("UTC-2", str(panel.to_components()))
+        await panel.reset(interaction())
+        self.assertIn("UTC+3", str(panel.to_components()))
+        self.assertEqual(panel.context.language, Language.EN)
+        self.assertEqual(await self.repository.get(PreferenceScope.USER, 10), saved)
 
     async def test_acknowledgement_failure_releases_save_state_without_writing(
         self,
@@ -99,12 +231,13 @@ class SettingsViewTests(IsolatedAsyncioTestCase):
         self.assertEqual(await self.repository.get(PreferenceScope.USER, 10), saved)
         self.assertTrue(self.view.closed)
         self.assertIn("Europe/London", str(self.view.to_components()))
+        self.assertIn("English", str(self.view.to_components()))
 
     async def test_unauthorized_user_gets_private_reply_in_their_language(self) -> None:
         request = interaction(11)
         self.assertFalse(await self.view.interaction_check(request))
         request.response.send_message.assert_awaited_once_with(
-            "This panel belongs to someone else. Open /settings.", ephemeral=True
+            "This panel belongs to someone else. Open /customize-me.", ephemeral=True
         )
 
     async def test_server_permission_is_checked_again_for_components(self) -> None:

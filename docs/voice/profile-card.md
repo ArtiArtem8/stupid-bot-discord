@@ -3,6 +3,12 @@
 `/voice-profile` shows your server-local XP, level, voice time and session count.
 The response is private by default. Use `private:false` to publish it in the
 channel with a trash button that deletes only the message, not its history or XP.
+Both private and public profiles use the requester's language and timezone from
+`/customize-me`. If no personal timezone is set, they inherit the server timezone,
+then `VOICE_PROFILE_TIMEZONE`. Language stays personal; visibility changes only
+who can see the card. Open cards retain their presentation context when refreshed.
+Fixed UTC offsets are displayed with conventional signs; regional timezones retain
+their IANA names.
 All controls are restricted to the command owner. The main profile stays a
 standalone image attachment. Activity, People and XP each append one static PNG
 in a separate image embed in the same message, in click order. Each used button
@@ -24,8 +30,8 @@ Only the new PNG is uploaded on reveal; refresh replaces the full file set.
 ## Detail scopes and coverage
 
 Activity shows the current guild's last 30 local calendar dates, including today,
-using `VOICE_PROFILE_TIMEZONE`. Its first boundary is local midnight 29 dates
-before today; its last boundary is the snapshot request time. DST days therefore
+using the profile's resolved timezone. Its first boundary is local midnight
+29 dates before today; its last boundary is the snapshot request time. DST days therefore
 contain 23 or 25 elapsed hours where applicable. The chart always has 30 columns.
 The `Daily activity` chart places dates left to right and local time from 00:00
 at the top to 24:00 at the bottom. Filled spans show actual presence, including
@@ -109,15 +115,19 @@ See [voice history](architecture.md#sessions-and-companions) for session groupin
 
 Install Inkscape on the bot host and check `inkscape --version` under the service
 account. Keep `Inter.ttf`, `Inter-600.ttf`, `Inter-750.ttf` and their `OFL.txt`
-license under `stupidbot/assets/fonts/`. Inkscape uses system fallback fonts for glyphs
-outside Inter, including CJK and emoji. FFmpeg and gifsicle are not required.
+license under `stupidbot/assets/fonts/`, together with `NotoSansKR-UI.ttf` and its
+license. The Korean subset covers the shipped profile labels; a test checks every
+translated Hangul glyph. Inkscape uses system fallback fonts for other glyphs in
+user-provided names, including CJK and emoji. See the
+[font source and rebuild instructions](../../stupidbot/assets/fonts/README.md).
+FFmpeg and gifsicle are not required.
 
 | Setting | Default and purpose |
 | --- | --- |
 | `INKSCAPE_BIN` | Optional executable path; otherwise PATH and conventional Windows installation directories are checked. |
 | `PROFILE_FONT_DIR` | Font directory, default `stupidbot/assets/fonts/` relative to the repository. |
 | `PROFILE_CACHE_DIR` | Optional cache root. Its `fontconfig/` directory holds the font cache; the default is the service user's application cache. |
-| `VOICE_PROFILE_TIMEZONE` | Calendar timezone for recent details and visible label, default `UTC`; invalid names fall back to UTC. It does not change lifetime XP or elapsed voice time. |
+| `VOICE_PROFILE_TIMEZONE` | Fallback when neither personal nor server settings specify a timezone; default `UTC`, also used for invalid names. Does not change lifetime XP or elapsed voice time. |
 
 The service account needs permission to launch Inkscape and write temporary files
 and the font cache. Missing Inkscape or fonts disables the profile command;

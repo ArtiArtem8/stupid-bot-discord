@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class Greetings:
-    """Existing greeting behavior and local matcher diagnostics."""
+    """Match greeting phrases after prefix and access checks."""
 
     def __init__(self, bot: commands.Bot, block_manager: BlockManager) -> None:
         self.bot = bot

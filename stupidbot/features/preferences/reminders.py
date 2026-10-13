@@ -5,10 +5,12 @@ from datetime import UTC, datetime
 from typing import Self, override
 
 import discord
+from discord.ext import commands
 
 from stupidbot.discord_ui.access import check_component_access
 from stupidbot.discord_ui.errors import handle_app_command_error
 from stupidbot.discord_ui.pagination import CallbackButton
+from stupidbot.features.preferences.messages import PreferenceMessages
 from stupidbot.features.preferences.models import PreferenceScope, ReminderReservation
 from stupidbot.features.preferences.preferences_cog import open_settings
 from stupidbot.features.preferences.repository import PreferencesRepository
@@ -27,12 +29,15 @@ class ReminderView(discord.ui.View):
         repository: PreferencesRepository,
         reservation: ReminderReservation,
         context: PresentationContext,
+        *,
+        command: str,
     ) -> None:
         super().__init__(timeout=300)
         self.repository = repository
         self.reservation = reservation
         self.message: discord.WebhookMessage | None = None
         self.catalog = catalog("preferences", context.language)
+        self.command = command
         self.add_item(
             CallbackButton[ReminderView](
                 self.open, label=self.catalog.pgettext("open_settings", "Set up")
@@ -56,7 +61,7 @@ class ReminderView(discord.ui.View):
             await interaction.response.send_message(
                 catalog("preferences", context.language).pgettext(
                     "owner_only",
-                    "This panel belongs to someone else. Open /settings.",
+                    "This panel belongs to someone else. Open /customize-me.",
                 ),
                 ephemeral=True,
             )
@@ -83,15 +88,9 @@ class ReminderView(discord.ui.View):
             text = self.catalog.pgettext(
                 "reminder_expired", "This reminder has already been handled."
             )
-        elif never:
-            text = self.catalog.pgettext(
-                "reminder_disabled",
-                "I will not remind you again. Settings are available in /settings.",
-            )
         else:
-            text = self.catalog.pgettext(
-                "reminder_later",
-                "Okay. Settings are available in /settings whenever you need them.",
+            text = PreferenceMessages(self.catalog).reminder_answer(
+                command=self.command, never=never
             )
         self.stop()
         await interaction.edit_original_response(content=text, view=None)
@@ -114,6 +113,26 @@ class ReminderView(discord.ui.View):
         await handle_app_command_error(interaction, error)
 
 
+async def _customize_command_mention(client: discord.Client) -> str:
+    """Resolve the global command only when a reminder is due."""
+    fallback = "/customize-me"
+    if not isinstance(client, commands.Bot):
+        return fallback
+    try:
+        registered = await client.tree.fetch_commands()
+    except discord.HTTPException:
+        logger.warning("Could not resolve the personalization command mention")
+        logger.debug("Command lookup failed", exc_info=True)
+        return fallback
+    for command in registered:
+        if (
+            command.name == "customize-me"
+            and command.type is discord.AppCommandType.chat_input
+        ):
+            return command.mention
+    return fallback
+
+
 async def maybe_remind(
     interaction: discord.Interaction, context: PresentationContext
 ) -> None:
@@ -131,15 +150,12 @@ async def maybe_remind(
         )
         if reservation is None:
             return
-        messages = catalog("preferences", context.language)
-        view = ReminderView(repository, reservation, context)
+        messages = PreferenceMessages(catalog("preferences", context.language))
+        command = await _customize_command_mention(interaction.client)
+        view = ReminderView(repository, reservation, context, command=command)
         try:
             view.message = await interaction.followup.send(
-                messages.pgettext(
-                    "reminder",
-                    "Choose a language and timezone for personal replies and your "
-                    "voice profile in /settings.",
-                ),
+                messages.reminder(command=command),
                 view=view,
                 ephemeral=True,
                 wait=True,

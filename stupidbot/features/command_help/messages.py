@@ -18,7 +18,7 @@ class CommandHelpMessages:
         ).format(primary=primary, alternative=alternative)
 
     def suggestion(self, *, command: str, confident: bool) -> str:
-        """Retain the existing distinction between strong and weak matches."""
+        """Choose suggestion wording based on match confidence."""
         template = (
             self.catalog.pgettext("try", "-# try {command}")
             if confident

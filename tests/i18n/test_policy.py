@@ -1,4 +1,4 @@
-"""Resolve each audience without leaking user settings into public messages."""
+"""Resolve shared responses and personal profile presentation."""
 
 import asyncio
 from typing import override
@@ -12,7 +12,12 @@ from stupidbot import settings
 from stupidbot.features.preferences.models import Preferences, PreferenceScope
 from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.i18n import discord as discord_i18n
-from stupidbot.i18n.discord import guild_context, interaction_context
+from stupidbot.i18n.discord import (
+    error_context,
+    guild_context,
+    interaction_context,
+    profile_context,
+)
 from stupidbot.i18n.policy import Language, resolve_context, resolve_language
 from stupidbot.storage.schema import guild_preferences
 from tests.features.preferences.fixtures import interaction
@@ -25,13 +30,16 @@ class PolicyTests(TestCase):
             ("en-US", Language.EN),
             ("en-GB", Language.EN),
             ("ru", Language.RU),
+            ("ko", Language.KO),
             ("de", Language.RU),
             (None, Language.RU),
         ):
             with self.subTest(locale=locale):
                 self.assertEqual(resolve_language(None, locale), expected)
-                self.assertEqual(resolve_language(Language.RU, locale), Language.RU)
-                self.assertEqual(resolve_language(Language.EN, locale), Language.EN)
+                for override_language in Language:
+                    self.assertEqual(
+                        resolve_language(override_language, locale), override_language
+                    )
 
     def test_absent_preferences_preserve_installation_timezone(self) -> None:
         context = resolve_context(
@@ -44,6 +52,29 @@ class PolicyTests(TestCase):
 
 
 class InteractionPolicyTests(IsolatedAsyncioTestCase):
+    async def test_korean_locale_and_overrides_respect_the_response_audience(
+        self,
+    ) -> None:
+        _, database = await temporary_database(self)
+        repository = PreferencesRepository(database)
+        request = interaction()
+        request.locale = discord.Locale.korean
+        request.guild_locale = discord.Locale.american_english
+        request.client.preferences_repository = repository
+        self.assertEqual(
+            (await interaction_context(request, private=True)).language, Language.KO
+        )
+        self.assertEqual(
+            (await interaction_context(request, private=False)).language, Language.EN
+        )
+        await repository.save(PreferenceScope.USER, 10, Preferences(Language.EN))
+        await repository.save(PreferenceScope.GUILD, 20, Preferences(Language.KO))
+        request.extras.clear()
+        self.assertEqual((await profile_context(request)).language, Language.EN)
+        self.assertEqual(
+            (await interaction_context(request, private=False)).language, Language.KO
+        )
+
     async def test_private_and_public_contexts_use_separate_owners(self) -> None:
         _, database = await temporary_database(self)
         repository = PreferencesRepository(database)
@@ -81,6 +112,64 @@ class InteractionPolicyTests(IsolatedAsyncioTestCase):
         self.assertEqual(context.language, Language.EN)
 
 
+class ProfilePolicyTests(IsolatedAsyncioTestCase):
+    async def test_timezone_inherits_without_changing_personal_language(self) -> None:
+        _, database = await temporary_database(self)
+        repository = PreferencesRepository(database)
+        for index, (personal_zone, server_zone, expected) in enumerate(
+            (
+                ("Etc/GMT-3", "Etc/GMT+5", "Etc/GMT-3"),
+                (None, "Europe/London", "Europe/London"),
+                (None, None, "UTC"),
+            )
+        ):
+            with self.subTest(personal=personal_zone, server=server_zone):
+                request = interaction(100 + index)
+                request.guild_id = 200 + index
+                request.client.preferences_repository = repository
+                await repository.save(
+                    PreferenceScope.USER,
+                    request.user.id,
+                    Preferences(Language.EN, personal_zone),
+                )
+                await repository.save(
+                    PreferenceScope.GUILD,
+                    request.guild_id,
+                    Preferences(Language.RU, server_zone),
+                )
+                with (
+                    patch.object(settings, "VOICE_PROFILE_TIMEZONE", "UTC"),
+                    patch.object(repository, "get", wraps=repository.get) as read,
+                ):
+                    context = await profile_context(request)
+                    self.assertEqual(context.language, Language.EN)
+                    self.assertEqual(context.timezone.key, expected)
+                    self.assertEqual(await profile_context(request), context)
+                self.assertEqual(read.await_count, 1 if personal_zone else 2)
+
+    async def test_inherited_zone_failure_does_not_retry_for_error_feedback(
+        self,
+    ) -> None:
+        _, database = await temporary_database(self)
+        repository = PreferencesRepository(database)
+        request = interaction()
+        request.client.preferences_repository = repository
+        with (
+            patch.object(settings, "VOICE_PROFILE_TIMEZONE", "UTC"),
+            patch.object(
+                repository,
+                "get",
+                side_effect=[Preferences(Language.EN), OSError("unavailable")],
+            ) as read,
+        ):
+            with self.assertRaises(OSError):
+                await profile_context(request)
+            context = await error_context(request)
+        self.assertEqual(read.await_count, 2)
+        self.assertEqual(context.language, Language.EN)
+        self.assertEqual(context.timezone.key, "UTC")
+
+
 class GuildPolicyTests(IsolatedAsyncioTestCase):
     @override
     async def asyncSetUp(self) -> None:
@@ -104,6 +193,7 @@ class GuildPolicyTests(IsolatedAsyncioTestCase):
         for locale, language in (
             (discord.Locale.american_english, Language.EN),
             (discord.Locale.russian, Language.RU),
+            (discord.Locale.korean, Language.KO),
             (discord.Locale.german, Language.RU),
             (None, Language.RU),
         ):

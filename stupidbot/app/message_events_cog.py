@@ -1,4 +1,4 @@
-"""One listener retains the existing log-before-filter order."""
+"""Log incoming messages before applying greeting filters."""
 
 from typing import TYPE_CHECKING
 

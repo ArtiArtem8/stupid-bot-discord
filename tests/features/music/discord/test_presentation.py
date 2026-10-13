@@ -38,14 +38,23 @@ class TestTrackLinkFormatting(unittest.TestCase):
         cases = (
             ("A track", "[A track](https://good.invalid)"),
             ("**Bold**", r"[\*\*Bold\*\*](https://good.invalid)"),
-            ("Song [Live]", r"[Song \[Live\]](https://good.invalid)"),
+            ("Song [Live]", "[Song [Live]](https://good.invalid)"),
+            (
+                "Artist [Album [Live]]",
+                "[Artist [Album [Live]]](https://good.invalid)",
+            ),
+            ("Song [Live...", "Song [Live..."),
+            (
+                "Song ]Live[",
+                "Song ]Live[",
+            ),
             (
                 "Song ](https://evil.invalid)",
-                r"[Song \](https://evil.invalid)](https://good.invalid)",
+                "Song ](https://evil.invalid)",
             ),
             (
                 "[fake](https://evil.invalid)",
-                r"[\[fake\](https://evil.invalid)](https://good.invalid)",
+                r"\[fake](https://evil.invalid)",
             ),
             (
                 r"Song \ Remix",
@@ -61,16 +70,16 @@ class TestTrackLinkFormatting(unittest.TestCase):
             with self.subTest(title=title):
                 self.assertEqual(format_track_link(title, uri), expected)
 
-    def test_escapes_hostile_brackets_without_uri(self) -> None:
+    def test_plain_titles_without_uri_escape_only_markdown_syntax(self) -> None:
         cases = (
-            ("Song [Live]", r"Song \[Live\]"),
+            ("Song [Live]", "Song [Live]"),
             (
                 "Song ](https://evil.invalid)",
-                r"Song \](https://evil.invalid)",
+                "Song ](https://evil.invalid)",
             ),
             (
                 "[fake](https://evil.invalid)",
-                r"\[fake\](https://evil.invalid)",
+                r"\[fake](https://evil.invalid)",
             ),
         )
 
@@ -82,6 +91,22 @@ class TestTrackLinkFormatting(unittest.TestCase):
         self.assertEqual(
             format_track_link("Line one\nLine two", None), "Line one Line two"
         )
+
+    def test_truncating_balanced_title_closes_bracket_inside_link(self) -> None:
+        uri = "https://example.com/track"
+        value = format_track_link("Song [a very long live title]", uri, max_length=50)
+
+        self.assertEqual(value, f"[Song [a very long...]]({uri})")
+        self.assertLessEqual(len(value), 50)
+
+    def test_title_budget_reserves_nested_closing_brackets(self) -> None:
+        uri = "https://example.com/track"
+        for width, label in ((11, "A [B [...]]"), (4, "A..."), (3, "...")):
+            with self.subTest(width=width):
+                self.assertEqual(
+                    format_track_link("A [B [C] D] E", uri, max_title_length=width),
+                    f"[{label}]({uri})",
+                )
 
 
 class TestPlaylistPresentation(unittest.TestCase):
@@ -140,6 +165,53 @@ class TestPlaylistPresentation(unittest.TestCase):
 
 
 class TestSessionSummaryPresentation(unittest.TestCase):
+    def test_truncated_bracketed_title_keeps_link(self) -> None:
+        session = MusicSession(guild_id=1)
+        session.add_track(
+            "Song [Live recording with a deliberately long title]",
+            "https://example.com/track",
+            42,
+            100,
+            skipped=True,
+        )
+
+        value = build_session_summary_embed(session).fields[1].value or ""
+
+        self.assertTrue(value.startswith("~~[Song [Live"))
+        self.assertTrue(value.endswith("...]](https://example.com/track)~~"))
+        self.assertNotIn("\\", value)
+
+    def test_bracketed_skipped_tracks_keep_link_and_repeat_count(self) -> None:
+        session = MusicSession(guild_id=1)
+        for _ in range(2):
+            session.add_track(
+                title="Song [Live]",
+                uri="https://example.com/track",
+                requester_id=42,
+                channel_id=100,
+                skipped=True,
+            )
+
+        embed = build_session_summary_embed(session)
+
+        self.assertEqual(
+            embed.fields[1].value,
+            "~~[Song [Live]](https://example.com/track) **×2**~~",
+        )
+
+    def test_long_recent_track_preserves_link_and_surrounding_markup(self) -> None:
+        uri = "https://example.com/" + "x" * 981
+        session = MusicSession(guild_id=1)
+        session.add_track("Earlier", "https://example.com/old", 42, 100)
+        for _ in range(2):
+            session.add_track("Song [Live]", uri, 42, 100, skipped=True)
+
+        value = build_session_summary_embed(session).fields[1].value or ""
+
+        self.assertLessEqual(len(value), 1024)
+        self.assertTrue(value.startswith("~~["))
+        self.assertTrue(value.endswith(f"]({uri}) **×2**~~\n..."))
+
     def test_one_real_requester_is_displayed(self) -> None:
         session = MusicSession(guild_id=1)
         session.add_track(

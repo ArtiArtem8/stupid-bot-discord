@@ -21,6 +21,7 @@ from defusedxml.ElementTree import fromstring
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from stupidbot.common.json import JsonObject, get_json, is_json_object
+from stupidbot.common.timezones import timezone_label
 from stupidbot.features.voice.messages import VoiceMessages
 from stupidbot.features.voice.profile.appearance import (
     TIER_ORDER,
@@ -383,7 +384,7 @@ def _bind_metrics(
         "voice-value": messages.duration(profile.total_voice_seconds),
         "sessions-value": f"{profile.session_count:,}",
         "scope-label": messages.scope(profile.history_since),
-        "timezone-label": safe_label(profile.timezone_label, limit=64),
+        "timezone-label": safe_label(timezone_label(profile.timezone_label), limit=64),
     }
     for key, value in values.items():
         replace_text(nodes[key], value)

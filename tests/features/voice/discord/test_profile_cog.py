@@ -89,15 +89,15 @@ async def invoke(cog: VoiceProfileCog, item: MagicMock, private: bool = True) ->
 
 
 class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
-    async def test_public_profile_freezes_guild_language_and_calendar_for_refresh(
+    async def test_public_profile_freezes_personal_language_and_calendar_for_refresh(
         self,
     ) -> None:
         _, database = await temporary_database(self)
         repository = PreferencesRepository(database)
-        saved = await repository.save(
-            PreferenceScope.GUILD, 42, Preferences(Language.EN, "Asia/Krasnoyarsk")
-        )
         await repository.save(
+            PreferenceScope.GUILD, 42, Preferences(Language.EN, "Europe/London")
+        )
+        saved = await repository.save(
             PreferenceScope.USER, 10, Preferences(Language.RU, "Europe/Moscow")
         )
         item = interaction()
@@ -109,11 +109,12 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         item.guild.get_member.return_value = item.user
         cog = VoiceProfileCog(bot)
         cog._revision = "test"
-        expected = PresentationContext(Language.EN, ZoneInfo("Asia/Krasnoyarsk"))
+        expected = PresentationContext(Language.RU, ZoneInfo("Europe/Moscow"))
         with patch.object(
             cog, "_prepare", AsyncMock(side_effect=profile_request)
         ) as prepare:
             await invoke(cog, item, private=False)
+            item.response.defer.assert_awaited_once_with(thinking=True, ephemeral=False)
             delivered = item.edit_original_response.await_args
             if delivered is None:
                 self.fail("Expected a delivered profile")
@@ -124,14 +125,30 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             self.addCleanup(view.stop)
             self.assertEqual(view.context, expected)
             await repository.save(
-                PreferenceScope.GUILD,
-                42,
+                PreferenceScope.USER,
+                10,
                 Preferences(Language.RU, "UTC", saved.revision),
             )
             await view.perform(ProfileAction.REFRESH, interaction())
             self.assertEqual(prepare.await_count, 2)
             for call in prepare.await_args_list:
                 self.assertEqual(call.kwargs["context"], expected)
+            for private in (True, False):
+                with self.subTest(private=private):
+                    fresh = interaction()
+                    fresh.guild_id = 42
+                    fresh.extras = {}
+                    fresh.client.preferences_repository = repository
+                    await invoke(cog, fresh, private=private)
+                    fresh.response.defer.assert_awaited_once_with(
+                        thinking=True, ephemeral=private
+                    )
+                    fresh_view = fresh.edit_original_response.call_args.kwargs["view"]
+                    self.addCleanup(fresh_view.stop)
+                    self.assertEqual(
+                        fresh_view.context,
+                        PresentationContext(Language.RU, ZoneInfo("UTC")),
+                    )
 
     async def test_gif_assets_are_reused_across_new_png_and_webp_cards(self) -> None:
         bot = MagicMock()
@@ -463,7 +480,10 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         item = interaction()
         with patch.object(FeedbackUI, "send", AsyncMock()) as send:
             await invoke(cog, item)
-        self.assertIn("недоступна", send.call_args.kwargs["description"])
+        self.assertEqual(
+            send.call_args.kwargs["description"],
+            "Голосовые профили временно недоступны.",
+        )
         self.assertNotIn("private host", send.call_args.kwargs["description"])
         await cog.cog_unload()
         await cog.cog_unload()
@@ -485,7 +505,10 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                     self.assertIsNone(cog._revision)
                     with patch.object(FeedbackUI, "send", AsyncMock()) as send:
                         await invoke(cog, interaction())
-                    self.assertIn("недоступна", send.call_args.kwargs["description"])
+                    self.assertEqual(
+                        send.call_args.kwargs["description"],
+                        "Голосовые профили временно недоступны.",
+                    )
                     self.assertTrue(send.call_args.kwargs["ephemeral"])
                     await bot.remove_cog("VoiceProfileCog")
                     self.assertTrue(cog._media_renderer._closed)
@@ -526,7 +549,10 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             patch.object(FeedbackUI, "send", AsyncMock()) as send,
         ):
             await invoke(cog, item)
-        self.assertIn("заняты", send.call_args.kwargs["description"])
+        self.assertEqual(
+            send.call_args.kwargs["description"],
+            "Не удаётся создать карточку прямо сейчас. Попробуйте чуть позже.",
+        )
 
     async def test_real_profile_build_and_upload_fallback(self) -> None:
         cog = VoiceProfileCog(MagicMock())

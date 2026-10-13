@@ -192,7 +192,7 @@ class VoiceMessages:
         ).format(duration=duration, count=count)
 
     def remaining_voice(self, hours: Fraction | None) -> str:
-        """Format an existing estimate without changing its prediction model."""
+        """Format estimated voice time until the next level."""
         if hours is None:
             return ""
         if hours < Fraction(1, 60):

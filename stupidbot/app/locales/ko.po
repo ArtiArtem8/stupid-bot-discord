@@ -1,0 +1,87 @@
+# Korean translations for StupidBot.
+# Copyright (C) 2026 ArtiArtem8
+# This file is distributed under the same license as the StupidBot project.
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot\n"
+"Report-Msgid-Bugs-To: https://github.com/ArtiArtem8/stupid-bot-discord/issues\n"
+"POT-Creation-Date: 2026-10-13 00:00+0000\n"
+"PO-Revision-Date: 2026-10-13 00:00+0000\n"
+"Last-Translator: ArtiArtem8\n"
+"Language: ko\n"
+"Language-Team: ArtiArtem8\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "ui"
+msgid "Cannot delete messages in this channel."
+msgstr "이 채널에서는 메시지를 삭제할 수 없습니다."
+
+msgctxt "command"
+msgid "Delete a message by ID (owner only)"
+msgstr "메시지 ID로 메시지 삭제 (봇 소유자 전용)"
+
+msgctxt "ui"
+msgid "Deleted."
+msgstr "삭제했습니다."
+
+msgctxt "command"
+msgid "ID of the message to delete"
+msgstr "삭제할 메시지의 ID"
+
+msgctxt "ui"
+msgid "Insufficient permissions."
+msgstr "권한이 부족합니다."
+
+msgctxt "ui"
+msgid "Message not found."
+msgstr "메시지를 찾을 수 없습니다."
+
+msgctxt "command"
+msgid "Test error handling"
+msgstr "오류 처리 테스트"
+
+msgctxt "presence"
+msgid "life for {duration}."
+msgstr "{duration}째 가동 중"
+
+msgctxt "day"
+msgid "{count:d} day"
+msgid_plural "{count:d} days"
+msgstr[0] "{count:d}일"
+
+msgctxt "hour"
+msgid "{count:d} hour"
+msgid_plural "{count:d} hours"
+msgstr[0] "{count:d}시간"
+
+msgctxt "minute"
+msgid "{count:d} minute"
+msgid_plural "{count:d} minutes"
+msgstr[0] "{count:d}분"
+
+msgctxt "month"
+msgid "{count:d} month"
+msgid_plural "{count:d} months"
+msgstr[0] "{count:d}개월"
+
+msgctxt "second"
+msgid "{count:d} second"
+msgid_plural "{count:d} seconds"
+msgstr[0] "{count:d}초"
+
+msgctxt "week"
+msgid "{count:d} week"
+msgid_plural "{count:d} weeks"
+msgstr[0] "{count:d}주"
+
+msgctxt "year"
+msgid "{count:d} year"
+msgid_plural "{count:d} years"
+msgstr[0] "{count:d}년"
+
+msgctxt "join"
+msgid "{first} and {last}"
+msgstr "{first} {last}"

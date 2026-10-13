@@ -1,0 +1,453 @@
+# Korean translations for StupidBot.
+# Copyright (C) 2026 ArtiArtem8
+# This file is distributed under the same license as the StupidBot project.
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot\n"
+"Report-Msgid-Bugs-To: https://github.com/ArtiArtem8/stupid-bot-discord/issues\n"
+"POT-Creation-Date: 2026-10-13 00:00+0000\n"
+"PO-Revision-Date: 2026-10-13 00:00+0000\n"
+"Last-Translator: ArtiArtem8\n"
+"Language: ko\n"
+"Language-Team: ArtiArtem8\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "session_requester"
+msgid "\n**Requester:** <@{user_id:d}>"
+msgstr "\n**신청자:** <@{user_id:d}>"
+
+msgctxt "session_people"
+msgid "\n**Requesters:** {count:d}"
+msgstr "\n**신청자 수:** {count:d}명"
+
+msgctxt "session_skips"
+msgid " (skipped: {count:d})"
+msgstr " (건너뜀: {count:d}곡)"
+
+msgctxt "ui"
+msgid "*(empty)*"
+msgstr "*(비어 있음)*"
+
+msgctxt "session_tracks"
+msgid "**Tracks:** {count:d}"
+msgstr "**곡 수:** {count:d}"
+
+msgctxt "ui"
+msgid "*The same track*"
+msgstr "*같은 곡*"
+
+msgctxt "command"
+msgid "Add a track or playlist to the front of the queue"
+msgstr "곡 또는 재생목록을 대기열 맨 앞에 추가"
+
+msgctxt "playlist_added"
+msgid "Added playlist **{name}**"
+msgstr "재생목록 **{name}** 추가 완료"
+
+msgctxt "ui"
+msgid "Added to the front of the queue"
+msgstr "대기열 맨 앞에 추가했습니다"
+
+msgctxt "ui"
+msgid "Added to the queue"
+msgstr "대기열에 추가했습니다"
+
+msgctxt "already_connected"
+msgid "Already connected to {destination}"
+msgstr "이미 연결된 채널입니다: {destination}"
+
+msgctxt "internal_error"
+msgid "An internal music error occurred. Details have been logged."
+msgstr "음악 기능에 내부 오류가 발생했습니다. 오류 정보가 기록되었습니다."
+
+msgctxt "command"
+msgid "Connect to a voice channel"
+msgstr "음성 채널에 연결"
+
+msgctxt "joined"
+msgid "Connected to {destination}"
+msgstr "연결한 채널: {destination}"
+
+msgctxt "join_timeout"
+msgid "Connection to {destination} **timed out**\n*Try changing this channel's region!*"
+msgstr "{destination} 연결 **시간이 초과되었습니다**\n*채널의 음성 서버 지역을 변경해 보세요!*"
+
+msgctxt "connection_failed"
+msgid "Could not connect"
+msgstr "연결하지 못했습니다"
+
+msgctxt "join_failed"
+msgid "Could not connect to {destination}"
+msgstr "연결하지 못한 채널: {destination}"
+
+msgctxt "disconnect_failed"
+msgid "Could not disconnect from the voice channel."
+msgstr "음성 채널 연결을 해제하지 못했습니다."
+
+msgctxt "source_unavailable"
+msgid "Could not load the track. The source is temporarily unavailable or did not respond."
+msgstr "곡을 불러오지 못했습니다. 음원 제공처를 일시적으로 이용할 수 없거나 응답이 없습니다."
+
+msgctxt "ui"
+msgid "Could not play the track"
+msgstr "곡을 재생하지 못했습니다"
+
+msgctxt "ui"
+msgid "Could not refresh the queue"
+msgstr "대기열을 새로 고치지 못했습니다"
+
+msgctxt "command"
+msgid "Disconnect"
+msgstr "연결 해제"
+
+msgctxt "ui"
+msgid "Disconnected"
+msgstr "연결을 해제했습니다"
+
+msgctxt "ui"
+msgid "Duration"
+msgstr "재생 시간"
+
+msgctxt "ui"
+msgid "Empty"
+msgstr "비어 있음"
+
+msgctxt "command"
+msgid "Enable or disable repeat"
+msgstr "반복 재생 켜기 또는 끄기"
+
+msgctxt "ui"
+msgid "Enter a track title or link."
+msgstr "곡 제목이나 링크를 입력해 주세요."
+
+msgctxt "ui"
+msgid "Full history"
+msgstr "전체 기록"
+
+msgctxt "ui"
+msgid "Goodbye ❤️"
+msgstr "또 만나요 ❤️"
+
+msgctxt "ui"
+msgid "History"
+msgstr "기록"
+
+msgctxt "ui"
+msgid "How did you manage that?"
+msgstr "어떻게 그런 일이 생겼죠?"
+
+msgctxt "not_member"
+msgid "Invalid user type"
+msgstr "올바르지 않은 사용자 유형입니다"
+
+msgctxt "command"
+msgid "Leave empty to check the volume"
+msgstr "현재 음량을 확인하려면 비워 두세요"
+
+msgctxt "command"
+msgid "Move the current track to the end of the queue"
+msgstr "현재 곡을 대기열 맨 뒤로 이동"
+
+msgctxt "moved"
+msgid "Moved {origin} -> {destination}"
+msgstr "채널 이동: {origin} -> {destination}"
+
+msgctxt "no_player"
+msgid "No player"
+msgstr "플레이어가 없습니다"
+
+msgctxt "stale_queue"
+msgid "No tracks from this request are still waiting in the queue. They may have started playing or the queue may have changed."
+msgstr "이 요청으로 추가한 곡이 대기열에 남아 있지 않습니다. 재생이 시작되었거나 대기열이 변경되었을 수 있습니다."
+
+msgctxt "not_connected"
+msgid "Not connected"
+msgstr "연결되어 있지 않습니다"
+
+msgctxt "ui"
+msgid "Not restored"
+msgstr "복구하지 못했습니다"
+
+msgctxt "nothing_found"
+msgid "Nothing found. Please try again."
+msgstr "검색 결과가 없습니다. 다시 시도해 주세요."
+
+msgctxt "ui"
+msgid "Nothing found. Please try again."
+msgstr "검색 결과가 없습니다. 다시 시도해 주세요."
+
+msgctxt "ui"
+msgid "Nothing is playing."
+msgstr "재생 중인 곡이 없습니다."
+
+msgctxt "ui"
+msgid "Nothing to move"
+msgstr "이동할 곡이 없습니다"
+
+msgctxt "ui"
+msgid "Nothing to skip"
+msgstr "건너뛸 곡이 없습니다"
+
+msgctxt "ui"
+msgid "Now playing"
+msgstr "현재 재생 중"
+
+msgctxt "ui"
+msgid "Only the requester can remove these tracks from the queue."
+msgstr "곡을 신청한 사용자만 대기열에서 이 곡들을 삭제할 수 있습니다."
+
+msgctxt "queue_footer"
+msgid "Page {page:d}/{pages:d} • Queued: {count:d} • Repeat: {repeat}"
+msgstr "{page:d}/{pages:d}페이지 • 대기: {count:d}곡 • 반복: {repeat}"
+
+msgctxt "history_footer"
+msgid "Page {page:d}/{pages:d} • Tracks: {count:d}"
+msgstr "{page:d}/{pages:d}페이지 • 곡 수: {count:d}"
+
+msgctxt "command"
+msgid "Pause playback"
+msgstr "재생 일시 정지"
+
+msgctxt "command"
+msgid "Play music from YT, SoundCloud, Y.Music and VK"
+msgstr "YT, SoundCloud, Y.Music, VK에서 음악 재생"
+
+msgctxt "ui"
+msgid "Playback paused"
+msgstr "재생을 일시 정지했습니다"
+
+msgctxt "ui"
+msgid "Playback queue"
+msgstr "재생 대기열"
+
+msgctxt "ui"
+msgid "Playback resumed"
+msgstr "재생을 다시 시작했습니다"
+
+msgctxt "ui"
+msgid "Playback stopped"
+msgstr "재생을 중지했습니다"
+
+msgctxt "ui"
+msgid "Playlist added to the front of the queue"
+msgstr "재생목록을 대기열 맨 앞에 추가했습니다"
+
+msgctxt "ui"
+msgid "Playlist started"
+msgstr "재생목록 재생을 시작했습니다"
+
+msgctxt "ui"
+msgid "Please leave this alone; it is not your message."
+msgstr "다른 사용자의 메시지입니다. 조작하지 말아 주세요."
+
+msgctxt "command"
+msgid "Queue"
+msgstr "대기열"
+
+msgctxt "ui"
+msgid "Queue repeat is **on**"
+msgstr "대기열 반복 재생 **켜짐**"
+
+msgctxt "ui"
+msgid "Recent tracks:"
+msgstr "최근 재생한 곡:"
+
+msgctxt "command"
+msgid "Reconnect after an error"
+msgstr "오류 발생 후 다시 연결"
+
+msgctxt "ui"
+msgid "Reconnected, but the track could not be restarted. The source most likely returned a temporary error."
+msgstr "다시 연결했지만 곡을 다시 재생하지 못했습니다. 음원 제공처에서 일시적인 오류가 발생했을 가능성이 높습니다."
+
+msgctxt "ui"
+msgid "Reconnection attempted"
+msgstr "다시 연결을 시도했습니다"
+
+msgctxt "ui"
+msgid "Remove"
+msgstr "삭제"
+
+msgctxt "ui"
+msgid "Removed from the queue"
+msgstr "대기열에서 삭제했습니다"
+
+msgctxt "ui"
+msgid "Repeat is **off**"
+msgstr "반복 재생 **꺼짐**"
+
+msgctxt "ui"
+msgid "Repeat mode"
+msgstr "반복 모드"
+
+msgctxt "ui"
+msgid "Repeat mode is **unknown**"
+msgstr "**알 수 없는** 반복 모드"
+
+msgctxt "requester"
+msgid "Requested by: {name}"
+msgstr "신청자: {name}"
+
+msgctxt "ui"
+msgid "Restored"
+msgstr "복구했습니다"
+
+msgctxt "recovering"
+msgid "Restoring the connection. Try again once recovery finishes."
+msgstr "연결을 복구하고 있습니다. 복구가 완료되면 다시 시도해 주세요."
+
+msgctxt "command"
+msgid "Resume playback"
+msgstr "재생 다시 시작"
+
+msgctxt "ui"
+msgid "Session ended"
+msgstr "재생 세션 종료"
+
+msgctxt "command"
+msgid "Set volume (0-200)"
+msgstr "음량 설정 (0-200)"
+
+msgctxt "command"
+msgid "Show this message only to you"
+msgstr "이 메시지를 나에게만 표시"
+
+msgctxt "command"
+msgid "Shuffle the queue"
+msgstr "대기열 섞기"
+
+msgctxt "ui"
+msgid "Shuffled"
+msgstr "대기열을 섞었습니다"
+
+msgctxt "command"
+msgid "Skip the current track"
+msgstr "현재 곡 건너뛰기"
+
+msgctxt "command"
+msgid "Stop playback and clear the queue"
+msgstr "재생 중지 및 대기열 비우기"
+
+msgctxt "ui"
+msgid "Stopped"
+msgstr "중지했습니다"
+
+msgctxt "ui"
+msgid "Summary:"
+msgstr "요약:"
+
+msgctxt "unavailable"
+msgid "The music service is currently unavailable. Please try again later."
+msgstr "현재 음악 서비스를 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."
+
+msgctxt "player_changed"
+msgid "The player changed during the search. Try playing the track again."
+msgstr "검색 중 플레이어가 변경되었습니다. 곡을 다시 재생해 주세요."
+
+msgctxt "player_disconnected"
+msgid "The player lost its connection. Try playing the track again."
+msgstr "플레이어의 연결이 끊겼습니다. 곡을 다시 재생해 주세요."
+
+msgctxt "player_lost"
+msgid "The player lost its connection. Try playing the track again."
+msgstr "플레이어의 연결이 끊겼습니다. 곡을 다시 재생해 주세요."
+
+msgctxt "ui"
+msgid "The queue is empty"
+msgstr "대기열이 비어 있습니다"
+
+msgctxt "ui"
+msgid "There are no tracks in this session."
+msgstr "이 세션에는 재생 기록이 없습니다."
+
+msgctxt "ui"
+msgid "This is not your controller."
+msgstr "다른 사용자의 재생 컨트롤러입니다."
+
+msgctxt "ui"
+msgid "Track moved to the end"
+msgstr "곡을 대기열 맨 뒤로 이동했습니다"
+
+msgctxt "ui"
+msgid "Track repeat is **on**"
+msgstr "한 곡 반복 재생 **켜짐**"
+
+msgctxt "ui"
+msgid "Track skipped"
+msgstr "곡을 건너뛰었습니다"
+
+msgctxt "stuck"
+msgid "Track stalled, waiting to resume • {requester}"
+msgstr "재생이 멈춰 다시 시작되기를 기다리고 있습니다 • {requester}"
+
+msgctxt "ui"
+msgid "Track:"
+msgstr "곡:"
+
+msgctxt "track_count"
+msgid "Tracks: {count:d}"
+msgstr "곡 수: {count:d}"
+
+msgctxt "command"
+msgid "URL or title"
+msgstr "URL 또는 제목"
+
+msgctxt "unknown_channel"
+msgid "Unknown channel"
+msgstr "알 수 없는 채널"
+
+msgctxt "ui"
+msgid "Up next"
+msgstr "다음 곡"
+
+msgctxt "channel_empty"
+msgid "Voice channel {destination} is empty!"
+msgstr "음성 채널 {destination}에 아무도 없습니다!"
+
+msgctxt "volume"
+msgid "Volume: {percent:d}%"
+msgstr "음량: {percent:d}%"
+
+msgctxt "not_in_voice"
+msgid "You must be in a voice channel!"
+msgstr "먼저 음성 채널에 들어가 주세요!"
+
+msgctxt "ui"
+msgid "You must be in a voice channel!"
+msgstr "먼저 음성 채널에 들어가 주세요!"
+
+msgctxt "ui"
+msgid "no player"
+msgstr "플레이어 없음"
+
+msgctxt "ui"
+msgid "off"
+msgstr "꺼짐"
+
+msgctxt "command"
+msgid "off: no repeat, queue: repeat queue, track: repeat track"
+msgstr "off: 반복 없음, queue: 대기열 반복, track: 한 곡 반복"
+
+msgctxt "repeat_mode"
+msgid "queue"
+msgstr "대기열"
+
+msgctxt "repeat_mode"
+msgid "track"
+msgstr "한 곡"
+
+msgctxt "ui"
+msgid "server not found"
+msgstr "서버를 찾을 수 없음"
+
+msgctxt "days"
+msgid "{count:d} day"
+msgid_plural "{count:d} days"
+msgstr[0] "{count:d}일"
+
+msgctxt "track_exception"
+msgid "{link}\n**Reason:** The source is temporarily unavailable or did not respond."
+msgstr "{link}\n**사유:** 음원 제공처를 일시적으로 이용할 수 없거나 응답이 없습니다."

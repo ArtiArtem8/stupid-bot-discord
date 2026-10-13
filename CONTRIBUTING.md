@@ -44,14 +44,22 @@ the same CLI. SQLite maintenance uses `python -m stupidbot.storage`; the previou
 Translations live in each owner's `locales/` directory. Runtime uses stdlib
 gettext; Babel is a development dependency. Use readable English `msgid` text
 and stable English `msgctxt` values describing meaning, not filenames or classes.
-English translations equal their source text; Russian translations live in `ru.po`.
+English translations equal their source text; Russian and Korean translations
+live in `ru.po` and `ko.po`. Korean uses one plural form. Keep catalog creation
+and revision dates explicit so compilation is reproducible.
 This source convention does not change the Russian audience fallback.
 Translate complete phrases, with plural forms for counts and named placeholders
 for values; keep user content, external answers and technical identifiers intact.
 Parameterized messages have typed
 methods in the owner's `messages.py`. Pass an explicit presentation context to
 views and renderers; do not set a global language. Personal/ephemeral responses
-resolve user preferences, while public responses resolve guild preferences.
+resolve user preferences, while shared public responses resolve guild preferences.
+Voice profiles use the requester's language regardless of visibility; the
+`private` option changes delivery only. An unset personal timezone inherits
+the server timezone, then `VOICE_PROFILE_TIMEZONE`. Language does not inherit
+from the server. Fixed-offset choices use IANA `Etc/GMT`
+keys internally; display them through `common.timezones.timezone_label` to avoid
+exposing their reversed POSIX signs.
 
 After changing message literals or PO translations, run
 `uv run --locked python -m tools.catalogs`. Commit the PO, MO, index and digest

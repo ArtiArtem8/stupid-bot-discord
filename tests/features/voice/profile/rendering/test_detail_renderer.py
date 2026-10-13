@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from fractions import Fraction
 from typing import override
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 from defusedxml.ElementTree import fromstring
 from PIL import Image
@@ -62,6 +63,16 @@ class TestDetailBindings(unittest.TestCase):
             profile_at(35).appearance,
         )
         self.as_of = datetime(2026, 9, 21, 12, tzinfo=UTC)
+
+    def test_activity_period_displays_fixed_offset_with_conventional_sign(self) -> None:
+        activity = build_activity_detail(
+            VoiceTimeline((), (), ()), 1, 1, self.as_of, ZoneInfo("Etc/GMT-3")
+        )
+        self.renderer.render_activity(activity, self.identity)
+        root = fromstring(self.raster.layers.call_args.args[0][0])
+        label = next(node for node in root.iter() if node.get("id") == "period-label")
+        self.assertIn("UTC+3", label.text or "")
+        self.assertNotIn("Etc/GMT", label.text or "")
 
     def test_each_template_uses_shared_theme_and_emblem_accent(self) -> None:
         timeline = VoiceTimeline((), (), ())

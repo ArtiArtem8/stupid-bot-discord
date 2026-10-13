@@ -48,6 +48,7 @@ class TestMediaCache(unittest.IsolatedAsyncioTestCase):
         variants = (
             KEY,
             replace(KEY, language=Language.RU),
+            replace(KEY, language=Language.KO),
             replace(KEY, catalog_revision="catalog-v2"),
             replace(KEY, timezone="Europe/Moscow"),
         )

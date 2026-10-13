@@ -1,17 +1,15 @@
 # English translations for StupidBot.
-# Copyright (C) 2026 ORGANIZATION
+# Copyright (C) 2026 ArtiArtem8
 # This file is distributed under the same license as the StupidBot project.
-# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
-#
 msgid ""
 msgstr ""
-"Project-Id-Version: StupidBot VERSION\n"
-"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"Project-Id-Version: StupidBot\n"
+"Report-Msgid-Bugs-To: https://github.com/ArtiArtem8/stupid-bot-discord/issues\n"
 "POT-Creation-Date: 2026-10-12 00:00+0000\n"
 "PO-Revision-Date: 2026-10-12 00:00+0000\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Last-Translator: ArtiArtem8\n"
 "Language: en\n"
-"Language-Team: en <LL@li.org>\n"
+"Language-Team: ArtiArtem8\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
@@ -30,33 +28,35 @@ msgctxt "cancelled"
 msgid "Changes cancelled."
 msgstr "Changes cancelled."
 
+#, python-brace-format
 msgctxt "reminder"
 msgid ""
 "Choose a language and timezone for personal replies and your voice profile in "
-"/settings."
+"{command}."
 msgstr ""
 "Choose a language and timezone for personal replies and your voice profile in "
-"/settings."
+"{command}."
 
 msgctxt "never"
 msgid "Do not remind me"
 msgstr "Do not remind me"
 
 msgctxt "zone_help"
-msgid "For example Europe/Moscow. Leave blank to use the installation default."
-msgstr "For example Europe/Moscow. Leave blank to use the installation default."
+msgid "For example Europe/Moscow. Leave blank to use the default timezone."
+msgstr "For example Europe/Moscow. Leave blank to use the default timezone."
 
+#, python-brace-format
 msgctxt "reminder_disabled"
-msgid "I will not remind you again. Settings are available in /settings."
-msgstr "I will not remind you again. Settings are available in /settings."
+msgid "I will not remind you again. Settings are available in {command}."
+msgstr "I will not remind you again. Settings are available in {command}."
 
 msgctxt "zone_id"
 msgid "IANA timezone"
 msgstr "IANA timezone"
 
 msgctxt "command"
-msgid "Language and timezone for public server messages"
-msgstr "Language and timezone for public server messages"
+msgid "Server language and default profile timezone"
+msgstr "Server language and default profile timezone"
 
 #, python-brace-format
 msgctxt "preview"
@@ -73,13 +73,14 @@ msgctxt "later"
 msgid "Later"
 msgstr "Later"
 
+#, python-brace-format
 msgctxt "reminder_later"
-msgid "Okay. Settings are available in /settings whenever you need them."
-msgstr "Okay. Settings are available in /settings whenever you need them."
+msgid "Okay. Settings are available in {command} whenever you need them."
+msgstr "Okay. Settings are available in {command} whenever you need them."
 
 msgctxt "personal_title"
-msgid "Personal settings"
-msgstr "Personal settings"
+msgid "Your settings"
+msgstr "Your settings"
 
 msgctxt "save"
 msgid "Save"
@@ -107,8 +108,8 @@ msgid "This editor has expired. Open settings again."
 msgstr "This editor has expired. Open settings again."
 
 msgctxt "owner_only"
-msgid "This panel belongs to someone else. Open /settings."
-msgstr "This panel belongs to someone else. Open /settings."
+msgid "This panel belongs to someone else. Open /customize-me."
+msgstr "This panel belongs to someone else. Open /customize-me."
 
 msgctxt "closed"
 msgid "This panel is closed or saving. Open settings again."
@@ -123,13 +124,49 @@ msgid "Timezone"
 msgstr "Timezone"
 
 msgctxt "invalid_zone"
-msgid "Unknown IANA timezone. Examples: Europe/Moscow or Asia/Krasnoyarsk."
-msgstr "Unknown IANA timezone. Examples: Europe/Moscow or Asia/Krasnoyarsk."
+msgid "Unknown IANA timezone. Examples: Europe/Moscow or UTC."
+msgstr "Unknown IANA timezone. Examples: Europe/Moscow or UTC."
 
 msgctxt "permission"
 msgid "You need Manage Server permission to change server settings."
 msgstr "You need Manage Server permission to change server settings."
 
 msgctxt "command"
-msgid "Your language and timezone"
-msgstr "Your language and timezone"
+msgid "Your language and timezone for replies and your profile"
+msgstr "Your language and timezone for replies and your profile"
+
+msgctxt "fixed_offset"
+msgid "Fixed offset, no daylight saving time"
+msgstr "Fixed offset, no daylight saving time"
+
+msgctxt "zone_other"
+msgid "Other…"
+msgstr "Other…"
+
+msgctxt "reset"
+msgid "Reset settings"
+msgstr "Reset settings"
+
+msgctxt "personal_scope"
+msgid ""
+"Your language for personal replies and all your profiles, including public ones, "
+"across all servers.\n"
+"Timezone changes dates and charts, not XP or time in voice. If unset, profiles "
+"use the server timezone."
+msgstr ""
+"Your language for personal replies and all your profiles, including public ones, "
+"across all servers.\n"
+"Timezone changes dates and charts, not XP or time in voice. If unset, profiles "
+"use the server timezone."
+
+msgctxt "server_scope"
+msgid ""
+"Language for shared messages. Timezone for profiles without a personal timezone. "
+"Birthday schedules stay unchanged."
+msgstr ""
+"Language for shared messages. Timezone for profiles without a personal timezone. "
+"Birthday schedules stay unchanged."
+
+msgctxt "zone_inherit"
+msgid "Default timezone"
+msgstr "Default timezone"

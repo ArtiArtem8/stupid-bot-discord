@@ -16,7 +16,7 @@ from .dates import DATE_FORMAT
 from .messages import BirthdayMessages
 from .models import BirthdayGuildConfig
 
-MONTH_NAMES_RU = {
+MONTH_NAMES = {
     1: pgettext_noop("month", "January"),
     2: pgettext_noop("month", "February"),
     3: pgettext_noop("month", "March"),
@@ -59,18 +59,13 @@ def format_birthday_date(
 
     try:
         birthday = datetime.strptime(birthday_str, DATE_FORMAT).date()
-
-        if birthday.month not in MONTH_NAMES_RU:
-            return None
-
-        return BirthdayMessages(catalog("birthdays", language)).date(
-            day=birthday.day,
-            month=catalog("birthdays", language).pgettext(
-                "month", MONTH_NAMES_RU[birthday.month]
-            ),
-        )
     except ValueError:
         return None
+    messages = BirthdayMessages(catalog("birthdays", language))
+    return messages.date(
+        day=birthday.day,
+        month=messages.catalog.pgettext("month", MONTH_NAMES[birthday.month]),
+    )
 
 
 def build_birthday_list(
@@ -80,7 +75,7 @@ def build_birthday_list(
     *,
     language: Language = Language.RU,
 ) -> list[BirthdayListEntry]:
-    """Format a numeric projection with the existing saved-name fallback."""
+    """Format upcoming birthdays, using saved names when display names are absent."""
     entries: list[BirthdayListEntry] = []
     for occurrence in config.upcoming_birthdays(reference_date):
         user = config.users[occurrence.user_id]

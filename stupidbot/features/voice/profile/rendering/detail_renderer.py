@@ -13,6 +13,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from stupidbot.common.timezones import timezone_label
 from stupidbot.features.voice.messages import WEEKDAY_ABBR, WEEKDAYS, VoiceMessages
 from stupidbot.features.voice.profile.calendar import ClockSpan
 from stupidbot.features.voice.profile.details import (
@@ -97,7 +98,7 @@ class DetailCardRenderer:
                 "period-label": (
                     f"{messages.date_label(period.first_date, year=False)} – "
                     f"{messages.date_label(period.last_date, year=False)}"
-                    f" · {period.timezone_label}"
+                    f" · {timezone_label(period.timezone_label)}"
                 ),
                 "coverage-label": messages.coverage(
                     percentage=_coverage(period),

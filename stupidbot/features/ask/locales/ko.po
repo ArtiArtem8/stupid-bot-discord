@@ -1,0 +1,84 @@
+# Korean translations for StupidBot.
+# Copyright (C) 2026 ArtiArtem8
+# This file is distributed under the same license as the StupidBot project.
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot\n"
+"Report-Msgid-Bugs-To: https://github.com/ArtiArtem8/stupid-bot-discord/issues\n"
+"POT-Creation-Date: 2026-10-13 00:00+0000\n"
+"PO-Revision-Date: 2026-10-13 00:00+0000\n"
+"Last-Translator: ArtiArtem8\n"
+"Language: ko\n"
+"Language-Team: ArtiArtem8\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "answer"
+msgid "..."
+msgstr "..."
+
+msgctxt "answer"
+msgid "Almost certainly"
+msgstr "거의 확실해요"
+
+msgctxt "answer"
+msgid "Highly debatable"
+msgstr "글쎄요, 의견이 많이 갈릴 것 같네요"
+
+msgctxt "answer"
+msgid "I do not know"
+msgstr "모르겠어요"
+
+msgctxt "answer"
+msgid "I do not want to answer"
+msgstr "대답하고 싶지 않아요"
+
+msgctxt "answer"
+msgid "Insanity is doing the exact same thing over and over again, expecting things to change. That is insanity."
+msgstr "똑같은 일을 계속 반복하면서 결과가 달라지기를 바라는 것. 그게 바로 광기죠."
+
+msgctxt "answer"
+msgid "It is decided"
+msgstr "이미 정해졌어요"
+
+msgctxt "command"
+msgid "Magic 8-ball: ask any question"
+msgstr "매직 8볼: 무엇이든 물어보세요"
+
+msgctxt "answer"
+msgid "Maybe"
+msgstr "그럴 수도 있어요"
+
+msgctxt "answer"
+msgid "More likely yes"
+msgstr "그럴 가능성이 더 높아요"
+
+msgctxt "answer"
+msgid "No!"
+msgstr "아니요!"
+
+msgctxt "answer"
+msgid "Probably not"
+msgstr "아마 아닐 거예요"
+
+msgctxt "answer"
+msgid "Sorry, I am too busy for pointless conversation today"
+msgstr "미안하지만, 오늘은 쓸데없는 이야기를 나누기엔 너무 바빠요"
+
+msgctxt "answer"
+msgid "Yes!"
+msgstr "네!"
+
+msgctxt "answer"
+msgid "You are one of those people who are a pleasure to say goodbye to"
+msgstr "당신은 작별 인사를 할 때 참 기분이 좋아지는 사람이네요"
+
+msgctxt "answer"
+msgid "You are one of those people who are a pleasure to talk to"
+msgstr "당신은 함께 이야기하면 참 기분이 좋아지는 사람이네요"
+
+msgctxt "answer"
+msgid "You should not have asked"
+msgstr "묻지 않는 게 나았을 거예요"

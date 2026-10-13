@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
@@ -23,7 +22,6 @@ from stupidbot.i18n.catalog import catalog
 from stupidbot.i18n.policy import Language
 
 MAX_TIMEDELTA_DAYS = 999_999_999
-_MARKDOWN_LINK_BRACKET_RE = re.compile(r"([\[\]])")
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,38 +55,66 @@ def format_duration(ms: float, *, language: Language = Language.RU) -> str:
     return str(total)
 
 
-def _normalize_inline_text(text: str) -> str:
-    """Collapse line breaks in user-controlled inline text."""
-    return " ".join(text.splitlines())
-
-
 def _escape_markdown_text(text: str) -> str:
     """Escape untrusted single-line Discord Markdown text."""
     return discord.utils.escape_markdown(
-        _normalize_inline_text(text),
+        " ".join(text.splitlines()),
         ignore_links=False,
     )
 
 
-def _escape_markdown_link_label(text: str) -> str:
-    """Escape untrusted text embedded inside a Markdown link label."""
-    normalized = _normalize_inline_text(text)
-    parts = _MARKDOWN_LINK_BRACKET_RE.split(normalized)
+def _truncate_link_label(text: str, width: int) -> str | None:
+    """Bound a label with balanced brackets, or reject an unbalanced source.
 
-    return "".join(
-        f"\\{part}"
-        if part in ("[", "]")
-        else discord.utils.escape_markdown(part, ignore_links=False)
-        for part in parts
+    Check the entire source even when only its prefix will be shown. Remember
+    the longest prefix that leaves room for the ellipsis and closing brackets.
+    """
+    placeholder = "..."[:width]
+    prefix_end = 0
+    prefix_depth = 0
+    depth = 0
+    for index, character in enumerate(text, 1):
+        if character == "[":
+            depth += 1
+        elif character == "]":
+            depth -= 1
+            if depth < 0:
+                return None
+        if index + len(placeholder) + depth <= width:
+            prefix_end = index
+            prefix_depth = depth
+    if depth:
+        return None
+    if len(text) <= width:
+        return text
+    return text[:prefix_end] + placeholder + "]" * prefix_depth
+
+
+def format_track_link(
+    title: str,
+    uri: str | None,
+    *,
+    max_length: int = 1024,
+    max_title_length: int | None = None,
+) -> str:
+    """Bound a track title and keep its destination intact when it fits.
+
+    Discord displays escaped brackets literally inside link labels. Use balanced
+    brackets as-is and preserve their balance when shortening the label. Titles
+    with unmatched brackets or nested link syntax remain plain text, as do links
+    whose destination cannot fit. Limits count the emitted Markdown characters.
+    """
+    escaped_title = _escape_markdown_text(title)
+    title_budget = (
+        max_length if max_title_length is None else min(max_length, max_title_length)
     )
-
-
-def format_track_link(title: str, uri: str | None, *, max_length: int = 1024) -> str:
-    """Bound a track label while keeping its link intact when it fits."""
-    escaped_title = _escape_markdown_link_label(title)
-    if not uri or len(uri) + 5 >= max_length:
-        return truncate_text(escaped_title, max_length)
-    label = truncate_text(escaped_title, max_length - len(uri) - 4)
+    if not uri or len(uri) + 5 >= max_length or "](" in escaped_title:
+        return truncate_text(escaped_title, title_budget)
+    label = _truncate_link_label(
+        escaped_title, min(title_budget, max_length - len(uri) - 4)
+    )
+    if label is None:
+        return truncate_text(escaped_title, title_budget)
     return f"[{label}]({uri})"
 
 
@@ -125,12 +151,16 @@ def _group_consecutive_tracks(tracks: Sequence[TrackInfo]) -> list[_TrackGroup]:
     ]
 
 
-def _format_track_group(group: _TrackGroup) -> str:
+def _format_track_group(group: _TrackGroup, *, max_length: int) -> str:
     """Format one grouped track for a session summary."""
     status_marker = "~~" if group.skipped else ""
     count_str = f" **×{group.count}**" if group.count > 1 else ""
-    truncated_title = truncate_text(group.title, 45, placeholder="...")
-    track_str = format_track_link(truncated_title, group.uri)
+    track_str = format_track_link(
+        group.title,
+        group.uri,
+        max_length=max_length - 2 * len(status_marker) - len(count_str),
+        max_title_length=45,
+    )
     return f"{status_marker}{track_str}{count_str}{status_marker}"
 
 
@@ -140,12 +170,20 @@ def _format_recent_tracks(
     """Format recent session tracks with consecutive duplicates grouped."""
     messages = MusicMessages(catalog("music", language))
     grouped = _group_consecutive_tracks(tracks)
-    formatted_groups = [_format_track_group(group) for group in grouped]
+    placeholder = "\n..."
+    # Reserve the omission marker before building links, so truncation only drops
+    # whole groups and never cuts a URL or a closing Markdown delimiter.
+    group_budget = MAX_EMBED_FIELD_LENGTH
+    if len(grouped) > 1:
+        group_budget -= len(placeholder)
+    formatted_groups = [
+        _format_track_group(group, max_length=group_budget) for group in grouped
+    ]
     result = truncate_sequence(
         reversed(formatted_groups),
         max_length=MAX_EMBED_FIELD_LENGTH,
         separator="\n",
-        placeholder="\n...",
+        placeholder=placeholder,
     )
     return (
         result or messages.catalog.pgettext("ui", "*(empty)*"),

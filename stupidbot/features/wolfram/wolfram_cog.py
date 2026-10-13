@@ -295,7 +295,7 @@ class WolframCog(BaseCog):
         wolfram_query: str,
         mode: WolframMode,
     ) -> None:
-        """Dispatch a parsed Wolfram result to the existing Discord feedback path."""
+        """Send parsed Wolfram results through Discord feedback."""
         context = await interaction_context(interaction, private=True)
         messages = WolframMessages(catalog("wolfram", context.language))
         if not result.success:

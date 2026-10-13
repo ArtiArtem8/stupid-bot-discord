@@ -1,0 +1,147 @@
+# Korean translations for StupidBot.
+# Copyright (C) 2026 ArtiArtem8
+# This file is distributed under the same license as the StupidBot project.
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot\n"
+"Report-Msgid-Bugs-To: https://github.com/ArtiArtem8/stupid-bot-discord/issues\n"
+"POT-Creation-Date: 2026-10-13 00:00+0000\n"
+"PO-Revision-Date: 2026-10-13 00:00+0000\n"
+"Last-Translator: ArtiArtem8\n"
+"Language: ko\n"
+"Language-Team: ArtiArtem8\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "discord"
+msgid "As in Discord"
+msgstr "Discord 설정 따르기"
+
+msgctxt "cancel"
+msgid "Cancel"
+msgstr "취소"
+
+msgctxt "cancelled"
+msgid "Changes cancelled."
+msgstr "변경 사항을 취소했습니다."
+
+#, python-brace-format
+msgctxt "reminder"
+msgid "Choose a language and timezone for personal replies and your voice profile in {command}."
+msgstr "{command}에서 개인 응답과 음성 프로필에 사용할 언어와 시간대를 선택해 보세요."
+
+msgctxt "never"
+msgid "Do not remind me"
+msgstr "다시 알리지 않기"
+
+msgctxt "zone_help"
+msgid "For example Europe/Moscow. Leave blank to use the default timezone."
+msgstr "예: Europe/Moscow. 기본 시간대를 사용하려면 비워 두세요."
+
+#, python-brace-format
+msgctxt "reminder_disabled"
+msgid "I will not remind you again. Settings are available in {command}."
+msgstr "더 이상 알리지 않겠습니다. 설정은 {command}에서 변경할 수 있습니다."
+
+msgctxt "zone_id"
+msgid "IANA timezone"
+msgstr "IANA 시간대"
+
+msgctxt "command"
+msgid "Server language and default profile timezone"
+msgstr "서버 언어와 프로필 기본 시간대 설정"
+
+msgctxt "preview"
+msgid "Language: **{language}**\nTimezone: **{timezone}**\nCurrent time: {local_time}"
+msgstr "언어: **{language}**\n시간대: **{timezone}**\n현재 시각: {local_time}"
+
+msgctxt "later"
+msgid "Later"
+msgstr "나중에"
+
+#, python-brace-format
+msgctxt "reminder_later"
+msgid "Okay. Settings are available in {command} whenever you need them."
+msgstr "알겠습니다. 언제든 {command}에서 설정을 변경할 수 있습니다."
+
+msgctxt "personal_title"
+msgid "Your settings"
+msgstr "내 설정"
+
+msgctxt "save"
+msgid "Save"
+msgstr "저장"
+
+msgctxt "server_title"
+msgid "Server settings"
+msgstr "서버 설정"
+
+msgctxt "open_settings"
+msgid "Set up"
+msgstr "설정하기"
+
+msgctxt "conflict"
+msgid "Settings have changed. Current values: {language}, {timezone}. Open the panel again."
+msgstr "설정이 변경되었습니다. 현재 값: {language}, {timezone}. 설정 창을 다시 열어 주세요."
+
+msgctxt "saved"
+msgid "Settings saved."
+msgstr "설정을 저장했습니다."
+
+msgctxt "expired"
+msgid "This editor has expired. Open settings again."
+msgstr "설정 창의 유효 시간이 지났습니다. 설정을 다시 열어 주세요."
+
+msgctxt "owner_only"
+msgid "This panel belongs to someone else. Open /customize-me."
+msgstr "다른 사용자의 설정 창입니다. /customize-me를 실행해 주세요."
+
+msgctxt "closed"
+msgid "This panel is closed or saving. Open settings again."
+msgstr "설정 창이 닫혔거나 저장 중입니다. 설정을 다시 열어 주세요."
+
+msgctxt "reminder_expired"
+msgid "This reminder has already been handled."
+msgstr "이미 처리된 알림입니다."
+
+msgctxt "timezone"
+msgid "Timezone"
+msgstr "시간대"
+
+msgctxt "invalid_zone"
+msgid "Unknown IANA timezone. Examples: Europe/Moscow or UTC."
+msgstr "알 수 없는 IANA 시간대입니다. 예: Europe/Moscow 또는 UTC."
+
+msgctxt "permission"
+msgid "You need Manage Server permission to change server settings."
+msgstr "서버 설정을 변경하려면 서버 관리 권한이 필요합니다."
+
+msgctxt "command"
+msgid "Your language and timezone for replies and your profile"
+msgstr "내 응답과 프로필에 사용할 언어 및 시간대 설정"
+
+msgctxt "fixed_offset"
+msgid "Fixed offset, no daylight saving time"
+msgstr "고정 시차, 서머타임 미적용"
+
+msgctxt "zone_other"
+msgid "Other…"
+msgstr "직접 입력…"
+
+msgctxt "reset"
+msgid "Reset settings"
+msgstr "설정 초기화"
+
+msgctxt "personal_scope"
+msgid "Your language for personal replies and all your profiles, including public ones, across all servers.\nTimezone changes dates and charts, not XP or time in voice. If unset, profiles use the server timezone."
+msgstr "모든 서버에서 개인 응답과 내 프로필에 사용할 언어입니다. 공개 프로필에도 적용됩니다.\n시간대는 날짜와 차트에만 영향을 주며, XP나 음성 활동 시간은 바뀌지 않습니다. 지정하지 않으면 프로필에 서버 시간대를 사용합니다."
+
+msgctxt "server_scope"
+msgid "Language for shared messages. Timezone for profiles without a personal timezone. Birthday schedules stay unchanged."
+msgstr "공개 메시지에 사용할 언어와 개인 시간대가 지정되지 않은 프로필에 사용할 시간대입니다. 생일 알림 일정은 바뀌지 않습니다."
+
+msgctxt "zone_inherit"
+msgid "Default timezone"
+msgstr "기본 시간대"

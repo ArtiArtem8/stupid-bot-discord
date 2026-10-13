@@ -94,6 +94,12 @@ compare-and-swap revision checks; a stale editor conflicts even if its proposed
 values happen to match. Explicit no-op saves preserve revision. Clearing a
 language override leaves the timezone untouched.
 
+Revision `0005_korean` expands the user/guild language constraints to accept `ko`.
+It rebuilds only those two leaf tables, preserving nullable overrides, revisions
+and foreign keys. Reminder state and saved answers remain unchanged. Run the
+explicit maintenance migration before starting this version; startup does not
+upgrade the database.
+
 Reminder reservation commits before sending and consumes its allowance even
 when Discord delivery is uncertain. After two successful personal profile uses,
 at most two reservations are allowed, separated by 14 days. Dismissal or an

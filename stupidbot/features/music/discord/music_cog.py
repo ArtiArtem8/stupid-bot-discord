@@ -555,7 +555,7 @@ class MusicCog(BaseCog):
 
     @app_commands.command(
         name="volume",
-        description=app_commands.locale_str("Set volume (0–200)", domain="music"),
+        description=app_commands.locale_str("Set volume (0-200)", domain="music"),
     )
     @app_commands.describe(
         value=app_commands.locale_str("Leave empty to check the volume", domain="music")
@@ -663,7 +663,7 @@ class MusicCog(BaseCog):
     )
     @app_commands.describe(
         mode=app_commands.locale_str(
-            "off — no repeat, queue — repeat queue, track — repeat track",
+            "off: no repeat, queue: repeat queue, track: repeat track",
             domain="music",
         )
     )
