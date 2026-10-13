@@ -150,9 +150,10 @@ are independent. Profile calendar dates use your timezone or
 the server timezone if no personal override is set, then `VOICE_PROFILE_TIMEZONE`.
 Language does not inherit from the server. Discord does not supply a timezone.
 
-Command descriptions follow your Discord client language. User text, external
-Wolfram answers and previously saved `/ask` replies stay unchanged. A new `/ask`
-answer is translated before saving; repeated questions return that saved text.
+Command descriptions and built-in timestamps follow your Discord client settings.
+User text, external Wolfram answers and previously saved `/ask` replies stay
+unchanged. A new `/ask` answer is translated before saving; repeated questions
+return that saved text.
 The bot-wide uptime status remains Russian.
 
 After the second successful private profile use, an optional settings reminder
