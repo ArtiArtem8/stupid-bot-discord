@@ -688,6 +688,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
 
     async def test_delayed_validation_logs_unexpected_background_failure(self) -> None:
         self.connection.wait_voice_ready.return_value = False
+        self.connection.is_player_usable.return_value = False
         player = MagicMock(connected=False, current=None)
         player.guild.id = 1
         self.connection.get_player.return_value = player

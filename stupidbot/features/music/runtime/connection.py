@@ -410,7 +410,11 @@ class ConnectionManager:
             await self.mark_node_unavailable(node)
         finally:
             for player in invalidated:
-                await self._cleanup_voice_client_locally(player.guild, player)
+                if self.get_player_node(player) is node:
+                    await self._cleanup_voice_client_locally(player.guild, player)
+                else:
+                    # A committed transfer left resources on a different node.
+                    await self.detach_stale_voice_client(player.guild, player)
 
         return {player.guild.id for player in invalidated}
 
