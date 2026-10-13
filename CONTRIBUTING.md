@@ -44,7 +44,9 @@ the same CLI. SQLite maintenance uses `python -m stupidbot.storage`; the previou
 Translations live in each owner's `locales/` directory. Runtime uses stdlib
 gettext; Babel is a development dependency. Use readable English `msgid` text
 and stable English `msgctxt` values describing meaning, not filenames or classes.
-English translations equal their source text; Russian translations live in `ru.po`.
+English translations equal their source text; Russian and Korean translations
+live in `ru.po` and `ko.po`. Korean uses one plural form. Keep catalog creation
+and revision dates explicit so compilation is reproducible.
 This source convention does not change the Russian audience fallback.
 Translate complete phrases, with plural forms for counts and named placeholders
 for values; keep user content, external answers and technical identifiers intact.

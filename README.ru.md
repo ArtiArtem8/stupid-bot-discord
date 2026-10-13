@@ -24,7 +24,7 @@
 **StupidBot** — Discord-бот с музыкой, голосовыми профилями и поздравлениями
 с днём рождения. Его можно запустить у себя.
 
-Интерфейс и карточки профиля доступны на русском и английском.
+Интерфейс и карточки профиля доступны на русском, английском и корейском.
 
 [English](README.md) · **Русский**
 
@@ -136,7 +136,7 @@ People показывает время с другими участниками,
 <details>
 <summary>Приоритет языка, сохранение настроек и напоминания</summary>
 
-Выберите русский, английский или **Как в Discord**, укажите смещение от
+Выберите русский, английский, корейский или **Как в Discord**, укажите смещение от
 `UTC-11` до `UTC+12`, проверьте предпросмотр и нажмите **Сохранить**. Смещения
 не учитывают сезонный перевод часов. **Другой…** позволяет ввести региональный
 часовой пояс IANA, например `Europe/Moscow`. **Отмена** закрывает панель
@@ -230,7 +230,8 @@ uv sync --locked --no-dev
 для выбранной версии Lavalink.
 
 Для профилей установите **Inkscape** на хост бота и сохраните поставляемые
-[шрифты Inter](stupidbot/assets/fonts/). Проверьте `inkscape --version` от имени учётной
+[шрифты из проекта](stupidbot/assets/fonts/) (Inter и корейские символы Noto Sans KR).
+Проверьте `inkscape --version` от имени учётной
 записи службы. Без Inkscape или шрифтов команда профиля недоступна; остальные
 функции могут запускаться. Подробнее: [настройка рендерера](docs/voice/profile-card.md#setup).
 Пользовательские emoji приложения из [shared emoji references](stupidbot/discord_ui/emojis.py) и
@@ -292,5 +293,6 @@ uv run --locked --no-dev main.py --database /path/to/app.sqlite
 [MIT](LICENSE). Баннер использует эмблему профиля и музыкальную палитру бота;
 редактируемые SVG находятся в [docs/assets/](docs/assets/).
 Часть иконок интерфейса предоставлена [Icons8](https://icons8.com);
-файлы находятся в [stupidbot/discord_ui/assets/emojis/](stupidbot/discord_ui/assets/emojis/). Inter распространяется
-по [SIL Open Font License](stupidbot/assets/fonts/OFL.txt).
+файлы находятся в [stupidbot/discord_ui/assets/emojis/](stupidbot/discord_ui/assets/emojis/).
+Inter и Noto Sans KR распространяются по SIL Open Font License;
+см. [лицензии и источник шрифтов](stupidbot/assets/fonts/README.md).

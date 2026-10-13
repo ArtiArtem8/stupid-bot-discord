@@ -7,6 +7,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from fractions import Fraction
 from io import BytesIO
+from itertools import combinations
 
 import pytest
 from PIL import Image
@@ -35,7 +36,9 @@ from tests.features.voice.profile.test_media import profile_at
     "Set VOICE_PROFILE_NATIVE=1 with Inkscape installed to run native integration",
 )
 class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
-    async def test_ru_en_main_details_and_animation_have_distinct_pixels(self) -> None:
+    async def test_all_languages_main_details_and_animation_have_distinct_pixels(
+        self,
+    ) -> None:
         renderer = ProfileMediaRenderer()
         outputs: dict[Language, list[bytes]] = {}
         try:
@@ -44,7 +47,7 @@ class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
             as_of = datetime(2026, 10, 3, 12, tzinfo=UTC)
             for language in Language:
                 identity = CardIdentity(
-                    "Александр Оченьдлиннаяфамилия " * 4,
+                    "사용자 이름 Александр Оченьдлиннаяфамилия " * 4,
                     "Very long server name " * 6,
                     language=language,
                 )
@@ -77,10 +80,12 @@ class TestNativeProfile(unittest.IsolatedAsyncioTestCase):
                     with Image.open(BytesIO(card.data)) as image:
                         self.assertEqual(image.size, (960, 480))
                 outputs[language].append(animated.data)
-            for russian, english in zip(
-                outputs[Language.RU], outputs[Language.EN], strict=True
-            ):
-                self.assertNotEqual(russian, english)
+            for first, second in combinations(Language, 2):
+                with self.subTest(first=first, second=second):
+                    for left, right in zip(
+                        outputs[first], outputs[second], strict=True
+                    ):
+                        self.assertNotEqual(left, right)
         finally:
             await renderer.aclose()
 

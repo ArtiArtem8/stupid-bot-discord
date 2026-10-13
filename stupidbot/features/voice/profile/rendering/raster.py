@@ -114,15 +114,18 @@ class NativeRasterizer:
         self.font_dir: Path = Path(
             os.environ.get("PROFILE_FONT_DIR", str(default_fonts))
         )
-        if any(
-            not (self.font_dir / name).is_file()
-            for name in ("Inter.ttf", "Inter-600.ttf", "Inter-750.ttf")
-        ):
+        required_fonts = (
+            "Inter.ttf",
+            "Inter-600.ttf",
+            "Inter-750.ttf",
+            "NotoSansKR-UI.ttf",
+        )
+        if any(not (self.font_dir / name).is_file() for name in required_fonts):
             raise RuntimeError(
-                "Required Inter fonts are missing; check stupidbot/assets/fonts "
+                "Required profile fonts are missing; check stupidbot/assets/fonts "
                 "or PROFILE_FONT_DIR"
             )
-        for name in ("Inter.ttf", "Inter-600.ttf", "Inter-750.ttf"):
+        for name in required_fonts:
             ImageFont.truetype(str(self.font_dir / name), 16)
         self.font_cache_dir: Path = font_cache_directory()
         self._process: subprocess.Popen[bytes] | None = None

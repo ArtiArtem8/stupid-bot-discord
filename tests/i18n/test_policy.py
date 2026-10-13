@@ -30,13 +30,16 @@ class PolicyTests(TestCase):
             ("en-US", Language.EN),
             ("en-GB", Language.EN),
             ("ru", Language.RU),
+            ("ko", Language.KO),
             ("de", Language.RU),
             (None, Language.RU),
         ):
             with self.subTest(locale=locale):
                 self.assertEqual(resolve_language(None, locale), expected)
-                self.assertEqual(resolve_language(Language.RU, locale), Language.RU)
-                self.assertEqual(resolve_language(Language.EN, locale), Language.EN)
+                for override_language in Language:
+                    self.assertEqual(
+                        resolve_language(override_language, locale), override_language
+                    )
 
     def test_absent_preferences_preserve_installation_timezone(self) -> None:
         context = resolve_context(
@@ -49,6 +52,29 @@ class PolicyTests(TestCase):
 
 
 class InteractionPolicyTests(IsolatedAsyncioTestCase):
+    async def test_korean_locale_and_overrides_respect_the_response_audience(
+        self,
+    ) -> None:
+        _, database = await temporary_database(self)
+        repository = PreferencesRepository(database)
+        request = interaction()
+        request.locale = discord.Locale.korean
+        request.guild_locale = discord.Locale.american_english
+        request.client.preferences_repository = repository
+        self.assertEqual(
+            (await interaction_context(request, private=True)).language, Language.KO
+        )
+        self.assertEqual(
+            (await interaction_context(request, private=False)).language, Language.EN
+        )
+        await repository.save(PreferenceScope.USER, 10, Preferences(Language.EN))
+        await repository.save(PreferenceScope.GUILD, 20, Preferences(Language.KO))
+        request.extras.clear()
+        self.assertEqual((await profile_context(request)).language, Language.EN)
+        self.assertEqual(
+            (await interaction_context(request, private=False)).language, Language.KO
+        )
+
     async def test_private_and_public_contexts_use_separate_owners(self) -> None:
         _, database = await temporary_database(self)
         repository = PreferencesRepository(database)
@@ -167,6 +193,7 @@ class GuildPolicyTests(IsolatedAsyncioTestCase):
         for locale, language in (
             (discord.Locale.american_english, Language.EN),
             (discord.Locale.russian, Language.RU),
+            (discord.Locale.korean, Language.KO),
             (discord.Locale.german, Language.RU),
             (None, Language.RU),
         ):

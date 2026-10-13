@@ -19,10 +19,14 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         config.users = {1: BirthdayUser(1, "Алексей", "29-02-2000")}
         ru = build_birthday_list(config, {}, date(2025, 2, 28), language=Language.RU)
         en = build_birthday_list(config, {}, date(2025, 2, 28), language=Language.EN)
+        ko = build_birthday_list(config, {}, date(2025, 2, 28), language=Language.KO)
         self.assertEqual(ru[0]["date"], "29 февраля")
         self.assertEqual(en[0]["date"], "February 29")
         self.assertEqual(ru[0]["days_until"], en[0]["days_until"])
         self.assertEqual(en[0]["name"], "Алексей")
+        self.assertEqual(ko[0]["date"], "2월 29일")
+        self.assertEqual(ko[0]["days_until"], ru[0]["days_until"])
+        self.assertEqual(ko[0]["name"], "Алексей")
 
     async def test_get_sorted_birthday_list_empty_users(self) -> None:
         config = BirthdayGuildConfig(guild_id=123, server_name="Test", channel_id=999)

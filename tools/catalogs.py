@@ -14,6 +14,8 @@ from babel.messages.extract import extract
 from babel.messages.mofile import write_mo
 from babel.messages.pofile import read_po
 
+from stupidbot.i18n.policy import Language
+
 ROOT = Path(__file__).resolve().parents[1] / "stupidbot"
 
 
@@ -115,7 +117,7 @@ def compile_owner(directory: Path, *, check: bool) -> None:
         + b"\n"
     )
     _publish(directory / "index.json", index, check=check)
-    for language in ("ru", "en"):
+    for language in Language:
         source = directory / f"{language}.po"
         with source.open("rb") as stream:
             catalog = read_po(stream, locale=language, abort_invalid=True)

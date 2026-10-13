@@ -1,0 +1,82 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot\n"
+"POT-Creation-Date: 2026-10-13 00:00+0000\n"
+"PO-Revision-Date: 2026-10-13 00:00+0000\n"
+"Language: ko\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "channel"
+msgid "**Channel:** {name}"
+msgstr "**채널:** {name}"
+
+msgctxt "guild"
+msgid "**Server:** {name}"
+msgstr "**서버:** {name}"
+
+msgctxt "receipt"
+msgid "-# Your personal ID: `{report_id}`"
+msgstr "-# 신고 번호: `{report_id}`"
+
+msgctxt "ui"
+msgid "Could not finish processing the report. Details have been logged."
+msgstr "신고 처리를 완료하지 못했습니다. 오류 정보가 기록되었습니다."
+
+msgctxt "ui"
+msgid "Describe what happened..."
+msgstr "어떤 문제가 발생했는지 알려 주세요..."
+
+msgctxt "ui"
+msgid "Description"
+msgstr "설명"
+
+msgctxt "ui"
+msgid "Direct messages"
+msgstr "다이렉트 메시지"
+
+msgctxt "ui"
+msgid "Location"
+msgstr "발생 위치"
+
+msgctxt "ui"
+msgid "Problem description"
+msgstr "문제 설명"
+
+msgctxt "ui"
+msgid "Report"
+msgstr "신고"
+
+msgctxt "command"
+msgid "Report a bug or problem"
+msgstr "버그 또는 문제 신고"
+
+msgctxt "command"
+msgid "Report channel"
+msgstr "신고를 받을 채널"
+
+msgctxt "destination"
+msgid "Report channel set to {mention}"
+msgstr "신고 채널을 설정했습니다: {mention}"
+
+msgctxt "ui"
+msgid "Sender"
+msgstr "보낸 사람"
+
+msgctxt "command"
+msgid "Set the report channel (developers only)"
+msgstr "신고 채널 설정 (개발자 전용)"
+
+msgctxt "ui"
+msgid "Submit a bug report"
+msgstr "버그 신고하기"
+
+msgctxt "ui"
+msgid "Thank you for the report!"
+msgstr "신고해 주셔서 감사합니다!"
+
+msgctxt "ui"
+msgid "Unknown channel"
+msgstr "알 수 없는 채널"

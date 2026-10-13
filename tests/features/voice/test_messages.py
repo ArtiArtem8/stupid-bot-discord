@@ -9,6 +9,17 @@ from stupidbot.i18n.policy import Language
 
 
 class VoiceMessagesTests(TestCase):
+    def test_korean_dates_and_people_counts(self) -> None:
+        korean = VoiceMessages(catalog("voice", Language.KO))
+        self.assertEqual(korean.date_label(date(2026, 9, 21)), "2026년 9월 21일")
+        self.assertEqual(korean.duration(3660), "1시간 01분")
+        for count in (0, 1, 2, 5, 21, 1000):
+            with self.subTest(count=count):
+                self.assertEqual(
+                    korean.recent_people(duration="1시간", count=count),
+                    f"1시간 함께 · {count:,}명",
+                )
+
     def test_russian_and_english_people_plural_forms(self) -> None:
         russian = VoiceMessages(catalog("voice", Language.RU))
         english = VoiceMessages(catalog("voice", Language.EN))

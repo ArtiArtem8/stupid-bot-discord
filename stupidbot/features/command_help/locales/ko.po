@@ -1,0 +1,26 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot\n"
+"POT-Creation-Date: 2026-10-13 00:00+0000\n"
+"PO-Revision-Date: 2026-10-13 00:00+0000\n"
+"Language: ko\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "alternatives"
+msgid "-# perhaps you were looking for {primary} or {alternative}"
+msgstr "-# 혹시 {primary} 또는 {alternative} 명령어를 찾으셨나요?"
+
+msgctxt "maybe"
+msgid "-# perhaps {command}"
+msgstr "-# 혹시 {command} 명령어를 찾으셨나요?"
+
+msgctxt "try"
+msgid "-# try {command}"
+msgstr "-# {command} 명령어를 사용해 보세요"
+
+msgctxt "prefix_removed"
+msgid "Prefix commands have been removed; please use slash commands."
+msgstr "접두사 명령어는 더 이상 지원하지 않습니다. 슬래시 명령어를 사용해 주세요."

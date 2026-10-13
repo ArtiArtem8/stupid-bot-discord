@@ -1,0 +1,443 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: StupidBot\n"
+"POT-Creation-Date: 2026-10-13 00:00+0000\n"
+"PO-Revision-Date: 2026-10-13 00:00+0000\n"
+"Language: ko\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "activity.label"
+msgid "* DST"
+msgstr "* 서머타임"
+
+msgctxt "recent_coverage"
+msgid "30-day coverage {percentage}"
+msgstr "최근 30일 관측률 {percentage}"
+
+msgctxt "xp.label"
+msgid "5+ people"
+msgstr "5명 이상"
+
+msgctxt "estimate_short"
+msgid "<1 min in voice to next level"
+msgstr "다음 레벨까지 음성 활동 1분 미만"
+
+msgctxt "under_minute"
+msgid "<1m"
+msgstr "1분 미만"
+
+msgctxt "tier"
+msgid "ASCENDANT"
+msgstr "승천"
+
+msgctxt "activity.label"
+msgid "Activity"
+msgstr "활동"
+
+msgctxt "all_day"
+msgid "All day"
+msgstr "하루 종일"
+
+msgctxt "all_days"
+msgid "All days"
+msgstr "모든 요일"
+
+msgctxt "month"
+msgid "Apr"
+msgstr "4월"
+
+msgctxt "month"
+msgid "Aug"
+msgstr "8월"
+
+msgctxt "activity.label"
+msgid "Average session"
+msgstr "평균 세션 길이"
+
+msgctxt "xp.label"
+msgid "Base"
+msgstr "기본"
+
+msgctxt "xp.label"
+msgid "Bonus limit"
+msgstr "보너스 한도"
+
+msgctxt "xp.label"
+msgid "Bonuses"
+msgstr "보너스"
+
+msgctxt "xp.label"
+msgid "Camera"
+msgstr "카메라"
+
+msgctxt "busy"
+msgid "Cards are busy right now. Please try again later."
+msgstr "지금은 프로필 카드를 만들 수 없습니다. 잠시 후 다시 시도해 주세요."
+
+msgctxt "refresh_failed"
+msgid "Could not refresh the card. Please try again."
+msgstr "카드를 새로 고치지 못했습니다. 다시 시도해 주세요."
+
+msgctxt "coverage"
+msgid "Coverage {percentage}"
+msgstr "관측률 {percentage}"
+
+msgctxt "activity.label"
+msgid "Daily activity"
+msgstr "일별 활동"
+
+msgctxt "xp.label"
+msgid "Deafened"
+msgstr "소리 끔"
+
+msgctxt "month"
+msgid "Dec"
+msgstr "12월"
+
+msgctxt "tier"
+msgid "EPIC"
+msgstr "영웅"
+
+msgctxt "month"
+msgid "Feb"
+msgstr "2월"
+
+msgctxt "weekday_short"
+msgid "Fri"
+msgstr "금"
+
+msgctxt "weekday"
+msgid "Friday"
+msgstr "금요일"
+
+msgctxt "history"
+msgid "History since {date}"
+msgstr "{date}부터의 기록"
+
+msgctxt "month"
+msgid "Jan"
+msgstr "1월"
+
+msgctxt "month"
+msgid "Jul"
+msgstr "7월"
+
+msgctxt "month"
+msgid "Jun"
+msgstr "6월"
+
+msgctxt "tier"
+msgid "LEGENDARY"
+msgstr "전설"
+
+msgctxt "profile.label"
+msgid "LEVEL PROGRESS"
+msgstr "레벨 진행도"
+
+msgctxt "profile.label"
+msgid "LVL"
+msgstr "레벨"
+
+msgctxt "activity.label"
+msgid "Last 30 days"
+msgstr "최근 30일"
+
+msgctxt "people.label"
+msgid "Last 30 days"
+msgstr "최근 30일"
+
+msgctxt "xp.label"
+msgid "Last 30 days"
+msgstr "최근 30일"
+
+msgctxt "people.label"
+msgid "Lifetime"
+msgstr "전체 기간"
+
+msgctxt "xp.label"
+msgid "Lifetime"
+msgstr "전체 기간"
+
+msgctxt "lifetime_coverage"
+msgid "Lifetime coverage {percentage}"
+msgstr "전체 기간 관측률 {percentage}"
+
+msgctxt "tier"
+msgid "MYTHIC"
+msgstr "신화"
+
+msgctxt "month"
+msgid "Mar"
+msgstr "3월"
+
+msgctxt "month"
+msgid "May"
+msgstr "5월"
+
+msgctxt "activity.label"
+msgid "Median session"
+msgstr "세션 길이 중앙값"
+
+msgctxt "weekday_short"
+msgid "Mon"
+msgstr "월"
+
+msgctxt "weekday"
+msgid "Monday"
+msgstr "월요일"
+
+msgctxt "people.label"
+msgid "Most time together"
+msgstr "함께한 시간 순위"
+
+msgctxt "multiple_peaks"
+msgid "Multiple peaks"
+msgstr "여러 시간대"
+
+msgctxt "xp.label"
+msgid "Muted"
+msgstr "마이크 끔"
+
+msgctxt "activity.label"
+msgid "No data"
+msgstr "데이터 없음"
+
+msgctxt "no_observations"
+msgid "No observations"
+msgstr "관측 기록 없음"
+
+msgctxt "history_empty"
+msgid "No observed history"
+msgstr "관측 기록 없음"
+
+msgctxt "people.label"
+msgid "No observed time together"
+msgstr "함께한 시간 기록 없음"
+
+msgctxt "month"
+msgid "Nov"
+msgstr "11월"
+
+msgctxt "month"
+msgid "Oct"
+msgstr "10월"
+
+msgctxt "scope"
+msgid "On this server · history since {date}"
+msgstr "이 서버 · {date}부터의 기록"
+
+msgctxt "scope_empty"
+msgid "On this server · no observed history"
+msgstr "이 서버 · 관측 기록 없음"
+
+msgctxt "people.label"
+msgid "One-on-one"
+msgstr "둘이서"
+
+msgctxt "activity.label"
+msgid "Peak hours"
+msgstr "주요 활동 시간대"
+
+msgctxt "people.label"
+msgid "People"
+msgstr "함께한 사람"
+
+msgctxt "tier"
+msgid "RARE"
+msgstr "희귀"
+
+msgctxt "xp.label"
+msgid "Reductions"
+msgstr "감소량"
+
+msgctxt "profile.label"
+msgid "SESSIONS"
+msgstr "세션 수"
+
+msgctxt "tier"
+msgid "STARTER"
+msgstr "입문"
+
+msgctxt "weekday_short"
+msgid "Sat"
+msgstr "토"
+
+msgctxt "weekday"
+msgid "Saturday"
+msgstr "토요일"
+
+msgctxt "month"
+msgid "Sep"
+msgstr "9월"
+
+msgctxt "activity.label"
+msgid "Sessions"
+msgstr "세션 수"
+
+msgctxt "command"
+msgid "Show the card only to you"
+msgstr "카드를 나에게만 표시"
+
+msgctxt "activity.label"
+msgid "Solo"
+msgstr "혼자"
+
+msgctxt "xp.label"
+msgid "Solo"
+msgstr "혼자"
+
+msgctxt "xp.label"
+msgid "Streaming"
+msgstr "방송"
+
+msgctxt "weekday_short"
+msgid "Sun"
+msgstr "일"
+
+msgctxt "weekday"
+msgid "Sunday"
+msgstr "일요일"
+
+msgctxt "tier"
+msgid "TRANSCENDENT"
+msgstr "초월"
+
+msgctxt "already_refreshing"
+msgid "The card is already refreshing."
+msgstr "이미 카드를 새로 고치고 있습니다."
+
+msgctxt "guild_only"
+msgid "This command is only available in a server."
+msgstr "이 명령어는 서버에서만 사용할 수 있습니다."
+
+msgctxt "not_your_card"
+msgid "This is not your card."
+msgstr "다른 사용자의 카드입니다."
+
+msgctxt "weekday_short"
+msgid "Thu"
+msgstr "목"
+
+msgctxt "weekday"
+msgid "Thursday"
+msgstr "목요일"
+
+msgctxt "today"
+msgid "Today"
+msgstr "오늘"
+
+msgctxt "people.label"
+msgid "Together"
+msgstr "함께"
+
+msgctxt "people.label"
+msgid "Top bot"
+msgstr "가장 오래 함께한 봇"
+
+msgctxt "activity.label"
+msgid "Top days"
+msgstr "주요 활동 요일"
+
+msgctxt "activity.label"
+msgid "Total voice"
+msgstr "총 음성 활동"
+
+msgctxt "weekday_short"
+msgid "Tue"
+msgstr "화"
+
+msgctxt "weekday"
+msgid "Tuesday"
+msgstr "화요일"
+
+msgctxt "tier"
+msgid "UNCOMMON"
+msgstr "고급"
+
+msgctxt "unknown_user"
+msgid "Unknown user"
+msgstr "알 수 없는 사용자"
+
+msgctxt "profile.label"
+msgid "VOICE TIME"
+msgstr "음성 활동 시간"
+
+msgctxt "activity.label"
+msgid "Voice"
+msgstr "음성"
+
+msgctxt "xp.label"
+msgid "Voice XP"
+msgstr "음성 XP"
+
+msgctxt "attachment"
+msgid "Voice profile of {display_name} on {guild_name}"
+msgstr "{guild_name} 서버의 {display_name} 님 음성 프로필"
+
+msgctxt "unavailable"
+msgid "Voice profiles are temporarily unavailable."
+msgstr "음성 프로필을 일시적으로 이용할 수 없습니다."
+
+msgctxt "weekday_short"
+msgid "Wed"
+msgstr "수"
+
+msgctxt "weekday"
+msgid "Wednesday"
+msgstr "수요일"
+
+msgctxt "people.label"
+msgid "With bots"
+msgstr "봇과 함께"
+
+msgctxt "activity.label"
+msgid "With people"
+msgstr "다른 사람과 함께"
+
+msgctxt "xp.label"
+msgid "With people"
+msgstr "다른 사람과 함께"
+
+msgctxt "command"
+msgid "Your voice profile on this server"
+msgstr "이 서버의 내 음성 프로필"
+
+msgctxt "recent_people"
+msgid "{duration} together · {count:,d} person"
+msgid_plural "{duration} together · {count:,d} people"
+msgstr[0] "{duration} 함께 · {count:,d}명"
+
+msgctxt "duration"
+msgid "{hours:,d}h {minutes:02d}m"
+msgstr "{hours:,d}시간 {minutes:02d}분"
+
+msgctxt "million_hours"
+msgid "{hours:.1f}M h"
+msgstr "{hours:.1f}백만 시간"
+
+msgctxt "thousand_hours"
+msgid "{hours:.1f}k h"
+msgstr "{hours:.1f}천 시간"
+
+msgctxt "short_date"
+msgid "{month} {day:02d}"
+msgstr "{month} {day:02d}일"
+
+msgctxt "date"
+msgid "{month} {day:02d}, {year:d}"
+msgstr "{year:d}년 {month} {day:02d}일"
+
+msgctxt "estimate_hours"
+msgid "~{hours:,d} h in voice to next level"
+msgstr "다음 레벨까지 음성 활동 약 {hours:,d}시간"
+
+msgctxt "estimate_fractional"
+msgid "~{hours:.1f} h in voice to next level"
+msgstr "다음 레벨까지 음성 활동 약 {hours:.1f}시간"
+
+msgctxt "estimate_minutes"
+msgid "~{minutes:d} min in voice to next level"
+msgstr "다음 레벨까지 음성 활동 약 {minutes:d}분"

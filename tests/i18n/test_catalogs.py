@@ -47,18 +47,27 @@ class CatalogTests(TestCase):
             BabelCatalog(locale="ru"),
         )
 
-    def test_every_owner_has_complete_reproducible_ru_en_catalogs(self) -> None:
+    def test_every_owner_has_complete_reproducible_catalogs(self) -> None:
         for owner in DOMAINS:
             with self.subTest(owner=owner):
                 compile_owner(ROOT / owner / "locales", check=True)
         loaded = load_catalogs(ROOT)
-        self.assertEqual(len(loaded), len(DOMAINS) * 2)
+        self.assertEqual(len(loaded), len(DOMAINS) * len(Language))
         self.assertEqual(
             loaded["preferences", Language.EN].pgettext("save", "Save"), "Save"
         )
         self.assertEqual(
             loaded["preferences", Language.RU].pgettext("save", "Save"),
             "Сохранить",
+        )
+        self.assertEqual(
+            loaded["preferences", Language.KO].pgettext("save", "Save"), "저장"
+        )
+
+    def test_korean_uses_one_plural_form(self) -> None:
+        validate_message(
+            Message(("{count:d} item", "{count:d} items"), ("{count:d}개",)),
+            BabelCatalog(locale="ko"),
         )
 
     def test_changed_catalog_or_missing_domain_prevents_startup(self) -> None:

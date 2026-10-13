@@ -115,8 +115,12 @@ See [voice history](architecture.md#sessions-and-companions) for session groupin
 
 Install Inkscape on the bot host and check `inkscape --version` under the service
 account. Keep `Inter.ttf`, `Inter-600.ttf`, `Inter-750.ttf` and their `OFL.txt`
-license under `stupidbot/assets/fonts/`. Inkscape uses system fallback fonts for glyphs
-outside Inter, including CJK and emoji. FFmpeg and gifsicle are not required.
+license under `stupidbot/assets/fonts/`, together with `NotoSansKR-UI.ttf` and its
+license. The Korean subset covers the shipped profile labels; a test checks every
+translated Hangul glyph. Inkscape uses system fallback fonts for other glyphs in
+user-provided names, including CJK and emoji. See the
+[font source and rebuild instructions](../../stupidbot/assets/fonts/README.md).
+FFmpeg and gifsicle are not required.
 
 | Setting | Default and purpose |
 | --- | --- |

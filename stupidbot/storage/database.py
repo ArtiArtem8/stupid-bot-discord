@@ -16,7 +16,7 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool, ConnectionPoolEntry
 from stupidbot.common.asyncio import wait_for_completion
 from stupidbot.storage.schema import storage_state
 
-SCHEMA_REVISION = "0004_preferences"
+SCHEMA_REVISION = "0005_korean"
 
 
 class Database:

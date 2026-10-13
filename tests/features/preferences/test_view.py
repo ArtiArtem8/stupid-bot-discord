@@ -60,6 +60,24 @@ class SettingsViewTests(IsolatedAsyncioTestCase):
             await self.repository.get(PreferenceScope.USER, 10), Preferences()
         )
 
+    async def test_korean_selection_previews_and_saves_in_the_original_panel(
+        self,
+    ) -> None:
+        self.view.proposed = Preferences(timezone="Asia/Seoul")
+        selector = LanguageSelect(self.view)
+        self.assertIn(("한국어", "ko"), [(o.label, o.value) for o in selector.options])
+        with patch.object(
+            LanguageSelect, "values", new_callable=PropertyMock, return_value=["ko"]
+        ):
+            await selector.callback(interaction())
+        self.assertIn("한국어", str(self.view.to_components()))
+        self.assertEqual(self.view.context.language, Language.RU)
+        await self.view.save(interaction())
+        self.assertEqual(
+            await self.repository.get(PreferenceScope.USER, 10),
+            Preferences(Language.KO, "Asia/Seoul", 1),
+        )
+
     async def test_commit_failure_never_claims_success(self) -> None:
         self.view.proposed = Preferences(Language.EN)
         request = interaction()
@@ -213,6 +231,7 @@ class SettingsViewTests(IsolatedAsyncioTestCase):
         self.assertEqual(await self.repository.get(PreferenceScope.USER, 10), saved)
         self.assertTrue(self.view.closed)
         self.assertIn("Europe/London", str(self.view.to_components()))
+        self.assertIn("English", str(self.view.to_components()))
 
     async def test_unauthorized_user_gets_private_reply_in_their_language(self) -> None:
         request = interaction(11)

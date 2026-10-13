@@ -43,15 +43,13 @@ class LanguageSelect(discord.ui.Select["SettingsView"]):
                     value="discord",
                     default=panel.proposed.language is None,
                 ),
-                discord.SelectOption(
-                    label="Русский",
-                    value="ru",
-                    default=panel.proposed.language is Language.RU,
-                ),
-                discord.SelectOption(
-                    label="English",
-                    value="en",
-                    default=panel.proposed.language is Language.EN,
+                *(
+                    discord.SelectOption(
+                        label=language.native_name,
+                        value=language.value,
+                        default=panel.proposed.language is language,
+                    )
+                    for language in Language
                 ),
             ]
         )
@@ -204,7 +202,7 @@ class SettingsView(discord.ui.LayoutView):
             locale=self.audience_locale,
             fallback_timezone=self.fallback_timezone,
         )
-        language = "Русский" if preview.language is Language.RU else "English"
+        language = preview.language.native_name
         if self.scope is PreferenceScope.USER:
             title = self.catalog.pgettext("personal_title", "Your settings")
             scope_description = self.catalog.pgettext(
@@ -311,7 +309,7 @@ class SettingsView(discord.ui.LayoutView):
             await self.finish(
                 interaction,
                 self.messages.conflict(
-                    language=current.language.value
+                    language=current.language.native_name
                     if current.language
                     else self.catalog.pgettext("discord", "As in Discord"),
                     timezone=timezone_label(

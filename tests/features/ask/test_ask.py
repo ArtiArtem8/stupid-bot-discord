@@ -66,6 +66,28 @@ class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):
         request.response.send_message.assert_awaited_once_with(historical)
         self.assertEqual(self.cog.answers, ["Yes!", "No!"])
 
+    async def test_korean_answer_is_committed_and_survives_language_change(
+        self,
+    ) -> None:
+        preferences = PreferencesRepository(self.database)
+        saved = await preferences.save(
+            PreferenceScope.GUILD, 20, Preferences(Language.KO)
+        )
+        self.cog.answers = ["Yes!", "No!"]
+        first = interaction()
+        first.client.preferences_repository = preferences
+        await self.cog.q._do_call(first, {"text": "Question?"})
+        first.response.send_message.assert_awaited_once_with("네!")
+        await preferences.save(
+            PreferenceScope.GUILD, 20, Preferences(Language.EN, revision=saved.revision)
+        )
+        second = interaction()
+        second.client.preferences_repository = preferences
+        queue_before = list(self.cog.answers)
+        await self.cog.q._do_call(second, {"text": "QUESTION ?"})
+        second.response.send_message.assert_awaited_once_with("네!")
+        self.assertEqual(self.cog.answers, queue_before)
+
     async def test_returns_existing_answer_without_rewriting_it(self) -> None:
         self.assertIsNone(await self.cog._add_to_history(1, "Question?", "answer"))
         self.assertEqual(

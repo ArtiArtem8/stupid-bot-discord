@@ -24,7 +24,7 @@
 **StupidBot** is a Discord bot for music, voice profiles and birthday greetings.
 You can host your own instance.
 
-The interface and profile cards support Russian and English.
+The interface and profile cards support Russian, English and Korean.
 
 **English** · [Русский](README.ru.md)
 
@@ -68,7 +68,7 @@ remain available while Lavalink is unreachable.
 ## Voice profiles
 
 `/voice-profile` shows your server-local level, XP, voice time and session count.
-Cards and their details support Russian and English. Both private and public
+Cards and their details support Russian, English and Korean. Both private and public
 cards use your personal language and timezone from `/customize-me`. Open cards keep
 that context when refreshed.
 Activity, People and XP buttons add details to the same message.
@@ -132,7 +132,7 @@ visible only to you.
 <details>
 <summary>Language priority, saving settings and reminders</summary>
 
-Choose Russian, English or **As in Discord**, select a fixed timezone offset
+Choose Russian, English, Korean or **As in Discord**, select a fixed timezone offset
 from `UTC-11` to `UTC+12`, check the preview and press **Save**. Fixed offsets
 do not follow daylight saving time. **Other…** lets you enter a regional IANA
 timezone such as `Europe/Moscow`.
@@ -223,7 +223,8 @@ configure the source plugins you need. Follow its installation guide for the
 Java requirement of your Lavalink version.
 
 For profiles, install **Inkscape** on the bot host and keep the bundled
-[Inter fonts](stupidbot/assets/fonts/). Verify `inkscape --version` under the service
+[bundled fonts](stupidbot/assets/fonts/) (Inter and Korean UI glyphs from Noto Sans KR).
+Verify `inkscape --version` under the service
 account. Missing Inkscape or fonts makes the profile command unavailable;
 the rest of the bot can start. See [renderer setup](docs/voice/profile-card.md#setup).
 Custom application emoji IDs in [shared emoji references](stupidbot/discord_ui/emojis.py) and the
@@ -281,5 +282,6 @@ basedpyright, ty, pytest and prek checks. Technical documentation is in English.
 [MIT](LICENSE). Banner artwork uses the bot's profile emblem and music palette;
 editable SVG sources are in [docs/assets/](docs/assets/).
 Some interface icons are from [Icons8](https://icons8.com);
-their files are in [stupidbot/discord_ui/assets/emojis/](stupidbot/discord_ui/assets/emojis/). Inter is distributed
-under the [SIL Open Font License](stupidbot/assets/fonts/OFL.txt).
+their files are in [stupidbot/discord_ui/assets/emojis/](stupidbot/discord_ui/assets/emojis/).
+Inter and Noto Sans KR use the SIL Open Font License;
+see the [font licenses and source](stupidbot/assets/fonts/README.md).

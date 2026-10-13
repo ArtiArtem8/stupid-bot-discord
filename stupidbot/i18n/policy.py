@@ -10,6 +10,14 @@ class Language(StrEnum):
 
     RU = "ru"
     EN = "en"
+    KO = "ko"
+
+    @property
+    def native_name(self) -> str:
+        """Name the language in its own writing system for settings controls."""
+        return {Language.RU: "Русский", Language.EN: "English", Language.KO: "한국어"}[
+            self
+        ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +34,8 @@ def resolve_language(override: Language | None, locale: str | None) -> Language:
         return override
     if locale in {"en", "en-US", "en-GB"}:
         return Language.EN
+    if locale == "ko":
+        return Language.KO
     return Language.RU
 
 

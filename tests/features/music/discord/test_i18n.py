@@ -89,6 +89,9 @@ class TestMusicTranslations(unittest.IsolatedAsyncioTestCase):
             (Language.EN, RepeatMode.OFF, "Repeat: off"),
             (Language.EN, RepeatMode.QUEUE, "Repeat: queue"),
             (Language.EN, RepeatMode.TRACK, "Repeat: track"),
+            (Language.KO, RepeatMode.OFF, "반복: 꺼짐"),
+            (Language.KO, RepeatMode.QUEUE, "반복: 대기열"),
+            (Language.KO, RepeatMode.TRACK, "반복: 한 곡"),
         )
         for language, mode, expected in cases:
             with self.subTest(language=language, mode=mode):

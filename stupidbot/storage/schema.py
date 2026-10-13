@@ -30,7 +30,7 @@ user_preferences = Table(
     metadata,
     PreferencesColumns,
     ForeignKeyConstraint(["subject_id"], ["users.user_id"]),
-    CheckConstraint("language IS NULL OR language IN ('ru', 'en')"),
+    CheckConstraint("language IS NULL OR language IN ('ru', 'en', 'ko')"),
     CheckConstraint("revision > 0"),
 )
 guild_preferences = Table(
@@ -38,7 +38,7 @@ guild_preferences = Table(
     metadata,
     PreferencesColumns,
     ForeignKeyConstraint(["subject_id"], ["guilds.guild_id"]),
-    CheckConstraint("language IS NULL OR language IN ('ru', 'en')"),
+    CheckConstraint("language IS NULL OR language IN ('ru', 'en', 'ko')"),
     CheckConstraint("revision > 0"),
 )
 
