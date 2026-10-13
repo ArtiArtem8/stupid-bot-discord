@@ -112,19 +112,13 @@ class VoiceCollectorCog(commands.Cog):
             payload: object = value.get("d")
             if not is_json_object(payload):
                 raise ValueError("Missing gateway data")
-            self._gateway_fact({"t": event, "d": payload})
+            self._gateway_fact(event, payload)
         except (ValueError, TypeError):
             self._record(ObservationGap(self._now(), None, GapReason.UNKNOWN))
             logger.warning("Voice collector rejected an invalid gateway observation")
             logger.debug("Voice normalization traceback", exc_info=True)
 
-    def _gateway_fact(self, envelope: JsonObject) -> None:
-        event = envelope.get("t")
-        if event not in ("VOICE_STATE_UPDATE", "GUILD_CREATE"):
-            return
-        payload = envelope.get("d")
-        if not is_json_object(payload):
-            raise ValueError("Missing gateway data")
+    def _gateway_fact(self, event: str, payload: JsonObject) -> None:
         if event == "VOICE_STATE_UPDATE":
             guild_id = _id(payload.get("guild_id"))
             if guild_id is not None:

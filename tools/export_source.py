@@ -110,28 +110,26 @@ def _head_files(root: Path, commit: str) -> dict[str, tuple[str, bytes]]:
 
 def _worktree_files(
     root: Path, baseline: dict[str, tuple[str, bytes]], include: list[str]
-) -> tuple[dict[str, tuple[str, bytes]], list[str]]:
+) -> dict[str, tuple[str, bytes]]:
     names = set(baseline)
     for name in include:
         if not _allowed(name):
             raise ValueError(f"Excluded or unsafe include path: {name}")
         names.add(PurePosixPath(name).as_posix())
     files: dict[str, tuple[str, bytes]] = {}
-    deleted: list[str] = []
     modes = _index_modes(root)
     for name in sorted(names):
         path = root / name
         if not path.resolve().is_relative_to(root) or path.is_symlink():
             raise ValueError(f"Source path escapes the project or is a symlink: {name}")
         if not path.exists() and name in baseline:
-            deleted.append(name)
             continue
         if not path.is_file():
             raise ValueError(f"Expected an existing source file: {name}")
         fallback = baseline.get(name, ("100644", b""))[0]
         mode = _file_mode(path, modes.get(name, fallback))
         files[name] = (mode, path.read_bytes())
-    return files, deleted
+    return files
 
 
 def _index_modes(root: Path) -> dict[str, str]:
@@ -157,7 +155,6 @@ def _worktree_patch(
     commit: str,
     baseline: dict[str, tuple[str, bytes]],
     files: dict[str, tuple[str, bytes]],
-    deleted: list[str],
 ) -> bytes:
     # An isolated index makes the patch and archive describe the same captured
     # bytes, including explicit untracked files. The user's index is untouched.
@@ -166,7 +163,7 @@ def _worktree_patch(
         _git(root, "read-tree", commit, index=index)
         entries: list[bytes] = []
         empty_hash = "0" * len(commit)
-        for name in deleted:
+        for name in sorted(baseline.keys() - files.keys()):
             entries.append(f"0 {empty_hash}\t{name}\0".encode())
         for name, (mode, content) in files.items():
             if baseline.get(name) == (mode, content):
@@ -217,17 +214,13 @@ def export_source(
     root = Path(_git(root, "rev-parse", "--show-toplevel").decode().strip()).resolve()
     commit = _git(root, "rev-parse", "HEAD").decode().strip()
     baseline = _head_files(root, commit)
-    files, deleted = (
-        _worktree_files(root, baseline, include or []) if worktree else (baseline, [])
-    )
-    patch = (
-        _worktree_patch(root, commit, baseline, files, deleted) if worktree else None
-    )
+    files = _worktree_files(root, baseline, include or []) if worktree else baseline
+    patch = _worktree_patch(root, commit, baseline, files) if worktree else None
     manifest = {
         "version": 1,
         "commit": commit,
         "mode": "worktree" if worktree else "HEAD",
-        "deleted": deleted,
+        "deleted": sorted(baseline.keys() - files.keys()),
         "files": [
             {"path": name, "mode": mode, "sha256": hashlib.sha256(content).hexdigest()}
             for name, (mode, content) in sorted(files.items())
