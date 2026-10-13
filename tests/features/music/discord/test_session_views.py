@@ -8,11 +8,26 @@ from discord import ui
 
 from stupidbot.discord_ui.pagination import BasePaginator
 from stupidbot.features.music.discord.views import SessionSummaryView
+from stupidbot.features.music.discord.views.session import SessionPaginationAdapter
 from stupidbot.features.music.runtime.session import MusicSession
 from stupidbot.i18n.policy import Language, PresentationContext
 
 
 class TestSessionSummaryView(unittest.IsolatedAsyncioTestCase):
+    def test_long_history_link_keeps_skip_marker_and_requester(self) -> None:
+        uri = "https://example.com/" + "x" * 961
+        session = MusicSession(guild_id=1)
+        session.add_track("Song [Live]", uri, 42, 100, skipped=True)
+        adapter = SessionPaginationAdapter(
+            session, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
+
+        description = adapter.make_embed(0).description or ""
+
+        self.assertLessEqual(len(description), 1024)
+        self.assertIn(" • 1. ~~[", description)
+        self.assertTrue(description.endswith(f"]({uri})~~ (<@42>)"))
+
     async def test_empty_session_shows_private_warning(self) -> None:
         view = SessionSummaryView(
             session=MusicSession(guild_id=1),
