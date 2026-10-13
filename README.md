@@ -1,7 +1,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-light.png">
-  <img src="docs/assets/banner-light.png" alt="StupidBot — music and voice profiles" width="1200">
+  <img src="docs/assets/banner-light.png" alt="StupidBot: music and voice profiles" width="1200">
 </picture>
 
 # StupidBot
@@ -37,12 +37,12 @@ The interface and profile cards support Russian, English and Korean.
 Start a track or playlist with `/play`. Restart, seek by ten seconds, pause,
 resume or skip from the controller below the track.
 
-![The real Discord controller: Creo — Rivals at 1:54, with restart, seek, pause and skip controls.](docs/assets/music-controller.webp)
+![Discord controller: Rivals by Creo at 1:54, with restart, seek, pause and skip controls.](docs/assets/music-controller.webp)
 
 <details>
 <summary>Queue, playback demo and commands</summary>
 
-![Discord queue: Creo — Rivals is playing; Unveil and Sphere are next, with navigation, close and refresh buttons.](docs/assets/music-queue.webp)
+![Discord queue: Rivals by Creo is playing; Unveil and Sphere are next, with navigation, close and refresh buttons.](docs/assets/music-queue.webp)
 
 ![Recording of the real controller: pause, seek and resume.](docs/assets/music-controls.webp)
 
@@ -222,7 +222,7 @@ For music, run [Lavalink](https://lavalink.dev/getting-started/) separately and
 configure the source plugins you need. Follow its installation guide for the
 Java requirement of your Lavalink version.
 
-For profiles, install **Inkscape** on the bot host and keep the bundled
+For profiles, install **Inkscape** on the bot host and keep the
 [bundled fonts](stupidbot/assets/fonts/) (Inter and Korean UI glyphs from Noto Sans KR).
 Verify `inkscape --version` under the service
 account. Missing Inkscape or fonts makes the profile command unavailable;
@@ -278,6 +278,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and the Ruff,
 basedpyright, ty, pytest and prek checks. Technical documentation is in English.
 
 ## License and artwork
+
+Created by [ArtiArtem8](https://github.com/ArtiArtem8).
 
 [MIT](LICENSE). Banner artwork uses the bot's profile emblem and music palette;
 editable SVG sources are in [docs/assets/](docs/assets/).

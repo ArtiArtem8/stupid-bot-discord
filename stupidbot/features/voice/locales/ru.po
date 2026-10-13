@@ -1,17 +1,15 @@
 # Russian translations for StupidBot.
-# Copyright (C) 2026 ORGANIZATION
+# Copyright (C) 2026 ArtiArtem8
 # This file is distributed under the same license as the StupidBot project.
-# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
-#
 msgid ""
 msgstr ""
-"Project-Id-Version: StupidBot VERSION\n"
-"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"Project-Id-Version: StupidBot\n"
+"Report-Msgid-Bugs-To: https://github.com/ArtiArtem8/stupid-bot-discord/issues\n"
 "POT-Creation-Date: 2026-10-12 00:00+0000\n"
 "PO-Revision-Date: 2026-10-12 00:00+0000\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Last-Translator: ArtiArtem8\n"
 "Language: ru\n"
-"Language-Team: ru <LL@li.org>\n"
+"Language-Team: ArtiArtem8\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && "
 "(n%100<10 || n%100>=20) ? 1 : 2);\n"
 "MIME-Version: 1.0\n"

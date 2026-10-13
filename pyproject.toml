@@ -1,9 +1,9 @@
 [project]
 name = "stupid-bot-discord"
 version = "3.2.0"
-description = "A feature-rich Discord bot built with discord.py"
+description = "Discord bot for music, voice profiles and birthday greetings"
 authors = [
-    { name = "ArtiArtem", email = "ArtiArtem8@users.noreply.github.com" },
+    { name = "ArtiArtem8", email = "ArtiArtem8@users.noreply.github.com" },
 ]
 requires-python = ">=3.12,<3.13"
 dependencies = [

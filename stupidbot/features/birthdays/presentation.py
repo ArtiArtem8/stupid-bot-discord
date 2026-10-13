@@ -75,7 +75,7 @@ def build_birthday_list(
     *,
     language: Language = Language.RU,
 ) -> list[BirthdayListEntry]:
-    """Format a numeric projection with the existing saved-name fallback."""
+    """Format upcoming birthdays, using saved names when display names are absent."""
     entries: list[BirthdayListEntry] = []
     for occurrence in config.upcoming_birthdays(reference_date):
         user = config.users[occurrence.user_id]

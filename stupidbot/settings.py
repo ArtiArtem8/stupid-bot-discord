@@ -15,7 +15,7 @@ DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 DISCORD_BOT_OWNER_ID = os.environ.get("DISCORD_BOT_OWNER_ID")
 # Wolfram Alpha API (https://developer.wolframalpha.com/access)
 WOLFRAM_APP_ID = os.environ.get("WOLFRAM_APP_ID")
-# Voice collector (existing environment key retained)
+# Voice collector
 VOICE_PROBE_ENABLED = os.getenv("VOICE_PROBE_ENABLED", "true").lower() == "true"
 # Lavalink Music Server
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")

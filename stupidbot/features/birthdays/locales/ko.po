@@ -1,9 +1,15 @@
+# Korean translations for StupidBot.
+# Copyright (C) 2026 ArtiArtem8
+# This file is distributed under the same license as the StupidBot project.
 msgid ""
 msgstr ""
 "Project-Id-Version: StupidBot\n"
+"Report-Msgid-Bugs-To: https://github.com/ArtiArtem8/stupid-bot-discord/issues\n"
 "POT-Creation-Date: 2026-10-13 00:00+0000\n"
 "PO-Revision-Date: 2026-10-13 00:00+0000\n"
+"Last-Translator: ArtiArtem8\n"
 "Language: ko\n"
+"Language-Team: ArtiArtem8\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"

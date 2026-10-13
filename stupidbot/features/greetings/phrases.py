@@ -20,31 +20,24 @@ MORNING_ANSWERS = (
         "Good morning! Wishing you a great mood, plenty of energy and success with "
         "all your plans.",
     ),
-    (
-        pgettext_noop(
-            "answer",
-            "Wishing you a kind, energetic, positive, sunny, wonderful, joyful and "
-            "happy morning!",
-        )
+    pgettext_noop(
+        "answer",
+        "Wishing you a kind, energetic, positive, sunny, wonderful, joyful and "
+        "happy morning!",
     ),
-    (
-        pgettext_noop(
-            "answer",
-            "May your morning be kind, fragrant and refreshing! And may your whole "
-            "week be easy, inspiring and productive!",
-        )
+    pgettext_noop(
+        "answer",
+        "May your morning be kind, fragrant and refreshing! And may your whole "
+        "week be easy, inspiring and productive!",
     ),
     pgettext_noop(
         "answer",
         "Good morning, and welcome to a new day! May it be easy, cheerful and "
         "productive.",
     ),
-    (
-        pgettext_noop(
-            "answer",
-            "Good morning! Wake up, stretch, smile, perk up and greet the new day! "
-            "Hooray!",
-        )
+    pgettext_noop(
+        "answer",
+        "Good morning! Wake up, stretch, smile, perk up and greet the new day! Hooray!",
     ),
     pgettext_noop("answer", "Good f*cking morning!"),
     pgettext_noop(

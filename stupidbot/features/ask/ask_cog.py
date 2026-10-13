@@ -1,8 +1,4 @@
-"""Magic 8-ball style question answering system.
-
-Provides a `/ask` command that gives random answers to user questions,
-with answer history tracking to prevent duplicate questions.
-"""
+"""Answer /ask questions and reuse each user's saved response on repeats."""
 
 import asyncio
 import logging

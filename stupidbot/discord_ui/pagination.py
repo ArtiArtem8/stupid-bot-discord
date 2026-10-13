@@ -6,15 +6,12 @@ from discord import Interaction
 from discord.ui import Button
 
 SECONDARY = discord.ButtonStyle.secondary
-""":py:attr:`discord.ButtonStyle.secondary` """
 PRIMARY = discord.ButtonStyle.primary
-""":py:attr:`discord.ButtonStyle.primary` """
 DANGER = discord.ButtonStyle.danger
-""":py:attr:`discord.ButtonStyle.danger` """
 
 
 class PaginationData(Protocol):
-    """Protocol defining what data a paginator needs."""
+    """Supply pages and access feedback to BasePaginator."""
 
     async def get_page_count(self) -> int:
         """Return the total number of pages."""
@@ -25,7 +22,7 @@ class PaginationData(Protocol):
         ...
 
     async def on_unauthorized(self, interaction: Interaction) -> None:
-        """Send an unauthorized message."""
+        """Respond when someone other than the page owner uses the controls."""
         ...
 
 

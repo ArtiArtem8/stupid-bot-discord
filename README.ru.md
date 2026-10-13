@@ -1,7 +1,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-light.png">
-  <img src="docs/assets/banner-light.png" alt="StupidBot — музыка и голосовые профили" width="1200">
+  <img src="docs/assets/banner-light.png" alt="StupidBot: музыка и голосовые профили" width="1200">
 </picture>
 
 # StupidBot
@@ -21,7 +21,7 @@
 [![Scrutinizer](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/badges/quality-score.png?b=main)](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/?branch=main)
 [![License](https://img.shields.io/badge/license-MIT-57A773?style=flat-square)](LICENSE)
 
-**StupidBot** — Discord-бот с музыкой, голосовыми профилями и поздравлениями
+**StupidBot** помогает слушать музыку, смотреть голосовые профили и поздравлять
 с днём рождения. Его можно запустить у себя.
 
 Интерфейс и карточки профиля доступны на русском, английском и корейском.
@@ -39,12 +39,12 @@
 его заново, перемотать на десять секунд, поставить на паузу, продолжить
 или пропустить.
 
-![Настоящий контроллер Discord: Creo — Rivals, позиция 1:54, кнопки перезапуска, перемотки, паузы и пропуска.](docs/assets/music-controller.webp)
+![Контроллер Discord: Rivals от Creo, позиция 1:54, кнопки перезапуска, перемотки, паузы и пропуска.](docs/assets/music-controller.webp)
 
 <details>
 <summary>Очередь, запись управления и команды</summary>
 
-![Очередь Discord: играет Creo — Rivals, далее Unveil и Sphere; кнопки навигации, закрытия и обновления.](docs/assets/music-queue.webp)
+![Очередь Discord: играет Rivals от Creo, далее Unveil и Sphere; кнопки навигации, закрытия и обновления.](docs/assets/music-queue.webp)
 
 ![Запись настоящего контроллера: пауза, перемотка и продолжение воспроизведения.](docs/assets/music-controls.webp)
 
@@ -82,7 +82,7 @@
 
 ![Четырёхсекундная анимация профиля Mythic на демонстрационных данных.](docs/assets/profile-motion.webp)
 
-От Starter до Rare используется PNG. Начиная с Epic — четырёхсекундный
+От Starter до Rare используется PNG. Начиная с Epic используется четырёхсекундный
 анимированный WebP. При ошибке кодирования или превышении лимита размера
 отправляется PNG.
 
@@ -113,13 +113,13 @@ People показывает время с другими участниками,
 Участники указывают дату через `/set-birthday` и удаляют её через
 `/remove-birthday`. Поддерживаются форматы `DD-MM-YYYY` и `YYYY-MM-DD`.
 Администраторы выбирают канал поздравлений и необязательную роль именинника
-через `/setup-birthdays`, а ближайшие даты смотрят через `/list-birthdays` —
+через `/setup-birthdays`, а ближайшие даты смотрят через `/list-birthdays`,
 по умолчанию список виден только вызвавшему команду. Дни рождения определяются
 по локальной дате хоста; `VOICE_PROFILE_TIMEZONE` влияет только на голосовые профили.
 
 | Другие возможности | Команды и поведение |
 | --- | --- |
-| WolframAlpha | `/solve` — ответы и вычисления, `/plot` — графики. Нужен App ID. |
+| WolframAlpha | `/solve` для ответов и вычислений, `/plot` для графиков. Нужен App ID. |
 | Магический шар | `/ask` запоминает ответ на повторяющийся вопрос. |
 | Роли участников | `/monitor` управляет сохранёнными снимками ролей и восстановлением. |
 | Доступ к боту | `/block`, `/unblock`, `/block-info` и `/list-blocked`. |
@@ -202,7 +202,7 @@ People показывает время с другими участниками,
 На странице Bot включите привилегированные intents: **Presence**, **Server Members**
 и **Message Content**. Добавьте приложение на сервер со scopes бота и команд
 приложения. Выдайте права на сообщения, вложения и голосовое воспроизведение,
-а для ролей именинников и восстановления ролей — ещё и на управление ролями.
+а для ролей именинников и восстановления ролей также на управление ролями.
 
 ### Установка и настройка
 
@@ -266,13 +266,13 @@ uv run --locked --no-dev main.py --database /path/to/app.sqlite
 Из корня репозитория бот запускается через `./runstupidbot.sh` (Linux/macOS)
 или `.\runstupidbot.bat` (Windows PowerShell).
 
-`LAVALINK_NODE_LABEL` по умолчанию равен `MAIN`, `LAVALINK_CONNECT_RETRY_DELAY` —
+`LAVALINK_NODE_LABEL` по умолчанию равен `MAIN`, а `LAVALINK_CONNECT_RETRY_DELAY` равен
 30 секундам. Пути рендерера, права на кеш шрифтов и `INKSCAPE_BIN` описаны
 в [настройке профилей](docs/voice/profile-card.md#setup).
 
 Рабочие файлы используют `data/` и временные каталоги рендерера. Резервные копии
 создаются отдельными командами обслуживания SQLite. В [stupidbot/settings.py](stupidbot/settings.py)
-находятся эксплуатационные константы, в [общих эмодзи](stupidbot/discord_ui/emojis.py) —
+находятся эксплуатационные константы, [общие эмодзи](stupidbot/discord_ui/emojis.py) содержат
 ссылки на элементы управления; [настройка логирования](stupidbot/app/logging.py)
 управляет журналами. Тексты остальных функций находятся рядом с их кодом.
 
@@ -289,6 +289,8 @@ uv run --locked --no-dev main.py --database /path/to/app.sqlite
 написана на английском.
 
 ## Лицензия и графика
+
+Автор: [ArtiArtem8](https://github.com/ArtiArtem8).
 
 [MIT](LICENSE). Баннер использует эмблему профиля и музыкальную палитру бота;
 редактируемые SVG находятся в [docs/assets/](docs/assets/).
