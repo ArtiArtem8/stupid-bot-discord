@@ -58,44 +58,25 @@ class QuestionCog(BaseCog):
         messages = catalog("ask", context.language)
         async with self._answer_lock:
             candidate = messages.pgettext("answer", self.answers[0])
-            prev_message = await self._add_to_history(
+            reply, inserted = await self._repository.answer(
                 interaction.user.id,
-                text,
+                str_local(text),
                 candidate,
             )
 
-            if prev_message is not None:
-                reply = prev_message
-            else:
+            if inserted:
                 self.answers.append(random_answer(text, answers=CAPABILITIES))
                 self.answers.pop(0)
-                reply = candidate
 
-        if prev_message is not None:
-            logger.info(
-                "/ask resolved user_id=%s result=cached question=%r answer=%r",
-                interaction.user.id,
-                text,
-                reply,
-            )
-        else:
-            logger.info(
-                "/ask resolved user_id=%s result=new question=%r answer=%r",
-                interaction.user.id,
-                text,
-                reply,
-            )
+        logger.info(
+            "/ask resolved user_id=%s result=%s question=%r answer=%r",
+            interaction.user.id,
+            "new" if inserted else "cached",
+            text,
+            reply,
+        )
 
         return reply
-
-    async def _add_to_history(
-        self, user_id: int, question: str, answer: str
-    ) -> str | None:
-        """Return the committed winner without advancing the queue on failed storage."""
-        committed, inserted = await self._repository.answer(
-            user_id, str_local(question), answer
-        )
-        return None if inserted else committed
 
 
 async def setup(bot: "StupidBot") -> None:

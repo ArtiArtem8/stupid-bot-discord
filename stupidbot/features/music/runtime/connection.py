@@ -403,9 +403,8 @@ class ConnectionManager:
         for player in players:
             if not self.is_current_player(player):
                 continue
-            if target is not None:
-                if await self._transfer_or_release(player, target):
-                    continue
+            if target is not None and await self._transfer_or_release(player, target):
+                continue
             player.mark_stale()
             invalidated.append(player)
 

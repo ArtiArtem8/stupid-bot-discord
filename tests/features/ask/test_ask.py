@@ -36,10 +36,12 @@ class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):
         await self.repository.answer(1, "a", "truncated")
         for question in ("한국", "질문", "a한국", "🙂", "!", " ! "):
             with self.subTest(question=question):
-                self.assertIsNone(await self.cog._add_to_history(1, question, question))
-                self.assertEqual(
-                    await self.cog._add_to_history(1, question, "replacement"), question
-                )
+                for candidate in (question, "replacement"):
+                    self.cog.answers = [candidate]
+                    request = interaction(user_id=1)
+                    request.response.is_done.return_value = False
+                    await self.cog.q._do_call(request, {"text": question})
+                    request.response.send_message.assert_awaited_once_with(question)
         self.assertEqual(
             await self.repository.answer(1, "", "new"), ("unrecoverable", False)
         )
@@ -201,10 +203,13 @@ class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.cog.answers, queue_before)
 
     async def test_returns_existing_answer_without_rewriting_it(self) -> None:
-        self.assertIsNone(await self.cog._add_to_history(1, "Question?", "answer"))
-        self.assertEqual(
-            await self.cog._add_to_history(1, "Question?", "other"), "answer"
-        )
+        for candidate in ("answer", "other"):
+            self.cog.answers = [candidate]
+            request = interaction(user_id=1)
+            request.response.is_done.return_value = False
+            await self.cog.q._do_call(request, {"text": "Question?"})
+            request.response.send_message.assert_awaited_once_with("answer")
+        self.assertEqual(self.cog.answers, ["other"])
         async with self.database.transaction() as connection:
             rows = (
                 await connection.execute(
