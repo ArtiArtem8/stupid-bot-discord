@@ -6,6 +6,7 @@ import sys
 import threading
 import unittest
 from io import BytesIO
+from itertools import product
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -388,13 +389,14 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         bot = MagicMock()
         cog = VoiceProfileCog(bot)
         cog._revision = "test"
-        for private in (False, True):
-            with self.subTest(private=private):
+        for private, timezone in product((False, True), ("UTC", "Etc/GMT-3")):
+            with self.subTest(private=private, timezone=timezone):
                 item = interaction()
                 bot.get_guild.return_value = item.guild
                 item.guild.get_member.return_value = item.user
                 attachment = discord.File(BytesIO(b"png"), filename="profile.png")
                 with (
+                    patch.object(config, "VOICE_PROFILE_TIMEZONE", timezone),
                     patch.object(
                         cog, "_attachment", MagicMock(return_value=attachment)
                     ) as build,
@@ -409,7 +411,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                 prepare.assert_awaited_once_with(
                     item.guild,
                     item.user,
-                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                    context=PresentationContext(Language.RU, ZoneInfo(timezone)),
                 )
                 call = build.call_args
                 if call is None:
