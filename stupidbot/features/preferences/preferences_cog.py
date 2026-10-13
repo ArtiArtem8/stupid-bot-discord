@@ -36,7 +36,7 @@ class PreferencesCog(BaseCog):
     @app_commands.command(
         name="settings-server",
         description=app_commands.locale_str(
-            "Language and timezone for public server messages", domain="preferences"
+            "Server language and default profile timezone", domain="preferences"
         ),
     )
     @app_commands.guild_only()
@@ -65,6 +65,10 @@ async def open_settings(
         if scope is PreferenceScope.USER
         else interaction.guild_locale
     )
+    default_timezone = fallback_timezone()
+    if scope is PreferenceScope.USER and interaction.guild_id is not None:
+        server_context = await interaction_context(interaction, private=False)
+        default_timezone = server_context.timezone
     view = SettingsView(
         owner_id=interaction.user.id,
         scope=scope,
@@ -73,7 +77,7 @@ async def open_settings(
         initial=initial,
         context=context,
         audience_locale=locale.value if locale is not None else None,
-        fallback_timezone=fallback_timezone(),
+        fallback_timezone=default_timezone,
     )
     view.message = await interaction.edit_original_response(view=view)
 

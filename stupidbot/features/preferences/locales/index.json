@@ -3,7 +3,7 @@
     "cancel\u0004Cancel",
     "cancelled\u0004Changes cancelled.",
     "closed\u0004This panel is closed or saving. Open settings again.",
-    "command\u0004Language and timezone for public server messages",
+    "command\u0004Server language and default profile timezone",
     "command\u0004Your language and timezone for replies and your profile",
     "conflict\u0004Settings have changed. Current values: {language}, {timezone}. Open the panel again.",
     "discord\u0004As in Discord",
@@ -15,7 +15,7 @@
     "open_settings\u0004Set up",
     "owner_only\u0004This panel belongs to someone else. Open /customize-me.",
     "permission\u0004You need Manage Server permission to change server settings.",
-    "personal_scope\u0004Across all servers. Server settings stay unchanged.",
+    "personal_scope\u0004Your language for personal replies and all your profiles, including public ones, across all servers.\nTimezone changes dates and charts, not XP or time in voice. If unset, profiles use the server timezone.",
     "personal_title\u0004Your settings",
     "preview\u0004Language: **{language}**\nTimezone: **{timezone}**\nCurrent time: {local_time}",
     "reminder\u0004Choose a language and timezone for personal replies and your voice profile in /customize-me.",
@@ -25,11 +25,12 @@
     "reset\u0004Reset settings",
     "save\u0004Save",
     "saved\u0004Settings saved.",
-    "server_scope\u0004For shared messages in this server.",
+    "server_scope\u0004Language for shared messages. Timezone for profiles without a personal timezone. Birthday schedules stay unchanged.",
     "server_title\u0004Server settings",
     "timezone\u0004Timezone",
-    "zone_help\u0004For example Europe/Moscow. Leave blank to use the installation default.",
+    "zone_help\u0004For example Europe/Moscow. Leave blank to use the default timezone.",
     "zone_id\u0004IANA timezone",
+    "zone_inherit\u0004Default timezone",
     "zone_other\u0004Other…"
   ]
 }

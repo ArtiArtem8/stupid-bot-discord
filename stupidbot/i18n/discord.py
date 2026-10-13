@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import discord
 
 from stupidbot import settings
-from stupidbot.features.preferences.models import PreferenceScope
+from stupidbot.features.preferences.models import Preferences, PreferenceScope
 from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.i18n.policy import PresentationContext, resolve_context
 
@@ -63,7 +63,27 @@ async def interaction_context(
     )
     interaction.extras["stupidbot.preferences.failed"] = False
     interaction.extras[key] = resolved
+    if personal:
+        interaction.extras["stupidbot.preferences.user"] = preferences
     return resolved
+
+
+async def profile_context(interaction: discord.Interaction) -> PresentationContext:
+    """Use personal language and inherit only an unset timezone from the guild.
+
+    Reuse the interaction's preference snapshot, so explicit user overrides need
+    no guild query. Both lookups retain the ordinary error-response fallback.
+    """
+    personal = await interaction_context(interaction, private=True)
+    preferences: object = interaction.extras.get("stupidbot.preferences.user")
+    if (
+        isinstance(preferences, Preferences)
+        and preferences.timezone is None
+        and interaction.guild_id is not None
+    ):
+        server = await interaction_context(interaction, private=False)
+        return PresentationContext(personal.language, server.timezone)
+    return personal
 
 
 async def error_context(interaction: discord.Interaction) -> PresentationContext:

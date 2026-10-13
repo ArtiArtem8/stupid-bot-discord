@@ -52,8 +52,10 @@ Parameterized messages have typed
 methods in the owner's `messages.py`. Pass an explicit presentation context to
 views and renderers; do not set a global language. Personal/ephemeral responses
 resolve user preferences, while shared public responses resolve guild preferences.
-Voice profiles use the requester's preferences regardless of visibility; the
-`private` option changes delivery only. Fixed-offset choices use IANA `Etc/GMT`
+Voice profiles use the requester's language regardless of visibility; the
+`private` option changes delivery only. An unset personal timezone inherits
+the server timezone, then `VOICE_PROFILE_TIMEZONE`. Language does not inherit
+from the server. Fixed-offset choices use IANA `Etc/GMT`
 keys internally; display them through `common.timezones.timezone_label` to avoid
 exposing their reversed POSIX signs.
 

@@ -4,7 +4,9 @@
 The response is private by default. Use `private:false` to publish it in the
 channel with a trash button that deletes only the message, not its history or XP.
 Both private and public profiles use the requester's language and timezone from
-`/customize-me`. Visibility does not select server preferences. Open cards retain
+`/customize-me`. If no personal timezone is set, they inherit the server timezone,
+then `VOICE_PROFILE_TIMEZONE`. Language stays personal; visibility changes only
+who can see the card. Open cards retain
 their presentation context when refreshed. Fixed UTC offsets are displayed with
 conventional signs; regional timezones retain their IANA names.
 All controls are restricted to the command owner. The main profile stays a

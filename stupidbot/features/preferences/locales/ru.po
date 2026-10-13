@@ -44,8 +44,8 @@ msgid "Do not remind me"
 msgstr "Не напоминать"
 
 msgctxt "zone_help"
-msgid "For example Europe/Moscow. Leave blank to use the installation default."
-msgstr "Например Europe/Moscow. Пустое поле — настройка установки."
+msgid "For example Europe/Moscow. Leave blank to use the default timezone."
+msgstr "Например Europe/Moscow. Оставьте пустым для пояса по умолчанию."
 
 msgctxt "reminder_disabled"
 msgid "I will not remind you again. Settings are available in /customize-me."
@@ -53,11 +53,11 @@ msgstr "Больше не буду напоминать. Настройки до
 
 msgctxt "zone_id"
 msgid "IANA timezone"
-msgstr "IANA-зона"
+msgstr "Часовой пояс IANA"
 
 msgctxt "command"
-msgid "Language and timezone for public server messages"
-msgstr "Язык и часовой пояс общих сообщений сервера"
+msgid "Server language and default profile timezone"
+msgstr "Язык сервера и часовой пояс профилей по умолчанию"
 
 #, python-brace-format
 msgctxt "preview"
@@ -125,7 +125,7 @@ msgstr "Часовой пояс"
 
 msgctxt "invalid_zone"
 msgid "Unknown IANA timezone. Examples: Europe/Moscow or UTC."
-msgstr "Неизвестная IANA-зона. Например: Europe/Moscow или UTC."
+msgstr "Неизвестный часовой пояс. Например: Europe/Moscow или UTC."
 
 msgctxt "permission"
 msgid "You need Manage Server permission to change server settings."
@@ -148,9 +148,24 @@ msgid "Reset settings"
 msgstr "Сбросить настройки"
 
 msgctxt "personal_scope"
-msgid "Across all servers. Server settings stay unchanged."
-msgstr "На всех серверах. Не меняют настройки сервера."
+msgid ""
+"Your language for personal replies and all your profiles, including public ones, "
+"across all servers.\n"
+"Timezone changes dates and charts, not XP or time in voice. If unset, profiles "
+"use the server timezone."
+msgstr ""
+"Язык личных ответов и всех ваших профилей, включая публичные, на всех серверах.\n"
+"Часовой пояс меняет даты и графики, но не XP и время в голосе. Если не выбран, "
+"профиль использует пояс сервера."
 
 msgctxt "server_scope"
-msgid "For shared messages in this server."
-msgstr "Для общих сообщений этого сервера."
+msgid ""
+"Language for shared messages. Timezone for profiles without a personal timezone. "
+"Birthday schedules stay unchanged."
+msgstr ""
+"Язык общих сообщений. Часовой пояс для профилей без личного пояса. "
+"Расписание поздравлений не меняется."
+
+msgctxt "zone_inherit"
+msgid "Default timezone"
+msgstr "Пояс по умолчанию"

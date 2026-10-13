@@ -51,7 +51,7 @@ from stupidbot.features.voice.profile.presentation import (
 from stupidbot.features.voice.runtime import AnalyticsUnavailableError, VoiceAnalytics
 from stupidbot.features.voice.timeline import VoiceTimeline
 from stupidbot.i18n.catalog import catalog
-from stupidbot.i18n.discord import interaction_context
+from stupidbot.i18n.discord import interaction_context, profile_context
 from stupidbot.i18n.policy import Language, PresentationContext
 
 logger = logging.getLogger(__name__)
@@ -149,7 +149,7 @@ class VoiceProfileCog(BaseCog):
             return
         await interaction.response.defer(thinking=True, ephemeral=private)
         # Visibility controls delivery; the profile always belongs to its requester.
-        context = await interaction_context(interaction, private=True)
+        context = await profile_context(interaction)
         guild_id, user_id = interaction.guild.id, interaction.user.id
 
         async def refresh(button_interaction: discord.Interaction) -> None:

@@ -12,6 +12,7 @@ import discord
 
 from stupidbot.features.preferences import view as view_module
 from stupidbot.features.preferences.models import Preferences, PreferenceScope
+from stupidbot.features.preferences.preferences_cog import open_settings
 from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.features.preferences.view import (
     LanguageSelect,
@@ -157,6 +158,28 @@ class SettingsViewTests(IsolatedAsyncioTestCase):
         self.view.proposed = saved
         await self.view.reset(interaction())
         await self.view.cancel(interaction())
+        self.assertEqual(await self.repository.get(PreferenceScope.USER, 10), saved)
+
+    async def test_personal_panel_reset_previews_inherited_server_timezone(
+        self,
+    ) -> None:
+        saved = await self.repository.save(
+            PreferenceScope.USER, 10, Preferences(Language.EN, "Etc/GMT+2")
+        )
+        await self.repository.save(
+            PreferenceScope.GUILD, 20, Preferences(Language.RU, "Etc/GMT-3")
+        )
+        request = interaction()
+        request.client.preferences_repository = self.repository
+        await open_settings(request, self.repository, PreferenceScope.USER)
+        panel = request.edit_original_response.call_args.kwargs["view"]
+        if not isinstance(panel, SettingsView):
+            self.fail("Expected a settings panel")
+        self.addCleanup(panel.stop)
+        self.assertIn("UTC-2", str(panel.to_components()))
+        await panel.reset(interaction())
+        self.assertIn("UTC+3", str(panel.to_components()))
+        self.assertEqual(panel.context.language, Language.EN)
         self.assertEqual(await self.repository.get(PreferenceScope.USER, 10), saved)
 
     async def test_acknowledgement_failure_releases_save_state_without_writing(
