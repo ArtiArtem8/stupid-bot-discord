@@ -24,12 +24,13 @@
 **StupidBot** is a Discord bot for music, voice profiles and birthday greetings.
 You can host your own instance.
 
-The interface is mostly Russian; profile cards also use English.
+The interface and profile cards support Russian and English.
 
 **English** · [Русский](README.ru.md)
 
 [Music](#music) · [Voice profiles](#voice-profiles) · [Birthdays](#birthdays) ·
-[Engineering](#engineering) · [Run locally](#run-locally) · [Contributing](#contributing)
+[Language and timezone](#language-and-timezone) · [Engineering](#engineering) ·
+[Run locally](#run-locally) · [Contributing](#contributing)
 
 ## Music
 
@@ -69,9 +70,7 @@ remain available while Lavalink is unreachable.
 `/voice-profile` shows your server-local level, XP, voice time and session count.
 Cards and their details support Russian and English. Both private and public
 cards use your personal language and timezone from `/customize-me`. Open cards keep
-that context when refreshed. After the second successful private profile use,
-an optional settings reminder can appear at most twice, at least 14 days apart.
-Choose Later or Do not remind me; the bot does not send unsolicited DMs.
+that context when refreshed.
 Activity, People and XP buttons add details to the same message.
 
 ![Demo Listener's voice profile: Mythic level 40, 360 hours 45 minutes in voice and 80 sessions. Synthetic data.](docs/assets/profile.png)
@@ -123,6 +122,43 @@ only affects voice profiles.
 | Feedback | `/report` stores a report; `/set-report-channel` configures notifications. |
 | Chat replies | Greeting reactions and guidance from legacy prefix commands to slash commands. |
 
+## Language and timezone
+
+`/customize-me` opens your personal language and timezone settings, shared across
+servers. `/settings-server` changes settings for public messages in the current
+server and requires Manage Server. Both editors are visible only to you.
+
+<details>
+<summary>Language priority, saving settings and reminders</summary>
+
+Choose Russian, English or **As in Discord**, select a fixed timezone offset
+from `UTC-11` to `UTC+12`, check the preview and press **Save**. Fixed offsets
+do not follow daylight saving time. **Other…** lets you enter a regional IANA
+timezone such as `Europe/Moscow`.
+**Cancel** discards pending changes. **As in Discord** resets only the language;
+leaving the custom timezone field blank restores the installation default.
+**Reset settings** restores both defaults; press **Save** to apply or **Cancel**
+to discard the reset. Open editors keep their original display language and
+reject a save if another editor has already changed those settings.
+
+Private replies and all your profile cards use your settings, including public
+cards. Other public messages use the server settings. The language preference
+takes priority over the corresponding Discord locale, with Russian as the fallback for unsupported
+or unavailable locales. Personal and server settings are independent. Profile
+calendar dates use your timezone or `VOICE_PROFILE_TIMEZONE`
+when no override is set; Discord does not supply a timezone.
+
+Command descriptions follow your Discord client language. User text, external
+Wolfram answers and previously saved `/ask` replies stay unchanged. A new `/ask`
+answer is translated before saving; repeated questions return that saved text.
+The bot-wide uptime status remains Russian.
+
+After the second successful private profile use, an optional settings reminder
+can appear at most twice, at least 14 days apart. Choose **Later** or
+**Do not remind me**; the bot does not send unsolicited DMs.
+
+</details>
+
 ## Engineering
 
 - **Playback state survives overlapping events.** [MusicPlayer](stupidbot/features/music/playback/player.py)
@@ -143,26 +179,6 @@ only affects voice profiles.
 
 ## Run locally
 
-`/customize-me` opens a private language/timezone editor. `/settings-server` edits
-the settings for public server messages and requires Manage Server. “As in
-Discord” resets only the language override. Open editors retain their original
-language and reject stale saves if another editor has committed first.
-
-<details>
-<summary>Choosing a timezone and resetting settings</summary>
-
-Choose a fixed offset from `UTC-11` to `UTC+12`, or **Other…** for an IANA
-timezone such as `Europe/Moscow`. Fixed offsets do not follow daylight saving
-time. **Reset settings** restores Discord's language and the installation's
-default timezone; press **Save** to apply or **Cancel** to discard the reset.
-
-</details>
-
-Bot messages, controls, command descriptions and profile labels support Russian
-and English. Responses prefer the selected audience's override, then its Discord
-locale, then Russian. Voice profiles always use personal settings, including
-public cards; other public replies use server settings. User text,
-Wolfram answers and previously saved `/ask` replies are kept unchanged.
 Existing deployments must [review guild languages before cutover](docs/storage/README.md#backup-restore-and-rollback).
 
 For a new installation, explicitly choose the profile calendar timezone;
@@ -194,7 +210,7 @@ starting the bot.
 | `DISCORD_BOT_TOKEN` | Required Discord bot token. |
 | `DISCORD_BOT_OWNER_ID` | Optional owner ID. |
 | `VOICE_PROBE_ENABLED` | `true` by default; enables voice collection. Observations are retained indefinitely in SQLite. |
-| `VOICE_PROFILE_TIMEZONE` | IANA timezone for profile calendar details, default `UTC`. Does not change elapsed voice time or lifetime XP. |
+| `VOICE_PROFILE_TIMEZONE` | Default IANA timezone for profile calendar details when no personal/server override is set; `UTC` if unset. Does not change elapsed voice time or lifetime XP. |
 | `WOLFRAM_APP_ID` | [WolframAlpha App ID](https://developer.wolframalpha.com/) for `/solve` and `/plot`; optional for other features. |
 | `LAVALINK_HOST`, `LAVALINK_PORT` | Lavalink address, default `localhost:2333`. |
 | `LAVALINK_PASSWORD`, `LAVALINK_SECURE` | Match the Lavalink server's password and TLS configuration. |
