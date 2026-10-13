@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 import secrets
 import unittest
-from typing import cast, override
+from typing import override
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -49,21 +49,16 @@ class TestLavalinkLive(unittest.IsolatedAsyncioTestCase):
         client = MagicMock()
         client.user.id = _random_snowflake()
         client.wait_until_ready = AsyncMock()
-        self.node = mafic.Node(
+        self.node: mafic.Node[discord.Client] = mafic.Node(
             host=config.LAVALINK_HOST,
             port=config.LAVALINK_PORT,
             label=f"LIVE-{uuid4().hex}",
             password=config.LAVALINK_PASSWORD,
-            client=cast(discord.Client, client),
+            client=client,
             secure=config.LAVALINK_SECURE,
         )
+        self.addAsyncCleanup(self.node.close)
         await self.node.connect()
-
-    @override
-    async def asyncTearDown(self) -> None:
-        node = getattr(self, "node", None)
-        if node is not None:
-            await node.close()
 
     async def _load_track(self) -> mafic.Track:
         search_type = os.environ.get("LAVALINK_LIVE_SEARCH_TYPE", "ytsearch")

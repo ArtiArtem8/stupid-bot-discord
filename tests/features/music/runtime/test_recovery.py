@@ -79,9 +79,9 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player._connected = True
         player._paused = False
         player._position = 1000
-        player._last_update = 0
+        player._position_received_at = 0.0
         player.mark_stuck(attempt)
-        with patch("mafic.player.time", return_value=30.0):
+        with patch("mafic.player.monotonic", return_value=30.0):
             snapshot = await healer._seal_and_snapshot(player)
         self.assertTrue(player.is_stale)
         self.assertEqual(snapshot.position, 1000)

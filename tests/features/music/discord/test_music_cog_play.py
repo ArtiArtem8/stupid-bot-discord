@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Awaitable
-from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from discord.ext import commands
+
 from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.features.music.discord import music_cog
 from stupidbot.features.music.discord.music_cog import MusicCog
 from stupidbot.features.music.discord.presentation import (
     build_playlist_added_embed,
@@ -15,6 +17,7 @@ from stupidbot.features.music.discord.presentation import (
 )
 from stupidbot.features.music.discord.views import QueueUndoView
 from stupidbot.features.music.playback.models import PlayPlacement
+from stupidbot.features.music.repository import VolumeStore
 from stupidbot.features.music.results import (
     MusicResult,
     MusicResultReason,
@@ -39,8 +42,8 @@ def _make_interaction() -> MagicMock:
 
 
 def _make_cog() -> MusicCog:
-    cog = object.__new__(MusicCog)
-    return cog
+    with patch.object(music_cog, "create_music_components"):
+        return MusicCog(MagicMock(spec=commands.Bot), MagicMock(spec=VolumeStore))
 
 
 class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
@@ -49,7 +52,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         interaction = _make_interaction()
 
         with patch.object(cog, "_run_play_command", new=AsyncMock()) as run_play:
-            await cast(Any, MusicCog.play).callback(cog, interaction, "query")
+            await cog.play._do_call(interaction, {"query": "query"})
 
         run_play.assert_awaited_once_with(interaction, "query", "end")
 
@@ -58,7 +61,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         interaction = _make_interaction()
 
         with patch.object(cog, "_run_play_command", new=AsyncMock()) as run_play:
-            await cast(Any, MusicCog.play_next).callback(cog, interaction, "query")
+            await cog.play_next._do_call(interaction, {"query": "query"})
 
         run_play.assert_awaited_once_with(interaction, "query", "next")
 

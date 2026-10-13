@@ -142,7 +142,7 @@ class TestWolframParsing(unittest.TestCase):
             (
                 "entity declaration",
                 "<!DOCTYPE queryresult [<!ENTITY injected 'unsafe'>]>"
-                + '<queryresult success="true">&injected;</queryresult>',
+                '<queryresult success="true">&injected;</queryresult>',
             ),
         )
 

@@ -121,6 +121,15 @@ class TestNormalization(unittest.TestCase):
 
 
 class TestCollector(unittest.IsolatedAsyncioTestCase):
+    async def test_unrelated_gateway_event_does_not_validate_payload(self) -> None:
+        with patch(
+            "stupidbot.features.voice.discord.collector_cog.is_json_object",
+            side_effect=AssertionError("Unrelated payload traversal"),
+        ):
+            await self.cog.on_socket_raw_receive(
+                json.dumps({"t": "MESSAGE_CREATE", "d": {"nested": [1, 2, 3]}})
+            )
+
     @override
     async def asyncSetUp(self) -> None:
         self.directory = TemporaryDirectory()

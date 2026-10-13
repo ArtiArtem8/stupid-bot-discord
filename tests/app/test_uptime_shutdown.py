@@ -166,6 +166,28 @@ class TestUptimeShutdown(unittest.IsolatedAsyncioTestCase):
         finally:
             await reader.close()
 
+    async def test_failed_presence_is_retried_before_deduplicating(self) -> None:
+        path, _ = await temporary_database(self)
+        bot = StupidBot(database_path=path, cog_loader=MagicMock(spec=CogLoader))
+        self.addAsyncCleanup(bot.close)
+        await bot.restore_state()
+        previous_activity = bot.uptime_manager.last_activity_str
+        with (
+            patch.object(
+                bot.uptime_manager, "elapsed_microseconds", return_value=120_000_000
+            ),
+            patch.object(
+                bot, "change_presence", side_effect=[OSError("Disconnected"), None]
+            ) as presence,
+        ):
+            with self.assertRaises(OSError):
+                await bot.update_activity_task.coro(bot)
+            self.assertEqual(bot.uptime_manager.last_activity_str, previous_activity)
+            await bot.update_activity_task.coro(bot)
+            self.assertNotEqual(bot.uptime_manager.last_activity_str, previous_activity)
+            await bot.update_activity_task.coro(bot)
+            self.assertEqual(presence.await_count, 2)
+
     async def test_presence_uses_the_same_elapsed_duration_as_persistence(self) -> None:
         path, _ = await temporary_database(self)
         bot = StupidBot(database_path=path, cog_loader=MagicMock(spec=CogLoader))

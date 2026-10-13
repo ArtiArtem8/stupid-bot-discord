@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import unittest
 from datetime import date
-from unittest.mock import Mock
 
 from stupidbot.features.birthdays.models import BirthdayGuildConfig, BirthdayUser
 from stupidbot.features.birthdays.presentation import build_birthday_list
 from stupidbot.i18n.policy import Language
 
 
-class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
+class TestBirthdayGuildConfig(unittest.TestCase):
     def test_translation_does_not_change_leap_day_occurrence_or_saved_name(
         self,
     ) -> None:
@@ -28,23 +27,18 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ko[0]["days_until"], ru[0]["days_until"])
         self.assertEqual(ko[0]["name"], "Алексей")
 
-    async def test_get_sorted_birthday_list_empty_users(self) -> None:
+    def test_get_sorted_birthday_list_empty_users(self) -> None:
         config = BirthdayGuildConfig(guild_id=123, server_name="Test", channel_id=999)
-        mock_guild = Mock()
 
         entries = build_birthday_list(
             config,
-            {
-                uid: member.display_name
-                for uid in config.users
-                if (member := mock_guild.get_member(uid)) is not None
-            },
+            {},
             date(2025, 1, 1),
         )
 
         self.assertEqual(entries, [])
 
-    async def test_get_sorted_birthday_list_sorting(self) -> None:
+    def test_get_sorted_birthday_list_sorting(self) -> None:
         config = BirthdayGuildConfig(guild_id=123, server_name="Test", channel_id=999)
 
         ref_date = date(2025, 1, 1)
@@ -55,16 +49,9 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
 
         config.users = {1: user1, 2: user2, 3: user3}
 
-        mock_guild = Mock()
-        mock_guild.get_member.return_value = None
-
         entries = build_birthday_list(
             config,
-            {
-                uid: member.display_name
-                for uid in config.users
-                if (member := mock_guild.get_member(uid)) is not None
-            },
+            {},
             ref_date,
         )
         self.assertEqual(len(entries), 3)
@@ -74,25 +61,12 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(entries[0]["days_until"], 4)
 
-    async def test_get_sorted_birthday_list_discord_member_name(self) -> None:
+    def test_get_sorted_birthday_list_discord_member_name(self) -> None:
         config = BirthdayGuildConfig(1, "Test", 999)
         user = BirthdayUser(10, "StoredName", "01-01-2000")
         config.users = {10: user}
 
-        mock_guild = Mock()
-        mock_member = Mock()
-        mock_member.display_name = "DiscordNick"
-        mock_guild.get_member.return_value = mock_member
-
-        entries = build_birthday_list(
-            config,
-            {
-                uid: member.display_name
-                for uid in config.users
-                if (member := mock_guild.get_member(uid)) is not None
-            },
-            date(2025, 1, 1),
-        )
+        entries = build_birthday_list(config, {10: "DiscordNick"}, date(2025, 1, 1))
 
         self.assertEqual(entries[0]["name"], "DiscordNick")
 
@@ -113,10 +87,8 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].user_id, 1)
 
-    async def test_leap_year_birthday_handling(self) -> None:
+    def test_leap_year_birthday_handling(self) -> None:
         config = BirthdayGuildConfig(1, "Test", 999)
-        mock_guild = Mock()
-        mock_guild.get_member.return_value = None
 
         leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
         config.users = {1: leap_user}
@@ -124,11 +96,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         ref_date_non_leap = date(2025, 1, 1)
         entries_2025 = build_birthday_list(
             config,
-            {
-                uid: member.display_name
-                for uid in config.users
-                if (member := mock_guild.get_member(uid)) is not None
-            },
+            {},
             ref_date_non_leap,
         )
         self.assertEqual(len(entries_2025), 1)
@@ -137,11 +105,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         ref_date_leap = date(2028, 1, 1)
         entries_2028 = build_birthday_list(
             config,
-            {
-                uid: member.display_name
-                for uid in config.users
-                if (member := mock_guild.get_member(uid)) is not None
-            },
+            {},
             ref_date_leap,
         )
         self.assertEqual(len(entries_2028), 1)
@@ -161,7 +125,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         matches_strict = config.get_birthdays_today(non_leap_day)
         self.assertEqual(len(matches_strict), 1)
 
-    async def test_leap_year_birthday_handling_feb28_non_leap(self) -> None:
+    def test_leap_year_birthday_handling_feb28_non_leap(self) -> None:
         config = BirthdayGuildConfig(1, "Test", 999)
 
         leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
@@ -173,7 +137,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0].name, "LeapBaby")
 
-    async def test_leap_year_birthday_handling_feb28_leap(self) -> None:
+    def test_leap_year_birthday_handling_feb28_leap(self) -> None:
         config = BirthdayGuildConfig(1, "Test", 999)
         leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
         config.users = {1: leap_user}
@@ -183,7 +147,7 @@ class TestBirthdayGuildConfig(unittest.IsolatedAsyncioTestCase):
         matches = config.get_birthdays_today(today_leap_28)
         self.assertEqual(len(matches), 0)
 
-    async def test_leap_year_birthday_handling_feb29_leap(self) -> None:
+    def test_leap_year_birthday_handling_feb29_leap(self) -> None:
         config = BirthdayGuildConfig(1, "Test", 999)
         leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
         config.users = {1: leap_user}

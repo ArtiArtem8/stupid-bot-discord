@@ -20,7 +20,11 @@ from stupidbot.features.voice.repository import (
     VoiceRepository,
 )
 from stupidbot.features.voice.runtime import AnalyticsUnavailableError, VoiceAnalytics
-from stupidbot.features.voice.timeline import VoiceReplayState, build_timeline
+from stupidbot.features.voice.timeline import (
+    VoiceReplayState,
+    VoiceTimeline,
+    build_timeline,
+)
 from tests.features.voice.fixtures import human, record
 from tests.storage.fixtures import temporary_database
 
@@ -68,6 +72,58 @@ class TestVoiceAnalytics(unittest.IsolatedAsyncioTestCase):
                 self.database.engine.sync_engine, "before_cursor_execute", traced
             )
         self.assertEqual(statements, [])
+
+    async def test_snapshot_cache_is_scoped_bounded_and_immutable(self) -> None:
+        await self.analytics.append(
+            "establish-other", [record(1, VoiceSnapshot(()), guild=2)]
+        )
+        await self.analytics.start()
+        original = VoiceReplayState.snapshot
+        builds: list[int | None] = []
+
+        def counted(
+            state: VoiceReplayState, guild_id: int | None = None
+        ) -> VoiceTimeline:
+            builds.append(guild_id)
+            return original(state, guild_id)
+
+        with patch.object(VoiceReplayState, "snapshot", new=counted):
+            first = await self.analytics.snapshot(1)
+            self.assertIs(await self.analytics.snapshot(1), first)
+            await self.analytics.append(
+                "other", [record(10, VoiceCheckpoint(), guild=2)]
+            )
+            self.assertIs(await self.analytics.snapshot(1), first)
+            self.assertEqual(builds, [1])
+            await self.analytics.append("local", [record(20, VoiceCheckpoint())])
+            second = await self.analytics.snapshot(1)
+            self.assertIsNot(second, first)
+            self.assertEqual(first.timeline.rooms, ())
+            await self.analytics.append(
+                "shared", [record(30, VoiceCheckpoint(), guild=None)]
+            )
+            self.assertIsNot(await self.analytics.snapshot(1), second)
+            for guild in range(2, 10):
+                await self.analytics.snapshot(guild)
+            await self.analytics.snapshot(1)
+            self.assertEqual(builds.count(1), 4)
+
+    async def test_recovery_and_new_owner_cannot_reuse_old_snapshot(self) -> None:
+        first = await self.analytics.snapshot(1)
+        with patch.object(self.store, "append_batch", side_effect=OSError("unknown")):
+            with self.assertRaises(OSError):
+                await self.analytics.append("unknown", [record(10, VoiceCheckpoint())])
+        with self.assertRaises(AnalyticsUnavailableError):
+            await self.analytics.snapshot(1)
+        await self.analytics.start()
+        self.assertIsNot(await self.analytics.snapshot(1), first)
+        await self.analytics.close()
+        with self.assertRaises(AnalyticsUnavailableError):
+            await self.analytics.snapshot(1)
+        replacement = VoiceAnalytics(self.store)
+        self.addAsyncCleanup(replacement.close)
+        await replacement.start()
+        self.assertIsNot(await replacement.snapshot(1), first)
 
     async def test_apply_failure_preserves_journal_success_and_recovery(self) -> None:
         original = VoiceReplayState.apply_many

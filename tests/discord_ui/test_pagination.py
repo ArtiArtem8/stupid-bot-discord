@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import unittest
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -19,7 +18,7 @@ class TestCallbackButton(unittest.IsolatedAsyncioTestCase):
             received.append(interaction)
 
         button = CallbackButton[discord.ui.View](callback)
-        interaction = cast(discord.Interaction, MagicMock(spec=discord.Interaction))
+        interaction = MagicMock(spec=discord.Interaction)
 
         await button.callback(interaction)
 

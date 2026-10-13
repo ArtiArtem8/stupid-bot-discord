@@ -38,7 +38,8 @@ async def safe_fetch_member(
         user_id: The ID of the member to fetch.
 
     Returns:
-        The fetched member, or None if the member is not found or if there was an error.
+        The cached or fetched member, or None for a missing member or an expected
+        permission/request failure. Retry one server error; other failures propagate.
 
     """
     member = guild.get_member(user_id)

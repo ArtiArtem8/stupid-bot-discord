@@ -3,13 +3,13 @@
 import asyncio
 import time
 import unittest
-from typing import cast, override
+from typing import override
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from zoneinfo import ZoneInfo
 
 import aiohttp
 import discord
-from discord import Client, Interaction, ui
+from discord import ui
 
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.features.music.contracts import ControllerDestroyReason
@@ -783,7 +783,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             restart_button = self._button(view, "btn_restart")
             callback = restart_button.callback
             self.assertIsNotNone(callback)
-            await callback(cast(Interaction[Client], cast(object, interaction)))
+            await callback(interaction)
 
         self.assertEqual(calls, ["ack", "seek"])
         player.seek_attempt.assert_awaited_once_with(attempt, 0)
@@ -897,7 +897,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             pause_button = self._button(view, "btn_pause_resume")
             callback = pause_button.callback
             self.assertIsNotNone(callback)
-            await callback(cast(Interaction[Client], cast(object, interaction)))
+            await callback(interaction)
 
         on_player_failure.assert_awaited_once_with(player)
         player.cleanup.assert_not_called()

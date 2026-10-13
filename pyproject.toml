@@ -36,7 +36,7 @@ dev = [
 package = false
 
 [tool.uv.sources]
-mafic = { git = "https://github.com/ArtiArtem8/mafic.git", rev = "62b7113a64e73448b562b501d6cb409cb0181ad7" }
+mafic = { git = "https://github.com/ArtiArtem8/mafic.git", rev = "c57b5c4cdad0f7b2f675fd5a2b726b4dbee616c9" }
 
 [tool.ruff]
 line-length = 88
@@ -127,13 +127,11 @@ select = [
 ignore = ["D100", "D101", "D102", "D104", "D107", "RUF001"]
 
 [tool.ruff.lint.per-file-ignores]
-"stupidbot/features/birthdays/delivery.py" = ["DTZ007"]
 "stupidbot/features/birthdays/models.py" = ["DTZ007"]
 "stupidbot/features/reports/ui.py" = ["DTZ005"]
 "stupidbot/features/wolfram/client.py" = ["N817"]
 "stupidbot/features/birthdays/birthday_cog.py" = ["DTZ011"]
 "tests/**/*.py" = ["D103", "DTZ001"]
-"tests/features/birthdays/test_helpers.py" = ["N818"]
 "stupidbot/features/birthdays/dates.py" = ["DTZ007"]
 "stupidbot/features/birthdays/presentation.py" = ["DTZ007"]
 

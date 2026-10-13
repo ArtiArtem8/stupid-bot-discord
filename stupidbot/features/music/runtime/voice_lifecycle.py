@@ -45,6 +45,7 @@ class VoiceLifecycleHandlers:
         self._leaving_guilds: dict[int, int] = {}
         self._recent_voice_transitions: dict[int, float] = {}
         self._voice_transition_validation_tasks: dict[int, asyncio.Task[None]] = {}
+        self._transition_heal_players: dict[int, MusicPlayer] = {}
         self._active_recovery_tasks: set[asyncio.Task[object]] = set()
         self._unavailable_node_labels: set[str] = set()
         self._setup_done = False
@@ -96,17 +97,18 @@ class VoiceLifecycleHandlers:
         self._healing_tasks.clear()
         self._active_recovery_tasks.clear()
         self._voice_transition_validation_tasks.clear()
+        self._transition_heal_players.clear()
         self._recent_voice_transitions.clear()
         self._unavailable_node_labels.clear()
         logger.info("Voice lifecycle listeners removed and recovery tasks drained.")
 
-    async def on_node_ready(self, node: mafic.Node[commands.Bot]) -> None:
+    async def on_node_ready(self, node: mafic.Node[discord.Client]) -> None:
         if self._closing:
             return
         self._unavailable_node_labels.discard(node.label)
         logger.info("Lavalink node '%s' is ready", node.label)
 
-    async def on_node_unavailable(self, node: mafic.Node[commands.Bot]) -> None:
+    async def on_node_unavailable(self, node: mafic.Node[discord.Client]) -> None:
         if self._closing:
             return
         task = asyncio.current_task()
@@ -174,14 +176,6 @@ class VoiceLifecycleHandlers:
             reason,
         )
 
-        if event.code == 4006:
-            logger.warning(
-                "Detected 4006 for guild %s. Initiating HEALING protocol.",
-                event.player.guild.id,
-            )
-            await self.heal(guild_id)
-            return
-
         if (
             self._has_recent_voice_transition(guild_id)
             or self.connection.is_transitioning(event.player)
@@ -198,7 +192,14 @@ class VoiceLifecycleHandlers:
                 event.reason,
                 event.by_discord,
             )
+            if event.code == 4006:
+                # Keep the recovery policy across subsequent close/move callbacks.
+                self._transition_heal_players[guild_id] = event.player
             self._schedule_voice_transition_validation(guild_id, event.player)
+            return
+
+        if event.code == 4006:
+            await self.heal(guild_id)
             return
 
         if event.code == 4014 and event.by_discord:
@@ -275,26 +276,13 @@ class VoiceLifecycleHandlers:
 
             if (
                 not self.connection.is_current_player(event_player)
+                or guild_id in self._leaving_guilds
                 or self.connection.is_transitioning(event_player)
                 or self._recent_voice_transitions.get(guild_id) != transition_at
             ):
                 return
 
-            logger.warning(
-                "Voice transition did not recover in guild %s; destroying controller.",
-                guild_id,
-            )
-            await self.ui.controller.destroy_for_guild(
-                guild_id,
-                ControllerDestroyReason.VOICE_DISCONNECT,
-                expected_player=event_player,
-            )
-
-            if not self.connection.is_player_usable(event_player):
-                await self.connection.invalidate_player(
-                    event_player,
-                    context="voice_transition_validation",
-                )
+            await self._recover_failed_voice_transition(event_player)
 
         except asyncio.CancelledError:
             logger.debug(
@@ -311,14 +299,44 @@ class VoiceLifecycleHandlers:
             current_task = asyncio.current_task()
             if self._voice_transition_validation_tasks.get(guild_id) is current_task:
                 self._voice_transition_validation_tasks.pop(guild_id, None)
+                self._transition_heal_players.pop(guild_id, None)
                 if self._recent_voice_transitions.get(guild_id) == transition_at:
                     self._recent_voice_transitions.pop(guild_id, None)
 
-    async def heal(self, guild_id: int) -> bool:
+    async def _recover_failed_voice_transition(self, player: MusicPlayer) -> None:
+        guild_id = player.guild.id
+        if self._transition_heal_players.get(guild_id) is player:
+            await self.heal(guild_id, expected_player=player)
+            return
+        if not self._needs_healing(player):
+            return
+
+        logger.warning(
+            "Voice transition did not recover in guild %s; destroying controller.",
+            guild_id,
+        )
+        await self.ui.controller.destroy_for_guild(
+            guild_id,
+            ControllerDestroyReason.VOICE_DISCONNECT,
+            expected_player=player,
+        )
+
+        if self._needs_healing(player):
+            await self.connection.invalidate_player(
+                player,
+                context="voice_transition_validation",
+            )
+        else:
+            await self._restore_current_controller(player)
+
+    async def heal(
+        self, guild_id: int, *, expected_player: MusicPlayer | None = None
+    ) -> bool:
         if (
             self._closing
             or guild_id in self._leaving_guilds
             or self.is_healing(guild_id)
+            or not self._needs_healing(expected_player)
         ):
             return False
 
@@ -330,11 +348,37 @@ class VoiceLifecycleHandlers:
             await self.ui.controller.destroy_for_guild(
                 guild_id,
                 ControllerDestroyReason.PLAYER_ERROR,
+                expected_player=expected_player,
             )
+            if self._closing or guild_id in self._leaving_guilds:
+                return False
+            if expected_player is not None and not self._needs_healing(expected_player):
+                await self._restore_current_controller(expected_player)
+                return False
             self.state.cancel_timer(guild_id)
             return await self.healer.capture_and_heal(guild_id)
         finally:
             self._healing_tasks.pop(guild_id, None)
+
+    def _needs_healing(self, player: MusicPlayer | None) -> bool:
+        """Only deferred healing requires ownership of an ongoing failure."""
+        return player is None or (
+            self.connection.is_current_player(player)
+            and not (self.connection.is_player_usable(player) and bool(player.channel))
+            and not self.connection.is_transitioning(player)
+        )
+
+    async def _restore_current_controller(self, player: MusicPlayer) -> None:
+        """Repair UI deleted before recovery made healing unnecessary."""
+        if (
+            self._closing
+            or player.guild.id in self._leaving_guilds
+            or not self.connection.is_current_player(player)
+        ):
+            return
+        attempt = player.current_attempt
+        if attempt is not None:
+            await self.ui.spawn_controller(player, attempt)
 
     async def cancel_heal(self, guild_id: int) -> None:
         """Drain healing, including its initial UI cleanup, before leaving."""

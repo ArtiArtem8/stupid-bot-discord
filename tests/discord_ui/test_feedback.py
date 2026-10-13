@@ -2,8 +2,7 @@
 
 import unittest
 from collections.abc import Mapping
-from typing import cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 from discord.ui import View
@@ -50,7 +49,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         interaction.response.is_done.return_value = False
         interaction.response.send_message = AsyncMock()
 
-        await FeedbackUI.send(cast(discord.Interaction, interaction), description="OK")
+        await FeedbackUI.send(interaction, description="OK")
 
         interaction.response.send_message.assert_awaited_once()
         self.assertNotIn("view", _await_kwargs(interaction.response.send_message))
@@ -62,7 +61,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         interaction.followup.send = AsyncMock(return_value=MagicMock())
         interaction.edit_original_response = AsyncMock()
 
-        await FeedbackUI.send(cast(discord.Interaction, interaction), description="OK")
+        await FeedbackUI.send(interaction, description="OK")
 
         interaction.followup.send.assert_awaited_once()
         interaction.edit_original_response.assert_not_awaited()
@@ -78,7 +77,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         interaction.followup.send = AsyncMock()
 
         await FeedbackUI.send(
-            cast(discord.Interaction, interaction),
+            interaction,
             description="Готово",
         )
 
@@ -93,7 +92,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         view = View()
 
         await FeedbackUI.send(
-            cast(discord.Interaction, interaction),
+            interaction,
             description="OK",
             view=view,
         )
@@ -110,7 +109,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         interaction.followup.send = AsyncMock()
 
         await FeedbackUI.send(
-            cast(discord.Interaction, interaction),
+            interaction,
             feedback_type=FeedbackType.ERROR,
             description="Error",
             view=None,
@@ -125,7 +124,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         interaction.response.send_message = AsyncMock()
 
         await FeedbackUI.send(
-            cast(discord.Interaction, interaction),
+            interaction,
             feedback_type=FeedbackType.ERROR,
             description="Error",
             view=None,
@@ -140,7 +139,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         interaction.followup.send = AsyncMock(return_value=MagicMock())
 
         await FeedbackUI.send(
-            cast(discord.Interaction, interaction),
+            interaction,
             feedback_type=FeedbackType.ERROR,
             description="Error",
             view=None,
@@ -153,10 +152,11 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         interaction.user.id = 123
         interaction.response.is_done.return_value = False
         interaction.response.send_message = AsyncMock()
+        self.enterContext(patch.object(FeedbackUI, "_default_report_callback", None))
         FeedbackUI.configure(AsyncMock())
 
         await FeedbackUI.send(
-            cast(discord.Interaction, interaction),
+            interaction,
             feedback_type=FeedbackType.ERROR,
             description="Error",
         )
@@ -170,7 +170,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         interaction.response.send_message = AsyncMock()
 
         await FeedbackUI.send(
-            cast(discord.Interaction, interaction),
+            interaction,
             description="Temporary",
             delete_after=30,
         )
@@ -190,7 +190,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         interaction.followup.send = AsyncMock()
 
         await FeedbackUI.send(
-            cast(discord.Interaction, interaction),
+            interaction,
             description="Готово",
             ephemeral=True,
         )
@@ -213,7 +213,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
 
         with self.assertLogs("stupidbot.discord_ui.feedback", level="WARNING"):
             await FeedbackUI.send(
-                cast(discord.Interaction, interaction),
+                interaction,
                 description="Too late",
             )
 

@@ -12,7 +12,7 @@ Pipeline structure:
    - optionally round up based on the omitted tail.
 
 Public entry points:
-- calculate_duration_ru: Returns a structured breakdown.
+- calculate_duration: Returns a structured breakdown.
 - format_duration_ru: Convenience wrapper that returns a formatted string.
 """
 

@@ -128,14 +128,18 @@ class CoreMusicService:
                 guild.id,
                 failure_context="successful_join_missing_player",
             )
-            if player:
-                try:
-                    async with self.volume_settings.operation(guild.id) as vol:
-                        if self.connection.get_player(guild.id) is player:
-                            await player.set_volume(vol)
-                except EXPECTED_LAVALINK_IO_ERRORS as exc:
-                    await self._handle_player_io_failure(player, exc)
-                    return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
+            if player is None:
+                return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
+            try:
+                async with self.volume_settings.operation(guild.id) as vol:
+                    if self.connection.get_player(guild.id) is not player:
+                        return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
+                    await player.set_volume(vol)
+            except EXPECTED_LAVALINK_IO_ERRORS as exc:
+                await self._handle_player_io_failure(player, exc)
+                return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
+            if self.connection.get_player(guild.id) is not player:
+                return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
 
         return result, old_channel
 

@@ -169,9 +169,16 @@ can appear at most twice, at least 14 days apart. Choose **Later** or
   [Event handlers](stupidbot/features/music/runtime/playback_events.py) use it to distinguish
   delayed events from current playback. [Composition](stupidbot/features/music/composition.py)
   connects the player, recovery and Discord UI.
+  The bot uses the [maintained Mafic fork](https://github.com/ArtiArtem8/mafic),
+  pinned to an exact commit in [pyproject.toml](pyproject.toml) and [uv.lock](uv.lock).
+  Its [changelog](https://github.com/ArtiArtem8/mafic/blob/maintained/lavalink-v4/FORK_CHANGELOG.md)
+  covers playback identity, monotonic position and transfer contracts.
+  Recovery checks voice readiness on the current player and target node before
+  accepting a transfer; a recovered channel move keeps its active session.
 - **Profiles read a timeline held in memory.** [VoiceAnalytics](stupidbot/features/voice/runtime.py)
   restores it at startup and updates it after journal writes commit. Normal
-  profile requests use snapshots without querying raw history in SQL.
+  profile requests use immutable snapshots without querying raw history in SQL.
+  Repeated reads reuse the snapshot until that server's committed state changes.
   [Voice architecture](docs/voice/architecture.md) explains how sessions,
   observation gaps and recovery work.
 - **One database, an explicit shutdown sequence.** [Database](stupidbot/storage/database.py)

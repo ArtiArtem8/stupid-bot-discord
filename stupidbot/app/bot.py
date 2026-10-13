@@ -247,10 +247,10 @@ class StupidBot(commands.Bot):
         if activity_str == self.uptime_manager.last_activity_str:
             return
 
-        self.uptime_manager.last_activity_str = activity_str
         await self.change_presence(
             activity=discord.Game(name=activity_str, platform="IRL")
         )
+        self.uptime_manager.last_activity_str = activity_str
 
     @tasks.loop(seconds=config.AUTOSAVE_UPTIME_INTERVAL)
     async def autosave_task(self) -> None:

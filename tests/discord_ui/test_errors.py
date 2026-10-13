@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Mapping
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -32,7 +31,7 @@ async def _wrap_callback_error(error: Exception) -> app_commands.CommandInvokeEr
         description="Exercise discord.py callback error wrapping",
         callback=callback,
     )
-    interaction = cast(discord.Interaction, MagicMock(spec=discord.Interaction))
+    interaction = MagicMock(spec=discord.Interaction)
 
     try:
         await command._do_call(interaction, {})
