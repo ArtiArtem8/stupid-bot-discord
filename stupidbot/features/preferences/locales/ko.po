@@ -27,9 +27,10 @@ msgctxt "cancelled"
 msgid "Changes cancelled."
 msgstr "변경 사항을 취소했습니다."
 
+#, python-brace-format
 msgctxt "reminder"
-msgid "Choose a language and timezone for personal replies and your voice profile in /customize-me."
-msgstr "/customize-me에서 개인 응답과 음성 프로필에 사용할 언어와 시간대를 선택해 보세요."
+msgid "Choose a language and timezone for personal replies and your voice profile in {command}."
+msgstr "{command}에서 개인 응답과 음성 프로필에 사용할 언어와 시간대를 선택해 보세요."
 
 msgctxt "never"
 msgid "Do not remind me"
@@ -39,9 +40,10 @@ msgctxt "zone_help"
 msgid "For example Europe/Moscow. Leave blank to use the default timezone."
 msgstr "예: Europe/Moscow. 기본 시간대를 사용하려면 비워 두세요."
 
+#, python-brace-format
 msgctxt "reminder_disabled"
-msgid "I will not remind you again. Settings are available in /customize-me."
-msgstr "더 이상 알리지 않겠습니다. 설정은 /customize-me에서 변경할 수 있습니다."
+msgid "I will not remind you again. Settings are available in {command}."
+msgstr "더 이상 알리지 않겠습니다. 설정은 {command}에서 변경할 수 있습니다."
 
 msgctxt "zone_id"
 msgid "IANA timezone"
@@ -59,9 +61,10 @@ msgctxt "later"
 msgid "Later"
 msgstr "나중에"
 
+#, python-brace-format
 msgctxt "reminder_later"
-msgid "Okay. Settings are available in /customize-me whenever you need them."
-msgstr "알겠습니다. 언제든 /customize-me에서 설정을 변경할 수 있습니다."
+msgid "Okay. Settings are available in {command} whenever you need them."
+msgstr "알겠습니다. 언제든 {command}에서 설정을 변경할 수 있습니다."
 
 msgctxt "personal_title"
 msgid "Your settings"

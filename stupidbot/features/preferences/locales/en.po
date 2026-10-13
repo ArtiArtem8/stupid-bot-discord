@@ -28,13 +28,14 @@ msgctxt "cancelled"
 msgid "Changes cancelled."
 msgstr "Changes cancelled."
 
+#, python-brace-format
 msgctxt "reminder"
 msgid ""
 "Choose a language and timezone for personal replies and your voice profile in "
-"/customize-me."
+"{command}."
 msgstr ""
 "Choose a language and timezone for personal replies and your voice profile in "
-"/customize-me."
+"{command}."
 
 msgctxt "never"
 msgid "Do not remind me"
@@ -44,9 +45,10 @@ msgctxt "zone_help"
 msgid "For example Europe/Moscow. Leave blank to use the default timezone."
 msgstr "For example Europe/Moscow. Leave blank to use the default timezone."
 
+#, python-brace-format
 msgctxt "reminder_disabled"
-msgid "I will not remind you again. Settings are available in /customize-me."
-msgstr "I will not remind you again. Settings are available in /customize-me."
+msgid "I will not remind you again. Settings are available in {command}."
+msgstr "I will not remind you again. Settings are available in {command}."
 
 msgctxt "zone_id"
 msgid "IANA timezone"
@@ -71,9 +73,10 @@ msgctxt "later"
 msgid "Later"
 msgstr "Later"
 
+#, python-brace-format
 msgctxt "reminder_later"
-msgid "Okay. Settings are available in /customize-me whenever you need them."
-msgstr "Okay. Settings are available in /customize-me whenever you need them."
+msgid "Okay. Settings are available in {command} whenever you need them."
+msgstr "Okay. Settings are available in {command} whenever you need them."
 
 msgctxt "personal_title"
 msgid "Your settings"
