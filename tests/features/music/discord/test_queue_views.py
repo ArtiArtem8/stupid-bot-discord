@@ -20,7 +20,6 @@ from stupidbot.features.music.playback.models import (
     RepeatMode,
 )
 from stupidbot.features.music.results import (
-    MUSIC_RECOVERING_MESSAGE,
     MusicResult,
     MusicResultReason,
     MusicResultStatus,
@@ -244,7 +243,8 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(view.is_finished())
         interaction.message.edit.assert_not_awaited()
         interaction.followup.send.assert_awaited_once_with(
-            MUSIC_RECOVERING_MESSAGE, ephemeral=True
+            "Восстанавливаю соединение. Попробуйте ещё раз после завершения.",
+            ephemeral=True,
         )
 
     async def test_acknowledges_before_callback_and_edits_component_message(

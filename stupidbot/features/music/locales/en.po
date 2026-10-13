@@ -47,8 +47,8 @@ msgstr "*(empty)*"
 
 #, python-brace-format
 msgctxt "session_tracks"
-msgid "**Total:** {count:d} tracks"
-msgstr "**Total:** {count:d} tracks"
+msgid "**Tracks:** {count:d}"
+msgstr "**Tracks:** {count:d}"
 
 msgctxt "ui"
 msgid "*The same track*"
@@ -235,8 +235,8 @@ msgstr "Page {page:d}/{pages:d} • Queued: {count:d} • Repeat: {repeat}"
 
 #, python-brace-format
 msgctxt "history_footer"
-msgid "Page {page:d}/{pages:d} • {count:d} total"
-msgstr "Page {page:d}/{pages:d} • {count:d} total"
+msgid "Page {page:d}/{pages:d} • Tracks: {count:d}"
+msgstr "Page {page:d}/{pages:d} • Tracks: {count:d}"
 
 msgctxt "command"
 msgid "Pause playback"
@@ -344,8 +344,8 @@ msgid "Session ended"
 msgstr "Session ended"
 
 msgctxt "command"
-msgid "Set volume (0–200)"
-msgstr "Set volume (0–200)"
+msgid "Set volume (0-200)"
+msgstr "Set volume (0-200)"
 
 msgctxt "command"
 msgid "Show this message only to you"
@@ -468,8 +468,16 @@ msgid "off"
 msgstr "off"
 
 msgctxt "command"
-msgid "off — no repeat, queue — repeat queue, track — repeat track"
-msgstr "off — no repeat, queue — repeat queue, track — repeat track"
+msgid "off: no repeat, queue: repeat queue, track: repeat track"
+msgstr "off: no repeat, queue: repeat queue, track: repeat track"
+
+msgctxt "repeat_mode"
+msgid "queue"
+msgstr "queue"
+
+msgctxt "repeat_mode"
+msgid "track"
+msgstr "track"
 
 msgctxt "ui"
 msgid "server not found"

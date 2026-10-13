@@ -236,18 +236,18 @@ class QueuePaginationAdapter(PaginationData):
                 inline=False,
             )
 
-        repeat_str = (
-            self.messages.catalog.pgettext("ui", "off")
-            if self.snapshot.repeat_mode is RepeatMode.OFF
-            else self.snapshot.repeat_mode.value
-        )
+        repeat_labels = {
+            RepeatMode.OFF: self.messages.catalog.pgettext("ui", "off"),
+            RepeatMode.QUEUE: self.messages.catalog.pgettext("repeat_mode", "queue"),
+            RepeatMode.TRACK: self.messages.catalog.pgettext("repeat_mode", "track"),
+        }
         total_pages = max(1, len(self._paginator.pages))
         embed.set_footer(
             text=self.messages.queue_footer(
                 page=page + 1,
                 pages=total_pages,
                 count=self._paginator.total_items,
-                repeat=repeat_str,
+                repeat=repeat_labels[self.snapshot.repeat_mode],
             )
         )
         return embed

@@ -48,8 +48,8 @@ msgstr "*(пусто)*"
 
 #, python-brace-format
 msgctxt "session_tracks"
-msgid "**Total:** {count:d} tracks"
-msgstr "**Всего:** {count:d} шт."
+msgid "**Tracks:** {count:d}"
+msgstr "**Треков:** {count:d}"
 
 msgctxt "ui"
 msgid "*The same track*"
@@ -142,7 +142,7 @@ msgstr "Пусто"
 
 msgctxt "command"
 msgid "Enable or disable repeat"
-msgstr "Включить/выключить повтор."
+msgstr "Включить или выключить повтор"
 
 msgctxt "ui"
 msgid "Enter a track title or link."
@@ -174,7 +174,7 @@ msgstr "Оставьте пустым, чтобы узнать громкост�
 
 msgctxt "command"
 msgid "Move the current track to the end of the queue"
-msgstr "Переместить тек. трек в конец очереди"
+msgstr "Переместить текущий трек в конец очереди"
 
 #, python-brace-format
 msgctxt "moved"
@@ -236,8 +236,8 @@ msgstr "Стр. {page:d}/{pages:d} • В очереди: {count:d} • Повт
 
 #, python-brace-format
 msgctxt "history_footer"
-msgid "Page {page:d}/{pages:d} • {count:d} total"
-msgstr "Стр. {page:d}/{pages:d} • {count:d} всего"
+msgid "Page {page:d}/{pages:d} • Tracks: {count:d}"
+msgstr "Стр. {page:d}/{pages:d} • Треков: {count:d}"
 
 msgctxt "command"
 msgid "Pause playback"
@@ -334,7 +334,7 @@ msgstr "Восстановлен"
 
 msgctxt "recovering"
 msgid "Restoring the connection. Try again once recovery finishes."
-msgstr "Восстанавливаю соединение. Попробуй ещё раз после завершения."
+msgstr "Восстанавливаю соединение. Попробуйте ещё раз после завершения."
 
 msgctxt "command"
 msgid "Resume playback"
@@ -345,12 +345,12 @@ msgid "Session ended"
 msgstr "Сессия закончена"
 
 msgctxt "command"
-msgid "Set volume (0–200)"
+msgid "Set volume (0-200)"
 msgstr "Установить громкость (0-200)"
 
 msgctxt "command"
 msgid "Show this message only to you"
-msgstr "Скрыть сообщение"
+msgstr "Показать сообщение только вам"
 
 msgctxt "command"
 msgid "Shuffle the queue"
@@ -382,7 +382,7 @@ msgstr "Музыкальный сервис сейчас недоступен. �
 
 msgctxt "player_changed"
 msgid "The player changed during the search. Try playing the track again."
-msgstr "Плеер изменился во время поиска. Попробуй запустить трек ещё раз."
+msgstr "Плеер изменился во время поиска. Попробуйте запустить трек ещё раз."
 
 msgctxt "player_disconnected"
 msgid "The player lost its connection. Try playing the track again."
@@ -390,7 +390,7 @@ msgstr "Плеер потерял соединение. Попробуйте з�
 
 msgctxt "player_lost"
 msgid "The player lost its connection. Try playing the track again."
-msgstr "Плеер потерял соединение. Попробуй запустить трек ещё раз."
+msgstr "Плеер потерял соединение. Попробуйте запустить трек ещё раз."
 
 msgctxt "ui"
 msgid "The queue is empty"
@@ -469,8 +469,16 @@ msgid "off"
 msgstr "выкл."
 
 msgctxt "command"
-msgid "off — no repeat, queue — repeat queue, track — repeat track"
-msgstr "off — выкл, queue — повтор очереди, track - повтор трека"
+msgid "off: no repeat, queue: repeat queue, track: repeat track"
+msgstr "off: без повтора, queue: повтор очереди, track: повтор трека"
+
+msgctxt "repeat_mode"
+msgid "queue"
+msgstr "очередь"
+
+msgctxt "repeat_mode"
+msgid "track"
+msgstr "трек"
 
 msgctxt "ui"
 msgid "server not found"

@@ -45,7 +45,7 @@ msgstr "Не напоминать"
 
 msgctxt "zone_help"
 msgid "For example Europe/Moscow. Leave blank to use the default timezone."
-msgstr "Например Europe/Moscow. Оставьте пустым для пояса по умолчанию."
+msgstr "Например, Europe/Moscow. Оставьте поле пустым, чтобы использовать пояс по умолчанию."
 
 msgctxt "reminder_disabled"
 msgid "I will not remind you again. Settings are available in /customize-me."
@@ -113,7 +113,7 @@ msgstr "Эта панель принадлежит другому пользов
 
 msgctxt "closed"
 msgid "This panel is closed or saving. Open settings again."
-msgstr "Панель уже закрыта или сохраняется. Откройте настройки заново."
+msgstr "Панель закрыта или сохраняет настройки. Откройте настройки заново."
 
 msgctxt "reminder_expired"
 msgid "This reminder has already been handled."

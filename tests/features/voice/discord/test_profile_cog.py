@@ -480,7 +480,10 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         item = interaction()
         with patch.object(FeedbackUI, "send", AsyncMock()) as send:
             await invoke(cog, item)
-        self.assertIn("недоступна", send.call_args.kwargs["description"])
+        self.assertEqual(
+            send.call_args.kwargs["description"],
+            "Голосовые профили временно недоступны.",
+        )
         self.assertNotIn("private host", send.call_args.kwargs["description"])
         await cog.cog_unload()
         await cog.cog_unload()
@@ -502,7 +505,10 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                     self.assertIsNone(cog._revision)
                     with patch.object(FeedbackUI, "send", AsyncMock()) as send:
                         await invoke(cog, interaction())
-                    self.assertIn("недоступна", send.call_args.kwargs["description"])
+                    self.assertEqual(
+                        send.call_args.kwargs["description"],
+                        "Голосовые профили временно недоступны.",
+                    )
                     self.assertTrue(send.call_args.kwargs["ephemeral"])
                     await bot.remove_cog("VoiceProfileCog")
                     self.assertTrue(cog._media_renderer._closed)
@@ -543,7 +549,10 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             patch.object(FeedbackUI, "send", AsyncMock()) as send,
         ):
             await invoke(cog, item)
-        self.assertIn("заняты", send.call_args.kwargs["description"])
+        self.assertEqual(
+            send.call_args.kwargs["description"],
+            "Не удаётся создать карточку прямо сейчас. Попробуйте чуть позже.",
+        )
 
     async def test_real_profile_build_and_upload_fallback(self) -> None:
         cog = VoiceProfileCog(MagicMock())

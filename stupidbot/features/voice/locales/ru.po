@@ -86,7 +86,7 @@ msgstr "Камера"
 
 msgctxt "busy"
 msgid "Cards are busy right now. Please try again later."
-msgstr "Карточки сейчас заняты. Попробуйте чуть позже."
+msgstr "Не удаётся создать карточку прямо сейчас. Попробуйте чуть позже."
 
 msgctxt "refresh_failed"
 msgid "Could not refresh the card. Please try again."
@@ -225,11 +225,11 @@ msgstr "Нет наблюдений"
 
 msgctxt "history_empty"
 msgid "No observed history"
-msgstr "История не наблюдалась"
+msgstr "Нет наблюдений"
 
 msgctxt "people.label"
 msgid "No observed time together"
-msgstr "Совместное время не наблюдалось"
+msgstr "Нет данных о совместном времени"
 
 msgctxt "month"
 msgid "Nov"
@@ -246,7 +246,7 @@ msgstr "На этом сервере · история с {date}"
 
 msgctxt "scope_empty"
 msgid "On this server · no observed history"
-msgstr "На этом сервере · история не наблюдалась"
+msgstr "На этом сервере · нет наблюдений"
 
 msgctxt "people.label"
 msgid "One-on-one"
@@ -395,7 +395,7 @@ msgstr "Голосовой профиль {display_name} на сервере {gu
 
 msgctxt "unavailable"
 msgid "Voice profiles are temporarily unavailable."
-msgstr "Голосовая карточка временно недоступна."
+msgstr "Голосовые профили временно недоступны."
 
 msgctxt "weekday_short"
 msgid "Wed"

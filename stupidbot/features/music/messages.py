@@ -41,10 +41,10 @@ class MusicMessages:
         )
 
     def session_tracks(self, *, count: int) -> str:
-        """Keep the session's established summary wording."""
-        return self.catalog.pgettext(
-            "session_tracks", "**Total:** {count:d} tracks"
-        ).format(count=count)
+        """Display the total number of tracks in the session."""
+        return self.catalog.pgettext("session_tracks", "**Tracks:** {count:d}").format(
+            count=count
+        )
 
     def session_skips(self, *, count: int) -> str:
         """Label skipped tracks separately from the total."""
@@ -74,7 +74,7 @@ class MusicMessages:
     def history_footer(self, *, page: int, pages: int, count: int) -> str:
         """Label a frozen session history page."""
         return self.catalog.pgettext(
-            "history_footer", "Page {page:d}/{pages:d} • {count:d} total"
+            "history_footer", "Page {page:d}/{pages:d} • Tracks: {count:d}"
         ).format(page=page, pages=pages, count=count)
 
     def stuck(self, *, requester: str) -> str:

@@ -60,7 +60,7 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
                 MusicResultReason.RECOVERING,
                 "Reconnecting; try again shortly.",
                 FeedbackType.INFO,
-                MUSIC_RECOVERING_MESSAGE,
+                "Восстанавливаю соединение. Попробуйте ещё раз после завершения.",
             ),
             (
                 MusicErrorCode.MUSIC_NODE_UNAVAILABLE,
@@ -100,7 +100,8 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         with patch.object(FeedbackUI, "send", new_callable=AsyncMock) as feedback:
             await self.cog._send_no_player_or_unavailable(interaction, result)
         self.assertEqual(
-            feedback.call_args.kwargs["description"], MUSIC_RECOVERING_MESSAGE
+            feedback.call_args.kwargs["description"],
+            "Восстанавливаю соединение. Попробуйте ещё раз после завершения.",
         )
         self.assertEqual(feedback.call_args.kwargs["feedback_type"], FeedbackType.INFO)
         self.assertTrue(feedback.call_args.kwargs["ephemeral"])
