@@ -10,10 +10,12 @@ import discord
 from discord.ext import commands
 
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.features.music.discord import music_cog
 from stupidbot.features.music.discord.music_cog import (
     MusicCog,
     _format_voice_result_message,
 )
+from stupidbot.features.music.repository import VolumeStore
 from stupidbot.features.music.results import (
     MUSIC_RECOVERING_MESSAGE,
     MUSIC_SERVICE_UNAVAILABLE_MESSAGE,
@@ -108,13 +110,16 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
 
     @override
     def setUp(self) -> None:
-        self.cog = MusicCog.__new__(MusicCog)
         self.bot_mock = MagicMock(spec=commands.Bot)
-        self.cog.bot = self.bot_mock
         self.service_initialize = AsyncMock(return_value=None)
         self.service_mock = MagicMock(spec=CoreMusicService)
         self.service_mock.initialize = self.service_initialize
-        self.cog.service = self.service_mock
+        with patch.object(
+            music_cog,
+            "create_music_components",
+            return_value=MagicMock(service=self.service_mock),
+        ):
+            self.cog = MusicCog(self.bot_mock, MagicMock(spec=VolumeStore))
         self.auto_leave_start = MagicMock()
         self.auto_leave_is_running = MagicMock(return_value=False)
         auto_leave_monitor_mock = MagicMock()
@@ -423,8 +428,10 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
 class TestMusicCogJoinVisibility(unittest.IsolatedAsyncioTestCase):
     @override
     def setUp(self) -> None:
-        self.cog = MusicCog.__new__(MusicCog)
-        self.cog.service = MagicMock()
+        with patch.object(music_cog, "create_music_components"):
+            self.cog = MusicCog(
+                MagicMock(spec=commands.Bot), MagicMock(spec=VolumeStore)
+            )
 
     async def test_join_service_operation_uses_private_defer_flow(self) -> None:
         interaction = MagicMock()

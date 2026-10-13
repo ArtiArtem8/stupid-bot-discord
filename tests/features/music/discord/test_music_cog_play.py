@@ -6,7 +6,10 @@ import unittest
 from collections.abc import Awaitable
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from discord.ext import commands
+
 from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.features.music.discord import music_cog
 from stupidbot.features.music.discord.music_cog import MusicCog
 from stupidbot.features.music.discord.presentation import (
     build_playlist_added_embed,
@@ -14,6 +17,7 @@ from stupidbot.features.music.discord.presentation import (
 )
 from stupidbot.features.music.discord.views import QueueUndoView
 from stupidbot.features.music.playback.models import PlayPlacement
+from stupidbot.features.music.repository import VolumeStore
 from stupidbot.features.music.results import (
     MusicResult,
     MusicResultReason,
@@ -38,8 +42,8 @@ def _make_interaction() -> MagicMock:
 
 
 def _make_cog() -> MusicCog:
-    cog = MusicCog.__new__(MusicCog)
-    return cog
+    with patch.object(music_cog, "create_music_components"):
+        return MusicCog(MagicMock(spec=commands.Bot), MagicMock(spec=VolumeStore))
 
 
 class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):

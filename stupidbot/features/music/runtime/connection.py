@@ -387,9 +387,7 @@ class ConnectionManager:
         self, node: mafic.Node[discord.Client]
     ) -> set[int]:
         """Transfer players to a ready node or invalidate only failed guilds."""
-        players = [
-            player for player in tuple(node.players) if isinstance(player, MusicPlayer)
-        ]
+        players = tuple(node.players)
         target = next(
             (
                 candidate
