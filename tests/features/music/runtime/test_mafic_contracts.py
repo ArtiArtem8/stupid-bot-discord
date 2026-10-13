@@ -389,7 +389,6 @@ class TestMaficFailureCleanup(unittest.IsolatedAsyncioTestCase):
         self.assertIs(replacement.assigned_node, self.target)
         self.assertFalse(replacement.is_stale)
         self.guild.change_voice_state.assert_not_awaited()
-        self.assertEqual(self.destroy.await_count, 1)
         self.destroy.assert_awaited_once_with(self.source, guild_id=1)
 
     async def _make_controller(
@@ -456,7 +455,10 @@ class TestMaficFailureCleanup(unittest.IsolatedAsyncioTestCase):
         await self._check_controller_deletion("leaving")
 
     async def _check_controller_deletion(
-        self, change: str, *, invalidation: bool = False
+        self,
+        change: Literal["recovered", "next_attempt", "replaced", "leaving"],
+        *,
+        invalidation: bool = False,
     ) -> None:
         handlers, controller, original, channel = await self._make_controller()
         self.player._connected = False
