@@ -3,7 +3,7 @@
 import asyncio
 import unittest
 from collections.abc import Awaitable, Callable
-from typing import override
+from typing import Literal, override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -626,6 +626,54 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, (VoiceCheckResult.SUCCESS, None))
         player.set_volume.assert_awaited_once_with(80)
 
+    async def test_join_rejects_player_lost_during_volume_application(self) -> None:
+        for stage in ("read", "apply"):
+            for replaced in (False, True):
+                with self.subTest(stage=stage, replaced=replaced):
+                    await self._assert_join_player_lost(stage, replaced=replaced)
+
+    async def _assert_join_player_lost(
+        self, stage: Literal["read", "apply"], *, replaced: bool
+    ) -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        player = MagicMock(spec=MusicPlayer)
+        player.set_volume = AsyncMock()
+        replacement = MagicMock(spec=MusicPlayer) if replaced else None
+        self.connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        self.connection.get_player.return_value = player
+
+        async def read_volume(_guild_id: int) -> int:
+            if stage == "read":
+                entered.set()
+                await release.wait()
+            return 80
+
+        async def apply_volume(_volume: int) -> None:
+            entered.set()
+            await release.wait()
+
+        self.volume_repo.get_volume = AsyncMock(side_effect=read_volume)
+        if stage == "apply":
+            player.set_volume.side_effect = apply_volume
+        joining = asyncio.create_task(self.service.join(MagicMock(id=123), MagicMock()))
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            self.connection.get_player.return_value = replacement
+            release.set()
+            self.assertEqual(
+                await joining,
+                (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None),
+            )
+            if stage == "read":
+                player.set_volume.assert_not_awaited()
+            if replacement is not None:
+                replacement.set_volume.assert_not_called()
+            self.connection.invalidate_player.assert_not_awaited()
+        finally:
+            release.set()
+            await asyncio.gather(joining, return_exceptions=True)
+
     async def test_player_io_failure_uses_player_scope_with_safe_message(
         self,
     ) -> None:
@@ -727,14 +775,16 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         )
         self.connection.get_player.assert_not_called()
 
-    async def test_play_returns_lost_player_after_successful_join(self) -> None:
+    async def test_play_rejects_join_that_lost_its_player(self) -> None:
         guild = MagicMock(id=123)
         self.connection.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
 
         result = await self.service.play(guild, MagicMock(), "query", 1, 2)
 
-        self.assertIs(result.status, MusicResultStatus.ERROR)
-        self.assertIn("Плеер потерял соединение", result.message)
+        self.assertIs(result.status, MusicResultStatus.FAILURE)
+        self.assertEqual(
+            result.data, (VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None)
+        )
         self.connection.get_player.assert_any_call(
             guild.id,
             failure_context="successful_join_missing_player",

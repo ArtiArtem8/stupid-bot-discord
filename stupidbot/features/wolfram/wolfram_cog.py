@@ -1,15 +1,4 @@
-"""Wolfram Alpha integration for mathematical problem solving.
-
-Features:
-- Asynchronous HTTP calls via aiohttp
-- Strict XML parsing for stability
-- Specialized mathematical output formatting
-- Image optimization pipeline
-- Type-safe architecture (Python 3.12+)
-
-Requirements:
-    WOLFRAM_APP_ID environment variable must be set
-"""
+"""Own Wolfram commands, bounded concurrent requests and session shutdown."""
 
 from __future__ import annotations
 
@@ -45,7 +34,6 @@ from stupidbot.i18n.catalog import catalog, pgettext_noop
 from stupidbot.i18n.discord import interaction_context
 
 logger = logging.getLogger(__name__)
-_WOLFRAM_RESULT_URL = "https://www.wolframalpha.com/input?i="
 _INVALID_QUERY_MESSAGE = pgettext_noop("ui", "Query empty or too long.")
 _WOLFRAM_FAILURE_MESSAGE = pgettext_noop(
     "ui", "Wolfram|Alpha request failed. Please try again later."
@@ -53,7 +41,6 @@ _WOLFRAM_FAILURE_MESSAGE = pgettext_noop(
 _WOLFRAM_RATE_LIMIT_MESSAGE = pgettext_noop(
     "ui", "Wolfram|Alpha is temporarily rate-limited. Please try again later."
 )
-_MAX_TEXT_RESULT_FIELDS = 10
 
 type WolframMode = Literal["solve", "plot"]
 

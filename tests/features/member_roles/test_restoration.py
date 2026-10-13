@@ -129,7 +129,13 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         now = datetime(2026, 10, 1, tzinfo=UTC)
-        for age, ttl, expired in ((30, 1, True), (1, 1, False), (30, None, False)):
+        for age, ttl, expired in (
+            (30, 1, True),
+            (1, 1, False),
+            (30, None, False),
+            (30, 1_000_000, False),
+            (30, 1_000_000_000, False),
+        ):
             with self.subTest(age=age, ttl=ttl):
                 member = self._restore_member()
                 role = make_role(7)

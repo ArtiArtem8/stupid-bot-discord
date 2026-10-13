@@ -3,21 +3,15 @@
 from __future__ import annotations
 
 import unittest
-from typing import override
 
 from stupidbot.common.text import (
     TextPaginator,
     truncate_sequence,
     truncate_text,
 )
-from stupidbot.features.ask.answers import str_local
 
 
 class TestTextUtils(unittest.TestCase):
-    @override
-    def setUp(self) -> None:
-        str_local.cache_clear()
-
     def test_truncate_text_no_truncation(self) -> None:
         self.assertEqual(truncate_text("abc", 3), "abc")
         self.assertEqual(truncate_text("abc", 10), "abc")

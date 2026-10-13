@@ -4,15 +4,14 @@ import asyncio
 import unittest
 from collections import deque
 from dataclasses import replace
-from typing import cast
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import aiohttp
 import mafic
-from discord.types.voice import VoiceServerUpdate as VoiceServerUpdatePayload
 
 from stupidbot.features.music.playback.models import (
     PLAYBACK_USER_DATA_KEY,
+    EnqueueOutcome,
     PlaybackAttempt,
     QueueEntry,
     RepeatMode,
@@ -849,20 +848,26 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
     async def test_concurrent_idle_enqueue_starts_only_one_initial_track(self) -> None:
         player = _make_player()
         entered, release = asyncio.Event(), asyncio.Event()
+        second_entered = asyncio.Event()
 
         async def play(*_args: object, **_kwargs: object) -> None:
             entered.set()
             await release.wait()
+
+        async def enqueue_second() -> EnqueueOutcome:
+            second_entered.set()
+            return await player.enqueue_tracks(
+                (make_track("second"),), None, placement="end"
+            )
 
         with patch.object(player, "play", new=AsyncMock(side_effect=play)) as mocked:
             first = asyncio.create_task(
                 player.enqueue_tracks((make_track("first"),), None, placement="end")
             )
             await entered.wait()
-            second = asyncio.create_task(
-                player.enqueue_tracks((make_track("second"),), None, placement="end")
-            )
-            await asyncio.sleep(0)
+            second = asyncio.create_task(enqueue_second())
+            await second_entered.wait()
+            self.assertFalse(second.done())
             release.set()
             first_result, second_result = await asyncio.gather(first, second)
         self.assertIsNotNone(first_result.started_attempt)
@@ -875,20 +880,25 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         player = _make_player()
         entered, release = asyncio.Event(), asyncio.Event()
+        ending = asyncio.Event()
 
         async def play(*_args: object, **_kwargs: object) -> None:
             entered.set()
             await release.wait()
+
+        async def end_stale() -> TrackEndOutcome:
+            ending.set()
+            return await player.handle_track_end(
+                "stale-token", mafic.EndReason.FINISHED
+            )
 
         with patch.object(player, "play", new=AsyncMock(side_effect=play)):
             enqueue = asyncio.create_task(
                 player.enqueue_tracks((make_track("new"),), None, placement="end")
             )
             await entered.wait()
-            stale_end = asyncio.create_task(
-                player.handle_track_end("stale-token", mafic.EndReason.FINISHED)
-            )
-            await asyncio.sleep(0)
+            stale_end = asyncio.create_task(end_stale())
+            await ending.wait()
             self.assertFalse(stale_end.done())
             release.set()
             _, outcome = await asyncio.gather(enqueue, stale_end)
@@ -1645,7 +1655,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
             self.assertRaises(aiohttp.ClientConnectionError),
         ):
             await player.on_voice_server_update(
-                cast(VoiceServerUpdatePayload, object())
+                {"token": "test-token", "guild_id": "123", "endpoint": "voice.test"}
             )
         cleanup.assert_not_called()
 

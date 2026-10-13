@@ -1,4 +1,4 @@
-"""Tests for text utility helpers."""
+"""Verify repeatable answer selection and question normalization."""
 
 from __future__ import annotations
 
@@ -33,6 +33,8 @@ class TestAnswers(unittest.TestCase):
         self.assertEqual(str_local("ПрИвЕт! Hello_123"), "приветhello123")
 
     def test_str_local_cache_hits(self) -> None:
+        str_local.cache_clear()
+        self.addCleanup(str_local.cache_clear)
         info0 = str_local.cache_info()
         self.assertEqual(info0.hits, 0)
 

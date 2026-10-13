@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Awaitable
-from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from stupidbot.discord_ui.feedback import FeedbackUI
@@ -39,7 +38,7 @@ def _make_interaction() -> MagicMock:
 
 
 def _make_cog() -> MusicCog:
-    cog = object.__new__(MusicCog)
+    cog = MusicCog.__new__(MusicCog)
     return cog
 
 
@@ -49,7 +48,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         interaction = _make_interaction()
 
         with patch.object(cog, "_run_play_command", new=AsyncMock()) as run_play:
-            await cast(Any, MusicCog.play).callback(cog, interaction, "query")
+            await cog.play._do_call(interaction, {"query": "query"})
 
         run_play.assert_awaited_once_with(interaction, "query", "end")
 
@@ -58,7 +57,7 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         interaction = _make_interaction()
 
         with patch.object(cog, "_run_play_command", new=AsyncMock()) as run_play:
-            await cast(Any, MusicCog.play_next).callback(cog, interaction, "query")
+            await cog.play_next._do_call(interaction, {"query": "query"})
 
         run_play.assert_awaited_once_with(interaction, "query", "next")
 

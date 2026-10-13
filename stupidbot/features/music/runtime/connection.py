@@ -7,7 +7,7 @@ import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TypeGuard, cast
+from typing import TypeGuard
 
 import aiohttp
 import discord
@@ -757,7 +757,7 @@ class ConnectionManager:
         player: MusicPlayer,
         channel: discord.VoiceChannel | discord.StageChannel,
     ) -> VoiceJoinResult:
-        old_channel = cast(discord.abc.GuildChannel, cast(object, player.channel))
+        old_channel = player.channel
         if not self.is_player_usable(player):
             status = self._player_status(player)
             self._log_player_state(
@@ -789,7 +789,10 @@ class ConnectionManager:
             )
             await self.invalidate_player(player)
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
-        return VoiceCheckResult.MOVED_CHANNELS, old_channel
+        return (
+            VoiceCheckResult.MOVED_CHANNELS,
+            old_channel if isinstance(old_channel, discord.abc.GuildChannel) else None,
+        )
 
     async def _move_player(
         self,

@@ -488,6 +488,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         channel = MagicMock(spec=discord.VoiceChannel)
         entered = asyncio.Event()
         release = asyncio.Event()
+        second_entered = asyncio.Event()
         active = 0
         max_active = 0
 
@@ -503,11 +504,18 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             active -= 1
             return VoiceCheckResult.SUCCESS, None
 
+        async def second_join() -> tuple[
+            VoiceCheckResult, discord.abc.GuildChannel | None
+        ]:
+            second_entered.set()
+            return await self.manager.join(guild, channel)
+
         with patch.object(self.manager, "_join_unlocked", side_effect=join_body):
             first = asyncio.create_task(self.manager.join(guild, channel))
             await entered.wait()
-            second = asyncio.create_task(self.manager.join(guild, channel))
-            await asyncio.sleep(0)
+            second = asyncio.create_task(second_join())
+            await second_entered.wait()
+            self.assertFalse(second.done())
             self.assertEqual(max_active, 1)
             release.set()
 
@@ -1552,7 +1560,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.bot.get_guild.return_value = guild
         mock_pool = MagicMock()
         mock_pool.nodes = [old_node, target]
-        self.manager.pool = cast(Any, mock_pool)
+        self.manager.pool = mock_pool
         old_node.players = [player]
 
         async def transfer(actual_target: object) -> None:
@@ -1586,7 +1594,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.bot.get_guild.side_effect = guilds.get
         mock_pool = MagicMock()
         mock_pool.nodes = [old_node, target]
-        self.manager.pool = cast(Any, mock_pool)
+        self.manager.pool = mock_pool
         old_node.players = [affected]
         affected.transfer_to = AsyncMock(side_effect=TimeoutError)
         self.manager.mark_node_unavailable = AsyncMock()

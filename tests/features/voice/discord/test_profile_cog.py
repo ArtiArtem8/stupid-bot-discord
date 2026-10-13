@@ -5,11 +5,9 @@ import os
 import sys
 import threading
 import unittest
-from collections.abc import Awaitable, Callable
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -79,13 +77,7 @@ def interaction(user_id: int = 10, *, guild: bool = True) -> MagicMock:
 
 
 async def invoke(cog: VoiceProfileCog, item: MagicMock, private: bool = True) -> None:
-    # discord.py types this callback as either bound or unbound; a Cog stores
-    # the unbound variant until it is registered with the bot.
-    callback = cast(
-        Callable[[VoiceProfileCog, discord.Interaction, bool], Awaitable[None]],
-        cog.voice_profile.callback,
-    )
-    await callback(cog, item, private)
+    await cog.voice_profile._do_call(item, {"private": private})
 
 
 class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):

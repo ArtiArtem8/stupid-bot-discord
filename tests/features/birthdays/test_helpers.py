@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import unittest
 from datetime import datetime
-from types import SimpleNamespace
-from typing import cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
@@ -45,60 +44,25 @@ class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parse_birthday("2000-01-02"), expected)
 
     async def test_safe_fetch_member_returns_cached(self) -> None:
-        member = object()
-        fetch_member = AsyncMock()
-
-        def get_member(_: int) -> object:
-            return member
-
-        guild = cast(
-            discord.Guild,
-            cast(
-                object,
-                SimpleNamespace(
-                    get_member=get_member,
-                    fetch_member=fetch_member,
-                ),
-            ),
-        )
+        member = MagicMock(spec=discord.Member)
+        guild = MagicMock(spec=discord.Guild)
+        guild.get_member.return_value = member
         res = await safe_fetch_member(guild, 1)
         self.assertIs(res, member)
-        fetch_member.assert_not_awaited()
+        guild.fetch_member.assert_not_awaited()
 
     async def test_safe_fetch_member_retries_on_5xx(self) -> None:
-        member = object()
+        member = MagicMock(spec=discord.Member)
+        guild = MagicMock(spec=discord.Guild)
+        guild.get_member.return_value = None
+        guild.fetch_member.side_effect = [
+            discord.HTTPException(MagicMock(status=500, reason="Server error"), ""),
+            member,
+        ]
 
-        class FakeHTTPException(Exception):
-            def __init__(self, status: int) -> None:
-                super().__init__()
-                self.status = status
-
-        def get_member(_: int) -> None:
-            return None
-
-        guild = cast(
-            discord.Guild,
-            cast(
-                object,
-                SimpleNamespace(
-                    get_member=get_member,
-                    fetch_member=AsyncMock(
-                        side_effect=[FakeHTTPException(500), member]
-                    ),
-                ),
-            ),
-        )
-
-        with (
-            patch(
-                "stupidbot.features.birthdays.delivery.discord.HTTPException",
-                FakeHTTPException,
-            ),
-            patch(
-                "stupidbot.features.birthdays.delivery.asyncio.sleep", new=AsyncMock()
-            ) as sleep_mock,
-        ):
+        with patch.object(asyncio, "sleep", new=AsyncMock()) as sleep_mock:
             res = await safe_fetch_member(guild, 1)
 
         self.assertIs(res, member)
-        sleep_mock.assert_awaited_once()
+        self.assertEqual(guild.fetch_member.await_count, 2)
+        sleep_mock.assert_awaited_once_with(2)

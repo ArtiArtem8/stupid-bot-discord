@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from datetime import timedelta
 from weakref import WeakValueDictionary
 
 import discord
@@ -81,8 +80,9 @@ class ServerMonitoringManager:
             snapshot = await self.get_snapshot(member.guild.id, member.id)
             if snapshot is None:
                 return [], []
-            ttl = await self.get_ttl(member.guild.id)
-            if ttl is not None and snapshot.left_at < utcnow() - timedelta(days=ttl):
+            if not await self.repository.is_current(
+                member.guild.id, snapshot, utcnow()
+            ):
                 await self.repository.delete(member.guild.id, snapshot)
                 return [], []
             restored, skipped, retry_needed = await self._restore_roles(

@@ -3,7 +3,7 @@
 import asyncio
 import unittest
 from collections.abc import Awaitable
-from typing import Any, cast, override
+from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -35,7 +35,7 @@ class _ResponseStub:
     def is_done(self) -> bool:
         return self.type is not None
 
-    async def _defer(self, **_: Any) -> None:
+    async def _defer(self, **_: object) -> None:
         self.type = discord.InteractionResponseType.deferred_channel_message
 
 
@@ -108,13 +108,13 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
 
     @override
     def setUp(self) -> None:
-        self.cog = object.__new__(MusicCog)
-        self.bot_mock = MagicMock()
-        self.cog.bot = cast(commands.Bot, self.bot_mock)
+        self.cog = MusicCog.__new__(MusicCog)
+        self.bot_mock = MagicMock(spec=commands.Bot)
+        self.cog.bot = self.bot_mock
         self.service_initialize = AsyncMock(return_value=None)
-        service_mock = MagicMock()
-        service_mock.initialize = self.service_initialize
-        self.cog.service = cast(CoreMusicService, service_mock)
+        self.service_mock = MagicMock(spec=CoreMusicService)
+        self.service_mock.initialize = self.service_initialize
+        self.cog.service = self.service_mock
         self.auto_leave_start = MagicMock()
         self.auto_leave_is_running = MagicMock(return_value=False)
         auto_leave_monitor_mock = MagicMock()
@@ -227,7 +227,7 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         message = MagicMock()
         message.delete = AsyncMock()
         interaction.edit_original_response = AsyncMock(return_value=message)
-        self.cog.service.leave = AsyncMock(  # type: ignore[method-assign]
+        self.service_mock.leave = AsyncMock(
             return_value=MusicResult(
                 MusicResultStatus.SUCCESS,
                 "ok",
@@ -237,7 +237,7 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
 
         async def wait_for_operation(
             flow_interaction: object,
-            operation: object,
+            operation: Awaitable[MusicResult[None]],
             *,
             defer_after: float = 1.5,
             ephemeral: bool = False,
@@ -245,16 +245,16 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
             self.assertIs(flow_interaction, interaction)
             self.assertEqual(defer_after, 1.5)
             self.assertTrue(ephemeral)
-            return await cast(Any, operation)
+            return await operation
 
         with patch(
             "stupidbot.features.music.discord.music_cog.run_with_defer",
             side_effect=wait_for_operation,
         ) as run_flow:
-            await cast(Any, MusicCog.leave).callback(self.cog, interaction)
+            await self.cog.leave._do_call(interaction, {})
 
         run_flow.assert_awaited_once()
-        self.cog.service.leave.assert_called_once_with(guild)  # type: ignore[attr-defined]
+        self.service_mock.leave.assert_called_once_with(guild)
 
     async def test_leave_after_defer_edits_response_instead_of_send_message(
         self,
@@ -276,11 +276,11 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
                 reason=MusicResultReason.TRACK_PROCESSED,
             )
 
-        self.cog.service.leave = AsyncMock(side_effect=slow_leave)  # type: ignore[method-assign]
+        self.service_mock.leave = AsyncMock(side_effect=slow_leave)
 
         async def defer_then_wait(
             _flow_interaction: object,
-            operation: object,
+            operation: Awaitable[MusicResult[None]],
             *,
             defer_after: float = 1.5,
             ephemeral: bool = False,
@@ -288,13 +288,13 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(defer_after, 1.5)
             self.assertTrue(ephemeral)
             await interaction.response.defer(thinking=True, ephemeral=ephemeral)
-            return await cast(Any, operation)
+            return await operation
 
         with patch(
             "stupidbot.features.music.discord.music_cog.run_with_defer",
             side_effect=defer_then_wait,
         ):
-            await cast(Any, MusicCog.leave).callback(self.cog, interaction)
+            await self.cog.leave._do_call(interaction, {})
 
         interaction.response.defer.assert_awaited_once_with(
             thinking=True,
@@ -334,7 +334,7 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
                 new_callable=AsyncMock,
             ) as send_error,
         ):
-            await cast(Any, MusicCog.leave).callback(self.cog, interaction)
+            await self.cog.leave._do_call(interaction, {})
 
         send_info.assert_awaited_once_with(
             interaction,
@@ -370,7 +370,7 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
                 new_callable=AsyncMock,
             ) as send_error,
         ):
-            await cast(Any, MusicCog.leave).callback(self.cog, interaction)
+            await self.cog.leave._do_call(interaction, {})
 
         send_feedback.assert_awaited_once_with(
             interaction,
@@ -410,7 +410,7 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
                 new_callable=AsyncMock,
             ) as send_error,
         ):
-            await cast(Any, MusicCog.leave).callback(self.cog, interaction)
+            await self.cog.leave._do_call(interaction, {})
 
         send_error.assert_awaited_once_with(
             interaction,
@@ -423,7 +423,7 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
 class TestMusicCogJoinVisibility(unittest.IsolatedAsyncioTestCase):
     @override
     def setUp(self) -> None:
-        self.cog = object.__new__(MusicCog)
+        self.cog = MusicCog.__new__(MusicCog)
         self.cog.service = MagicMock()
 
     async def test_join_service_operation_uses_private_defer_flow(self) -> None:

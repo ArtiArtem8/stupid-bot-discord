@@ -46,6 +46,7 @@ class OwnerCog(BaseCog):
     async def delete_message(
         self, interaction: discord.Interaction, message_id: str
     ) -> None:
+        await interaction.response.defer(ephemeral=True)
         context = await interaction_context(interaction, private=True)
         messages = catalog("app", context.language)
         channel = interaction.channel
@@ -60,7 +61,6 @@ class OwnerCog(BaseCog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
         try:
             msg = await channel.fetch_message(int(message_id))
             await msg.delete()
