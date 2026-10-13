@@ -63,39 +63,31 @@ def _escape_markdown_text(text: str) -> str:
     )
 
 
-def _has_balanced_brackets(text: str) -> bool:
-    """Discord accepts nested link-label brackets only when they are balanced."""
+def _truncate_link_label(text: str, width: int) -> str | None:
+    """Bound a label with balanced brackets, or reject an unbalanced source.
+
+    Check the entire source even when only its prefix will be shown. Remember
+    the longest prefix that leaves room for the ellipsis and closing brackets.
+    """
+    placeholder = "..."[:width]
+    prefix_end = 0
+    prefix_depth = 0
     depth = 0
-    for character in text:
+    for index, character in enumerate(text, 1):
         if character == "[":
             depth += 1
         elif character == "]":
             depth -= 1
             if depth < 0:
-                return False
-    return depth == 0
-
-
-def _truncate_link_label(text: str, width: int) -> str:
-    """Shorten a balanced label, reserving space to close every open bracket."""
+                return None
+        if index + len(placeholder) + depth <= width:
+            prefix_end = index
+            prefix_depth = depth
+    if depth:
+        return None
     if len(text) <= width:
         return text
-    placeholder = "..."
-    if width <= len(placeholder):
-        return placeholder[:width]
-    prefix: list[str] = []
-    depth = 0
-    for character in text:
-        next_depth = depth
-        if character == "[":
-            next_depth += 1
-        elif character == "]":
-            next_depth -= 1
-        if len(prefix) + 1 + len(placeholder) + next_depth > width:
-            break
-        prefix.append(character)
-        depth = next_depth
-    return "".join(prefix) + placeholder + "]" * depth
+    return text[:prefix_end] + placeholder + "]" * prefix_depth
 
 
 def format_track_link(
@@ -116,16 +108,13 @@ def format_track_link(
     title_budget = (
         max_length if max_title_length is None else min(max_length, max_title_length)
     )
-    if (
-        not uri
-        or len(uri) + 5 >= max_length
-        or not _has_balanced_brackets(escaped_title)
-        or "](" in escaped_title
-    ):
+    if not uri or len(uri) + 5 >= max_length or "](" in escaped_title:
         return truncate_text(escaped_title, title_budget)
     label = _truncate_link_label(
         escaped_title, min(title_budget, max_length - len(uri) - 4)
     )
+    if label is None:
+        return truncate_text(escaped_title, title_budget)
     return f"[{label}]({uri})"
 
 
