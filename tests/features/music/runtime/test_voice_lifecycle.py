@@ -353,7 +353,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         entered = asyncio.Event()
 
-        async def cleanup(*_args: object) -> None:
+        async def cleanup(*_args: object, **_kwargs: object) -> None:
             entered.set()
             await asyncio.Event().wait()
 
@@ -421,6 +421,131 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
         player = MagicMock()
         player.guild.id = 123
         return player
+
+    async def test_invalid_session_during_move_preserves_recovered_player(self) -> None:
+        player = self._make_player()
+        self.connection.is_transitioning.return_value = True
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await self.handlers._on_websocket_closed(
+                MagicMock(player=player, code=4006, reason="Invalid session")
+            )
+            await self.handlers._voice_transition_validation_tasks[123]
+
+        self.healer.capture_and_heal.assert_not_called()
+        self.ui.controller.destroy_for_guild.assert_not_awaited()
+        self.connection.invalidate_player.assert_not_awaited()
+        self.assertFalse(self.handlers._transition_heal_players)
+
+    async def test_invalid_session_survives_later_close_and_move_callbacks(
+        self,
+    ) -> None:
+        entered, release = asyncio.Event(), asyncio.Event()
+        player = MagicMock(spec=MusicPlayer)
+        player.guild = MagicMock(id=123, voice_client=player)
+        self.bot.user.id = 99
+        self.connection.is_transitioning.return_value = True
+        self.connection.is_player_usable.return_value = False
+        self.healer.capture_and_heal = AsyncMock(return_value=True)
+
+        async def wait_ready(*_args: object, **_kwargs: object) -> bool:
+            entered.set()
+            await release.wait()
+            return False
+
+        self.connection.wait_voice_ready.side_effect = wait_ready
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            try:
+                await self.handlers._on_websocket_closed(
+                    MagicMock(player=player, code=4006, reason="Invalid session")
+                )
+                await entered.wait()
+                await self.handlers._on_websocket_closed(
+                    MagicMock(player=player, code=1000, reason="Closed")
+                )
+                await self.handlers._handle_bot_voice_state_update(
+                    MagicMock(id=99, guild=player.guild),
+                    MagicMock(channel=MagicMock()),
+                    MagicMock(channel=MagicMock()),
+                )
+                self.connection.is_transitioning.return_value = False
+                release.set()
+                await self.handlers._voice_transition_validation_tasks[123]
+            finally:
+                release.set()
+                await self.handlers.cleanup()
+
+        self.healer.capture_and_heal.assert_awaited_once_with(123)
+        self.connection.invalidate_player.assert_not_awaited()
+
+    async def test_deferred_heal_rechecks_player_after_controller_io(self) -> None:
+        for change in ("recovered", "replaced", "moving"):
+            with self.subTest(change=change):
+                self.connection.is_player_usable.return_value = False
+                self.connection.is_current_player.return_value = True
+                self.connection.is_transitioning.return_value = False
+                player = self._make_player()
+
+                async def cleanup(
+                    *_args: object, change: str = change, **_kwargs: object
+                ) -> None:
+                    if change == "recovered":
+                        self.connection.is_player_usable.return_value = True
+                    elif change == "replaced":
+                        self.connection.is_current_player.return_value = False
+                    else:
+                        self.connection.is_transitioning.return_value = True
+
+                self.ui.controller.destroy_for_guild.side_effect = cleanup
+                self.assertFalse(await self.handlers.heal(123, expected_player=player))
+                self.healer.capture_and_heal.assert_not_called()
+
+    async def test_invalid_session_outside_transition_still_heals(self) -> None:
+        self.healer.capture_and_heal = AsyncMock(return_value=True)
+        await self.handlers._on_websocket_closed(
+            MagicMock(player=self._make_player(), code=4006, reason="Invalid session")
+        )
+        self.healer.capture_and_heal.assert_awaited_once_with(123)
+
+    async def test_invalid_session_cannot_recover_replaced_or_leaving_player(
+        self,
+    ) -> None:
+        for leaving in (False, True):
+            with self.subTest(leaving=leaving):
+                entered, release = asyncio.Event(), asyncio.Event()
+                player = self._make_player()
+                self.connection.is_current_player.return_value = True
+                self.connection.is_transitioning.return_value = True
+
+                async def wait_ready(
+                    *_args: object,
+                    entered: asyncio.Event = entered,
+                    release: asyncio.Event = release,
+                    **_kwargs: object,
+                ) -> bool:
+                    entered.set()
+                    await release.wait()
+                    return False
+
+                self.connection.wait_voice_ready.side_effect = wait_ready
+                with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+                    await self.handlers._on_websocket_closed(
+                        MagicMock(player=player, code=4006, reason="Invalid session")
+                    )
+                    task = self.handlers._voice_transition_validation_tasks[123]
+                    await entered.wait()
+                    self.connection.is_transitioning.return_value = False
+                    if leaving:
+                        async with self.handlers.leaving(123):
+                            release.set()
+                            await task
+                    else:
+                        self.connection.is_current_player.return_value = False
+                        release.set()
+                        await task
+
+                self.healer.capture_and_heal.assert_not_called()
+                self.ui.controller.destroy_for_guild.assert_not_awaited()
+                self.connection.invalidate_player.assert_not_awaited()
 
     async def test_non_current_websocket_close_has_no_side_effects(self) -> None:
         player = self._make_player()
@@ -548,6 +673,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
     async def test_delayed_validation_requires_recovered_voice_channel(self) -> None:
         self.connection.wait_voice_ready.return_value = False
         player = MagicMock(connected=True, channel=None, current=MagicMock())
+        player.guild.id = 1
         self.connection.get_player.return_value = player
 
         with patch(
@@ -563,6 +689,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
     async def test_delayed_validation_logs_unexpected_background_failure(self) -> None:
         self.connection.wait_voice_ready.return_value = False
         player = MagicMock(connected=False, current=None)
+        player.guild.id = 1
         self.connection.get_player.return_value = player
         self.ui.controller.destroy_for_guild.side_effect = RuntimeError(
             "programming failure"
@@ -660,6 +787,7 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         self.connection.wait_voice_ready.return_value = False
         player = MagicMock(connected=False, current=None)
+        player.guild.id = 1
         self.connection.get_player.return_value = player
         self.connection.is_player_usable.return_value = False
 

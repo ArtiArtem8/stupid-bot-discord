@@ -385,7 +385,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             self.bot, self.connection, self.state, self.ui, healer
         )
 
-        async def destroy(*_args: object) -> None:
+        async def destroy(*_args: object, **_kwargs: object) -> None:
             ui_entered.set()
             await release_ui.wait()
 

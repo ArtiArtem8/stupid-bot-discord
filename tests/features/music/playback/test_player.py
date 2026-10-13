@@ -2,11 +2,11 @@
 
 import asyncio
 import unittest
-from collections import deque
 from dataclasses import replace
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import aiohttp
+import discord
 import mafic
 
 from stupidbot.features.music.playback.models import (
@@ -19,24 +19,17 @@ from stupidbot.features.music.playback.models import (
     TrackRequester,
 )
 from stupidbot.features.music.playback.player import MusicPlayer
-from stupidbot.features.music.playback.queue import QueueManager, RepeatManager
 from tests.features.music.fixtures import make_entry, make_track
 
 
 def _make_player(*, current: QueueEntry | None = None) -> MusicPlayer:
-    player = object.__new__(MusicPlayer)
-    player.queue = QueueManager()
-    player.repeat = RepeatManager(RepeatMode.OFF)
+    guild = MagicMock(spec=discord.Guild, id=123)
+    channel = MagicMock(spec=discord.VoiceChannel, guild=guild)
+    player = MusicPlayer(MagicMock(spec=discord.Client), channel)
     player._next_entry_id = (current.entry_id + 1) if current else 1
     player._next_attempt_id = 2 if current else 1
     player._current_attempt = PlaybackAttempt(1, current) if current else None
-    player._pending_end_attempts = deque()
-    player._exception_attempt_ids = set()
-    player._transition_lock = asyncio.Lock()
-    player._is_stale = False
     player._current = current.track if current else None
-    player._paused = False
-    player.guild = MagicMock(id=123)
     return player
 
 

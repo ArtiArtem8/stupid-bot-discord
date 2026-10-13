@@ -36,7 +36,7 @@ dev = [
 package = false
 
 [tool.uv.sources]
-mafic = { git = "https://github.com/ArtiArtem8/mafic.git", rev = "87224fb50b74ae2dbac2b6d462d1f2a4d8a05dc7" }
+mafic = { git = "https://github.com/ArtiArtem8/mafic.git", rev = "c57b5c4cdad0f7b2f675fd5a2b726b4dbee616c9" }
 
 [tool.ruff]
 line-length = 88
