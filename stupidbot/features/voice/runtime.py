@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
@@ -49,6 +50,7 @@ class VoiceAnalytics:
         self._recovery: asyncio.Task[None] | None = None
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
+        self._snapshots: OrderedDict[int | None, AnalysisSnapshot] = OrderedDict()
 
     async def start(self) -> None:
         """Restore once before collection; propagate startup failures."""
@@ -58,6 +60,7 @@ class VoiceAnalytics:
             await asyncio.shield(self._recover())
 
     def _recover(self) -> asyncio.Task[None]:
+        self._snapshots.clear()
         if self._recovery is None or self._recovery.done():
             self._recovery = asyncio.create_task(self._rebuild(), name="voice-recovery")
             self._recovery.add_done_callback(self._recovery_finished)
@@ -91,6 +94,7 @@ class VoiceAnalytics:
                 )
 
     def _publish(self, state: VoiceReplayState, history: VoiceHistory) -> None:
+        self._snapshots.clear()
         self._state = state
         self._cutoff = history.cutoff
         self._shared_revision = history.shared_revision
@@ -106,6 +110,7 @@ class VoiceAnalytics:
             except BaseException:
                 # An interrupted commit can have an unknown durable outcome.
                 self._state = None
+                self._snapshots.clear()
                 raise
             await self._apply_committed(committed, records)
             return committed.revision
@@ -147,13 +152,22 @@ class VoiceAnalytics:
             if self._state is None:
                 self._recover()
                 raise AnalyticsUnavailableError("Voice analytics is recovering")
-            timeline = await run_in_thread(partial(self._state.snapshot, guild_id))
             revision = (
                 self._cutoff.revision
                 if guild_id is None
                 else max(self._shared_revision, self._guild_revisions.get(guild_id, 0))
             )
-            return AnalysisSnapshot(timeline, revision)
+            cached = self._snapshots.get(guild_id)
+            if cached is not None and cached.generation == revision:
+                self._snapshots.move_to_end(guild_id)
+                return cached
+            timeline = await run_in_thread(partial(self._state.snapshot, guild_id))
+            snapshot = AnalysisSnapshot(timeline, revision)
+            self._snapshots[guild_id] = snapshot
+            self._snapshots.move_to_end(guild_id)
+            if len(self._snapshots) > 8:
+                self._snapshots.popitem(last=False)
+            return snapshot
 
     async def close(self) -> None:
         """Close admission and join workers, including cancelled startup recovery."""
@@ -167,3 +181,4 @@ class VoiceAnalytics:
             await asyncio.gather(self._recovery, return_exceptions=True)
         async with self._lock:
             self._state = None
+            self._snapshots.clear()

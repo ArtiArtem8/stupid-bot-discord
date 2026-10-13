@@ -89,7 +89,12 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             if kwargs.get("track") is queued.track:
                 entered.set()
                 await release.wait()
-            return {"track": None, "volume": 80, "paused": False}
+            return {
+                "track": None,
+                "volume": 80,
+                "paused": False,
+                "state": {"time": 0, "position": 0, "connected": True, "ping": 1},
+            }
 
         async def connect(**_kwargs: object) -> MusicPlayer:
             guild.voice_client = replacement
@@ -260,6 +265,9 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         player = MagicMock(spec=MusicPlayer)
         player.guild = MagicMock(id=123, voice_client=player)
         unavailable = MagicMock(label="unavailable", available=False, players=[player])
+        player.is_stale = False
+        player.assigned_node = unavailable
+        self.bot.get_guild.return_value = player.guild
         target = MagicMock(label="ready", available=True)
         pool = MagicMock(nodes=[unavailable, target], close=AsyncMock())
         pool.close.side_effect = pool_closed.set
@@ -282,7 +290,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
 
         player.transfer_to = AsyncMock(side_effect=transfer)
         listener = asyncio.create_task(handlers.on_node_unavailable(unavailable))
-        await entered.wait()
+        await asyncio.wait_for(entered.wait(), timeout=2)
         cleanup = asyncio.create_task(self.service.cleanup())
         cancellation_wait = asyncio.create_task(cancelling.wait())
         disposal_wait = asyncio.create_task(pool_closed.wait())

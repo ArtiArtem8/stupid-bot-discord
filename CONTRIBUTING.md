@@ -94,6 +94,46 @@ The full check runs pytest in up to six processes with `--dist worksteal`.
 Set `PREK_CONCURRENT_HOOKS=1` and `PYTEST_XDIST_AUTO_NUM_WORKERS=1` on machines
 with limited resources.
 
+## Source Review Export
+
+Create a committed source archive from `HEAD`:
+
+```bash
+uv run --locked python -m tools.export_source --output ../source-head.zip
+```
+
+For a review before committing, export current contents of HEAD-tracked paths
+and explicitly name new files (including staged additions):
+
+```bash
+uv run --locked python -m tools.export_source --output ../source-worktree.zip --worktree --include tools/new_tool.py
+```
+
+The ZIP contains `source/`, `manifest.json` with the base commit, file modes and
+SHA-256 hashes, and, for working sources, `worktree.patch` plus deleted paths.
+The patch contains binary changes and reconstructs the captured bytes relative
+to HEAD, regardless of staging. The command uses a temporary index and may add
+blobs to Git's object store; it leaves the real index untouched. Export from the
+repository root and pause edits while capturing. Existing archives are refused.
+Working executable modes come from filesystem permissions on POSIX and Git's
+index on Windows, where the filesystem has no executable permission bit.
+
+To review without Git, extract `source/` and verify every file against the
+manifest. To reconstruct in a separate Git checkout, check out the manifest's
+commit with `core.autocrlf=false` and run
+`git apply --binary /path/to/worktree.patch`. Do not apply this
+patch on top of the already extracted working sources. Compare the resulting
+file hashes and deletions with the manifest; restore executable modes from the
+manifest if the archive extractor does not preserve them.
+
+Exports exclude runtime data, database files, logs, dependency directories,
+credential filenames, editor/service profiles and Git internals. Static assets
+and lockfiles remain included. Committed symlinks/submodules are omitted;
+working symlinks and paths escaping the repository are rejected. `--include`
+cannot override these exclusions. Review source contents before sharing: a
+filename filter cannot discover a secret hardcoded in an ordinary source file.
+The external `archive_project.py` is independent of this command.
+
 ## Commit Messages
 
 Use a conventional prefix and an imperative summary, such as

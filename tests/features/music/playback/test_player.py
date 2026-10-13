@@ -115,9 +115,9 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         player._node_player_ready_event = asyncio.Event()
         player._connected = True
         player._position = 1000
-        player._last_update = 0
+        player._position_received_at = 0.0
         attempt = _require_attempt(player.current_attempt)
-        with patch("mafic.player.time", return_value=10.0):
+        with patch("mafic.player.monotonic", return_value=10.0) as clock:
             self.assertEqual(player.position, 11_000)
             player.mark_stuck(attempt)
             self.assertEqual(player.position, 1000)
@@ -129,6 +129,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
                 {"time": 9000, "position": 2000, "connected": True, "ping": 1}
             )
             self.assertIsNone(player.stuck_attempt)
+            clock.return_value = 11.0
             self.assertEqual(player.position, 3000)
 
     async def test_stuck_status_clears_after_backward_seek_and_reported_progress(

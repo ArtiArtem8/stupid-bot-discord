@@ -100,13 +100,13 @@ class VoiceLifecycleHandlers:
         self._unavailable_node_labels.clear()
         logger.info("Voice lifecycle listeners removed and recovery tasks drained.")
 
-    async def on_node_ready(self, node: mafic.Node[commands.Bot]) -> None:
+    async def on_node_ready(self, node: mafic.Node[discord.Client]) -> None:
         if self._closing:
             return
         self._unavailable_node_labels.discard(node.label)
         logger.info("Lavalink node '%s' is ready", node.label)
 
-    async def on_node_unavailable(self, node: mafic.Node[commands.Bot]) -> None:
+    async def on_node_unavailable(self, node: mafic.Node[discord.Client]) -> None:
         if self._closing:
             return
         task = asyncio.current_task()

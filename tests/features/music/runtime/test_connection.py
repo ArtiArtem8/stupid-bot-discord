@@ -37,6 +37,7 @@ class _FakeMusicPlayer:
         self.assigned_node = node
         self._is_stale = False
         self.connected = connected
+        self.channel = MagicMock()
 
     @property
     def is_stale(self) -> bool:

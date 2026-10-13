@@ -1,5 +1,5 @@
 from functools import lru_cache
-from string import ascii_lowercase, digits
+from unicodedata import category, normalize
 
 from stupidbot.i18n.catalog import pgettext_noop
 
@@ -38,13 +38,26 @@ def random_answer(text: str, answers: list[str]) -> str:
 
 @lru_cache(maxsize=10)
 def str_local(text: str) -> str:
-    """Normalize text to lowercase Russian, ASCII letters, and digits.
+    """Return a canonical question key, preserving ordinary RU/EN keys.
 
-    Whitespace, punctuation, and characters outside that fixed mask are removed.
-    Results are cached for the ten most recently used input strings.
+    NFC and lowercase preserve Unicode letters, numbers and attached combining
+    marks without compatibility folding. Spacing and punctuation are ignored.
+    Input without letters/numbers uses an exact, separate ``raw:v1:`` namespace;
+    the unrecoverable historical empty key is never reused.
     """
-    mask = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя" + ascii_lowercase + digits
-    return "".join(i for i in text.lower() if i in mask)
+    normalized = normalize("NFC", normalize("NFC", text).lower())
+    result: list[str] = []
+    attached = False
+    for character in normalized:
+        kind = category(character)[0]
+        if kind in ("L", "N"):
+            result.append(character)
+            attached = True
+        elif kind == "M" and attached:
+            result.append(character)
+        else:
+            attached = False
+    return "".join(result) if result else f"raw:v1:{text}"
 
 
 CAPABILITIES = [

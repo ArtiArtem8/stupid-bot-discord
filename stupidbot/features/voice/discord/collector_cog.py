@@ -14,7 +14,7 @@ import time
 import uuid
 from collections.abc import Callable
 from datetime import datetime
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, TypeGuard, override
 
 import discord
 from discord.ext import commands, tasks
@@ -101,9 +101,18 @@ class VoiceCollectorCog(commands.Cog):
         try:
             # Validate the library/JSON boundary before accessing fields.
             value: object = json.loads(message)  # pyright: ignore[reportAny]
-            if not is_json_object(value):
+            if not _is_gateway_envelope(value):
                 return
-            self._gateway_fact(value)
+            event: object = value.get("t")
+            if not isinstance(event, str) or event not in (
+                "VOICE_STATE_UPDATE",
+                "GUILD_CREATE",
+            ):
+                return
+            payload: object = value.get("d")
+            if not is_json_object(payload):
+                raise ValueError("Missing gateway data")
+            self._gateway_fact({"t": event, "d": payload})
         except (ValueError, TypeError):
             self._record(ObservationGap(self._now(), None, GapReason.UNKNOWN))
             logger.warning("Voice collector rejected an invalid gateway observation")
@@ -354,6 +363,12 @@ def _id(value: JsonValue) -> int | None:
     if isinstance(value, bool) or not isinstance(value, (str, int)):
         raise ValueError("Invalid Discord ID")
     return int(value)
+
+
+def _is_gateway_envelope(value: object) -> TypeGuard[dict[str, object]]:
+    # json.loads guarantees string keys; inspect only the envelope before
+    # traversing the selected voice payload, not unrelated gateway data.
+    return isinstance(value, dict)
 
 
 def _flag(value: JsonValue) -> bool | None:
