@@ -766,12 +766,10 @@ class MusicCog(BaseCog):
         await send_warning(
             interaction,
             title=messages.catalog.pgettext("ui", "Not restored"),
-            message=(
-                messages.catalog.pgettext(
-                    "ui",
-                    "Reconnected, but the track could not be restarted. The source "
-                    "most likely returned a temporary error.",
-                )
+            message=messages.catalog.pgettext(
+                "ui",
+                "Reconnected, but the track could not be restarted. The source "
+                "most likely returned a temporary error.",
             ),
             ephemeral=True,
         )

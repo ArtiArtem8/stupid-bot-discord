@@ -88,12 +88,10 @@ class ConfirmDeleteView(discord.ui.View):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
-                description=(
-                    self.messages.pgettext(
-                        "ui",
-                        "The date has already changed or been removed. Open a new "
-                        "confirmation.",
-                    )
+                description=self.messages.pgettext(
+                    "ui",
+                    "The date has already changed or been removed. Open a new "
+                    "confirmation.",
                 ),
                 ephemeral=True,
             )

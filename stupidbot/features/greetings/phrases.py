@@ -10,7 +10,6 @@ MORNING_QUEST = (
     "утро утреннее",
 )
 
-
 MORNING_ANSWERS = (
     "https://tenor.com/view/anime-smile-beautiful-cute-happy-gif-16596386",
     "https://tenor.com/view/little-witch-academia-witch-good-morning-yawn-stretching-gif-16843917",
@@ -49,7 +48,6 @@ MORNING_ANSWERS = (
     ),
 )
 
-
 EVENING_QUEST = (
     "доброй ночи",
     "сон",
@@ -61,7 +59,6 @@ EVENING_QUEST = (
     "Спокойной ночи",
     "ночь пришла",
 )
-
 
 EVENING_ANSWERS = (
     "https://tenor.com/view/anime-night-gif-13617044",

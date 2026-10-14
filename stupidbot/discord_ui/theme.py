@@ -12,6 +12,6 @@ class Color(IntEnum):
 
 
 BOT_ICON = "https://icon-library.com/images/icon-for-discord/icon-for-discord-17.jpg"
-
-
-ERROR_THUMBNAIL = "https://cdn.discordapp.com/emojis/839119737458917467.webp?size=96&animated=true"  # mm-m-m-monkey  # noqa: E501
+ERROR_THUMBNAIL = (
+    "https://cdn.discordapp.com/emojis/839119737458917467.webp?size=96&animated=true"
+)

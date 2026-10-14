@@ -122,11 +122,7 @@ class TextPaginator:
         sep_len = len(separator)
 
         for line in input_lines:
-            display_line = (
-                truncate_text(line, width=max_length)
-                if len(line) > max_length
-                else line
-            )
+            display_line = truncate_text(line, width=max_length)
 
             line_len = len(display_line)
             cost = sep_len + line_len if current_page else line_len

@@ -26,13 +26,8 @@ from stupidbot.i18n.discord import interaction_context
 from stupidbot.i18n.policy import Language, PresentationContext
 
 STATISTIC_EMOJI = "<:statistic:1555684012809388173>"
-
-
 SOCIAL_EMOJI = "<:social:1555684011177672725>"
-
-
 XP_EMOJI = "<:xp:1555684015057543229>"
-
 
 logger = logging.getLogger(__name__)
 

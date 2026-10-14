@@ -9,6 +9,7 @@ from typing import TypedDict
 import discord
 
 from stupidbot.common.text import TextPaginator, truncate_text
+from stupidbot.discord_ui.embeds import DEFAULT_LIMITS
 from stupidbot.i18n.catalog import catalog, pgettext_noop
 from stupidbot.i18n.policy import Language
 
@@ -96,7 +97,7 @@ def build_birthday_list(
 def create_birthday_list_embed(
     guild_name: str,
     entries: Collection[BirthdayListEntry],
-    max_field_length: int = 1024,
+    max_field_length: int = DEFAULT_LIMITS.field_value,
     *,
     language: Language = Language.RU,
 ) -> discord.Embed:
@@ -118,7 +119,7 @@ def create_birthday_list_embed(
 
     """
     messages = BirthdayMessages(catalog("birthdays", language))
-    title = truncate_text(messages.title(guild=guild_name), width=256)
+    title = truncate_text(messages.title(guild=guild_name), width=DEFAULT_LIMITS.title)
     embed = discord.Embed(title=title, color=discord.Color.gold())
 
     if not entries:
@@ -129,7 +130,7 @@ def create_birthday_list_embed(
         return embed
 
     footer = messages.total(count=len(entries))
-    embed.set_footer(text=truncate_text(footer, width=2048))
+    embed.set_footer(text=truncate_text(footer, width=DEFAULT_LIMITS.footer))
 
     lines: list[str] = []
     for i, entry in enumerate(entries, 1):
@@ -153,11 +154,8 @@ def create_birthday_list_embed(
         separator="\n",
     )
 
-    max_fields = 25
-    max_total = 6000
-
     for page_num, page_text in enumerate(paginator.pages, 1):
-        if len(embed.fields) >= max_fields:
+        if len(embed.fields) >= DEFAULT_LIMITS.max_fields:
             break
 
         field_name = (
@@ -165,10 +163,10 @@ def create_birthday_list_embed(
             if page_num == 1
             else messages.page(page=page_num)
         )
-        field_name = truncate_text(field_name, width=256)
+        field_name = truncate_text(field_name, width=DEFAULT_LIMITS.field_name)
 
         projected_total = len(embed) + len(field_name) + len(page_text)
-        if projected_total > max_total:
+        if projected_total > DEFAULT_LIMITS.max_total:
             break
 
         embed.add_field(name=field_name, value=page_text, inline=False)
@@ -177,85 +175,65 @@ def create_birthday_list_embed(
 
 
 BIRTHDAY_WISHES = (
-    (
-        pgettext_noop(
-            "wish",
-            "On your birthday, I wish you a life full of happy, joyful moments, a "
-            "heart warmed by kind and loving words, and loyal friends by your side!",
-        )
+    pgettext_noop(
+        "wish",
+        "On your birthday, I wish you a life full of happy, joyful moments, a "
+        "heart warmed by kind and loving words, and loyal friends by your side!",
     ),
-    (
-        pgettext_noop(
-            "wish",
-            "May happiness always be in your hands and all sorrows pass you by! May "
-            "your cherished dreams come true easily, and every moment bring joy and "
-            "positivity! Discover new horizons, stride forward confidently and "
-            "achieve all your goals!",
-        )
+    pgettext_noop(
+        "wish",
+        "May happiness always be in your hands and all sorrows pass you by! May "
+        "your cherished dreams come true easily, and every moment bring joy and "
+        "positivity! Discover new horizons, stride forward confidently and "
+        "achieve all your goals!",
     ),
-    (
-        pgettext_noop(
-            "wish",
-            "A heartfelt happy birthday! Wishing you lots of love and happiness, and "
-            "many pleasant surprises. May your life be interesting and full, with all "
-            "the strength you need to reach your goals!",
-        )
+    pgettext_noop(
+        "wish",
+        "A heartfelt happy birthday! Wishing you lots of love and happiness, and "
+        "many pleasant surprises. May your life be interesting and full, with all "
+        "the strength you need to reach your goals!",
     ),
-    (
-        pgettext_noop(
-            "wish",
-            "Happy birthday to you! Wishing you a wonderful, amazing life, an ocean "
-            "of love, endless happy times, good health and a great mood!",
-        )
+    pgettext_noop(
+        "wish",
+        "Happy birthday to you! Wishing you a wonderful, amazing life, an ocean "
+        "of love, endless happy times, good health and a great mood!",
     ),
-    (
-        pgettext_noop(
-            "wish",
-            "Happy birthday! May your wildest wishes come true, with bright, "
-            "unforgettable experiences and success in everything you start. May your "
-            "days be sunny and bright, filled with smiles and happiness. Positivity "
-            "in everything!",
-        )
+    pgettext_noop(
+        "wish",
+        "Happy birthday! May your wildest wishes come true, with bright, "
+        "unforgettable experiences and success in everything you start. May your "
+        "days be sunny and bright, filled with smiles and happiness. Positivity "
+        "in everything!",
     ),
-    (
-        pgettext_noop(
-            "wish",
-            "Happy birthday! Wishing you a positive mood and plenty of joyful days. "
-            "May you greet every morning with a smile and hope for the best. May your "
-            "dreams have wings, and your plans come true!",
-        )
+    pgettext_noop(
+        "wish",
+        "Happy birthday! Wishing you a positive mood and plenty of joyful days. "
+        "May you greet every morning with a smile and hope for the best. May your "
+        "dreams have wings, and your plans come true!",
     ),
-    (
-        pgettext_noop(
-            "wish",
-            "Happy birthday! May you always live in joy, surrounded by peace and "
-            "lasting happiness. Wishing you a little of everything, and may even "
-            "ordinary days sometimes fill with magical events.",
-        )
+    pgettext_noop(
+        "wish",
+        "Happy birthday! May you always live in joy, surrounded by peace and "
+        "lasting happiness. Wishing you a little of everything, and may even "
+        "ordinary days sometimes fill with magical events.",
     ),
-    (
-        pgettext_noop(
-            "wish",
-            "Happy birthday! Wishing you a wonderful day surrounded by the people who "
-            "love and appreciate you most, and lots of fun. Smile, enjoy being "
-            "together, and may happiness fill your life.",
-        )
+    pgettext_noop(
+        "wish",
+        "Happy birthday! Wishing you a wonderful day surrounded by the people who "
+        "love and appreciate you most, and lots of fun. Smile, enjoy being "
+        "together, and may happiness fill your life.",
     ),
-    (
-        pgettext_noop(
-            "wish",
-            "Happy birthday! An ocean of happiness and smiles, and inspiration to "
-            "achieve your goals. May life's colours and surprises delight you. Enjoy "
-            "every day and share those feelings with others. Stay yourself: you are "
-            "one of the best people on the planet!",
-        )
+    pgettext_noop(
+        "wish",
+        "Happy birthday! An ocean of happiness and smiles, and inspiration to "
+        "achieve your goals. May life's colours and surprises delight you. Enjoy "
+        "every day and share those feelings with others. Stay yourself: you are "
+        "one of the best people on the planet!",
     ),
-    (
-        pgettext_noop(
-            "wish",
-            "Happy birthday! Wishing you more inspiration and energy this year. May "
-            "everything you take on end in success. And plenty of good health, "
-            "because with it you can do anything!",
-        )
+    pgettext_noop(
+        "wish",
+        "Happy birthday! Wishing you more inspiration and energy this year. May "
+        "everything you take on end in success. And plenty of good health, "
+        "because with it you can do anything!",
     ),
 )

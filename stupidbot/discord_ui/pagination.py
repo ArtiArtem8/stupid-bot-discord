@@ -14,7 +14,6 @@ from stupidbot.discord_ui.emojis import (
 )
 
 SECONDARY = discord.ButtonStyle.secondary
-PRIMARY = discord.ButtonStyle.primary
 DANGER = discord.ButtonStyle.danger
 
 

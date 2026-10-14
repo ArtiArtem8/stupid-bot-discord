@@ -338,12 +338,10 @@ class ServerMonitorCog(BaseCog):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.INFO,
-                description=(
-                    messages.catalog.pgettext(
-                        "ui",
-                        "No roles to restore: the snapshot is missing or expired, or "
-                        "the roles have already been granted.",
-                    )
+                description=messages.catalog.pgettext(
+                    "ui",
+                    "No roles to restore: the snapshot is missing or expired, or "
+                    "the roles have already been granted.",
                 ),
                 ephemeral=True,
             )
