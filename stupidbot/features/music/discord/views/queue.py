@@ -293,9 +293,9 @@ class QueuePaginator(BasePaginator):
             self.page = 0
             await self._update_view(interaction)
         else:
+            await self.close(interaction)
             await send_warning(
                 interaction,
                 messages.catalog.pgettext("ui", "Could not refresh the queue"),
                 ephemeral=True,
             )
-            self.stop()
