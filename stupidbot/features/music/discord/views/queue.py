@@ -16,8 +16,6 @@ from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.interaction_flow import ack_component
 from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
 from stupidbot.discord_ui.pagination import (
-    DANGER,
-    SECONDARY,
     BasePaginator,
     CallbackButton,
     PaginationData,
@@ -77,7 +75,7 @@ class QueueUndoView(discord.ui.View):
         self.remove_button = CallbackButton[Self](
             self.remove,
             label=self.messages.catalog.pgettext("ui", "Remove"),
-            style=DANGER,
+            style=discord.ButtonStyle.danger,
         )
         self.add_item(self.remove_button)
 
@@ -280,7 +278,7 @@ class QueuePaginator(BasePaginator):
         self.refresh_callback = refresh_callback
 
         self.refresh_btn = CallbackButton[Self](
-            self.refresh, emoji=RESTART_EMOJI, style=SECONDARY, row=1
+            self.refresh, emoji=RESTART_EMOJI, row=1
         )
         self.add_item(self.refresh_btn)
 

@@ -13,9 +13,6 @@ from stupidbot.discord_ui.emojis import (
     PREVIOUS_PAGE_EMOJI,
 )
 
-SECONDARY = discord.ButtonStyle.secondary
-DANGER = discord.ButtonStyle.danger
-
 
 class PaginationData(Protocol):
     """Supply pages and access feedback to BasePaginator."""
@@ -124,15 +121,15 @@ class BasePaginator(ManagedView):
     def _setup_buttons(self, show_first_last: bool, show_close: bool) -> None:
         if show_first_last:
             self.first_btn = CallbackButton[Self](
-                self.first_page, emoji=FIRST_PAGE_EMOJI, style=SECONDARY, row=0
+                self.first_page, emoji=FIRST_PAGE_EMOJI, row=0
             )
             self.add_item(self.first_btn)
 
         self.next_btn = CallbackButton[Self](
-            self.next_page, emoji=NEXT_PAGE_EMOJI, style=SECONDARY, row=0
+            self.next_page, emoji=NEXT_PAGE_EMOJI, row=0
         )
         self.prev_btn = CallbackButton[Self](
-            self.prev_page, emoji=PREVIOUS_PAGE_EMOJI, style=SECONDARY, row=0
+            self.prev_page, emoji=PREVIOUS_PAGE_EMOJI, row=0
         )
 
         self.add_item(self.prev_btn)
@@ -140,14 +137,12 @@ class BasePaginator(ManagedView):
 
         if show_first_last:
             self.last_btn = CallbackButton[Self](
-                self.last_page, emoji=LAST_PAGE_EMOJI, style=SECONDARY, row=0
+                self.last_page, emoji=LAST_PAGE_EMOJI, row=0
             )
             self.add_item(self.last_btn)
 
         if show_close:
-            self.close_btn = CallbackButton[Self](
-                self.close, emoji=CLOSE_EMOJI, style=SECONDARY, row=0
-            )
+            self.close_btn = CallbackButton[Self](self.close, emoji=CLOSE_EMOJI, row=0)
             self.add_item(self.close_btn)
 
     @override
