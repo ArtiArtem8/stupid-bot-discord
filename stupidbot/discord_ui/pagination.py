@@ -5,9 +5,13 @@ import discord
 from discord import Interaction
 from discord.ui import Button
 
-SECONDARY = discord.ButtonStyle.secondary
-PRIMARY = discord.ButtonStyle.primary
-DANGER = discord.ButtonStyle.danger
+from stupidbot.discord_ui.emojis import (
+    CLOSE_EMOJI,
+    FIRST_PAGE_EMOJI,
+    LAST_PAGE_EMOJI,
+    NEXT_PAGE_EMOJI,
+    PREVIOUS_PAGE_EMOJI,
+)
 
 
 class PaginationData(Protocol):
@@ -39,11 +43,13 @@ class CallbackButton[ViewT: discord.ui.View | discord.ui.LayoutView](
         callback: ButtonCallback,
         *,
         label: str | None = None,
+        emoji: str | None = None,
         style: discord.ButtonStyle = discord.ButtonStyle.secondary,
         row: int | None = None,
     ) -> None:
         super().__init__(
             label=label,
+            emoji=emoji,
             style=style,
             row=row,
         )
@@ -115,15 +121,15 @@ class BasePaginator(ManagedView):
     def _setup_buttons(self, show_first_last: bool, show_close: bool) -> None:
         if show_first_last:
             self.first_btn = CallbackButton[Self](
-                self.first_page, label="⏮", style=SECONDARY, row=0
+                self.first_page, emoji=FIRST_PAGE_EMOJI, row=0
             )
             self.add_item(self.first_btn)
 
         self.next_btn = CallbackButton[Self](
-            self.next_page, label="▶", style=SECONDARY, row=0
+            self.next_page, emoji=NEXT_PAGE_EMOJI, row=0
         )
         self.prev_btn = CallbackButton[Self](
-            self.prev_page, label="◀", style=SECONDARY, row=0
+            self.prev_page, emoji=PREVIOUS_PAGE_EMOJI, row=0
         )
 
         self.add_item(self.prev_btn)
@@ -131,14 +137,12 @@ class BasePaginator(ManagedView):
 
         if show_first_last:
             self.last_btn = CallbackButton[Self](
-                self.last_page, label="⏭", style=SECONDARY, row=0
+                self.last_page, emoji=LAST_PAGE_EMOJI, row=0
             )
             self.add_item(self.last_btn)
 
         if show_close:
-            self.close_btn = CallbackButton[Self](
-                self.close, label="✕", style=DANGER, row=0
-            )
+            self.close_btn = CallbackButton[Self](self.close, emoji=CLOSE_EMOJI, row=0)
             self.add_item(self.close_btn)
 
     @override
@@ -207,15 +211,15 @@ class BasePaginator(ManagedView):
         await self._update_view(interaction, total_pages=total_pages)
 
     async def close(self, interaction: Interaction) -> None:
-        """Close the paginator."""
+        """Stop listening before asking Discord to remove the controls."""
         for item in self.children:
             if isinstance(item, Button):
                 item.disabled = True
+        self.stop()
         try:
             await interaction.response.edit_message(view=None)
         except discord.NotFound:
             pass
-        self.stop()
 
     @override
     async def send(

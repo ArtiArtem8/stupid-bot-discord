@@ -387,10 +387,7 @@ def _split_at_gaps(
     room: RoomInterval, gaps: list[ObservationGap]
 ) -> list[RoomInterval]:
     relevant = [
-        gap
-        for gap in gaps
-        if gap.started_at < room.ended_at
-        and (gap.ended_at is None or gap.ended_at > room.started_at)
+        gap for gap in gaps if _gap_overlaps(gap, room.started_at, room.ended_at)
     ]
     if not relevant:
         return [room]
@@ -404,14 +401,14 @@ def _split_at_gaps(
             room,
             started_at=start,
             ended_at=end,
-            gaps=tuple(
-                g
-                for g in relevant
-                if g.started_at < end and (g.ended_at is None or g.ended_at > start)
-            ),
+            gaps=tuple(g for g in relevant if _gap_overlaps(g, start, end)),
         )
         for start, end in pairwise(ordered)
     ]
+
+
+def _gap_overlaps(gap: ObservationGap, start: datetime, end: datetime) -> bool:
+    return gap.started_at < end and (gap.ended_at is None or gap.ended_at > start)
 
 
 def _snapshot_disagrees(

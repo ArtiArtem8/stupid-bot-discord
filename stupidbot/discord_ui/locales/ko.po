@@ -64,5 +64,5 @@ msgid "{name} (page {page:d})"
 msgstr "{name} ({page:d}페이지)"
 
 msgctxt "blocked"
-msgid "⛔ You cannot use commands."
-msgstr "⛔ 명령어를 사용할 수 없습니다."
+msgid "You cannot use commands."
+msgstr "명령어를 사용할 수 없습니다."

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -69,3 +70,58 @@ class TestPaginatorNavigation(unittest.IsolatedAsyncioTestCase):
                 data.make_embed.assert_called_once_with(expected)
                 self.assertEqual(view.page, expected)
                 view.stop()
+
+
+class TestPaginatorClose(unittest.IsolatedAsyncioTestCase):
+    async def test_close_stops_listening_before_discord_responds(self) -> None:
+        view = BasePaginator(MagicMock(), user_id=42)
+        self.addCleanup(view.stop)
+        interaction = MagicMock(spec=discord.Interaction)
+        response_started = asyncio.Event()
+        release_response = asyncio.Event()
+
+        async def respond(**_kwargs: object) -> None:
+            response_started.set()
+            await release_response.wait()
+
+        interaction.response = MagicMock(edit_message=AsyncMock(side_effect=respond))
+        task = asyncio.create_task(view.close(interaction))
+        try:
+            await response_started.wait()
+            self.assertTrue(view.is_finished())
+        finally:
+            release_response.set()
+            await task
+        interaction.response.edit_message.assert_awaited_once_with(view=None)
+
+    async def test_close_remains_stopped_after_failure_or_cancellation(self) -> None:
+        response = MagicMock(status=503, reason="Service unavailable")
+        for error in (
+            discord.HTTPException(response, "test failure"),
+            asyncio.CancelledError(),
+        ):
+            with self.subTest(error=type(error).__name__):
+                view = BasePaginator(MagicMock(), user_id=42)
+                self.addCleanup(view.stop)
+                interaction = MagicMock(spec=discord.Interaction)
+                interaction.response = MagicMock(
+                    edit_message=AsyncMock(side_effect=error)
+                )
+
+                with self.assertRaises(type(error)):
+                    await view.close(interaction)
+
+                self.assertTrue(view.is_finished())
+
+    async def test_close_accepts_an_already_deleted_message(self) -> None:
+        view = BasePaginator(MagicMock(), user_id=42)
+        self.addCleanup(view.stop)
+        interaction = MagicMock(spec=discord.Interaction)
+        response = MagicMock(status=404, reason="Not found")
+        interaction.response = MagicMock(
+            edit_message=AsyncMock(side_effect=discord.NotFound(response, "deleted"))
+        )
+
+        await view.close(interaction)
+
+        self.assertTrue(view.is_finished())

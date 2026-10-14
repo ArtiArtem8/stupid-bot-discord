@@ -32,19 +32,23 @@ def retained_attachments(message: discord.Message) -> list[discord.Attachment]:
         attachment.id: attachment for attachment in message.attachments
     }
     for embed in message.embeds:
-        url = urlsplit(embed.image.url or "")
-        parts = url.path.split("/")
-        if (
-            url.scheme != "https"
-            or url.hostname != "cdn.discordapp.com"
-            or len(parts) != 5
-            or parts[1] not in {"attachments", "ephemeral-attachments"}
-            or parts[2] != str(message.channel.id)
-            or not parts[3].isdigit()
-            or not parts[4]
-        ):
-            raise ValueError("Profile embed has no retainable uploaded image")
-        reference = _RetainedImage(int(parts[3]), unquote(parts[4]))
+        reference = _uploaded_image(embed.image.url or "", message.channel.id)
         if reference.id not in retained:
             retained[reference.id] = reference
     return cast("list[discord.Attachment]", list(retained.values()))
+
+
+def _uploaded_image(image_url: str, channel_id: int) -> _RetainedImage:
+    url = urlsplit(image_url)
+    parts = url.path.split("/")
+    if (
+        url.scheme != "https"
+        or url.hostname != "cdn.discordapp.com"
+        or len(parts) != 5
+        or parts[1] not in {"attachments", "ephemeral-attachments"}
+        or parts[2] != str(channel_id)
+        or not parts[3].isdigit()
+        or not parts[4]
+    ):
+        raise ValueError("Profile embed has no retainable uploaded image")
+    return _RetainedImage(int(parts[3]), unquote(parts[4]))

@@ -97,6 +97,14 @@ class TestNormalization(unittest.TestCase):
     def test_unknown_afk_channel_preserves_unknown_knowledge(self) -> None:
         self.assertIsNone(normalize_voice_state(gateway_state()).afk)
 
+    def test_invalid_raised_hand_values_are_rejected(self) -> None:
+        for value in (123, False, "not-a-timestamp"):
+            with self.subTest(value=value):
+                payload = gateway_state()
+                payload["request_to_speak_timestamp"] = value
+                with self.assertRaises(ValueError):
+                    normalize_voice_state(payload)
+
     def test_cached_raised_hand_distinguishes_null_and_timestamp(self) -> None:
         guild = MagicMock(spec=discord.Guild)
         guild.get_member.return_value = None

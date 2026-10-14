@@ -88,6 +88,32 @@ class TestReplayState(unittest.TestCase):
         )
         self.assertEqual(state.snapshot(), before)
 
+    def test_gap_splitting_preserves_exact_bounds_and_overlapping_metadata(
+        self,
+    ) -> None:
+        room = RoomInterval(1, 10, at(10), at(30), (human(),))
+        bounded = ObservationGap(at(15), at(25), GapReason.WRITE_FAILURE, 1)
+        open_gap = ObservationGap(at(20), None, GapReason.UNKNOWN, 1)
+        gaps = [
+            ObservationGap(at(0), at(10), GapReason.UNKNOWN, 1),
+            bounded,
+            open_gap,
+            ObservationGap(at(30), at(40), GapReason.UNKNOWN, 1),
+        ]
+
+        parts = _split_at_gaps(room, gaps)
+
+        self.assertEqual(
+            [(part.started_at, part.ended_at, part.gaps) for part in parts],
+            [
+                (at(10), at(15), ()),
+                (at(15), at(20), (bounded,)),
+                (at(20), at(25), (bounded, open_gap)),
+                (at(25), at(30), (open_gap,)),
+            ],
+        )
+        self.assertTrue(all(part.states == room.states for part in parts))
+
     def test_gap_candidates_preserve_open_overlapping_and_zero_metadata(self) -> None:
         rooms = [
             RoomInterval(1, 10, at(n), at(n + 10), (human(),))

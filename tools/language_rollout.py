@@ -77,6 +77,10 @@ def read_reviewed_inventory(path: Path) -> tuple[GuildLanguage, ...]:
     rows = payload.get("guilds")
     if not isinstance(rows, list) or payload.get("guild_count") != len(rows):
         raise ValueError("Inventory guild_count does not match its rows")
+    return _reviewed_guilds(rows)
+
+
+def _reviewed_guilds(rows: JsonArray) -> tuple[GuildLanguage, ...]:
     entries: list[GuildLanguage] = []
     seen: set[int] = set()
     for row in rows:

@@ -81,7 +81,7 @@ class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
         self.item.response.send_message.assert_awaited_once()
         kwargs = self.item.response.send_message.call_args.kwargs
         self.assertTrue(kwargs["ephemeral"])
-        self.assertEqual(kwargs["embed"].description, "⛔ Доступ к командам запрещён.")
+        self.assertEqual(kwargs["embed"].description, "Доступ к командам запрещён.")
 
     async def test_registered_context_menu_routes_denial_without_running_callback(
         self,

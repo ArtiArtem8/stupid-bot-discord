@@ -306,56 +306,43 @@ class SettingsView(discord.ui.LayoutView):
             saved = await self.repository.save(self.scope, self.subject_id, proposed)
         except PreferenceConflictError as error:
             current = error.current
-            await self.finish(
-                interaction,
-                self.messages.conflict(
-                    language=current.language.native_name
-                    if current.language
-                    else self.catalog.pgettext("discord", "As in Discord"),
-                    timezone=timezone_label(
-                        current.timezone or self.fallback_timezone.key
-                    ),
-                ),
+            text = self.messages.conflict(
+                language=current.language.native_name
+                if current.language
+                else self.catalog.pgettext("discord", "As in Discord"),
+                timezone=timezone_label(current.timezone or self.fallback_timezone.key),
             )
         else:
             interaction.extras["stupidbot.preferences.failed"] = False
             self.proposed = saved
-            await self.finish(
-                interaction, self.catalog.pgettext("saved", "Settings saved.")
-            )
+            text = self.catalog.pgettext("saved", "Settings saved.")
         finally:
             self.saving = False
+        self._finish(text)
+        await interaction.edit_original_response(view=self)
 
     async def cancel(self, interaction: discord.Interaction) -> None:
         """Close the editor without saving pending overrides."""
-        await interaction.response.defer()
-        await self.finish(
-            interaction, self.catalog.pgettext("cancelled", "Changes cancelled.")
-        )
+        self._finish(self.catalog.pgettext("cancelled", "Changes cancelled."))
+        await interaction.response.edit_message(view=self)
 
-    async def finish(self, interaction: discord.Interaction, text: str) -> None:
-        """Keep the response in Components V2 after removing interactive controls."""
+    def _finish(self, text: str) -> None:
+        # Reject concurrent interactions before waiting for Discord to update.
         self.closed = True
         self.clear_items()
         self.add_item(discord.ui.TextDisplay(text))
         self.stop()
-        await interaction.edit_original_response(view=self)
 
     @override
     async def on_timeout(self) -> None:
         if self.saving:
             return
-        self.closed = True
-        self.clear_items()
-        self.add_item(
-            discord.ui.TextDisplay(
-                self.catalog.pgettext(
-                    "expired",
-                    "This editor has expired. Open settings again.",
-                )
+        self._finish(
+            self.catalog.pgettext(
+                "expired",
+                "This editor has expired. Open settings again.",
             )
         )
-        self.stop()
         if self.message is not None:
             try:
                 await self.message.edit(view=self)

@@ -175,6 +175,7 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
 
         paginator = QueuePaginator(adapter, refresh, user_id=42)
         interaction = _interaction()
+        interaction.response.edit_message = AsyncMock()
 
         with patch(
             "stupidbot.features.music.discord.views.queue.send_warning",
@@ -182,6 +183,7 @@ class TestQueuePaginator(unittest.IsolatedAsyncioTestCase):
         ) as send_warning:
             await paginator.refresh(interaction)
 
+        interaction.response.edit_message.assert_awaited_once_with(view=None)
         send_warning.assert_awaited_once_with(
             interaction,
             "Не удалось обновить очередь",

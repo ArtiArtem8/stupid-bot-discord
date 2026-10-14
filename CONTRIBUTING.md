@@ -50,9 +50,15 @@ and revision dates explicit so compilation is reproducible.
 This source convention does not change the Russian audience fallback.
 Translate complete phrases, with plural forms for counts and named placeholders
 for values; keep user content, external answers and technical identifiers intact.
-Parameterized messages have typed
-methods in the owner's `messages.py`. Pass an explicit presentation context to
-views and renderers; do not set a global language. Personal/ephemeral responses
+Parameterized messages have typed methods in the owner's `messages.py`.
+Use `npgettext` for count-dependent wording: it selects a complete translated
+phrase using the catalog's plural rules, then `.format()` inserts named values.
+Gettext does not format dates or calculate durations. Presentation code owns
+those operations and uses the selected timezone for local calendar values.
+Discord timestamps from `discord.utils.format_dt` are rendered by the client;
+their display follows the viewer's settings, independently of bot preferences.
+Pass an explicit presentation context to views and renderers; do not set a
+global language. Personal/ephemeral responses
 resolve user preferences, while shared public responses resolve guild preferences.
 Voice profiles use the requester's language regardless of visibility; the
 `private` option changes delivery only. An unset personal timezone inherits

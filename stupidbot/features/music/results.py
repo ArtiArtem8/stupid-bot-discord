@@ -18,8 +18,6 @@ from stupidbot.features.music.playback.models import (
 MUSIC_SERVICE_UNAVAILABLE_MESSAGE = (
     "Музыкальный сервис сейчас недоступен. Попробуйте позже."
 )
-
-
 MUSIC_RECOVERING_MESSAGE = (
     "Восстанавливаю соединение. Попробуй ещё раз после завершения."
 )

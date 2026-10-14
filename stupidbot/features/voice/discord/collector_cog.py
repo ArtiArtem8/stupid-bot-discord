@@ -297,14 +297,9 @@ def normalize_voice_state(
         user = member.get("user")
         if is_json_object(user) and isinstance(user.get("bot"), bool):
             is_bot = _flag(user["bot"])
-    requested = payload.get("request_to_speak_timestamp")
     session_id = payload.get("session_id")
     channel_id = _id(payload.get("channel_id"))
-    requested_to_speak = None
-    if "request_to_speak_timestamp" in payload:
-        if requested is not None and not isinstance(requested, str):
-            raise ValueError("Invalid requested-to-speak timestamp")
-        requested_to_speak = requested is not None
+    requested_to_speak, requested_at = _requested_to_speak(payload)
     return VoiceStateSnapshot(
         user_id,
         channel_id,
@@ -317,12 +312,21 @@ def normalize_voice_state(
         self_video=_flag(payload.get("self_video")),
         suppress=_flag(payload.get("suppress")),
         requested_to_speak=requested_to_speak,
-        requested_to_speak_at=datetime.fromisoformat(requested)
-        if isinstance(requested, str)
-        else None,
+        requested_to_speak_at=requested_at,
         session_id=session_id if isinstance(session_id, str) else None,
         afk=channel_id == afk_channel_id if afk_channel_id is not None else None,
     )
+
+
+def _requested_to_speak(payload: JsonObject) -> tuple[bool | None, datetime | None]:
+    if "request_to_speak_timestamp" not in payload:
+        return None, None
+    requested = payload["request_to_speak_timestamp"]
+    if requested is None:
+        return False, None
+    if not isinstance(requested, str):
+        raise ValueError("Invalid requested-to-speak timestamp")
+    return True, datetime.fromisoformat(requested)
 
 
 def _cached_state(

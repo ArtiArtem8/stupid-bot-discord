@@ -277,17 +277,77 @@ class SettingsViewTests(IsolatedAsyncioTestCase):
         self.assertIsNone(self.view.proposed.timezone)
         self.assertTrue(self.view.is_finished())
 
-    async def test_cancel_and_timeout_leave_database_unchanged(self) -> None:
+    async def test_cancel_closes_panel_without_saving_pending_changes(self) -> None:
         self.view.proposed = replace(self.view.proposed, timezone="Europe/Moscow")
-        await self.view.cancel(interaction())
+        request = interaction()
+
+        await self.view.cancel(request)
+
         self.assertTrue(self.view.closed)
+        self.assertTrue(self.view.is_finished())
+        request.response.edit_message.assert_awaited_once_with(view=self.view)
+        request.response.defer.assert_not_awaited()
+        request.edit_original_response.assert_not_awaited()
+        self.assertEqual(
+            await self.repository.get(PreferenceScope.USER, 10), Preferences()
+        )
+
+    async def test_cancel_rejects_save_while_discord_response_is_pending(self) -> None:
+        self.view.proposed = Preferences(Language.EN, "Europe/Moscow")
+        request = interaction()
+        response_started = asyncio.Event()
+        release_response = asyncio.Event()
+
+        async def respond(**_kwargs: object) -> None:
+            response_started.set()
+            await release_response.wait()
+
+        request.response.defer.side_effect = respond
+        request.response.edit_message.side_effect = respond
+        task = asyncio.create_task(self.view.cancel(request))
+        try:
+            await response_started.wait()
+            save_request = interaction()
+            allowed = await self.view.interaction_check(save_request)
+            if allowed:
+                await self.view.save(save_request)
+            self.assertEqual(
+                await self.repository.get(PreferenceScope.USER, 10), Preferences()
+            )
+            self.assertFalse(allowed)
+            save_request.response.send_message.assert_awaited_once()
+        finally:
+            release_response.set()
+            await task
+
+    async def test_timeout_removes_controls_without_saving_pending_changes(
+        self,
+    ) -> None:
+        self.view.proposed = Preferences(Language.EN, "Europe/Moscow")
+        request = interaction()
+        self.view.message = request.message
+        request.message.edit = AsyncMock()
+
+        await self.view.on_timeout()
+
+        self.assertTrue(self.view.closed)
+        self.assertTrue(self.view.is_finished())
+        self.assertTrue(
+            all(isinstance(item, discord.ui.TextDisplay) for item in self.view.children)
+        )
+        request.message.edit.assert_awaited_once_with(view=self.view)
         self.assertEqual(
             await self.repository.get(PreferenceScope.USER, 10), Preferences()
         )
 
     async def test_save_confirms_committed_values(self) -> None:
         self.view.proposed = Preferences(Language.EN, "Europe/Moscow")
-        await self.view.save(interaction())
+        request = interaction()
+        await self.view.save(request)
+
+        request.response.defer.assert_awaited_once()
+        request.edit_original_response.assert_awaited_once_with(view=self.view)
+        request.response.edit_message.assert_not_awaited()
         self.assertEqual(
             await self.repository.get(PreferenceScope.USER, 10),
             Preferences(Language.EN, "Europe/Moscow", 1),

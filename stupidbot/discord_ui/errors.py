@@ -27,7 +27,7 @@ async def handle_app_command_error(
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.WARNING,
-            description=messages.pgettext("blocked", "⛔ You cannot use commands."),
+            description=messages.pgettext("blocked", "You cannot use commands."),
             ephemeral=True,
         )
         return

@@ -2,7 +2,7 @@
   "keys": [
     "access\u0004The command access check failed.",
     "access_title\u0004Access denied",
-    "blocked\u0004⛔ You cannot use commands.",
+    "blocked\u0004You cannot use commands.",
     "cooldown\u0004Please wait: {relative_time}",
     "deletion\u0004-# Deletes {relative_time}",
     "discord_error\u0004Could not complete the action in Discord. Please try again.",

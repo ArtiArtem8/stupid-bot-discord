@@ -13,7 +13,9 @@ class RoleMessages:
 
     def ttl(self, *, days: int) -> str:
         """Label finite snapshot retention."""
-        return self.catalog.pgettext("ttl", "TTL: {days:d} days").format(days=days)
+        return self.catalog.npgettext(
+            "ttl", "TTL: {days:d} day", "TTL: {days:d} days", days
+        ).format(days=days)
 
     def enabled(self, *, retention: str) -> str:
         """Explain the committed restoration policy."""
@@ -30,12 +32,17 @@ class RoleMessages:
 
     def days(self, *, days: int) -> str:
         """Display a finite retention period."""
-        return self.catalog.pgettext("days", "{days:d} days").format(days=days)
+        return self.catalog.npgettext(
+            "days", "{days:d} day", "{days:d} days", days
+        ).format(days=days)
 
     def snapshot(self, *, name: str, count: int, timestamp: str) -> str:
         """Describe one retained role snapshot."""
-        return self.catalog.pgettext(
-            "snapshot", "- **{name}** — {count:d} roles, left {timestamp}"
+        return self.catalog.npgettext(
+            "snapshot",
+            "- **{name}** — {count:d} role, left {timestamp}",
+            "- **{name}** — {count:d} roles, left {timestamp}",
+            count,
         ).format(name=name, count=count, timestamp=timestamp)
 
     def recent(self, *, shown: int, total: int) -> str:
@@ -70,11 +77,15 @@ class RoleMessages:
 
     def skipped(self, *, count: int) -> str:
         """Explain partial restoration and retained retry work."""
-        return self.catalog.pgettext(
+        return self.catalog.npgettext(
             "skipped",
+            "\n\nSkipped {count:d} role (deleted, inaccessible or the request "
+            "failed). Existing roles not yet granted have been kept for another "
+            "attempt.",
             "\n\nSkipped {count:d} roles (deleted, inaccessible or the request "
             "failed). Existing roles not yet granted have been kept for another "
             "attempt.",
+            count,
         ).format(count=count)
 
     def restoration(self, *, name: str) -> str:

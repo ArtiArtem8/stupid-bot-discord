@@ -377,7 +377,6 @@ WOLFRAM_IGNORED_TITLES = frozenset(
     }
 )
 
-
 WOLFRAM_IGNORED_PATTERNS = frozenset(
     {
         "Additional",

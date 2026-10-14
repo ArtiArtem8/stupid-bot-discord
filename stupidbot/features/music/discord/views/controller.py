@@ -19,7 +19,21 @@ from discord.ext import commands
 from stupidbot.common.callables import callable_name
 from stupidbot.discord_ui.access import check_component_access
 from stupidbot.discord_ui.embeds import SafeEmbed
-from stupidbot.discord_ui.emojis import RESTART_EMOJI
+from stupidbot.discord_ui.emojis import (
+    BAR_LEFT_EMPTY_EMOJI,
+    BAR_LEFT_FULL_EMOJI,
+    BAR_MID_EMPTY_EMOJI,
+    BAR_MID_FULL_EMOJI,
+    BAR_RIGHT_EMPTY_EMOJI,
+    BAR_RIGHT_FULL_EMOJI,
+    FORWARD_10_EMOJI,
+    MUSICAL_NOTE_EMOJI,
+    PAUSE_EMOJI,
+    PLAY_EMOJI,
+    REPLAY_10_EMOJI,
+    RESTART_EMOJI,
+    SKIP_EMOJI,
+)
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.interaction_flow import ack_component
 from stupidbot.discord_ui.theme import Color
@@ -41,22 +55,6 @@ if TYPE_CHECKING:
     from stupidbot.features.music.playback.player import MusicPlayer
 
 logger = logging.getLogger(__name__)
-
-MUSIC_PLAYER_EMOJIS = {
-    "bar_left_full": "<:whitelineleftrounded:1447917292766626005>",
-    "bar_mid_full": "<:whiteline:1447917290782724126>",
-    "bar_right_full": "<:whitelinerightrounded:1447917295304446103>",
-    "bar_left_empty": "<:graylineleftrounded:1447917287263830157>",
-    "bar_mid_empty": "<:grayline:1447917284726411445>",
-    "bar_right_empty": "<:graylinerightrounded:1447917289067515956>",
-    "restart": RESTART_EMOJI,
-    "back_10": "<:replay10:1447914002482200720>",
-    "play": "<:play:1447913953345929311>",
-    "pause": "<:pause:1447913941672919081>",
-    "fwd_10": "<:forward10:1447913982408003595>",
-    "skip": "<:skip:1447913916842901577>",
-    "musical_note": "<:musicalnote:1447968776128565358>",
-}
 
 # Keep the seek interval aligned with the value shown by the button icons.
 _SEEK_STEP_MS = 10_000
@@ -450,7 +448,7 @@ class TrackControllerView(ui.View):
         description = f"`{cur_min}:{cur_sec:02d}` {bar} `-{rem_min}:{rem_sec:02d}`"
 
         embed = SafeEmbed(
-            title=f"{MUSIC_PLAYER_EMOJIS['musical_note']} {track.title}",
+            title=f"{MUSICAL_NOTE_EMOJI} {track.title}",
             description=description,
             color=Color.INFO,
         )
@@ -486,20 +484,14 @@ class TrackControllerView(ui.View):
 
         empty_count = max(0, width - filled_count)
 
-        start_cap = (
-            MUSIC_PLAYER_EMOJIS["bar_left_full"]
-            if filled_count > 0
-            else MUSIC_PLAYER_EMOJIS["bar_left_empty"]
-        )
+        start_cap = BAR_LEFT_FULL_EMOJI if filled_count > 0 else BAR_LEFT_EMPTY_EMOJI
         end_cap = (
-            MUSIC_PLAYER_EMOJIS["bar_right_full"]
+            BAR_RIGHT_FULL_EMOJI
             if width > 0 and filled_count == width
-            else MUSIC_PLAYER_EMOJIS["bar_right_empty"]
+            else BAR_RIGHT_EMPTY_EMOJI
         )
 
-        middle = (MUSIC_PLAYER_EMOJIS["bar_mid_full"] * filled_count) + (
-            MUSIC_PLAYER_EMOJIS["bar_mid_empty"] * empty_count
-        )
+        middle = BAR_MID_FULL_EMOJI * filled_count + BAR_MID_EMPTY_EMOJI * empty_count
         return f"{start_cap}{middle}{end_cap}"
 
     def start_updater(self) -> None:
@@ -606,11 +598,7 @@ class TrackControllerView(ui.View):
     def update_buttons_state(self) -> None:
         for child in self.children:
             if isinstance(child, ui.Button) and child.custom_id == "btn_pause_resume":
-                child.emoji = (
-                    MUSIC_PLAYER_EMOJIS["play"]
-                    if self.player.paused
-                    else MUSIC_PLAYER_EMOJIS["pause"]
-                )
+                child.emoji = PLAY_EMOJI if self.player.paused else PAUSE_EMOJI
                 break
 
     async def _safe_update(self, force: bool = False) -> None:
@@ -670,7 +658,7 @@ class TrackControllerView(ui.View):
         await self._safe_update(force=True)
 
     @ui.button(
-        emoji=MUSIC_PLAYER_EMOJIS["restart"],
+        emoji=RESTART_EMOJI,
         style=discord.ButtonStyle.secondary,
         custom_id="btn_restart",
     )
@@ -682,7 +670,7 @@ class TrackControllerView(ui.View):
         await self._seek_and_refresh(expected, 0)
 
     @ui.button(
-        emoji=MUSIC_PLAYER_EMOJIS["back_10"],
+        emoji=REPLAY_10_EMOJI,
         style=discord.ButtonStyle.secondary,
         custom_id="btn_back10",
     )
@@ -696,7 +684,7 @@ class TrackControllerView(ui.View):
         )
 
     @ui.button(
-        emoji=MUSIC_PLAYER_EMOJIS["pause"],
+        emoji=PAUSE_EMOJI,
         style=discord.ButtonStyle.secondary,
         custom_id="btn_pause_resume",
     )
@@ -714,7 +702,7 @@ class TrackControllerView(ui.View):
         await self._safe_update(force=True)
 
     @ui.button(
-        emoji=MUSIC_PLAYER_EMOJIS["fwd_10"],
+        emoji=FORWARD_10_EMOJI,
         style=discord.ButtonStyle.secondary,
         custom_id="btn_fwd10",
     )
@@ -730,7 +718,7 @@ class TrackControllerView(ui.View):
         await self._seek_and_refresh(expected, position)
 
     @ui.button(
-        emoji=MUSIC_PLAYER_EMOJIS["skip"],
+        emoji=SKIP_EMOJI,
         style=discord.ButtonStyle.secondary,
         custom_id="btn_skip",
     )
