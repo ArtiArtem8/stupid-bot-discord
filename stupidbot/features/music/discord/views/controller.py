@@ -56,22 +56,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-MUSIC_PLAYER_EMOJIS = {
-    "bar_left_full": BAR_LEFT_FULL_EMOJI,
-    "bar_mid_full": BAR_MID_FULL_EMOJI,
-    "bar_right_full": BAR_RIGHT_FULL_EMOJI,
-    "bar_left_empty": BAR_LEFT_EMPTY_EMOJI,
-    "bar_mid_empty": BAR_MID_EMPTY_EMOJI,
-    "bar_right_empty": BAR_RIGHT_EMPTY_EMOJI,
-    "restart": RESTART_EMOJI,
-    "back_10": REPLAY_10_EMOJI,
-    "play": PLAY_EMOJI,
-    "pause": PAUSE_EMOJI,
-    "fwd_10": FORWARD_10_EMOJI,
-    "skip": SKIP_EMOJI,
-    "musical_note": MUSICAL_NOTE_EMOJI,
-}
-
 # Keep the seek interval aligned with the value shown by the button icons.
 _SEEK_STEP_MS = 10_000
 _MESSAGE_DELETE_RETRY_DELAYS: tuple[float, ...] = (2.0, 10.0, 30.0, 60.0, 120.0)
@@ -464,7 +448,7 @@ class TrackControllerView(ui.View):
         description = f"`{cur_min}:{cur_sec:02d}` {bar} `-{rem_min}:{rem_sec:02d}`"
 
         embed = SafeEmbed(
-            title=f"{MUSIC_PLAYER_EMOJIS['musical_note']} {track.title}",
+            title=f"{MUSICAL_NOTE_EMOJI} {track.title}",
             description=description,
             color=Color.INFO,
         )
@@ -500,20 +484,14 @@ class TrackControllerView(ui.View):
 
         empty_count = max(0, width - filled_count)
 
-        start_cap = (
-            MUSIC_PLAYER_EMOJIS["bar_left_full"]
-            if filled_count > 0
-            else MUSIC_PLAYER_EMOJIS["bar_left_empty"]
-        )
+        start_cap = BAR_LEFT_FULL_EMOJI if filled_count > 0 else BAR_LEFT_EMPTY_EMOJI
         end_cap = (
-            MUSIC_PLAYER_EMOJIS["bar_right_full"]
+            BAR_RIGHT_FULL_EMOJI
             if width > 0 and filled_count == width
-            else MUSIC_PLAYER_EMOJIS["bar_right_empty"]
+            else BAR_RIGHT_EMPTY_EMOJI
         )
 
-        middle = (MUSIC_PLAYER_EMOJIS["bar_mid_full"] * filled_count) + (
-            MUSIC_PLAYER_EMOJIS["bar_mid_empty"] * empty_count
-        )
+        middle = BAR_MID_FULL_EMOJI * filled_count + BAR_MID_EMPTY_EMOJI * empty_count
         return f"{start_cap}{middle}{end_cap}"
 
     def start_updater(self) -> None:
@@ -620,11 +598,7 @@ class TrackControllerView(ui.View):
     def update_buttons_state(self) -> None:
         for child in self.children:
             if isinstance(child, ui.Button) and child.custom_id == "btn_pause_resume":
-                child.emoji = (
-                    MUSIC_PLAYER_EMOJIS["play"]
-                    if self.player.paused
-                    else MUSIC_PLAYER_EMOJIS["pause"]
-                )
+                child.emoji = PLAY_EMOJI if self.player.paused else PAUSE_EMOJI
                 break
 
     async def _safe_update(self, force: bool = False) -> None:
@@ -684,7 +658,7 @@ class TrackControllerView(ui.View):
         await self._safe_update(force=True)
 
     @ui.button(
-        emoji=MUSIC_PLAYER_EMOJIS["restart"],
+        emoji=RESTART_EMOJI,
         style=discord.ButtonStyle.secondary,
         custom_id="btn_restart",
     )
@@ -696,7 +670,7 @@ class TrackControllerView(ui.View):
         await self._seek_and_refresh(expected, 0)
 
     @ui.button(
-        emoji=MUSIC_PLAYER_EMOJIS["back_10"],
+        emoji=REPLAY_10_EMOJI,
         style=discord.ButtonStyle.secondary,
         custom_id="btn_back10",
     )
@@ -710,7 +684,7 @@ class TrackControllerView(ui.View):
         )
 
     @ui.button(
-        emoji=MUSIC_PLAYER_EMOJIS["pause"],
+        emoji=PAUSE_EMOJI,
         style=discord.ButtonStyle.secondary,
         custom_id="btn_pause_resume",
     )
@@ -728,7 +702,7 @@ class TrackControllerView(ui.View):
         await self._safe_update(force=True)
 
     @ui.button(
-        emoji=MUSIC_PLAYER_EMOJIS["fwd_10"],
+        emoji=FORWARD_10_EMOJI,
         style=discord.ButtonStyle.secondary,
         custom_id="btn_fwd10",
     )
@@ -744,7 +718,7 @@ class TrackControllerView(ui.View):
         await self._seek_and_refresh(expected, position)
 
     @ui.button(
-        emoji=MUSIC_PLAYER_EMOJIS["skip"],
+        emoji=SKIP_EMOJI,
         style=discord.ButtonStyle.secondary,
         custom_id="btn_skip",
     )
