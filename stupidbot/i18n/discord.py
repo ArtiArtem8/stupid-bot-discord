@@ -37,10 +37,11 @@ async def interaction_context(
     if isinstance(cached, PresentationContext):
         return cached
     locale = interaction.locale if personal else interaction.guild_locale
+    locale_value = locale.value if isinstance(locale, discord.Locale) else None
     fallback = resolve_context(
         language=None,
         timezone=None,
-        locale=locale.value if isinstance(locale, discord.Locale) else None,
+        locale=locale_value,
         fallback_timezone=fallback_timezone(),
     )
     interaction.extras[key] = fallback
@@ -49,8 +50,12 @@ async def interaction_context(
     repository: object = getattr(interaction.client, "preferences_repository", None)
     if not isinstance(repository, PreferencesRepository):
         return fallback
-    scope = PreferenceScope.USER if personal else PreferenceScope.GUILD
-    subject_id = interaction.user.id if personal else interaction.guild_id
+    if personal:
+        scope = PreferenceScope.USER
+        subject_id = interaction.user.id
+    else:
+        scope = PreferenceScope.GUILD
+        subject_id = interaction.guild_id
     if subject_id is None:
         raise ValueError("Guild preferences require a guild")
     interaction.extras["stupidbot.preferences.failed"] = True
@@ -58,7 +63,7 @@ async def interaction_context(
     resolved = resolve_context(
         language=preferences.language,
         timezone=preferences.timezone,
-        locale=locale.value if isinstance(locale, discord.Locale) else None,
+        locale=locale_value,
         fallback_timezone=fallback.timezone,
     )
     interaction.extras["stupidbot.preferences.failed"] = False

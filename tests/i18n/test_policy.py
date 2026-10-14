@@ -52,6 +52,28 @@ class PolicyTests(TestCase):
 
 
 class InteractionPolicyTests(IsolatedAsyncioTestCase):
+    async def test_dm_uses_and_caches_personal_preferences_for_either_visibility(
+        self,
+    ) -> None:
+        _, database = await temporary_database(self)
+        repository = PreferencesRepository(database)
+        await repository.save(
+            PreferenceScope.USER, 10, Preferences(Language.KO, "Asia/Seoul")
+        )
+        request = interaction()
+        request.guild_id = None
+        request.client.preferences_repository = repository
+
+        with patch.object(repository, "get", wraps=repository.get) as read:
+            public = await interaction_context(request, private=False)
+            private = await interaction_context(request, private=True)
+
+        self.assertEqual(public, private)
+        self.assertEqual(
+            (public.language, public.timezone.key), (Language.KO, "Asia/Seoul")
+        )
+        read.assert_awaited_once_with(PreferenceScope.USER, 10)
+
     async def test_korean_locale_and_overrides_respect_the_response_audience(
         self,
     ) -> None:
