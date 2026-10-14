@@ -11,12 +11,13 @@ from discord import Interaction
 
 from stupidbot.common.text import TextPaginator
 from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.emojis import RESTART_EMOJI
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.interaction_flow import ack_component
 from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
 from stupidbot.discord_ui.pagination import (
     DANGER,
-    PRIMARY,
+    SECONDARY,
     BasePaginator,
     CallbackButton,
     PaginationData,
@@ -279,7 +280,7 @@ class QueuePaginator(BasePaginator):
         self.refresh_callback = refresh_callback
 
         self.refresh_btn = CallbackButton[Self](
-            self.refresh, label="⭮", style=PRIMARY, row=1
+            self.refresh, emoji=RESTART_EMOJI, style=SECONDARY, row=1
         )
         self.add_item(self.refresh_btn)
 
