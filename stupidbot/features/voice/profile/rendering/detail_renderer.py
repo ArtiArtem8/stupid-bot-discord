@@ -200,18 +200,20 @@ class DetailCardRenderer:
         top = min(
             detail.bots.by_bot, key=lambda item: (-item[1], item[0]), default=None
         )
+        top_name, top_time = "-", ""
+        if top is not None:
+            top_name = safe_label(
+                presentation.names.get(
+                    top[0],
+                    messages.catalog.pgettext("unknown_user", "Unknown user"),
+                )
+            )
+            top_time = messages.duration(top[1], compact=True)
         _labels(
             nodes,
             {
-                "top-bot-name": safe_label(
-                    presentation.names.get(
-                        top[0],
-                        messages.catalog.pgettext("unknown_user", "Unknown user"),
-                    )
-                )
-                if top
-                else "-",
-                "top-bot-time": messages.duration(top[1], compact=True) if top else "",
+                "top-bot-name": top_name,
+                "top-bot-time": top_time,
             },
         )
         recent_voice = messages.duration(
@@ -294,26 +296,26 @@ def _hour_label(hours: tuple[int, ...], messages: VoiceMessages) -> str:
 def _weekday_labels(days: tuple[int, ...], messages: VoiceMessages) -> tuple[str, ...]:
     if not days:
         return ("-",)
-    day_name = tuple(messages.catalog.pgettext("weekday", value) for value in WEEKDAYS)
-    day_abbr = tuple(
-        messages.catalog.pgettext("weekday_short", value) for value in WEEKDAY_ABBR
-    )
-    if len(days) == 1:
-        return (day_name[days[0]],)
     if len(days) == 7:
         return (messages.catalog.pgettext("all_days", "All days"),)
-    labels = [", ".join(day_name[day] for day in days)]
+    names = tuple(messages.catalog.pgettext("weekday", WEEKDAYS[day]) for day in days)
+    if len(days) == 1:
+        return names
+    abbreviations = tuple(
+        messages.catalog.pgettext("weekday_short", WEEKDAY_ABBR[day]) for day in days
+    )
+    labels = [", ".join(names)]
     if len(days) >= 3 and days[-1] - days[0] + 1 == len(days):
         labels.extend(
             (
-                f"{day_name[days[0]]}-{day_name[days[-1]]}",
-                f"{day_abbr[days[0]]}-{day_abbr[days[-1]]}",
+                f"{names[0]}-{names[-1]}",
+                f"{abbreviations[0]}-{abbreviations[-1]}",
             )
         )
     else:
-        labels.append(", ".join(day_abbr[day] for day in days))
+        labels.append(", ".join(abbreviations))
         if len(days) >= 4:
-            labels.append(" ".join(day_abbr[day][:2] for day in days))
+            labels.append(" ".join(abbreviation[:2] for abbreviation in abbreviations))
     return tuple(labels)
 
 

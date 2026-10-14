@@ -267,31 +267,31 @@ def fit_texts(
         boxes = raster.query(document_bytes(root))
         changed = False
         for node in targets:
-            identifier = node.attrib["id"]
-            box = boxes.get(identifier)
-            maximum = float(node.attrib["data-width"])
-            if maximum <= 0 or not math.isfinite(maximum):
-                raise ValueError(f"Invalid text budget: {identifier}")
-            if box is None or box.width <= maximum + 0.25:
-                continue
-            size = float(property_value(node, "font-size", "24").removesuffix("px"))
-            minimum = float(node.get("data-min-size", str(size)))
-            proposed = max(minimum, math.floor(size * maximum / box.width * 0.98))
-            if proposed < size:
-                style(node, "font-size", str(proposed))
-            else:
-                clusters = regex.findall(r"\X", node.text or "")
-                keep = max(
-                    0,
-                    min(
-                        len(clusters) - 2, int(len(clusters) * maximum / box.width) - 2
-                    ),
-                )
-                replace_text(node, f"{''.join(clusters[:keep]).rstrip('…')}…")
-            changed = True
+            if _fit_text(node, boxes.get(node.attrib["id"])):
+                changed = True
         if not changed:
             return boxes
     raise ValueError("Text could not fit the declared SVG budgets after six passes")
+
+
+def _fit_text(node: Element, box: Box | None) -> bool:
+    maximum = float(node.attrib["data-width"])
+    if maximum <= 0 or not math.isfinite(maximum):
+        raise ValueError(f"Invalid text budget: {node.attrib['id']}")
+    if box is None or box.width <= maximum + 0.25:
+        return False
+    size = float(property_value(node, "font-size", "24").removesuffix("px"))
+    minimum = float(node.get("data-min-size", str(size)))
+    proposed = max(minimum, math.floor(size * maximum / box.width * 0.98))
+    if proposed < size:
+        style(node, "font-size", str(proposed))
+    else:
+        clusters = regex.findall(r"\X", node.text or "")
+        keep = max(
+            0, min(len(clusters) - 2, int(len(clusters) * maximum / box.width) - 2)
+        )
+        replace_text(node, f"{''.join(clusters[:keep]).rstrip('…')}…")
+    return True
 
 
 def bind_design(

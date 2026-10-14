@@ -45,13 +45,17 @@ def presence(
     )
     group = sum(room.seconds for room in rooms if len(room.humans) >= 2)
     durations = _visit_durations(rooms, timeline)
+    average_duration = median_duration = 0.0
+    if durations:
+        average_duration = mean(durations)
+        median_duration = median(durations)
     return PresenceStat(
         total,
         solo,
         group,
         len(durations),
-        mean(durations) if durations else 0.0,
-        median(durations) if durations else 0.0,
+        average_duration,
+        median_duration,
     )
 
 
