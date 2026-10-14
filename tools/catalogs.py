@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from collections.abc import Sequence
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
@@ -43,6 +44,12 @@ def validate_template(source: str, translated: str) -> None:
         raise ValueError(f"Translation placeholder mismatch: {source!r}")
 
 
+def _message_forms(value: str | Sequence[str] | None) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    return tuple(value or ())
+
+
 def validate_message(message: Message, catalog: Catalog) -> None:
     """Validate all forms against the same source template contract."""
     if not message.id:
@@ -51,9 +58,7 @@ def validate_message(message: Message, catalog: Catalog) -> None:
         raise ValueError(f"Fuzzy message: {message.id}")
     validate_source(message, catalog)
     original = message.id if isinstance(message.id, str) else message.id[0]
-    translations = (
-        (message.string,) if isinstance(message.string, str) else message.string
-    )
+    translations = _message_forms(message.string)
     if not translations:
         raise ValueError(f"Missing translation: {message.id}")
     if not isinstance(message.id, str) and len(translations) != catalog.num_plurals:
@@ -64,7 +69,7 @@ def validate_message(message: Message, catalog: Catalog) -> None:
 
 def validate_source(message: Message, catalog: Catalog) -> None:
     """Keep English source text canonical and plural placeholder contracts equal."""
-    sources = (message.id,) if isinstance(message.id, str) else message.id
+    sources = _message_forms(message.id)
     for source in sources:
         if any("CYRILLIC" in name(character, "") for character in source):
             raise ValueError(f"Use English source text: {source!r}")
@@ -73,10 +78,8 @@ def validate_source(message: Message, catalog: Catalog) -> None:
         raise ValueError(f"Use an English context: {message.context!r}")
     locale = catalog.locale
     if isinstance(locale, Locale) and locale.language == "en":
-        translations = (
-            (message.string,) if isinstance(message.string, str) else message.string
-        )
-        if tuple(sources) != tuple(translations or ()):
+        translations = _message_forms(message.string)
+        if sources != translations:
             raise ValueError(f"English translation differs from source: {message.id!r}")
 
 
@@ -119,23 +122,7 @@ def compile_owner(directory: Path, *, check: bool) -> None:
     _publish(directory / "index.json", index, check=check)
     for language in Language:
         source = directory / f"{language}.po"
-        with source.open("rb") as stream:
-            catalog = read_po(stream, locale=language, abort_invalid=True)
-        declarations = sum(
-            line.lstrip().startswith("msgid ")
-            for line in source.read_text(encoding="utf-8").splitlines()
-        )
-        if declarations != len(catalog) + 1:
-            raise ValueError(f"Duplicate message or missing catalog header: {source}")
-        actual = {(message.context, message.id) for message in catalog if message.id}
-        if actual != expected:
-            raise ValueError(
-                f"Catalog extraction mismatch: {source}: {actual ^ expected}"
-            )
-        if list(catalog.check()):
-            raise ValueError(f"Invalid catalog: {source}")
-        for message in catalog:
-            validate_message(message, catalog)
+        catalog = _read_catalog(source, language, expected)
         output = BytesIO()
         write_mo(output, catalog)
         compiled = output.getvalue()
@@ -147,6 +134,29 @@ def compile_owner(directory: Path, *, check: bool) -> None:
             (source.with_suffix(".sha256"), digest),
         ):
             _publish(target, content, check=check)
+
+
+def _read_catalog(
+    source: Path,
+    language: Language,
+    expected: set[tuple[str | None, str | tuple[str, ...]]],
+) -> Catalog:
+    with source.open("rb") as stream:
+        catalog = read_po(stream, locale=language, abort_invalid=True)
+    declarations = sum(
+        line.lstrip().startswith("msgid ")
+        for line in source.read_text(encoding="utf-8").splitlines()
+    )
+    if declarations != len(catalog) + 1:
+        raise ValueError(f"Duplicate message or missing catalog header: {source}")
+    actual = {(message.context, message.id) for message in catalog if message.id}
+    if actual != expected:
+        raise ValueError(f"Catalog extraction mismatch: {source}: {actual ^ expected}")
+    if list(catalog.check()):
+        raise ValueError(f"Invalid catalog: {source}")
+    for message in catalog:
+        validate_message(message, catalog)
+    return catalog
 
 
 def _publish(target: Path, content: bytes, *, check: bool) -> None:
