@@ -211,15 +211,15 @@ class BasePaginator(ManagedView):
         await self._update_view(interaction, total_pages=total_pages)
 
     async def close(self, interaction: Interaction) -> None:
-        """Close the paginator."""
+        """Stop listening before asking Discord to remove the controls."""
         for item in self.children:
             if isinstance(item, Button):
                 item.disabled = True
+        self.stop()
         try:
             await interaction.response.edit_message(view=None)
         except discord.NotFound:
             pass
-        self.stop()
 
     @override
     async def send(
