@@ -12,7 +12,13 @@ from typing import Self, override
 import discord
 
 from stupidbot.discord_ui.access import check_component_access
-from stupidbot.discord_ui.emojis import RESTART_EMOJI, TRASH_EMOJI
+from stupidbot.discord_ui.emojis import (
+    RESTART_EMOJI,
+    SOCIAL_EMOJI,
+    STATISTIC_EMOJI,
+    TRASH_EMOJI,
+    XP_EMOJI,
+)
 from stupidbot.discord_ui.errors import handle_app_command_error
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.features.voice.discord.attachments import (
@@ -24,10 +30,6 @@ from stupidbot.features.voice.profile.media import RenderBusyError
 from stupidbot.i18n.catalog import catalog
 from stupidbot.i18n.discord import interaction_context
 from stupidbot.i18n.policy import Language, PresentationContext
-
-STATISTIC_EMOJI = "<:statistic:1555684012809388173>"
-SOCIAL_EMOJI = "<:social:1555684011177672725>"
-XP_EMOJI = "<:xp:1555684015057543229>"
 
 logger = logging.getLogger(__name__)
 

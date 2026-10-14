@@ -19,7 +19,21 @@ from discord.ext import commands
 from stupidbot.common.callables import callable_name
 from stupidbot.discord_ui.access import check_component_access
 from stupidbot.discord_ui.embeds import SafeEmbed
-from stupidbot.discord_ui.emojis import RESTART_EMOJI
+from stupidbot.discord_ui.emojis import (
+    BAR_LEFT_EMPTY_EMOJI,
+    BAR_LEFT_FULL_EMOJI,
+    BAR_MID_EMPTY_EMOJI,
+    BAR_MID_FULL_EMOJI,
+    BAR_RIGHT_EMPTY_EMOJI,
+    BAR_RIGHT_FULL_EMOJI,
+    FORWARD_10_EMOJI,
+    MUSICAL_NOTE_EMOJI,
+    PAUSE_EMOJI,
+    PLAY_EMOJI,
+    REPLAY_10_EMOJI,
+    RESTART_EMOJI,
+    SKIP_EMOJI,
+)
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.interaction_flow import ack_component
 from stupidbot.discord_ui.theme import Color
@@ -43,19 +57,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MUSIC_PLAYER_EMOJIS = {
-    "bar_left_full": "<:whitelineleftrounded:1447917292766626005>",
-    "bar_mid_full": "<:whiteline:1447917290782724126>",
-    "bar_right_full": "<:whitelinerightrounded:1447917295304446103>",
-    "bar_left_empty": "<:graylineleftrounded:1447917287263830157>",
-    "bar_mid_empty": "<:grayline:1447917284726411445>",
-    "bar_right_empty": "<:graylinerightrounded:1447917289067515956>",
+    "bar_left_full": BAR_LEFT_FULL_EMOJI,
+    "bar_mid_full": BAR_MID_FULL_EMOJI,
+    "bar_right_full": BAR_RIGHT_FULL_EMOJI,
+    "bar_left_empty": BAR_LEFT_EMPTY_EMOJI,
+    "bar_mid_empty": BAR_MID_EMPTY_EMOJI,
+    "bar_right_empty": BAR_RIGHT_EMPTY_EMOJI,
     "restart": RESTART_EMOJI,
-    "back_10": "<:replay10:1447914002482200720>",
-    "play": "<:play:1447913953345929311>",
-    "pause": "<:pause:1447913941672919081>",
-    "fwd_10": "<:forward10:1447913982408003595>",
-    "skip": "<:skip:1447913916842901577>",
-    "musical_note": "<:musicalnote:1447968776128565358>",
+    "back_10": REPLAY_10_EMOJI,
+    "play": PLAY_EMOJI,
+    "pause": PAUSE_EMOJI,
+    "fwd_10": FORWARD_10_EMOJI,
+    "skip": SKIP_EMOJI,
+    "musical_note": MUSICAL_NOTE_EMOJI,
 }
 
 # Keep the seek interval aligned with the value shown by the button icons.
