@@ -68,5 +68,5 @@ msgid "{name} (page {page:d})"
 msgstr "{name} (page {page:d})"
 
 msgctxt "blocked"
-msgid "⛔ You cannot use commands."
-msgstr "⛔ You cannot use commands."
+msgid "You cannot use commands."
+msgstr "You cannot use commands."
