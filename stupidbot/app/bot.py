@@ -153,6 +153,9 @@ class StupidBot(commands.Bot):
             queue_size=config.VOICE_PROBE_EVENT_QUEUE_MAX,
             batch_size=config.VOICE_PROBE_WRITER_BATCH_MAX,
         )
+        # Journal counters restart with their owner; database totals continue.
+        db_busy, db_timeouts, _, _ = self._health_failures
+        self._health_failures = (db_busy, db_timeouts, 0, 0)
         return self._voice_journal
 
     async def restore_state(self) -> None:

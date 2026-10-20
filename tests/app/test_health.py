@@ -192,3 +192,43 @@ class TestHealthSnapshot(unittest.IsolatedAsyncioTestCase):
             snapshot = bot.health_snapshot()
         self.assertFalse(snapshot.voice_enabled)
         self.assertIsNone(snapshot.voice_counts)
+
+    async def test_journal_replacement_resets_only_voice_failure_baselines(
+        self,
+    ) -> None:
+        for failed, rejected in ((1, 0), (5, 0), (0, 1), (0, 5), (0, 0)):
+            with self.subTest(failed=failed, rejected=rejected):
+                path, _ = await temporary_database(self)
+                bot = StupidBot(
+                    database_path=path, cog_loader=MagicMock(spec=CogLoader)
+                )
+                self.addAsyncCleanup(bot.close)
+                journal = bot.create_voice_journal()
+                before = replace(
+                    healthy_snapshot(),
+                    database=DatabaseHealth(0, False, 3, 4),
+                    voice_counts=JournalCounts(12, 7, 2, 5, 5),
+                )
+                after = replace(
+                    before,
+                    voice_counts=JournalCounts(
+                        2 + failed + rejected, 2 + failed, 2, failed, rejected
+                    ),
+                )
+                with (
+                    patch.object(
+                        bot, "health_snapshot", side_effect=(before, after, after)
+                    ),
+                    self.assertLogs("stupidbot.app.bot", level="INFO") as captured,
+                ):
+                    await bot.health_task.coro(bot)
+                    await journal.close()
+                    self.assertIsNot(bot.create_voice_journal(), journal)
+                    await bot.health_task.coro(bot)
+                    await bot.health_task.coro(bot)
+
+                expected = logging.WARNING if failed or rejected else logging.INFO
+                self.assertEqual(
+                    [record.levelno for record in captured.records],
+                    [logging.WARNING, expected, logging.INFO],
+                )
