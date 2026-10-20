@@ -111,28 +111,6 @@ The remaining settings are described beside their values in
 [.env.example](.env.example). Existing process environment variables take
 precedence over `.env`; restart the bot after changing configuration.
 
-### Emoji controls
-
-The example uses Unicode controls so a new application can run without custom
-emoji. To use the project's custom artwork:
-
-1. Upload the PNG files in
-   [the emoji assets directory](stupidbot/discord_ui/assets/emojis/) to your
-   application's emoji page in the Developer Portal.
-2. Copy each uploaded emoji's ID into the matching `DISCORD_EMOJI_..._ID` setting.
-   For example, the uploaded `restart` icon goes in `DISCORD_EMOJI_RESTART_ID`.
-   Enter only the numeric ID, without `<:name:...>`.
-3. Restart and check a paginator, music controller or profile view.
-
-Each empty setting selects its Unicode fallback. An omitted setting preserves
-the original installation's ID, so an existing `.env` keeps its current artwork.
-Use the empty entries from the example for a new application; the original
-custom IDs are not your application's emoji.
-
-[Application-owned emoji](https://docs.discord.com/developers/resources/emoji#application-owned-emoji)
-can be used by their owning app across its servers. The bot does not upload or
-discover emoji at startup.
-
 ## Prepare the database and start
 
 For a new installation:
@@ -171,7 +149,22 @@ The included `.\runstupidbot.bat` and `./runstupidbot.sh` are interactive
 launchers with a restart prompt. Use the Python entry point directly for a
 background service.
 
-## Add the optional services
+## Optional setup
+
+### Custom emoji
+
+The example sets `CUSTOM_EMOJIS_ENABLED=false`, so buttons work with standard
+Unicode emoji. Custom artwork is optional:
+
+1. Upload the PNG files from
+   [the emoji assets directory](stupidbot/discord_ui/assets/emojis/) to your
+   application's emoji page in the Developer Portal.
+2. Replace the numeric IDs beside the matching names in
+   [emojis.py](stupidbot/discord_ui/emojis.py) with your uploaded IDs.
+3. Set `CUSTOM_EMOJIS_ENABLED=true` in `.env` and restart.
+
+The bundled IDs belong to the original bot. Existing installations that omit
+the switch keep that artwork. The bot does not upload emoji at startup.
 
 ### Music
 
@@ -281,7 +274,7 @@ then start it again.
 | Discord rejects privileged intents | Enable the intents listed above for this application. |
 | Missing database or unsupported schema | Use the explicit preparation or upgrade procedure for the file selected by `--database`. Startup does not migrate it. |
 | Bot is online but a command is absent | Look for `Application commands synced`; check the app was installed with application command scope and that the member can use commands in that channel. |
-| Buttons fail or custom icons are missing | Use empty emoji ID entries for Unicode, or IDs belonging to the configured app. Restart after editing `.env`. |
+| Buttons fail or custom icons are missing | Set `CUSTOM_EMOJIS_ENABLED=false` for Unicode, or follow [custom emoji setup](#custom-emoji) for your application. Restart after changes. |
 | Music unavailable | Compare both Lavalink configurations; check the node log, source plugin and voice-channel permissions. |
 | Profile unavailable | Check Inkscape and bundled fonts under the actual bot account; see the renderer setup page. |
 | `/health` is refused | Use the application owner account or the explicit `DISCORD_BOT_OWNER_ID`. |

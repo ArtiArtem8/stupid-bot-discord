@@ -137,9 +137,8 @@ logs the initialization failure. After fixing setup, restart or reload the Cog.
 Buttons use resources from `stupidbot/discord_ui/emojis.py`: `statistic` for
 Activity, `social` for People, `xp` for XP, and `restart` and `trash` for Refresh
 and Delete. `stupidbot/features/voice/discord/view.py` owns these action mappings.
-See [emoji setup](../../INSTALLATION.md#emoji-controls) for environment overrides
-and Unicode fallbacks. Restart after changing them; startup does not fetch or
-discover emojis by name.
+See [emoji setup](../../INSTALLATION.md#custom-emoji) to choose Unicode controls
+or configure your application's artwork.
 
 ## Images and caches
 

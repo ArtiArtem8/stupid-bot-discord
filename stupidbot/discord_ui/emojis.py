@@ -1,11 +1,10 @@
 """Custom Discord emoji resources; views own their action-to-icon mappings."""
 
-from stupidbot.settings import discord_emoji_id
+from stupidbot import settings as config
 
 
-def _emoji(name: str, default_id: int, fallback: str) -> str:
-    emoji_id = discord_emoji_id(name, default_id)
-    return f"<:{name}:{emoji_id}>" if emoji_id is not None else fallback
+def _emoji(name: str, emoji_id: int, fallback: str) -> str:
+    return f"<:{name}:{emoji_id}>" if config.CUSTOM_EMOJIS_ENABLED else fallback
 
 
 # Common actions.
