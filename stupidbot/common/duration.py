@@ -431,7 +431,7 @@ def _rule_week_singularity(st: DurationState) -> None:
     week = next((p.value for p in st.parts if p.unit is TimeUnit.WEEK), 0)
     day = next((p.value for p in st.parts if p.unit is TimeUnit.DAY), 0)
     if week == 1 and day > 0:
-        days_total = st.seconds // st.cfg.day_seconds
+        days_total = week * _DAYS_IN_WEEK + day
         rest = [p for p in st.parts if p.unit not in (TimeUnit.WEEK, TimeUnit.DAY)]
         st.parts = [UnitValue(TimeUnit.DAY, int(days_total)), *rest]
         st.is_approximate = True
