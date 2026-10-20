@@ -104,7 +104,8 @@ choose the account allowed to use owner commands, including `/health`; otherwise
 the bot uses Discord's application ownership.
 
 Leave `MESSAGE_LOG_ENABLED=false` for ordinary use. Enabling it records incoming
-message content, edits, and `/ask` questions and answers in the bot logs.
+message content, edits, `/ask` questions and answers, and Wolfram queries in the
+bot logs. Wolfram queries include message text submitted through its context menu.
 Command activity, user IDs, warnings and errors are logged either way. This
 setting does not change the question-and-answer history saved in SQLite.
 

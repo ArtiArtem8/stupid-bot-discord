@@ -221,7 +221,12 @@ class WolframCog(BaseCog):
             )
             return
 
-        logger.info("Wolfram %s: %s | User: %s", mode, query, interaction.user)
+        if config.MESSAGE_LOG_ENABLED:
+            logger.info(
+                "Wolfram %s: user_id=%s query=%r", mode, interaction.user.id, query
+            )
+        else:
+            logger.info("Wolfram %s: user_id=%s", mode, interaction.user.id)
         async with self._request_semaphore:
             if self._closing:
                 await self._send_stopped(interaction)

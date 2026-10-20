@@ -208,8 +208,8 @@ service.
 
 The base bot needs Python 3.12, Git, uv and a Discord bot token. Music uses a
 separate Lavalink server; profile images need Inkscape. You can set those up after
-the first start. Logging message content, edits, and `/ask` questions and answers
-is off by default (`MESSAGE_LOG_ENABLED=false`).
+the first start. Logging message content, edits, `/ask` questions and answers,
+and Wolfram queries is off by default (`MESSAGE_LOG_ENABLED=false`).
 
 For database maintenance, see [backups and upgrades](docs/storage/README.md#backup-restore-and-upgrades).
 

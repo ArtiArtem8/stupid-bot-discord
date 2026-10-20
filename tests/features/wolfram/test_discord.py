@@ -248,6 +248,41 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
             "Query empty or too long.",
         )
 
+    async def test_query_content_logging_is_opt_in_for_slash_and_context_menu(
+        self,
+    ) -> None:
+        query = "private expression\nsecond private line"
+        for enabled in (False, True):
+            for context_menu in (False, True):
+                with self.subTest(enabled=enabled, context_menu=context_menu):
+                    cog, client = self._make_cog()
+                    interaction, _ = self._make_interaction()
+                    client.query.return_value = WolframResult(success=False)
+                    with (
+                        patch.object(config, "MESSAGE_LOG_ENABLED", enabled),
+                        patch.object(FeedbackUI, "send", new=AsyncMock()),
+                        self.assertLogs(
+                            "stupidbot.features.wolfram.wolfram_cog", level="INFO"
+                        ) as logs,
+                    ):
+                        if context_menu:
+                            message = MagicMock(spec=discord.Message, content=query)
+                            await cog._context_solve(interaction, message)
+                        else:
+                            await cog.cmd_solve._do_call(
+                                interaction, {"problem": query}
+                            )
+                    self.assertEqual(len(logs.records), 1)
+                    recorded = logs.records[0].getMessage()
+                    self.assertIn("Wolfram solve:", recorded)
+                    self.assertIn("user_id=1234", recorded)
+                    self.assertNotIn("\n", recorded)
+                    if enabled:
+                        self.assertIn(repr(query), recorded)
+                    else:
+                        self.assertNotIn("private expression", recorded)
+                        self.assertNotIn("second private line", recorded)
+
     async def test_wolfram_processing_is_limited_to_two_concurrent_requests(
         self,
     ) -> None:
