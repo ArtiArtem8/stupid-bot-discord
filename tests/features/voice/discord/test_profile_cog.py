@@ -507,6 +507,61 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                     await bot.remove_cog("VoiceProfileCog")
                     self.assertTrue(cog._media_renderer._closed)
 
+    async def test_cancelled_load_preserves_cancellation_after_cleanup_failure(
+        self,
+    ) -> None:
+        database_path, _ = await temporary_database(self)
+        bot = StupidBot(database_path=database_path)
+        self.addAsyncCleanup(bot.close)
+        cog = VoiceProfileCog(bot)
+        started = asyncio.Event()
+        cleanup_started = asyncio.Event()
+        release_cleanup = asyncio.Event()
+        failure = BrokenPipeError("renderer close failed")
+        close_renderer = cog._media_renderer.aclose
+
+        async def start_renderer() -> str:
+            started.set()
+            await asyncio.Event().wait()
+            return "unused"
+
+        async def fail_cleanup() -> None:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            await close_renderer()
+            raise failure
+
+        with (
+            patch.object(cog._media_renderer, "astart", side_effect=start_renderer),
+            patch.object(cog._media_renderer, "aclose", side_effect=fail_cleanup),
+        ):
+            loading = asyncio.create_task(bot.add_cog(cog))
+            try:
+                async with asyncio.timeout(2):
+                    await started.wait()
+                    loading.cancel("shutdown")
+                    with self.assertLogs(cog_module.logger, level="ERROR") as logs:
+                        await cleanup_started.wait()
+                        self.assertFalse(loading.done())
+                        release_cleanup.set()
+                        with self.assertRaises(asyncio.CancelledError) as raised:
+                            await loading
+                    self.assertEqual(raised.exception.args, ("shutdown",))
+                    self.assertEqual(len(logs.records), 1)
+                    info = logs.records[0].exc_info
+                    if info is None:
+                        self.fail("Expected the cleanup failure traceback")
+                    self.assertIs(info[1], failure)
+            finally:
+                release_cleanup.set()
+                if not loading.done():
+                    loading.cancel()
+                await asyncio.gather(loading, return_exceptions=True)
+        self.assertTrue(loading.cancelled())
+        self.assertTrue(cog._media_renderer._closed)
+        self.assertIsNone(bot.get_cog("VoiceProfileCog"))
+        self.assertIsNone(bot.tree.get_command("voice-profile"))
+
     async def test_refresh_resolves_member_again_and_honors_new_upload_limit(
         self,
     ) -> None:

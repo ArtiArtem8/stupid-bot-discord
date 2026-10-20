@@ -13,7 +13,6 @@ from discord import File, Interaction, app_commands
 from discord.ext import commands
 
 from stupidbot import settings as config
-from stupidbot.common.asyncio import wait_for_completion
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.features.wolfram.client import (
@@ -101,7 +100,7 @@ class WolframCog(BaseCog):
         self._closing = True
         if self._close_task is None:
             self._close_task = asyncio.create_task(self._close())
-        await wait_for_completion(self._close_task)
+        await self._wait_for_unload(self._close_task)
 
     async def _close(self) -> None:
         requests = tuple(self._requests)

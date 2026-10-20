@@ -1,4 +1,4 @@
-"""Shared interaction checks and guild validation for Discord cogs."""
+"""Shared interaction checks, guild validation and cleanup policy for Discord cogs."""
 
 import asyncio
 import logging
@@ -18,12 +18,41 @@ MODAL_ACCESS_TIMEOUT = 1.0
 
 
 class GenericBaseCog[BotT: commands.Bot](commands.Cog):
-    """Own blocked-user enforcement shared by application-command cogs."""
+    """Share command access and unload policy without owning feature resources."""
 
     def __init__(self, bot: BotT) -> None:
         super().__init__()
         self.bot = bot
         self._cog = self.__class__.__name__
+
+    async def _wait_for_unload(self, task: asyncio.Task[None]) -> None:
+        """Drain owned cleanup before propagating cancellation of this unload.
+
+        discord.py logs and suppresses ordinary unload errors. If this caller
+        was cancelled, log a cleanup failure here and preserve cancellation so
+        the framework cannot resume a stopped reload. Without cancellation,
+        leave cleanup failures to the framework's normal error handler.
+        """
+        cancellation: asyncio.CancelledError | None = None
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError as error:
+                cancellation = error
+            except Exception:
+                break
+        try:
+            task.result()
+        except Exception:
+            if cancellation is None:
+                raise
+            logger.exception(
+                "Cog cleanup failed during cancelled unload: cog=%s",
+                self.qualified_name,
+            )
+            raise cancellation from None
+        if cancellation is not None:
+            raise cancellation
 
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:  # pyright: ignore[reportUnusedParameter]
         """Return whether to skip blocking; overrides may be sync or async."""
