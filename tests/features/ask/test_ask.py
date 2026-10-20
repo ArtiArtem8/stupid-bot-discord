@@ -10,6 +10,7 @@ import discord
 from discord import Interaction
 from sqlalchemy import select
 
+from stupidbot import settings as config
 from stupidbot.app.bot import StupidBot
 from stupidbot.discord_ui.feedback import FeedbackUI
 from stupidbot.features.ask import ask_cog
@@ -271,6 +272,48 @@ class TestQuestionHistory(unittest.IsolatedAsyncioTestCase):
                 )
             ).all()
         self.assertEqual(rows, [(1, str_local("Question?"), "answer")])
+
+    async def test_payload_logging_is_opt_in_for_new_and_cached_answers(self) -> None:
+        question = "Private question marker?"
+        reply = "Private answer marker"
+        username = "Private username marker"
+        for enabled in (False, True):
+            user_id = 10 + int(enabled)
+            self.cog.answers = [reply, "next"]
+            for result in ("new", "cached"):
+                with self.subTest(logging=enabled, result=result):
+                    request = self._request(user_id)
+                    request.user.name = username
+                    request.user.global_name = username
+                    request.user.__str__.return_value = username
+                    with (
+                        patch.object(config, "MESSAGE_LOG_ENABLED", enabled),
+                        self.assertLogs("stupidbot", level="DEBUG") as captured,
+                    ):
+                        await self._dispatch(request, question)
+                    request.edit_original_response.assert_awaited_once_with(
+                        content=reply
+                    )
+                    self.assertEqual(
+                        await self.repository.answer(
+                            user_id, str_local(question), "must not replace"
+                        ),
+                        (reply, False),
+                    )
+                    records = [
+                        record.getMessage()
+                        for record in captured.records
+                        if record.name == ask_cog.logger.name
+                    ]
+                    expected = f"/ask resolved user_id={user_id} result={result}"
+                    if enabled:
+                        expected = f"{expected} question={question!r} answer={reply!r}"
+                    else:
+                        output = "\n".join(captured.output)
+                        self.assertNotIn(question, output)
+                        self.assertNotIn(reply, output)
+                    self.assertEqual(records, [expected])
+                    self.assertNotIn(username, records[0])
 
     async def test_concurrent_insert_returns_one_committed_winner(self) -> None:
         results = await asyncio.gather(

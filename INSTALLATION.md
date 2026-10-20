@@ -104,8 +104,9 @@ choose the account allowed to use owner commands, including `/health`; otherwise
 the bot uses Discord's application ownership.
 
 Leave `MESSAGE_LOG_ENABLED=false` for ordinary use. Enabling it records incoming
-message content and edits in the bot logs. Operational warnings and errors are
-logged either way.
+message content, edits, and `/ask` questions and answers in the bot logs.
+Command activity, user IDs, warnings and errors are logged either way. This
+setting does not change the question-and-answer history saved in SQLite.
 
 The remaining settings are described beside their values in
 [.env.example](.env.example). Process environment variables take

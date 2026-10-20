@@ -111,6 +111,8 @@ def setup_logging(encoding: str = "utf-8") -> None:
             "level": "DEBUG",
         },
         "loggers": {
+            # Driver DEBUG records include SQL parameter values.
+            "aiosqlite": {"level": "WARNING"},
             "discord": {
                 "handlers": ["file_handler", "debug_file_handler", "discord_console"],
                 "level": "INFO",

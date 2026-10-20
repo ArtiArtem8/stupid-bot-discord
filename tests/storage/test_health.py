@@ -1,8 +1,10 @@
-"""Health counters observe transaction outcomes without changing their ownership."""
+"""Storage diagnostics preserve failure details without exposing SQL parameters."""
 
 import sqlite3
+import traceback
 import unittest
 
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -13,6 +15,24 @@ from tests.storage.fixtures import temporary_database
 
 
 class TestDatabaseHealth(unittest.IsolatedAsyncioTestCase):
+    async def test_sql_failure_traceback_omits_user_payload(self) -> None:
+        _, database = await temporary_database(self)
+        question = "private question marker"
+        answer = "private answer marker"
+        with self.assertRaises(OperationalError) as raised:
+            async with database.transaction() as connection:
+                await connection.execute(
+                    text("SELECT :question, :answer FROM missing_table"),
+                    {"question": question, "answer": answer},
+                )
+
+        rendered = "".join(traceback.format_exception(raised.exception))
+        self.assertNotIn(question, rendered)
+        self.assertNotIn(answer, rendered)
+        self.assertIn("no such table: missing_table", rendered)
+        self.assertIn("SELECT ?, ? FROM missing_table", rendered)
+        self.assertEqual(raised.exception.params, (question, answer))
+
     async def test_checkout_timeout_releases_admission_and_counts_one_failure(
         self,
     ) -> None:

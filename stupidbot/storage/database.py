@@ -135,6 +135,7 @@ def open_engine(path: Path) -> AsyncEngine:
             query={"mode": "rw", "uri": "true"},
         ),
         connect_args={"isolation_level": None, "timeout": 5.0},
+        hide_parameters=True,
         poolclass=AsyncAdaptedQueuePool,
         pool_size=1,
         max_overflow=0,

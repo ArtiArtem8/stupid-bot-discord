@@ -33,7 +33,6 @@ class QuestionCog(BaseCog):
         )
         self._answer_lock = asyncio.Lock()
         self._repository = repository
-        logger.info("Initial /ask answers: %s", self.answers)
 
     @app_commands.command(
         name="ask",
@@ -42,12 +41,6 @@ class QuestionCog(BaseCog):
         ),
     )
     async def q(self, interaction: Interaction, *, text: str) -> None:
-        logger.info(
-            "/ask invoked user=%s user_id=%s question=%r",
-            interaction.user,
-            interaction.user.id,
-            text,
-        )
         reply = await self._answer(interaction, text)
         await interaction.edit_original_response(content=reply)
 
@@ -66,13 +59,19 @@ class QuestionCog(BaseCog):
                 self.answers.append(random_answer(text, answers=CAPABILITIES))
                 self.answers.pop(0)
 
-        logger.info(
-            "/ask resolved user_id=%s result=%s question=%r answer=%r",
-            interaction.user.id,
-            "new" if inserted else "cached",
-            text,
-            reply,
-        )
+        result = "new" if inserted else "cached"
+        if config.MESSAGE_LOG_ENABLED:
+            logger.info(
+                "/ask resolved user_id=%s result=%s question=%r answer=%r",
+                interaction.user.id,
+                result,
+                text,
+                reply,
+            )
+        else:
+            logger.info(
+                "/ask resolved user_id=%s result=%s", interaction.user.id, result
+            )
 
         return reply
 
