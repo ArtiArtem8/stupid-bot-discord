@@ -453,8 +453,7 @@ class VoiceLifecycleHandlers:
                 after.channel.name,
                 guild_id,
             )
-            if self.state.is_timer_active(guild_id):
-                await self._update_channel_timer(guild_id, after.channel)
+            await self._update_channel_timer(guild_id, after.channel)
             return True
 
         return False

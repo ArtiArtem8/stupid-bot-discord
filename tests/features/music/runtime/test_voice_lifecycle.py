@@ -5,9 +5,12 @@ import unittest
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
+
 from stupidbot.features.music.contracts import ControllerDestroyReason
 from stupidbot.features.music.playback.player import MusicPlayer
 from stupidbot.features.music.runtime import voice_lifecycle as lifecycle_module
+from stupidbot.features.music.runtime.state import StateManager
 from stupidbot.features.music.runtime.voice_lifecycle import VoiceLifecycleHandlers
 
 
@@ -805,3 +808,79 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
             player,
             context="voice_transition_validation",
         )
+
+
+class TestBotVoiceMoveTimers(unittest.IsolatedAsyncioTestCase):
+    @override
+    def setUp(self) -> None:
+        self.bot = MagicMock()
+        self.bot.user.id = 99
+        self.guild = MagicMock(spec=discord.Guild, id=123)
+        self.member = MagicMock(spec=discord.Member, id=99, guild=self.guild, bot=True)
+        self.state = StateManager()
+        self.handlers = VoiceLifecycleHandlers(
+            self.bot, MagicMock(), self.state, MagicMock(), MagicMock()
+        )
+
+    def _channel(self, channel_id: int, *, occupancy: str) -> MagicMock:
+        channel = MagicMock(spec=discord.VoiceChannel, id=channel_id, guild=self.guild)
+        human = MagicMock(spec=discord.Member, bot=False)
+        human.voice = MagicMock(
+            spec=discord.VoiceState, self_deaf=occupancy == "deafened", deaf=False
+        )
+        channel.members = [] if occupancy == "empty" else [human]
+        return channel
+
+    async def _move(self, before: MagicMock, after: MagicMock) -> None:
+        self.member.voice = MagicMock(spec=discord.VoiceState, channel=after)
+        await self.handlers._on_voice_state_update(
+            self.member,
+            MagicMock(spec=discord.VoiceState, channel=before),
+            self.member.voice,
+        )
+
+    async def test_move_from_active_to_effectively_empty_starts_timer(self) -> None:
+        for occupancy, reason in (("empty", "empty"), ("deafened", "all_deafened")):
+            with self.subTest(occupancy=occupancy):
+                self.state.cancel_timer(self.guild.id)
+                await self._move(
+                    self._channel(1, occupancy="active"),
+                    self._channel(2, occupancy=occupancy),
+                )
+
+                self.assertTrue(self.state.is_timer_active(self.guild.id))
+                self.assertEqual(
+                    self.state.empty_channel_timers[self.guild.id]["reason"], reason
+                )
+
+    async def test_move_between_active_channels_keeps_timer_absent(self) -> None:
+        await self._move(
+            self._channel(1, occupancy="active"),
+            self._channel(2, occupancy="active"),
+        )
+
+        self.assertFalse(self.state.is_timer_active(self.guild.id))
+
+    async def test_move_from_empty_to_active_cancels_timer(self) -> None:
+        self.state.start_timer(self.guild.id, "empty")
+
+        await self._move(
+            self._channel(1, occupancy="empty"),
+            self._channel(2, occupancy="active"),
+        )
+
+        self.assertFalse(self.state.is_timer_active(self.guild.id))
+
+    async def test_repeated_empty_moves_preserve_timer_deadline(self) -> None:
+        self.state.start_timer(self.guild.id, "empty")
+        timer = self.state.empty_channel_timers[self.guild.id]
+        timer["timestamp"] = 10.0
+
+        for destination in (2, 3):
+            await self._move(
+                self._channel(destination - 1, occupancy="empty"),
+                self._channel(destination, occupancy="empty"),
+            )
+
+        self.assertIs(self.state.empty_channel_timers[self.guild.id], timer)
+        self.assertEqual(timer["timestamp"], 10.0)
