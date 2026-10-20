@@ -14,7 +14,9 @@ from discord.ext import commands
 
 from stupidbot import settings as config
 from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.embeds import SafeEmbed
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.theme import Color
 from stupidbot.features.wolfram.client import (
     WolframAPIError,
     WolframClient,
@@ -442,16 +444,24 @@ class WolframCog(BaseCog):
             file = File(buffer, filename="wolfram_plot.webp")
             try:
                 result_url = wolfram_result_url(result_query)
+                caption = messages.plot(
+                    mention=interaction.user.mention, url=result_url, query=query
+                )
+                if len(caption) <= 2_000:
+                    return await channel.send(
+                        content=caption, file=file, suppress_embeds=True
+                    )
+                # Encoding a Unicode query can make the URL too long for a message.
+                # The full caption still fits in an embed.
+                embed = SafeEmbed(
+                    description=messages.plot(
+                        mention="", url=result_url, query=query
+                    ).strip(),
+                    color=Color.INFO,
+                )
+                embed.set_image(url="attachment://wolfram_plot.webp")
                 return await channel.send(
-                    content=(
-                        messages.plot(
-                            mention=interaction.user.mention,
-                            url=result_url,
-                            query=query,
-                        )
-                    ),
-                    file=file,
-                    suppress_embeds=True,
+                    content=interaction.user.mention, embed=embed, file=file
                 )
             finally:
                 file.close()

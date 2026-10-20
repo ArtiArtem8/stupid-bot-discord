@@ -22,7 +22,10 @@ from stupidbot.features.wolfram.client import (
     WolframResult,
 )
 from stupidbot.features.wolfram.plot_image import ImageOutputTooLargeError
-from stupidbot.features.wolfram.presentation import build_text_results_embed
+from stupidbot.features.wolfram.presentation import (
+    build_text_results_embed,
+    wolfram_result_url,
+)
 from stupidbot.features.wolfram.wolfram_cog import (
     WolframCog,
     WolframMode,
@@ -643,6 +646,50 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             to_thread.await_args_list[-1].kwargs["max_output_bytes"], 1_000_000
         )
+
+    async def test_unicode_plot_caption_preserves_full_query_and_url_in_embed(
+        self,
+    ) -> None:
+        for character in ("한", "𝑥"):
+            for locale in (
+                discord.Locale.american_english,
+                discord.Locale.russian,
+                discord.Locale.korean,
+            ):
+                with self.subTest(character=character, locale=locale):
+                    cog, _ = self._make_cog()
+                    interaction, channel = self._make_interaction()
+                    interaction.guild_locale = locale
+                    query = character * config.WOLFRAM_MAX_QUERY_LEN
+                    with (
+                        patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback,
+                        patch(
+                            "stupidbot.features.wolfram.wolfram_cog.asyncio.to_thread",
+                            new=AsyncMock(return_value=b"webp"),
+                        ),
+                    ):
+                        await cog._send_plot(
+                            interaction,
+                            "https://example.invalid/plot",
+                            query,
+                            result_query=f"plot {query}",
+                        )
+                    upload = channel.send.call_args.kwargs
+                    self.assertEqual(upload["content"], "@plotter")
+                    self.assertNotIn("suppress_embeds", upload)
+                    embed = upload["embed"]
+                    self.assertIsInstance(embed, discord.Embed)
+                    self.assertLessEqual(len(embed.description), 4096)
+                    self.assertIn(query, embed.description)
+                    self.assertIn(
+                        wolfram_result_url(f"plot {query}"), embed.description
+                    )
+                    self.assertEqual(embed.image.url, "attachment://wolfram_plot.webp")
+                    self.assertEqual(upload["file"].filename, "wolfram_plot.webp")
+                    self.assertTrue(upload["file"].fp.closed)
+                    self.assertEqual(
+                        feedback.call_args.kwargs["feedback_type"], FeedbackType.SUCCESS
+                    )
 
     async def test_global_limit_caps_larger_guild_limit(self) -> None:
         cog, _ = self._make_cog()
