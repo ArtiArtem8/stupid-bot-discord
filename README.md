@@ -127,7 +127,7 @@ only affects voice profiles.
 | Member roles | `/monitor` manages saved role snapshots and restoration. |
 | Bot access | `/block`, `/unblock`, `/block-info` and `/list-blocked`. |
 | Feedback | `/report` stores a report; `/set-report-channel` configures notifications. |
-| Chat replies | Greeting reactions and guidance from legacy prefix commands to slash commands. |
+| Chat replies | Greeting reactions and slash-command suggestions for messages with the `s!` prefix. |
 
 ## Language and timezone
 
@@ -158,10 +158,10 @@ the server timezone if no personal override is set, then `VOICE_PROFILE_TIMEZONE
 Language does not inherit from the server. Discord does not supply a timezone.
 
 Command descriptions and built-in timestamps follow your Discord client settings.
-User text, external Wolfram answers and previously saved `/ask` replies stay
+User text, external Wolfram answers and saved `/ask` replies stay
 unchanged. A new `/ask` answer is translated before saving; repeated questions
 return that saved text.
-The bot-wide uptime status remains Russian.
+The bot-wide uptime status is in Russian.
 
 After the second successful private profile use, an optional settings reminder
 can appear at most twice, at least 14 days apart. Choose **Later** or
@@ -210,9 +210,7 @@ The base bot needs Python 3.12, Git, uv and a Discord bot token. Music uses a
 separate Lavalink server; profile images need Inkscape. You can set those up after
 the first start. Message-content logging is off by default.
 
-Already hosting an instance? Read [backups and upgrades](docs/storage/README.md#backup-restore-and-upgrades)
-before changing its database. Existing deployments adopting the language settings
-must also [review their guild languages](docs/storage/README.md#backup-restore-and-rollback).
+For database maintenance, see [backups and upgrades](docs/storage/README.md#backup-restore-and-upgrades).
 
 ## Contributing
 

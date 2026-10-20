@@ -40,8 +40,8 @@ async def inventory(token: str) -> JsonObject:
     """Read every guild through REST without a gateway connection or command sync.
 
     A failed request aborts the inventory instead of publishing a partial list.
-    Russian is a proposal preserving the previous installation's UI; each row
-    must be reviewed before the separate database operation accepts it.
+    Russian is the proposed language; each row must be reviewed before the
+    separate database operation accepts it.
     """
     guilds: JsonArray = []
     async with discord.Client(intents=discord.Intents.none()) as client:

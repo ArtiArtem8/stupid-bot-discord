@@ -53,7 +53,7 @@ async def _run(args: Arguments) -> None:
 
 
 def main() -> None:
-    """Require explicit paths; legacy import belongs to tools.migrate_storage_once."""
+    """Require explicit paths; offline import belongs to tools.migrate_storage_once."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, required=True)
     commands = parser.add_subparsers(dest="command", required=True)

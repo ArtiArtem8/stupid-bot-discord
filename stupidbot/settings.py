@@ -14,7 +14,7 @@ DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 # Optional
 DISCORD_BOT_OWNER_ID = os.environ.get("DISCORD_BOT_OWNER_ID")
 MESSAGE_LOG_ENABLED = os.getenv("MESSAGE_LOG_ENABLED", "false").lower() == "true"
-# Existing installations keep their artwork; .env.example selects Unicode.
+# The sample configuration selects Unicode controls.
 CUSTOM_EMOJIS_ENABLED = os.getenv("CUSTOM_EMOJIS_ENABLED", "true").lower() == "true"
 # Wolfram Alpha API (https://developer.wolframalpha.com/access)
 WOLFRAM_APP_ID = os.environ.get("WOLFRAM_APP_ID")
@@ -35,7 +35,7 @@ DATA_DIR = BASE_DIR / "data"
 
 
 # --- Bot schema ---
-BOT_PREFIX = "s!"  # Legacy - all commands are slash commands currently
+BOT_PREFIX = "s!"  # Prefix messages receive slash-command guidance.
 
 
 # --- System constants ---

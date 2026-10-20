@@ -15,7 +15,7 @@ Historical labels and constrained scope copies are deliberate denormalization.
 | `storage_state` | `singleton` | Publication state | One row; BUILDING becomes COMPLETE only after import verification |
 | `migration_sources` | `source_name` | Provenance | Immutable hashes/counts/formats for the imported snapshot |
 | `user_preferences` | `subject_id` | Personal settings | Nullable language/timezone overrides; revision fences concurrent editors |
-| `guild_preferences` | `subject_id` | Server settings | Independent public-message overrides; existing rows survive rollout seeding |
+| `guild_preferences` | `subject_id` | Server settings | Independent public-message overrides; revision fences concurrent editors |
 | `preference_reminders` | `user_id` | Optional onboarding | Durable eligible uses, prompt count, last reservation time, dismissal and one-use token; independent of settings revision |
 | `birthday_settings` | `guild_id` | Current state | Versioned per-feature settings, independent of music |
 | `member_birthdays` | `guild_id, user_id` | Current state | Versioned calendar date and source position; clear retains version |
@@ -23,7 +23,7 @@ Historical labels and constrained scope copies are deliberate denormalization.
 | `birthday_deliveries` | `guild_id, user_id, calendar_date; operation_id` | Delivery state | Claimed/uncertain/sent/obsolete; retained independently of birthday profile |
 | `music_settings` | `guild_id` | Current state | Versioned 0–200 intent; absence uses configured default |
 | `member_blocks` | `guild_id, user_id` | Current state | Explicit state and snapshot display hints |
-| `block_events` | `event_id; guild_id, user_id, action, ordinal` | History | Append-only; legacy block/unblock lists retain separate order |
+| `block_events` | `event_id; guild_id, user_id, action, ordinal` | History | Append-only; separate block/unblock ordinals |
 | `member_name_observations` | `guild_id, user_id, ordinal` | History | Append-only observed display labels, not global username history |
 | `report_settings` | `singleton` | Current state | One global developer channel |
 | `reports` | `report_id; position` | History | Append-only snapshots; nullable request_key unique only when present |
@@ -65,9 +65,8 @@ FROM uptime_periods ORDER BY period_id;
 ## Representation and normalization exceptions
 
 IDs are positive signed 64-bit integers. Aware instants use exact UTC microseconds;
-birthdays and delivery dates use ISO calendar dates. Imported naive report text is
-kept separately; UTC may remain NULL. Legacy checkpoints do not establish a clean
-shutdown. Snapshot labels never determine identity or rewrite older facts.
+birthdays and delivery dates use ISO calendar dates. Snapshot labels never
+determine identity or rewrite recorded facts.
 
 `channels.channel_id -> guild_id` and `roles.role_id -> guild_id`; member scope is
 composite. Role/state child scope columns repeat the parent's guild only to enforce

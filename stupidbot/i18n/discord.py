@@ -16,7 +16,7 @@ ERROR_PREFERENCES_TIMEOUT = 0.5
 
 
 def fallback_timezone() -> ZoneInfo:
-    """Preserve the existing installation's effective VOICE_PROFILE_TIMEZONE."""
+    """Resolve VOICE_PROFILE_TIMEZONE, falling back to UTC for invalid values."""
     try:
         return ZoneInfo(settings.VOICE_PROFILE_TIMEZONE)
     except (ZoneInfoNotFoundError, ValueError):

@@ -4,9 +4,9 @@ This guide starts with a fresh clone and ends with a bot in your Discord server.
 The commands work from the repository root. Use PowerShell on Windows or a shell
 on Linux; where they differ, both versions are shown.
 
-For code changes, use [CONTRIBUTING.md](CONTRIBUTING.md). If you already run an
-older installation, start with [upgrading and backups](docs/storage/README.md#backup-restore-and-upgrades):
-creating an empty database does not import existing data.
+For code changes, use [CONTRIBUTING.md](CONTRIBUTING.md). Database backups,
+restores and upgrades are covered in the
+[storage guide](docs/storage/README.md#backup-restore-and-upgrades).
 
 ## What to install
 
@@ -39,7 +39,7 @@ Set `VOICE_PROBE_ENABLED=false` if you do not want to collect them.
    | Intent | Use in this bot |
    | --- | --- |
    | Server Members | Member caches, role monitoring and birthday membership. |
-   | Message Content | Greeting reactions, legacy prefix guidance and optional message-content logging. |
+   | Message Content | Greeting reactions, prefix-command guidance and optional message-content logging. |
    | Presence | Requested by the current client configuration. |
 
    The running client requests all three. Disabling one in the portal while the
@@ -97,7 +97,7 @@ chmod 600 .env
 Open `.env` in a text editor. Fill in `DISCORD_BOT_TOKEN` and choose
 `VOICE_PROFILE_TIMEZONE`, such as `Europe/Moscow` or `Europe/Berlin`. This controls
 the fallback calendar timezone for profiles; birthday delivery uses the host's
-local date. Existing installations should keep their previous timezone.
+local date.
 
 `DISCORD_BOT_OWNER_ID` is optional. Set it to your Discord user ID if you want to
 choose the account allowed to use owner commands, including `/health`; otherwise
@@ -108,7 +108,7 @@ message content and edits in the bot logs. Operational warnings and errors are
 logged either way.
 
 The remaining settings are described beside their values in
-[.env.example](.env.example). Existing process environment variables take
+[.env.example](.env.example). Process environment variables take
 precedence over `.env`; restart the bot after changing configuration.
 
 ## Prepare the database and start
@@ -163,8 +163,8 @@ Unicode emoji. Custom artwork is optional:
    [emojis.py](stupidbot/discord_ui/emojis.py) with your uploaded IDs.
 3. Set `CUSTOM_EMOJIS_ENABLED=true` in `.env` and restart.
 
-The bundled IDs belong to the original bot. Existing installations that omit
-the switch keep that artwork. The bot does not upload emoji at startup.
+`CUSTOM_EMOJIS_ENABLED` defaults to `true` when omitted. Keep the example's `false`
+until the IDs in `emojis.py` belong to your application.
 
 ### Music
 
@@ -252,7 +252,7 @@ the log files, temporary files and the renderer's font cache.
 [`KillMode=mixed`](https://www.freedesktop.org/software/systemd/man/latest/systemd.kill.html#KillMode=)
 sends the initial shutdown signal to the bot, allowing it to close its Inkscape
 worker itself. The [systemd stop timeout](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html#TimeoutStopSec=)
-is an upper limit, not a promise that every shutdown finishes within 90 seconds.
+allows up to 90 seconds for shutdown before terminating remaining processes.
 
 ```sh
 sudo systemctl daemon-reload
@@ -270,7 +270,7 @@ then start it again.
 
 | Symptom | Check |
 | --- | --- |
-| Missing token or Discord login failure | Set the bot token in `.env`; check that an old process environment value is not overriding it. Reset an exposed or invalid token in the portal. |
+| Missing token or Discord login failure | Set the bot token in `.env`; check that a process environment value is not overriding it. Reset an exposed or invalid token in the portal. |
 | Discord rejects privileged intents | Enable the intents listed above for this application. |
 | Missing database or unsupported schema | Use the explicit preparation or upgrade procedure for the file selected by `--database`. Startup does not migrate it. |
 | Bot is online but a command is absent | Look for `Application commands synced`; check the app was installed with application command scope and that the member can use commands in that channel. |
