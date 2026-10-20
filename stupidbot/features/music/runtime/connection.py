@@ -96,7 +96,6 @@ class ConnectionManager:
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.pool: mafic.NodePool[discord.Client] = mafic.NodePool(bot)
-        self._initialized = False
         self._init_lock = asyncio.Lock()
         self._next_connect_retry_at = 0.0
         self._last_connect_error: str | None = None
@@ -161,13 +160,15 @@ class ConnectionManager:
         return False
 
     async def initialize(self) -> None:
-        """Initialize Lavalink, raising NodeNotConnectedError after shutdown starts."""
+        """Connect unless shutdown or the retry cooldown blocks initialization."""
         async with self._init_lock:
             if self._closing:
                 raise NodeNotConnectedError(MUSIC_SERVICE_UNAVAILABLE_MESSAGE)
             if self.has_ready_node():
-                self._initialized = True
                 return
+            # Another caller may have failed while this one waited for the lock.
+            if time.monotonic() < self._next_connect_retry_at:
+                raise NodeNotConnectedError(MUSIC_SERVICE_UNAVAILABLE_MESSAGE)
 
             await self._cleanup_unavailable_nodes()
 
@@ -182,19 +183,15 @@ class ConnectionManager:
             )
             try:
                 await self.pool.add_node(node, player_cls=MusicPlayer)
-                self._initialized = True
                 self._last_connect_error = None
                 self._next_connect_retry_at = 0.0
                 logger.info("Mafic node pool initialized successfully")
 
             except (aiohttp.ClientError, TimeoutError, mafic.HTTPException) as exc:
+                self._last_connect_error = type(exc).__name__
                 if not _is_retryable_connect_error(exc):
-                    self._initialized = False
-                    self._last_connect_error = type(exc).__name__
                     await self._close_failed_node(node)
                     raise
-                self._initialized = False
-                self._last_connect_error = type(exc).__name__
                 self._next_connect_retry_at = (
                     time.monotonic() + config.LAVALINK_CONNECT_RETRY_DELAY
                 )
@@ -323,7 +320,6 @@ class ConnectionManager:
     ) -> None:
         """Remove stale node resources and retry if no ready node remains."""
         async with self._init_lock:
-            self._initialized = False
             self._last_connect_error = "Lavalink node became unavailable"
             self._next_connect_retry_at = (
                 time.monotonic() + config.LAVALINK_CONNECT_RETRY_DELAY
@@ -558,7 +554,6 @@ class ConnectionManager:
         """Drain connection work before closing Mafic resources."""
         await self.stop_connecting()
         await self.pool.close()
-        self._initialized = False
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:
         try:

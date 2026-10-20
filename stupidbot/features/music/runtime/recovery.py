@@ -90,14 +90,6 @@ class SessionHealer(HealerProtocol):
 
         return None
 
-    def _is_youtube_track(self, track: mafic.Track) -> bool:
-        """Return whether a track comes from the YouTube source."""
-        return track.source.casefold() == "youtube"
-
-    def _is_track_seekable(self, track: mafic.Track) -> bool:
-        """Return whether a track can be sought."""
-        return track.seekable
-
     def _should_restore_with_warm_seek(self, track: mafic.Track, position: int) -> bool:
         """Return whether restore should start from 0 and seek after startup."""
         if position <= RESTORE_SEEK_THRESHOLD_MS:
@@ -105,7 +97,7 @@ class SessionHealer(HealerProtocol):
 
         # Main workaround: YouTube/MWEB can fail when starting a new track directly
         # from a non-zero position, while normal seek after playback start works.
-        return self._is_youtube_track(track) and self._is_track_seekable(track)
+        return track.source.casefold() == "youtube" and track.seekable
 
     async def _confirm_restored_track_active(
         self,
@@ -442,6 +434,13 @@ class SessionHealer(HealerProtocol):
         """Attempt to recover one guild's interrupted session."""
         async with self._locks[guild_id], self.connection.recovery(guild_id):
             logger.info("Attempting to heal session for guild %s", guild_id)
+
+            # Connecting a node can detach the cached player before it is captured.
+            if not self.connection.has_ready_node():
+                logger.info(
+                    "Session recovery deferred: no ready node for guild %s", guild_id
+                )
+                return False
 
             player = self.get_recoverable_player(guild_id)
             if not player:

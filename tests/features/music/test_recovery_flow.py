@@ -206,6 +206,42 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.components.voice_lifecycle.is_healing(1))
         self.assertFalse(self.components.connection.is_recovering(1))
 
+    async def test_unavailable_node_preserves_cached_playback_for_later_recovery(
+        self,
+    ) -> None:
+        current = self.original.current_entry
+        queued = self.original.queue_snapshot()
+        self.assertIsNotNone(current)
+        self.assertEqual(len(queued), 2)
+        self.original.mark_stale()
+        self.node._available = False
+        with patch.object(
+            mafic.NodePool,
+            "add_node",
+            new=AsyncMock(side_effect=AssertionError("Unexpected node connection")),
+        ) as connect:
+            for deadline in (float("inf"), 0.0):
+                with self.subTest(retry_deadline=deadline):
+                    self.components.connection._next_connect_retry_at = deadline
+                    self.assertFalse(
+                        await asyncio.wait_for(self.components.service.heal(1), 5)
+                    )
+                    self.assertIs(self.guild.voice_client, self.original)
+                    self.assertIs(
+                        self.components.healer.get_recoverable_player(1), self.original
+                    )
+                    self.assertEqual(self.original.current_entry, current)
+                    self.assertEqual(self.original.queue_snapshot(), queued)
+            connect.assert_not_awaited()
+
+        self.node._available = True
+        self.assertTrue(await asyncio.wait_for(self.components.service.heal(1), 10))
+
+        restored = self._current_player()
+        self.assertIsNot(restored, self.original)
+        self.assertEqual(restored.current_entry, current)
+        self.assertEqual(restored.queue_snapshot(), queued)
+
     async def test_leave_drains_pending_restore_without_resurrecting_session(
         self,
     ) -> None:

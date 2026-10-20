@@ -226,7 +226,6 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
             await manager.initialize()
 
-        self.assertTrue(manager._initialized)
         node_class.assert_called_once()
         mock_pool_instance.add_node.assert_awaited_once_with(
             node,
@@ -1580,7 +1579,6 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
         await manager.mark_node_unavailable(node)
 
-        self.assertFalse(manager._initialized)
         self.assertTrue(manager.is_known_unavailable())
         self.assertGreater(manager._next_connect_retry_at, 0)
         mock_pool_instance.remove_node.assert_awaited_once_with(
@@ -1664,6 +1662,39 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
 
 class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
+    async def test_queued_connection_attempt_observes_new_retry_cooldown(self) -> None:
+        entered, release, queued = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        node = MagicMock(close=AsyncMock())
+
+        async def fail_connect(_node: object, **_kwargs: object) -> None:
+            entered.set()
+            await release.wait()
+            raise aiohttp.ClientConnectionError("offline")
+
+        async def queued_attempt() -> bool:
+            queued.set()
+            return await self.manager.ensure_available()
+
+        self.pool.add_node = AsyncMock(side_effect=fail_connect)
+        with patch.object(mafic, "Node", return_value=node):
+            async with asyncio.TaskGroup() as tasks:
+                first = tasks.create_task(self.manager.ensure_available())
+                try:
+                    await asyncio.wait_for(entered.wait(), 1.0)
+                    second = tasks.create_task(queued_attempt())
+                    await asyncio.wait_for(queued.wait(), 1.0)
+                finally:
+                    release.set()
+
+            self.assertFalse(first.result())
+            self.assertFalse(second.result())
+            self.pool.add_node.assert_awaited_once()
+            node.close.assert_awaited_once()
+
+            self.manager._next_connect_retry_at = 0.0
+            self.assertFalse(await self.manager.ensure_available())
+            self.assertEqual(self.pool.add_node.await_count, 2)
+
     async def test_cleanup_waits_for_active_node_initialization(self) -> None:
         entered, release = asyncio.Event(), asyncio.Event()
         closing_entered = asyncio.Event()
@@ -1688,7 +1719,6 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
             await initializing
             await closing
         self.pool.close.assert_awaited_once()
-        self.assertFalse(self.manager._initialized)
 
     @override
     def setUp(self) -> None:
@@ -1715,11 +1745,9 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 node = MagicMock()
                 node.close = AsyncMock()
                 self.pool.add_node = AsyncMock(side_effect=error)
-                self.manager._initialized = True
 
                 with patch.object(mafic, "Node", return_value=node):
                     self.assertFalse(await self.manager.ensure_available())
-                    self.assertFalse(self.manager._initialized)
                     self.assertTrue(self.manager.is_known_unavailable())
                     self.assertEqual(
                         self.manager._last_connect_error, type(error).__name__
@@ -1786,6 +1814,7 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 node = MagicMock()
                 node.close = AsyncMock()
                 self.pool.add_node = AsyncMock(side_effect=error)
+                self.manager._next_connect_retry_at = 0.0
 
                 with (
                     patch.object(mafic, "Node", return_value=node),
@@ -1854,7 +1883,6 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 self.pool.add_node.assert_awaited_once()
                 node.close.assert_awaited_once_with()
                 sleep.assert_not_awaited()
-                self.assertFalse(self.manager._initialized)
                 self.assertTrue(self.manager.is_known_unavailable())
                 self.assertEqual(self.manager._last_connect_error, type(error).__name__)
                 self.assertEqual(self.manager._next_connect_retry_at, 0.0)
