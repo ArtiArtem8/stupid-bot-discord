@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TypeGuard
@@ -408,14 +408,20 @@ class ConnectionManager:
         try:
             await self.mark_node_unavailable(node)
         finally:
-            for player in invalidated:
-                if self.get_player_node(player) is node:
-                    await self._cleanup_voice_client_locally(player.guild, player)
-                else:
-                    # A committed transfer left resources on a different node.
-                    await self.detach_stale_voice_client(player.guild, player)
+            await self._cleanup_failed_node_players(node, invalidated)
 
         return {player.guild.id for player in invalidated}
+
+    async def _cleanup_failed_node_players(
+        self, node: mafic.Node[discord.Client], players: Sequence[MusicPlayer]
+    ) -> None:
+        """Release failed players according to their owner after node cleanup."""
+        for player in players:
+            if self.get_player_node(player) is node:
+                await self._cleanup_voice_client_locally(player.guild, player)
+            else:
+                # A committed transfer left resources on a different node.
+                await self.detach_stale_voice_client(player.guild, player)
 
     async def _transfer_or_release(
         self, player: MusicPlayer, target: mafic.Node[discord.Client]
