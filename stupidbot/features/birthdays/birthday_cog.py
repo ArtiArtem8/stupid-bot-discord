@@ -14,7 +14,6 @@ from stupidbot import settings as config
 from stupidbot.app.health import ComponentHealth, TaskHealth
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
-from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.features.birthdays.dates import parse_birthday
 from stupidbot.features.birthdays.delivery import BirthdayDeliveryService
 from stupidbot.features.birthdays.messages import BirthdayMessages
@@ -223,7 +222,6 @@ class BirthdayCog(BaseCog):
         msg = messages.catalog.pgettext(
             "ui", "Are you sure you want to remove your birthday?"
         )
-        await defer_command(interaction, ephemeral=True)
         view.message = await interaction.edit_original_response(
             embed=FeedbackUI.make_embed(None, msg, FeedbackType.WARNING), view=view
         )

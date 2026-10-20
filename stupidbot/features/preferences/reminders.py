@@ -1,5 +1,6 @@
 """Optional private onboarding after successful personal profile commands."""
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Self, override
@@ -7,15 +8,17 @@ from typing import Self, override
 import discord
 from discord.ext import commands
 
-from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.access import check_command_access
+from stupidbot.discord_ui.base_cog import MODAL_ACCESS_TIMEOUT
 from stupidbot.discord_ui.errors import handle_app_command_error
+from stupidbot.discord_ui.exceptions import AccessCheckUnavailableError
 from stupidbot.discord_ui.pagination import CallbackButton
 from stupidbot.features.preferences.messages import PreferenceMessages
 from stupidbot.features.preferences.models import PreferenceScope, ReminderReservation
 from stupidbot.features.preferences.preferences_cog import open_settings
 from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.i18n.catalog import catalog
-from stupidbot.i18n.discord import interaction_context
+from stupidbot.i18n.discord import error_context
 from stupidbot.i18n.policy import PresentationContext
 
 logger = logging.getLogger(__name__)
@@ -57,7 +60,7 @@ class ReminderView(discord.ui.View):
     @override
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.reservation.user_id:
-            context = await interaction_context(interaction, private=True)
+            context = await error_context(interaction)
             await interaction.response.send_message(
                 catalog("preferences", context.language).pgettext(
                     "owner_only",
@@ -66,7 +69,11 @@ class ReminderView(discord.ui.View):
                 ephemeral=True,
             )
             return False
-        return await check_component_access(interaction)
+        try:
+            async with asyncio.timeout(MODAL_ACCESS_TIMEOUT):
+                return await check_command_access(interaction)
+        except TimeoutError as error:
+            raise AccessCheckUnavailableError() from error
 
     async def open(self, interaction: discord.Interaction) -> None:
         """Open a fresh private editor; only its Save completes setup."""

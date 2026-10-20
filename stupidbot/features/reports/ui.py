@@ -14,7 +14,10 @@ from stupidbot.discord_ui.access import check_command_access, check_component_ac
 from stupidbot.discord_ui.base_cog import MODAL_ACCESS_TIMEOUT
 from stupidbot.discord_ui.embeds import SafeEmbed
 from stupidbot.discord_ui.errors import handle_app_command_error
-from stupidbot.discord_ui.exceptions import AccessCheckUnavailableError
+from stupidbot.discord_ui.exceptions import (
+    AccessCheckUnavailableError,
+    InteractionAcknowledgementError,
+)
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
@@ -223,12 +226,17 @@ class ReportModal(Modal):
     @override
     async def on_error(self, interaction: Interaction, error: Exception) -> None:
         """Resolve modal failures outside application-command error routing."""
+        self.stop()
+        if isinstance(error, InteractionAcknowledgementError):
+            await handle_app_command_error(interaction, error)
+            return
         logger.error(
             "Report modal failed: interaction=%s user=%s",
             interaction.id,
             interaction.user.id,
             exc_info=error,
         )
+        await error_context(interaction)
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.ERROR,

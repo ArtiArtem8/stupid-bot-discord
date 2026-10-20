@@ -11,7 +11,6 @@ from discord.ext import commands, tasks
 from stupidbot.app.health import ComponentHealth, TaskHealth
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
-from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.discord_ui.theme import Color
 from stupidbot.features.member_roles.messages import RoleMessages
 from stupidbot.features.member_roles.restoration import ServerMonitoringManager
@@ -340,8 +339,6 @@ class ServerMonitorCog(BaseCog):
                 ephemeral=True,
             )
             return
-
-        await defer_command(interaction, ephemeral=True)
 
         restored, skipped = await self.manager.restore_snapshot(user)
 
