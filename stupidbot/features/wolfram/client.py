@@ -196,7 +196,7 @@ async def _read_limited_response(
     max_bytes: int,
     resource: str,
 ) -> bytes:
-    """Reject oversized declared or streamed bodies before parsing or decoding."""
+    """Read at most max_bytes, even if Content-Length is missing or incorrect."""
     if response.content_length is not None and response.content_length > max_bytes:
         raise WolframAPIError(f"{resource} exceeds the size limit")
     payload = bytearray()
@@ -244,7 +244,7 @@ class WolframClient:
         """Download bounded XML and parse it off the event loop.
 
         Raises:
-            WolframAPIError: On network failure, an empty body or a byte-limit breach.
+            WolframAPIError: The request failed or the response is empty or too large.
 
         """
         params = {

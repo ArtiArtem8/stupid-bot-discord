@@ -214,7 +214,7 @@ class MonitorRepository:
             if ttl is None:
                 return 0
             cutoff = moment - ttl * _MICROSECONDS_PER_DAY
-            # No stored SQLite integer can precede this retention boundary.
+            # No stored timestamp can be older than this cutoff.
             if cutoff <= -(2**63):
                 return 0
             removed = await connection.scalars(

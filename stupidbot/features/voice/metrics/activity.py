@@ -46,7 +46,7 @@ def _next_local_hour(moment: datetime, timezone: tzinfo) -> datetime:
     # both folds in UTC and keep the first future instant, never wall duration.
     candidates = (boundary.replace(fold=fold).astimezone(UTC) for fold in (0, 1))
     stop = min(candidate for candidate in candidates if candidate > moment)
-    # An offset change can enter another hour before that wall-clock boundary.
+    # Clock changes can skip or repeat part of a local hour.
     if local.utcoffset() != stop.astimezone(timezone).utcoffset():
         return find_offset_transition(moment, stop, timezone)
     return stop

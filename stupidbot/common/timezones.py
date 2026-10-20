@@ -1,4 +1,4 @@
-"""Timezone display labels and exact UTC offset-transition boundaries."""
+"""Timezone labels and UTC offset changes."""
 
 from datetime import datetime, timedelta, tzinfo
 
@@ -19,12 +19,10 @@ def timezone_label(name: str) -> str:
 def find_offset_transition(
     lower: datetime, upper: datetime, timezone: tzinfo
 ) -> datetime:
-    """Locate the first microsecond with a changed offset in a UTC interval.
+    """Return the first UTC instant with the new offset, to microsecond precision.
 
-    The caller must provide ordered, aware UTC bounds with different offsets
-    in timezone and exactly one transition in (lower, upper]. Bisection keeps
-    the work logarithmic in the interval duration without rounding the change
-    to a whole hour or minute. The returned datetime is in UTC.
+    Both bounds must be aware UTC datetimes, with lower < upper and different
+    offsets in timezone. There must be exactly one offset change in (lower, upper].
     """
     offset = lower.astimezone(timezone).utcoffset()
     while upper - lower > timedelta(microseconds=1):

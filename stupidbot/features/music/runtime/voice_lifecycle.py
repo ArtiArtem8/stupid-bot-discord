@@ -301,7 +301,7 @@ class VoiceLifecycleHandlers:
     def _release_voice_transition_validation(
         self, guild_id: int, transition_at: float | None
     ) -> None:
-        """Retire this validator without removing a successor's recovery state."""
+        """Leave a newer validation task's state intact."""
         current_task = asyncio.current_task()
         if self._voice_transition_validation_tasks.get(guild_id) is current_task:
             self._voice_transition_validation_tasks.pop(guild_id, None)
@@ -457,7 +457,6 @@ class VoiceLifecycleHandlers:
         before: discord.VoiceChannel | discord.StageChannel,
         after: discord.VoiceChannel | discord.StageChannel,
     ) -> None:
-        """Reconcile recovery ownership and occupancy after a bot channel move."""
         guild_id = guild.id
         self._recent_voice_transitions[guild_id] = time.monotonic()
         validation_task = self._voice_transition_validation_tasks.get(guild_id)

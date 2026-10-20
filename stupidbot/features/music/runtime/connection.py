@@ -415,7 +415,6 @@ class ConnectionManager:
     async def _cleanup_failed_node_players(
         self, node: mafic.Node[discord.Client], players: Sequence[MusicPlayer]
     ) -> None:
-        """Release failed players according to their owner after node cleanup."""
         for player in players:
             if self.get_player_node(player) is node:
                 await self._cleanup_voice_client_locally(player.guild, player)
