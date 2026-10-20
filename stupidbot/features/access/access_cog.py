@@ -56,7 +56,7 @@ class AdminCog(BaseCog):
 
     @override
     def command_response_ephemeral(self, _interaction: discord.Interaction) -> bool:
-        options: dict[str, object] = dict(_interaction.namespace)
+        options: dict[str, object] = dict(iter(_interaction.namespace))
         return options.get("ephemeral", True) is not False
 
     @override

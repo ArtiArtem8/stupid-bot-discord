@@ -106,6 +106,10 @@ class QueueUndoView(discord.ui.View):
         messages = MusicMessages(catalog("music", context.language))
         if not await check_component_access(interaction):
             return
+        voice_client = interaction.guild.voice_client if interaction.guild else None
+        channel = voice_client.channel if voice_client is not None else None
+        if not await check_music_access(interaction, channel):
+            return
         message = interaction.message
         if message is None:
             logger.debug("Queue undo component has no source message.")

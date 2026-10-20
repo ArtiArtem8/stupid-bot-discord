@@ -18,7 +18,6 @@ from stupidbot.features.music.composition import create_music_components
 from stupidbot.features.music.contracts import TrackExceptionPayload
 from stupidbot.features.music.discord.access import (
     MusicAction,
-    check_music_access,
     require_music_access,
 )
 from stupidbot.features.music.discord.feedback import (
@@ -93,7 +92,7 @@ class MusicCog(BaseCog):
     def command_response_ephemeral(self, _interaction: Interaction) -> bool:
         command = _interaction.command
         if command is not None and command.name == "queue":
-            options: dict[str, object] = dict(_interaction.namespace)
+            options: dict[str, object] = dict(iter(_interaction.namespace))
             return options.get("ephemeral", True) is not False
         return command is not None and command.name in {"join", "leave", "reconnect"}
 
@@ -120,7 +119,7 @@ class MusicCog(BaseCog):
         command = interaction.command
         if command is None or command.name == "queue":
             return None
-        options: dict[str, object] = dict(interaction.namespace)
+        options: dict[str, object] = dict(iter(interaction.namespace))
         if command.name == "volume" and options.get("value") is None:
             return None
         if command.name in {"join", "play", "play-next"}:
@@ -132,6 +131,7 @@ class MusicCog(BaseCog):
         return "control"
 
     async def _check_command_voice(self, interaction: Interaction) -> bool:
+        """Check current voice policy before and after command preflight awaits."""
         action = self._command_voice_action(interaction)
         if action is None:
             return True
@@ -252,6 +252,7 @@ class MusicCog(BaseCog):
         if not channel:
             return
 
+        await self._check_command_voice(interaction)
         check_result, from_channel = await self.service.join(guild, channel)
         await self._send_join_feedback(
             interaction,
@@ -310,6 +311,7 @@ class MusicCog(BaseCog):
         if not channel:
             return
 
+        await self._check_command_voice(interaction)
         result = await self.service.play(
             guild,
             channel,
@@ -509,6 +511,7 @@ class MusicCog(BaseCog):
         context = await interaction_context(interaction, private=False)
         messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
+        await self._check_command_voice(interaction)
         res = await self.service.stop(
             guild.id, interaction.user.id, interaction.channel_id
         )
@@ -526,19 +529,19 @@ class MusicCog(BaseCog):
         guild = await self._require_guild(interaction)
         player = self.service.get_player(guild.id)
         expected = player.current_attempt if player is not None else None
-        channel = player.channel if player is not None else None
-        if not await check_music_access(
+        context = await interaction_context(interaction, private=False)
+        messages = MusicMessages(catalog("music", context.language))
+        voice_client = guild.voice_client
+        channel = voice_client.channel if voice_client is not None else None
+        await require_music_access(
             interaction,
             channel,
             action="skip",
             attempt=expected,
-        ):
-            return
+        )
         if expected is None:
             await send_warning_no_player(interaction)
             return
-        context = await interaction_context(interaction, private=False)
-        messages = MusicMessages(catalog("music", context.language))
         res = await self.service.skip(
             guild.id, interaction.user.id, interaction.channel_id, expected=expected
         )
@@ -630,6 +633,7 @@ class MusicCog(BaseCog):
             await send_info(interaction, messages.volume(percent=vol))
             return
 
+        await self._check_command_voice(interaction)
         res = await self.service.set_volume(guild.id, value)
         if res.is_success and res.data is not None:
             await send_success(interaction, messages.volume(percent=res.data))
@@ -644,6 +648,7 @@ class MusicCog(BaseCog):
         context = await interaction_context(interaction, private=True)
         messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
+        await self._check_command_voice(interaction)
         res = await self.service.leave(guild)
         match res.status:
             case MusicResultStatus.SUCCESS:
@@ -669,6 +674,7 @@ class MusicCog(BaseCog):
         context = await interaction_context(interaction, private=False)
         messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
+        await self._check_command_voice(interaction)
         res = await self.service.shuffle(
             guild.id, interaction.user.id, interaction.channel_id
         )
@@ -688,6 +694,7 @@ class MusicCog(BaseCog):
         context = await interaction_context(interaction, private=False)
         messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
+        await self._check_command_voice(interaction)
         res = await self.service.rotate(
             guild.id, interaction.user.id, interaction.channel_id
         )
@@ -727,6 +734,7 @@ class MusicCog(BaseCog):
     ) -> None:
         context = await interaction_context(interaction, private=False)
         guild = await self._require_guild(interaction)
+        await self._check_command_voice(interaction)
         result = await self.service.set_repeat(
             guild.id,
             mode,
@@ -751,6 +759,7 @@ class MusicCog(BaseCog):
         context = await interaction_context(interaction, private=False)
         messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
+        await self._check_command_voice(interaction)
         res = await self.service.pause(guild.id)
         if res.is_success:
             await send_info(
@@ -769,6 +778,7 @@ class MusicCog(BaseCog):
         context = await interaction_context(interaction, private=False)
         messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
+        await self._check_command_voice(interaction)
         res = await self.service.resume(guild.id)
         if res.is_success:
             await send_info(
@@ -804,6 +814,7 @@ class MusicCog(BaseCog):
 
         await defer_command(interaction, ephemeral=True)
 
+        await self._check_command_voice(interaction)
         restored = await self.service.heal(interaction.guild_id)
         if restored:
             await send_warning(

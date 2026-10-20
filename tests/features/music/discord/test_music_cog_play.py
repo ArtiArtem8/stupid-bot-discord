@@ -236,8 +236,14 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         cog = _make_cog()
         guild = MagicMock(id=123)
-        channel = MagicMock()
+        channel = MagicMock(spec=discord.VoiceChannel, id=20)
         interaction = _make_interaction()
+        interaction.command = cog.play_next
+        interaction.guild = guild
+        guild.voice_client = MagicMock(channel=channel)
+        interaction.user = MagicMock(
+            spec=discord.Member, id=42, voice=MagicMock(channel=channel)
+        )
         entry = make_entry("one", requester_id=42)
         track = entry.track
         data: TrackResponseData = {
@@ -288,7 +294,13 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         cog = _make_cog()
         interaction = _make_interaction()
         guild = MagicMock()
-        channel = MagicMock()
+        channel = MagicMock(spec=discord.VoiceChannel, id=20)
+        interaction.command = cog.play
+        interaction.guild = guild
+        guild.voice_client = MagicMock(channel=channel)
+        interaction.user = MagicMock(
+            spec=discord.Member, id=42, voice=MagicMock(channel=channel)
+        )
         result: MusicResult[object] = MusicResult(
             MusicResultStatus.FAILURE,
             "Nothing found",

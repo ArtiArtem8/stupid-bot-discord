@@ -198,6 +198,11 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
     async def test_leave_success_sends_disconnected_message(self) -> None:
         guild = MagicMock()
         interaction = MagicMock(guild=guild)
+        interaction.command = self.cog.leave
+        interaction.user = MagicMock(
+            spec=discord.Member,
+            guild_permissions=discord.Permissions(manage_guild=True),
+        )
         service_leave = AsyncMock(
             return_value=MusicResult(
                 MusicResultStatus.SUCCESS,
@@ -236,6 +241,11 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
     async def test_leave_not_connected_uses_no_player_warning(self) -> None:
         guild = MagicMock()
         interaction = MagicMock(guild=guild)
+        interaction.command = self.cog.leave
+        interaction.user = MagicMock(
+            spec=discord.Member,
+            guild_permissions=discord.Permissions(manage_guild=True),
+        )
         result: MusicResult[None] = MusicResult(
             MusicResultStatus.FAILURE,
             "Not connected",
@@ -269,6 +279,11 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
     async def test_leave_disconnect_error_uses_send_error(self) -> None:
         guild = MagicMock()
         interaction = MagicMock(guild=guild)
+        interaction.command = self.cog.leave
+        interaction.user = MagicMock(
+            spec=discord.Member,
+            guild_permissions=discord.Permissions(manage_guild=True),
+        )
         message = "Не удалось отключиться от голосового канала."
         result: MusicResult[None] = MusicResult(
             MusicResultStatus.ERROR, message, reason=MusicResultReason.DISCONNECT_FAILED
@@ -311,7 +326,12 @@ class TestMusicCogJoinVisibility(unittest.IsolatedAsyncioTestCase):
     async def test_join_passes_channel_to_service_and_reports_result(self) -> None:
         channel = MagicMock(spec=discord.VoiceChannel)
         guild = MagicMock(spec=discord.Guild)
+        guild.voice_client = None
         interaction = MagicMock(guild=guild)
+        interaction.command = self.cog.join
+        interaction.user = MagicMock(
+            spec=discord.Member, voice=MagicMock(channel=channel)
+        )
         join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
 
         with (

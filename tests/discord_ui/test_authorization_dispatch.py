@@ -3,7 +3,7 @@
 import asyncio
 import unittest
 from datetime import UTC, datetime, timedelta
-from typing import override
+from typing import TYPE_CHECKING, override
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -12,6 +12,7 @@ import discord
 from stupidbot.app.bot import StupidBot
 from stupidbot.discord_ui import base_cog
 from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.features.access.access_cog import AdminCog
 from stupidbot.features.birthdays.birthday_cog import BirthdayCog
 from stupidbot.features.member_roles.member_roles_cog import ServerMonitorCog
 from stupidbot.features.preferences.models import Preferences, PreferenceScope
@@ -21,6 +22,9 @@ from stupidbot.features.voice.discord.profile_cog import VoiceProfileCog
 from stupidbot.features.voice.discord.view import ProfileAction, VoiceProfileView
 from stupidbot.features.wolfram.wolfram_cog import WolframCog
 from stupidbot.i18n.policy import Language, PresentationContext
+
+if TYPE_CHECKING:
+    from discord.types.interactions import ApplicationCommandInteractionDataOption
 
 
 class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
@@ -41,6 +45,7 @@ class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
         self.item.type = discord.InteractionType.application_command
         self.item.command_failed = False
         self.item.extras = {}
+        self.item.namespace = discord.app_commands.Namespace(self.item, {}, [])
         self._reset_response()
         channel = discord.PartialMessageable(
             state=self.bot._connection, id=44, guild_id=42
@@ -145,6 +150,44 @@ class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
             await self.bot.tree._call(self.item)
         deliver.assert_not_awaited()
         self._assert_denied_once()
+
+    async def test_registered_visibility_options_use_real_discord_namespace(
+        self,
+    ) -> None:
+        admin = AdminCog(self.bot, self.bot.block_manager)
+        birthdays = BirthdayCog(self.bot, self.bot.birthday_repository)
+        profiles = VoiceProfileCog(self.bot)
+        self.blocked.return_value = False
+        for command, option_name in (
+            (admin.listblocked, "ephemeral"),
+            (birthdays.list_birthdays, "ephemeral"),
+            (profiles.voice_profile, "private"),
+        ):
+            self.bot.tree.add_command(command)
+            for value in (None, False, True):
+                with self.subTest(command=command.name, value=value):
+                    self._reset_response()
+                    self.item.command = command
+                    self.item.extras = {}
+                    self.item.command_failed = False
+                    options: list[ApplicationCommandInteractionDataOption] = []
+                    if value is not None:
+                        options.append({"name": option_name, "type": 5, "value": value})
+                    self.item.data = {
+                        "name": command.name,
+                        "type": 1,
+                        "options": options,
+                    }
+                    self.item.namespace = discord.app_commands.Namespace(
+                        self.item, {}, options
+                    )
+                    with patch.object(command, "_callback", new=AsyncMock()) as run:
+                        await self.bot.tree._call(self.item)
+                    run.assert_awaited_once()
+                    self.item.response.defer.assert_awaited_once_with(
+                        thinking=True, ephemeral=value is not False
+                    )
+                    self.assertFalse(self.item.command_failed)
 
     async def test_registered_monitor_group_uses_cog_check(self) -> None:
         cog = ServerMonitorCog(self.bot, self.bot.monitor_manager)

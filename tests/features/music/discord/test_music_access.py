@@ -1,8 +1,9 @@
 """Music controls share listener and narrowly scoped remote permissions."""
 
+import asyncio
 import unittest
 from datetime import UTC, datetime
-from typing import override
+from typing import TYPE_CHECKING, override
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -14,6 +15,7 @@ from stupidbot.features.music.discord import music_cog
 from stupidbot.features.music.discord.access import MusicAction, can_control_music
 from stupidbot.features.music.discord.music_cog import MusicCog
 from stupidbot.features.music.discord.views.controller import TrackControllerView
+from stupidbot.features.music.discord.views.queue import QueueUndoView
 from stupidbot.features.music.playback.models import PlaybackAttempt
 from stupidbot.features.music.playback.player import MusicPlayer
 from stupidbot.features.music.repository import VolumeStore
@@ -27,6 +29,9 @@ from stupidbot.features.preferences.models import Preferences
 from stupidbot.i18n.discord import interaction_context
 from stupidbot.i18n.policy import Language, PresentationContext
 from tests.features.music.fixtures import make_entry
+
+if TYPE_CHECKING:
+    from discord.types.interactions import ApplicationCommandInteractionDataOption
 
 
 def _member(
@@ -217,9 +222,9 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
             patcher = patch.object(target, name, replacement)
             patcher.start()
             self.addCleanup(patcher.stop)
-        feedback = patch.object(FeedbackUI, "send", new=AsyncMock())
-        self.feedback = feedback.start()
-        self.addCleanup(feedback.stop)
+        self.feedback_patch = patch.object(FeedbackUI, "send", new=AsyncMock())
+        self.feedback = self.feedback_patch.start()
+        self.addCleanup(self.feedback_patch.stop)
 
     async def test_registered_pause_denies_remote_requester_before_service(
         self,
@@ -242,6 +247,240 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
 
         self.pause.assert_awaited_once_with(42)
         self.assertFalse(self.item.command_failed)
+
+    async def test_registered_mutations_recheck_voice_after_preferences_wait(
+        self,
+    ) -> None:
+        query: list[ApplicationCommandInteractionDataOption] = [
+            {"name": "query", "type": 3, "value": "track"}
+        ]
+        no_options: list[ApplicationCommandInteractionDataOption] = []
+        volume_zero: list[ApplicationCommandInteractionDataOption] = [
+            {"name": "value", "type": 4, "value": 0}
+        ]
+        cases = (
+            (self.cog.join, "join", no_options),
+            (self.cog.play, "play", query),
+            (self.cog.play_next, "play", query),
+            (self.cog.stop, "stop", no_options),
+            (self.cog.skip, "skip", no_options),
+            (self.cog.volume, "set_volume", volume_zero),
+            (self.cog.leave, "leave", no_options),
+            (self.cog.shuffle, "shuffle", no_options),
+            (self.cog.rotate, "rotate", no_options),
+            (self.cog.repeat, "set_repeat", no_options),
+            (self.cog.pause, "pause", no_options),
+            (self.cog.resume, "resume", no_options),
+            (self.cog.heal, "heal", no_options),
+        )
+        for command, operation_name, options in cases:
+            with self.subTest(command=command.name):
+                self.bot.tree.add_command(command, override=True)
+                self.item.command = command
+                self.item.data = {"name": command.name, "type": 1, "options": options}
+                self.item.namespace = discord.app_commands.Namespace(
+                    self.item, {}, options
+                )
+                self.item.extras = {}
+                self.item.command_failed = False
+                self.item.response.is_done.return_value = False
+                self.item.response.defer.reset_mock()
+                self.feedback.reset_mock()
+                self.item.user = _member(11, 20)
+                waiting, release = asyncio.Event(), asyncio.Event()
+
+                async def preferences(
+                    *_args: object,
+                    started: asyncio.Event = waiting,
+                    proceed: asyncio.Event = release,
+                ) -> Preferences:
+                    started.set()
+                    await proceed.wait()
+                    return Preferences()
+
+                operation = AsyncMock()
+                with (
+                    patch.object(self.service, operation_name, operation),
+                    patch.object(
+                        self.bot.preferences_repository,
+                        "get",
+                        side_effect=preferences,
+                    ),
+                ):
+                    task = asyncio.create_task(self.bot.tree._call(self.item))
+                    try:
+                        await asyncio.wait_for(waiting.wait(), 2)
+                        self.item.user.voice = None
+                    finally:
+                        release.set()
+                        await task
+                operation.assert_not_awaited()
+                self.item.response.defer.assert_awaited_once()
+                self.feedback.assert_awaited_once()
+                self.assertTrue(self.feedback.call_args.kwargs["ephemeral"])
+
+    async def test_registered_play_rechecks_bot_channel_after_preferences_wait(
+        self,
+    ) -> None:
+        self.item.user = _member(11, 20)
+        self.item.command = self.cog.play
+        self.item.data = {
+            "name": "play",
+            "type": 1,
+            "options": [{"name": "query", "type": 3, "value": "track"}],
+        }
+        waiting, release = asyncio.Event(), asyncio.Event()
+
+        async def preferences(*_args: object) -> Preferences:
+            waiting.set()
+            await release.wait()
+            return Preferences()
+
+        with patch.object(
+            self.bot.preferences_repository, "get", side_effect=preferences
+        ):
+            task = asyncio.create_task(self.bot.tree._call(self.item))
+            try:
+                await asyncio.wait_for(waiting.wait(), 2)
+                self.item.guild.voice_client.channel = MagicMock(
+                    spec=discord.VoiceChannel, id=30
+                )
+            finally:
+                release.set()
+                await task
+        self.play.assert_not_awaited()
+        self.feedback.assert_awaited_once()
+        self.assertTrue(self.item.command_failed)
+
+    async def test_departing_requester_can_still_skip_captured_attempt(self) -> None:
+        self.item.user = _member(10, 20)
+        self.item.command = self.cog.skip
+        self.item.data = {"name": "skip", "type": 1, "options": []}
+        waiting, release = asyncio.Event(), asyncio.Event()
+
+        async def preferences(*_args: object) -> Preferences:
+            waiting.set()
+            await release.wait()
+            return Preferences()
+
+        with patch.object(
+            self.bot.preferences_repository, "get", side_effect=preferences
+        ):
+            task = asyncio.create_task(self.bot.tree._call(self.item))
+            try:
+                await asyncio.wait_for(waiting.wait(), 2)
+                self.item.user.voice = None
+                self.player.current_attempt = PlaybackAttempt(
+                    2, make_entry("next", requester_id=11)
+                )
+            finally:
+                release.set()
+                await task
+        self.skip.assert_awaited_once_with(42, 10, 44, expected=self.attempt)
+        self.assertFalse(self.item.command_failed)
+
+    async def test_departing_manager_can_still_leave(self) -> None:
+        self.item.user = _member(11, 20, manager=True)
+        self.item.command = self.cog.leave
+        self.item.data = {"name": "leave", "type": 1, "options": []}
+        waiting, release = asyncio.Event(), asyncio.Event()
+
+        async def preferences(*_args: object) -> Preferences:
+            waiting.set()
+            await release.wait()
+            return Preferences()
+
+        with patch.object(
+            self.bot.preferences_repository, "get", side_effect=preferences
+        ):
+            task = asyncio.create_task(self.bot.tree._call(self.item))
+            try:
+                await asyncio.wait_for(waiting.wait(), 2)
+                self.item.user.voice = None
+            finally:
+                release.set()
+                await task
+        self.leave.assert_awaited_once_with(self.item.guild)
+        self.assertFalse(self.item.command_failed)
+
+    async def test_registered_reads_remain_available_outside_voice(self) -> None:
+        no_options: list[ApplicationCommandInteractionDataOption] = []
+        public_queue: list[ApplicationCommandInteractionDataOption] = [
+            {"name": "ephemeral", "type": 5, "value": False}
+        ]
+        self.service.get_volume = AsyncMock(return_value=80)
+        self.service.get_queue = AsyncMock(
+            return_value=MusicResult(
+                MusicResultStatus.FAILURE,
+                "Queue empty",
+                reason=MusicResultReason.QUEUE_EMPTY,
+            )
+        )
+        for command, operation, options, private in (
+            (self.cog.volume, self.service.get_volume, no_options, False),
+            (self.cog.queue, self.service.get_queue, no_options, True),
+            (
+                self.cog.queue,
+                self.service.get_queue,
+                public_queue,
+                False,
+            ),
+        ):
+            with self.subTest(command=command.name):
+                self.bot.tree.add_command(command, override=True)
+                self.item.command = command
+                self.item.data = {"name": command.name, "type": 1, "options": options}
+                self.item.namespace = discord.app_commands.Namespace(
+                    self.item, {}, options
+                )
+                self.item.response.is_done.return_value = False
+                self.item.response.defer.reset_mock()
+                operation.reset_mock()
+                await self.bot.tree._call(self.item)
+                operation.assert_awaited_once_with(42)
+                self.item.response.defer.assert_awaited_once_with(
+                    thinking=True, ephemeral=private
+                )
+                self.assertFalse(self.item.command_failed)
+
+    async def test_slow_pause_and_lost_final_response_apply_once_after_ack(
+        self,
+    ) -> None:
+        self.feedback_patch.stop()
+        self.item.user = _member(11, 20)
+        self.item.command = self.cog.pause
+        self.item.data = {"name": "pause", "type": 1, "options": []}
+        waiting, release = asyncio.Event(), asyncio.Event()
+        effects: list[str] = []
+
+        async def pause(_guild: int) -> MusicResult[None]:
+            waiting.set()
+            await release.wait()
+            effects.append("paused")
+            return MusicResult(
+                MusicResultStatus.SUCCESS, "Paused", reason=MusicResultReason.PAUSED
+            )
+
+        self.pause.side_effect = pause
+        self.item.edit_original_response.side_effect = discord.HTTPException(
+            MagicMock(status=503, reason="Unavailable"), "response unavailable"
+        )
+        with self.assertLogs("stupidbot.discord_ui.feedback", level="WARNING"):
+            task = asyncio.create_task(self.bot.tree._call(self.item))
+            try:
+                await asyncio.wait_for(waiting.wait(), 2)
+                self.item.response.defer.assert_awaited_once_with(
+                    thinking=True, ephemeral=False
+                )
+                self.assertEqual(effects, [])
+                self.item.edit_original_response.assert_not_awaited()
+            finally:
+                release.set()
+                await task
+        self.pause.assert_awaited_once_with(42)
+        self.assertEqual(effects, ["paused"])
+        self.item.edit_original_response.assert_awaited_once()
+        self.item.followup.send.assert_not_awaited()
 
     async def test_registered_healing_denial_has_one_private_response(self) -> None:
         self.service.voice_lifecycle.is_healing = MagicMock(return_value=True)
@@ -414,3 +653,89 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
             await view._scheduled_task(button, self.item)
         player.seek_attempt.assert_awaited_once_with(self.attempt, 0)
         self.feedback.assert_not_awaited()
+
+    async def test_controller_rechecks_voice_after_block_lookup(self) -> None:
+        player = MagicMock(
+            spec=MusicPlayer, current_attempt=self.attempt, channel=self.channel
+        )
+        player.seek_attempt = AsyncMock(return_value=True)
+        view = TrackControllerView(
+            user_id=10,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+            player=player,
+            guild_id=42,
+            attempt=self.attempt,
+            on_stop_callback=None,
+            on_player_failure=AsyncMock(),
+        )
+        self.addCleanup(view.stop)
+        self.item.type = discord.InteractionType.component
+        self.item.user = _member(11, 20)
+        self.item.data = {"component_type": 2, "custom_id": "btn_restart"}
+        button = next(
+            child
+            for child in view.children
+            if isinstance(child, discord.ui.Button) and child.custom_id == "btn_restart"
+        )
+        waiting, release = asyncio.Event(), asyncio.Event()
+
+        async def access(*_args: object) -> bool:
+            waiting.set()
+            await release.wait()
+            return False
+
+        with patch.object(
+            self.bot.block_manager, "is_user_blocked", side_effect=access
+        ):
+            task = asyncio.create_task(view._scheduled_task(button, self.item))
+            try:
+                await asyncio.wait_for(waiting.wait(), 2)
+                self.item.user.voice = None
+            finally:
+                release.set()
+                await task
+        player.seek_attempt.assert_not_awaited()
+        self.feedback.assert_awaited_once()
+        self.assertFalse(view.is_finished())
+
+    async def test_queue_undo_rechecks_bot_channel_after_block_lookup(self) -> None:
+        remove = AsyncMock()
+        view = QueueUndoView(
+            guild_id=42,
+            expected_entries=(self.attempt.entry,),
+            requester_id=10,
+            remove_callback=remove,
+            context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+            timeout=60,
+        )
+        self.addCleanup(view.stop)
+        self.item.type = discord.InteractionType.component
+        self.item.user = _member(10, 20)
+        self.item.data = {
+            "component_type": 2,
+            "custom_id": view.remove_button.custom_id,
+        }
+        waiting, release = asyncio.Event(), asyncio.Event()
+
+        async def access(*_args: object) -> bool:
+            waiting.set()
+            await release.wait()
+            return False
+
+        with patch.object(
+            self.bot.block_manager, "is_user_blocked", side_effect=access
+        ):
+            task = asyncio.create_task(
+                view._scheduled_task(view.remove_button, self.item)
+            )
+            try:
+                await asyncio.wait_for(waiting.wait(), 2)
+                self.item.guild.voice_client.channel = MagicMock(
+                    spec=discord.VoiceChannel, id=30
+                )
+            finally:
+                release.set()
+                await task
+        remove.assert_not_awaited()
+        self.feedback.assert_awaited_once()
+        self.assertFalse(view.is_finished())

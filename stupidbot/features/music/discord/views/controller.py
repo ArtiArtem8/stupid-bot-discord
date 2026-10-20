@@ -631,6 +631,8 @@ class TrackControllerView(ui.View):
         self, interaction: Interaction, *, action: MusicAction = "control"
     ) -> PlaybackAttempt | None:
         await ack_component(interaction)
+        if not await check_component_access(interaction):
+            return None
         channel = self.player.channel
         if not await check_music_access(
             interaction,
@@ -638,8 +640,6 @@ class TrackControllerView(ui.View):
             action=action,
             attempt=self.attempt,
         ):
-            return None
-        if not await check_component_access(interaction):
             return None
         if self.player.current_attempt is not self.attempt:
             await self._request_stop(ControllerDestroyReason.STALE_VIEW)
