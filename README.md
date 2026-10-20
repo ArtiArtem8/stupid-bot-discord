@@ -8,7 +8,17 @@
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![discord.py](https://img.shields.io/badge/discord.py-2.7.1%2B-5865F2?style=flat-square&logo=discord&logoColor=white)](https://github.com/Rapptz/discord.py)
+[![Lavalink](https://img.shields.io/badge/Lavalink-E3A008?style=flat-square)](https://lavalink.dev/)
+[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+<br>
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json&style=flat-square)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square)](https://github.com/astral-sh/ruff)
+[![basedpyright](https://img.shields.io/endpoint?url=https://docs.basedpyright.com/latest/badge.json&style=flat-square)](https://docs.basedpyright.com/)
+[![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json&style=flat-square)](https://github.com/astral-sh/ty)
+[![prek](https://raw.githubusercontent.com/j178/prek/master/docs/assets/badge.svg)](https://github.com/j178/prek)
 [![CI](https://img.shields.io/github/actions/workflow/status/ArtiArtem8/stupid-bot-discord/ci.yml?branch=main&style=flat-square&label=CI&logo=githubactions&logoColor=white)](https://github.com/ArtiArtem8/stupid-bot-discord/actions/workflows/ci.yml)
+[![Codacy](https://app.codacy.com/project/badge/Grade/b094540d4d7b4bbea618b775ce0597e7)](https://app.codacy.com/gh/ArtiArtem8/stupid-bot-discord/dashboard)
+[![Scrutinizer](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/badges/quality-score.png?b=main)](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/?branch=main)
 [![License](https://img.shields.io/badge/license-MIT-57A773?style=flat-square)](LICENSE)
 
 **StupidBot** is a Discord bot for music, voice profiles and birthday greetings.
@@ -163,16 +173,6 @@ can appear at most twice, at least 14 days apart. Choose **Later** or
 
 <details>
 <summary>Playback, voice analytics and storage</summary>
-
-[![Lavalink](https://img.shields.io/badge/Lavalink-E3A008?style=flat-square)](https://lavalink.dev/)
-[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json&style=flat-square)](https://github.com/astral-sh/uv)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square)](https://github.com/astral-sh/ruff)
-[![basedpyright](https://img.shields.io/endpoint?url=https://docs.basedpyright.com/latest/badge.json&style=flat-square)](https://docs.basedpyright.com/)
-[![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json&style=flat-square)](https://github.com/astral-sh/ty)
-[![prek](https://raw.githubusercontent.com/j178/prek/master/docs/assets/badge.svg)](https://github.com/j178/prek)
-[![Codacy](https://app.codacy.com/project/badge/Grade/b094540d4d7b4bbea618b775ce0597e7)](https://app.codacy.com/gh/ArtiArtem8/stupid-bot-discord/dashboard)
-[![Scrutinizer](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/badges/quality-score.png?b=main)](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/?branch=main)
 
 - **Playback state survives overlapping events.** [MusicPlayer](stupidbot/features/music/playback/player.py)
   serializes queue transitions and gives each playback attempt an identity.
