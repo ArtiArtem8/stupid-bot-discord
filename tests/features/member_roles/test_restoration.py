@@ -13,6 +13,7 @@ import discord
 from stupidbot.features.member_roles.models import MemberSnapshot
 from stupidbot.features.member_roles.repository import MonitorRepository
 from stupidbot.features.member_roles.restoration import ServerMonitoringManager
+from stupidbot.storage.identity import from_microseconds
 from tests.storage.fixtures import temporary_database
 
 
@@ -234,7 +235,34 @@ class TestGuildMonitoring(unittest.IsolatedAsyncioTestCase):
             SnapshotInput(5, "old", [7], now - timedelta(days=10)), 3
         )
         await self.repository.save(10, 6, "new", [8], now - timedelta(days=1))
-        self.assertEqual(await self.repository.cleanup_expired(10, now), 1)
-        self.assertEqual(
-            [row.user_id for row in await self.repository.snapshots(10)], [6]
+        await self.repository.save(10, 7, "boundary", [9], now - timedelta(days=3))
+        await self.repository.save(
+            10, 8, "expired", [11], now - timedelta(days=3, microseconds=1)
         )
+        self.assertEqual(await self.repository.cleanup_expired(10, now), 2)
+        self.assertEqual(
+            [row.user_id for row in await self.repository.snapshots(10)], [6, 7]
+        )
+
+    async def test_cleanup_preserves_snapshots_with_large_valid_ttl(self) -> None:
+        now = datetime(2026, 10, 1, tzinfo=UTC)
+        snapshot = await self._store_snapshot(
+            SnapshotInput(5, "member", [7], now - timedelta(days=30)), 1_000_000_000
+        )
+
+        self.assertEqual(await self.repository.cleanup_expired(10, now), 0)
+        self.assertEqual(await self.repository.snapshots(10), [snapshot])
+
+    async def test_cleanup_accepts_cutoff_around_sqlite_integer_minimum(self) -> None:
+        ttl = 106_751_992
+        retention_us = timedelta(days=ttl) // timedelta(microseconds=1)
+        for delta in (-1, 0, 1):
+            with self.subTest(delta=delta):
+                # Keep now representable while the retention cutoff crosses int64.
+                now = from_microseconds(-(2**63) + delta + retention_us)
+                snapshot = await self._store_snapshot(
+                    SnapshotInput(5, "member", [7], now - timedelta(days=30)), ttl
+                )
+
+                self.assertEqual(await self.repository.cleanup_expired(10, now), 0)
+                self.assertEqual(await self.repository.snapshots(10), [snapshot])

@@ -213,11 +213,15 @@ class MonitorRepository:
             )
             if ttl is None:
                 return 0
+            cutoff = moment - ttl * _MICROSECONDS_PER_DAY
+            # No stored SQLite integer can precede this retention boundary.
+            if cutoff <= -(2**63):
+                return 0
             removed = await connection.scalars(
                 role_snapshots.delete()
                 .where(
                     role_snapshots.c.guild_id == guild_id,
-                    role_snapshots.c.left_us < moment - ttl * _MICROSECONDS_PER_DAY,
+                    role_snapshots.c.left_us < cutoff,
                 )
                 .returning(role_snapshots.c.snapshot_id)
             )
