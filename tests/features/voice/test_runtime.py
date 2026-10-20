@@ -2,12 +2,14 @@
 
 import asyncio
 import unittest
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import override
 from unittest.mock import patch
 
 from sqlalchemy import event, text
 
+from stupidbot.common.asyncio import run_in_thread
+from stupidbot.features.voice import runtime
 from stupidbot.features.voice.facts import (
     VoiceCheckpoint,
     VoiceJournalRecord,
@@ -54,6 +56,66 @@ class TestVoiceAnalytics(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(before.timeline.rooms, ())
             self.assertEqual((await self.analytics.snapshot(2)).generation, 0)
         self.assertEqual(len((await self.store.history()).records), 2)
+
+    async def test_committed_apply_reports_updating_until_publication(self) -> None:
+        applying, release = asyncio.Event(), asyncio.Event()
+        fact = record(10, VoiceCheckpoint())
+
+        async def pause[T](operation: Callable[[], T]) -> T:
+            applying.set()
+            await release.wait()
+            return await run_in_thread(operation)
+
+        with patch.object(runtime, "run_in_thread", side_effect=pause):
+            writing = asyncio.create_task(self.analytics.append("next", [fact]))
+            try:
+                await applying.wait()
+                self.assertEqual(self.analytics.status, "updating")
+            finally:
+                release.set()
+                revision = await writing
+
+        self.assertEqual(self.analytics.status, "ready")
+        snapshot = await self.analytics.snapshot()
+        self.assertEqual(snapshot.generation, revision)
+        self.assertEqual(snapshot.timeline, build_timeline([self.initial, fact]))
+
+    async def test_failed_recovery_stays_unavailable_during_next_sql_append(
+        self,
+    ) -> None:
+        fact = record(10, VoiceCheckpoint())
+        with patch.object(self.store, "append_batch", side_effect=OSError("unknown")):
+            with self.assertRaises(OSError):
+                await self.analytics.append("failed", [fact])
+        with (
+            patch.object(self.store, "history", side_effect=OSError("unavailable")),
+            self.assertLogs(runtime.logger, level="WARNING"),
+        ):
+            with self.assertRaises(OSError):
+                await self.analytics.start()
+        self.assertEqual(self.analytics.status, "unavailable")
+
+        committing, release = asyncio.Event(), asyncio.Event()
+        append_batch = self.store.append_batch
+
+        async def pause(
+            token: str, records: Sequence[VoiceJournalRecord]
+        ) -> VoiceCommit:
+            committing.set()
+            await release.wait()
+            return await append_batch(token, records)
+
+        with patch.object(self.store, "append_batch", side_effect=pause):
+            writing = asyncio.create_task(self.analytics.append("next", [fact]))
+            try:
+                await committing.wait()
+                self.assertEqual(self.analytics.status, "unavailable")
+            finally:
+                release.set()
+                await writing
+
+        await self.analytics.start()
+        self.assertEqual(self.analytics.status, "ready")
 
     async def test_ready_snapshot_executes_no_sql(self) -> None:
         statements: list[str] = []

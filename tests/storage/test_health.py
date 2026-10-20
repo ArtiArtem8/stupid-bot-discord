@@ -42,10 +42,12 @@ class TestDatabaseHealth(unittest.IsolatedAsyncioTestCase):
             (sqlite3.SQLITE_BUSY, 1),
             (sqlite3.SQLITE_LOCKED | (1 << 8), 2),
             (sqlite3.SQLITE_CORRUPT, 2),
+            (None, 2),
         ):
             with self.subTest(code=code):
                 original = sqlite3.OperationalError("test failure")
-                original.sqlite_errorcode = code
+                if code is not None:
+                    original.sqlite_errorcode = code
                 error = OperationalError("test", None, original)
                 with self.assertRaises(OperationalError) as raised:
                     async with database.transaction():

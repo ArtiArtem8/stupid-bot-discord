@@ -1011,7 +1011,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_disconnect_returns_true_when_disconnect_clears_cache(self) -> None:
         guild = MagicMock(id=123)
-        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        voice_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
         guild.voice_client = voice_client
 
         async def disconnect(*, force: bool) -> None:
@@ -1028,7 +1030,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_disconnect_returns_true_when_cleanup_clears_cache(self) -> None:
         guild = MagicMock(id=123)
-        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        voice_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
         guild.voice_client = voice_client
         voice_client.disconnect = AsyncMock()
         voice_client.cleanup.side_effect = lambda: setattr(guild, "voice_client", None)
@@ -1076,7 +1080,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         guild = MagicMock(id=123)
-        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        voice_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
         guild.voice_client = voice_client
         voice_client.disconnect = AsyncMock(side_effect=RuntimeError("failed"))
 
@@ -1122,7 +1128,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         guild = MagicMock(id=123)
-        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        voice_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
         guild.voice_client = voice_client
         voice_client.disconnect = AsyncMock()
 
@@ -1135,8 +1143,12 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         guild = MagicMock(id=123)
-        old_client = MagicMock(spec=discord.VoiceProtocol)
-        new_client = MagicMock(spec=discord.VoiceProtocol)
+        old_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
+        new_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
         guild.voice_client = old_client
 
         async def disconnect(*, force: bool) -> None:

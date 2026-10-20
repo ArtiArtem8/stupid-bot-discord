@@ -99,6 +99,10 @@ msgctxt "ui"
 msgid "Could not refresh the queue"
 msgstr "대기열을 새로 고치지 못했습니다"
 
+msgctxt "ui"
+msgid "Could not restore the music session. Please try again."
+msgstr "음악 세션을 복구하지 못했습니다. 다시 시도해 주세요."
+
 msgctxt "command"
 msgid "Disconnect"
 msgstr "연결 해제"
@@ -258,10 +262,6 @@ msgstr "최근 재생한 곡:"
 msgctxt "command"
 msgid "Reconnect after an error"
 msgstr "오류 발생 후 다시 연결"
-
-msgctxt "ui"
-msgid "Reconnected, but the track could not be restarted. The source most likely returned a temporary error."
-msgstr "다시 연결했지만 곡을 다시 재생하지 못했습니다. 음원 제공처에서 일시적인 오류가 발생했을 가능성이 높습니다."
 
 msgctxt "ui"
 msgid "Reconnection attempted"

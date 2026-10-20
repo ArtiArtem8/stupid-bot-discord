@@ -10,7 +10,7 @@ import discord
 from discord import DMChannel, Interaction
 from discord.ui import Label, Modal, TextInput
 
-from stupidbot.discord_ui.access import check_command_access
+from stupidbot.discord_ui.access import check_command_access, check_component_access
 from stupidbot.discord_ui.base_cog import MODAL_ACCESS_TIMEOUT
 from stupidbot.discord_ui.embeds import SafeEmbed
 from stupidbot.discord_ui.errors import handle_app_command_error
@@ -204,6 +204,8 @@ class ReportModal(Modal):
     @override
     async def on_submit(self, interaction: Interaction) -> None:
         await defer_command(interaction, ephemeral=True)
+        if not await check_component_access(interaction):
+            return
         report, report_channel_id = await submit_report(
             self._repository, interaction, self.reason.value
         )

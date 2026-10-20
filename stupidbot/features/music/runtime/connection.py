@@ -221,7 +221,7 @@ class ConnectionManager:
 
     def has_ready_node(self) -> bool:
         """Return whether the pool has a usable Lavalink node."""
-        return any(getattr(node, "available", False) for node in self.pool.nodes)
+        return any(node.available for node in self.pool.nodes)
 
     def _pool_contains_node(self, node: mafic.Node[discord.Client]) -> bool:
         return self.pool.label_to_node.get(node.label) is node
@@ -574,7 +574,7 @@ class ConnectionManager:
         """Close unusable Mafic nodes left behind by a failed connection attempt."""
         nodes = list(self.pool.label_to_node.values())
         for node in nodes:
-            if getattr(node, "available", False):
+            if node.available:
                 continue
             try:
                 await self.pool.remove_node(node, transfer_players=False)
@@ -901,7 +901,7 @@ class ConnectionManager:
 
         logger.debug(
             "Disconnecting from channel: %s",
-            getattr(voice_client, "channel", None),
+            voice_client.channel,
         )
 
         if isinstance(voice_client, MusicPlayer) and not self.is_player_usable(

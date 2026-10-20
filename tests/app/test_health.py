@@ -149,6 +149,17 @@ class TestHealthSnapshot(unittest.IsolatedAsyncioTestCase):
             snapshot.lines(),
         )
 
+    def test_normal_analytics_update_is_not_degraded(self) -> None:
+        snapshot = replace(healthy_snapshot(), analytics="updating")
+        self.assertFalse(snapshot.degraded)
+        self.assertIn(
+            "analytics=updating lavalink_ready=True renderer_ready=True",
+            snapshot.lines(),
+        )
+        for status in ("recovering", "unavailable", "closed"):
+            with self.subTest(status=status):
+                self.assertTrue(replace(snapshot, analytics=status).degraded)
+
     async def test_periodic_log_reports_new_failures_without_latching_warning(
         self,
     ) -> None:

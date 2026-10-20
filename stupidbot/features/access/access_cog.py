@@ -56,8 +56,8 @@ class AdminCog(BaseCog):
 
     @override
     def command_response_ephemeral(self, _interaction: discord.Interaction) -> bool:
-        private: object = getattr(_interaction.namespace, "ephemeral", True)
-        return private is not False
+        options: dict[str, object] = dict(_interaction.namespace)
+        return options.get("ephemeral", True) is not False
 
     @override
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:

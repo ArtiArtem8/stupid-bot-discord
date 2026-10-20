@@ -62,8 +62,8 @@ class BirthdayCog(BaseCog):
 
     @override
     def command_response_ephemeral(self, _interaction: Interaction) -> bool:
-        private: object = getattr(_interaction.namespace, "ephemeral", True)
-        return private is not False
+        options: dict[str, object] = dict(_interaction.namespace)
+        return options.get("ephemeral", True) is not False
 
     @override
     async def cog_load(self) -> None:

@@ -1,16 +1,11 @@
 """Interaction acknowledgement helpers."""
 
-import asyncio
-import logging
-from collections.abc import Coroutine
-
 import aiohttp
 import discord
 from discord import Interaction
 
 from stupidbot.discord_ui.exceptions import InteractionAcknowledgementError
 
-logger = logging.getLogger(__name__)
 _DEFERRED_PRIVATE = "stupidbot.response.deferred_private"
 
 
@@ -34,37 +29,6 @@ async def deferred_response_is_private(interaction: Interaction) -> bool:
     return private
 
 
-async def run_with_defer[T](
-    interaction: Interaction,
-    operation: Coroutine[object, object, T],
-    *,
-    defer_after: float = 1.5,
-    ephemeral: bool = False,
-) -> T:
-    """Run an owned operation and defer only when it exceeds the UX threshold."""
-    task = asyncio.create_task(operation)
-
-    try:
-        await asyncio.wait(
-            (task,),
-            timeout=defer_after,
-        )
-
-        if not task.done():
-            await _try_defer(
-                interaction,
-                thinking=True,
-                ephemeral=ephemeral,
-            )
-
-        return await task
-    finally:
-        if not task.done():
-            task.cancel()
-
-        await asyncio.gather(task, return_exceptions=True)
-
-
 async def ack_component(interaction: Interaction) -> None:
     """Acknowledge before component work without displaying a loading state."""
     await _defer(
@@ -72,19 +36,6 @@ async def ack_component(interaction: Interaction) -> None:
         thinking=False,
         ephemeral=False,
     )
-
-
-async def _try_defer(
-    interaction: Interaction,
-    *,
-    thinking: bool,
-    ephemeral: bool,
-) -> None:
-    try:
-        await _defer(interaction, thinking=thinking, ephemeral=ephemeral)
-    except InteractionAcknowledgementError:
-        # The operation was already admitted before this delayed acknowledgement.
-        logger.debug("Interaction defer was not accepted.", exc_info=True)
 
 
 async def _defer(interaction: Interaction, *, thinking: bool, ephemeral: bool) -> None:

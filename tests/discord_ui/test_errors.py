@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Mapping
+from logging import ERROR
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -11,7 +12,10 @@ from discord import app_commands
 
 from stupidbot.app.bot import StupidBot
 from stupidbot.discord_ui.errors import handle_app_command_error
-from stupidbot.discord_ui.exceptions import BlockedUserError
+from stupidbot.discord_ui.exceptions import (
+    BlockedUserError,
+    InteractionAcknowledgementError,
+)
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 
 
@@ -119,6 +123,61 @@ class TestAppCommandErrors(unittest.IsolatedAsyncioTestCase):
         self.assertIn("private exception detail", "\n".join(logs.output))
         self.assertIn("guild=42 channel=43", logs.output[0])
         self.assertIn("interaction=44", logs.output[0])
+
+    async def test_original_failure_is_logged_when_error_acknowledgement_fails(
+        self,
+    ) -> None:
+        original = RuntimeError("storage unavailable")
+        wrapped = await _wrap_callback_error(original)
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.command = wrapped.command
+        interaction.response.is_done.return_value = False
+        interaction.response.defer = AsyncMock(
+            side_effect=discord.HTTPException(
+                MagicMock(status=503, reason="Unavailable"), "lost acknowledgement"
+            )
+        )
+        with (
+            patch.object(FeedbackUI, "send", new=AsyncMock()) as send,
+            self.assertLogs("stupidbot.discord_ui.errors", level="WARNING") as logs,
+        ):
+            await handle_app_command_error(interaction, wrapped)
+
+        send.assert_not_awaited()
+        failures = [record for record in logs.records if record.levelno == ERROR]
+        self.assertEqual(len(failures), 1)
+        diagnostic = failures[0]
+        if diagnostic.exc_info is None:
+            self.fail("Missing original exception traceback")
+        self.assertIs(diagnostic.exc_info[1], original)
+        self.assertIsNotNone(diagnostic.exc_info[2])
+        self.assertIn("Error response acknowledgement failed", logs.output[-1])
+
+    async def test_expected_refusal_and_failed_acknowledgement_do_not_log_tracebacks(
+        self,
+    ) -> None:
+        transport_error = discord.HTTPException(
+            MagicMock(status=503, reason="Unavailable"), "private transport detail"
+        )
+        failed_ack = InteractionAcknowledgementError()
+        failed_ack.__cause__ = transport_error
+        for error in (BlockedUserError(), failed_ack):
+            with self.subTest(error=type(error).__name__):
+                interaction = MagicMock(spec=discord.Interaction)
+                interaction.response.is_done.return_value = False
+                interaction.response.defer = AsyncMock(side_effect=transport_error)
+                with (
+                    patch.object(FeedbackUI, "send", new=AsyncMock()) as send,
+                    self.assertLogs(
+                        "stupidbot.discord_ui.errors", level="WARNING"
+                    ) as logs,
+                ):
+                    await handle_app_command_error(interaction, error)
+                send.assert_not_awaited()
+                self.assertEqual(len(logs.records), 1)
+                self.assertLess(logs.records[0].levelno, ERROR)
+                self.assertIsNone(logs.records[0].exc_info)
+                self.assertNotIn("private transport detail", logs.output[0])
 
     async def test_callback_discord_exception_preserves_discord_error_feedback(
         self,

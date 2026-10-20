@@ -18,7 +18,9 @@ from stupidbot.features.voice.repository import (
 from stupidbot.features.voice.timeline import VoiceReplayState, VoiceTimeline
 
 logger = logging.getLogger(__name__)
-type AnalyticsStatus = Literal["ready", "recovering", "unavailable", "closed"]
+type AnalyticsStatus = Literal[
+    "ready", "updating", "recovering", "unavailable", "closed"
+]
 
 
 class AnalyticsUnavailableError(RuntimeError):
@@ -46,6 +48,7 @@ class VoiceAnalytics:
         self._repository = repository
         self._lock = asyncio.Lock()
         self._state: VoiceReplayState | None = None
+        self._applying = False
         self._cutoff = VoiceCommit(0, 0)
         self._shared_revision = 0
         self._guild_revisions: dict[int, int] = {}
@@ -56,13 +59,15 @@ class VoiceAnalytics:
 
     @property
     def status(self) -> AnalyticsStatus:
-        """Report snapshot readiness and recovery without initiating any work."""
+        """Distinguish normal committed updates from unavailable or recovering state."""
         if self._closed:
             return "closed"
         if self._state is not None:
             return "ready"
         if self._recovery is not None and not self._recovery.done():
             return "recovering"
+        if self._applying:
+            return "updating"
         return "unavailable"
 
     async def start(self) -> None:
@@ -134,6 +139,7 @@ class VoiceAnalytics:
         if committed.revision <= self._cutoff.revision:
             return
         state, self._state = self._state, None
+        self._applying = state is not None
         try:
             if (
                 state is not None
@@ -154,6 +160,7 @@ class VoiceAnalytics:
             )
             logger.debug("Voice apply traceback", exc_info=True)
         finally:
+            self._applying = False
             if self._state is None and not self._closed:
                 self._recover()
 

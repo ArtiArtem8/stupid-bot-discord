@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import unittest
-from collections.abc import Awaitable
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 from discord.ext import commands
 
+from stupidbot.app.bot import StupidBot
 from stupidbot.discord_ui.feedback import FeedbackUI
 from stupidbot.features.music.discord import music_cog
 from stupidbot.features.music.discord.music_cog import MusicCog
@@ -24,7 +26,9 @@ from stupidbot.features.music.results import (
     MusicResultStatus,
     PlaylistResponseData,
     TrackResponseData,
+    VoiceCheckResult,
 )
+from stupidbot.features.preferences.models import Preferences
 from tests.features.music.fixtures import make_entry, make_playlist, make_track
 
 
@@ -47,6 +51,99 @@ def _make_cog() -> MusicCog:
 
 
 class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
+    async def test_registered_operations_acknowledge_with_command_visibility(
+        self,
+    ) -> None:
+        bot = StupidBot()
+        self.addAsyncCleanup(bot.close)
+        cog = _make_cog()
+        service = MagicMock()
+        service.voice_lifecycle.is_healing.return_value = False
+        service.join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
+        service.leave = AsyncMock(
+            return_value=MusicResult(
+                MusicResultStatus.SUCCESS,
+                "Disconnected",
+                reason=MusicResultReason.DISCONNECTED,
+            )
+        )
+        service.play = AsyncMock(
+            return_value=MusicResult(
+                MusicResultStatus.FAILURE,
+                "Nothing found",
+                reason=MusicResultReason.NOTHING_FOUND,
+            )
+        )
+        cog.service = service
+        channel = MagicMock(spec=discord.VoiceChannel, id=20)
+        item = _make_interaction()
+        item._state = bot._connection
+        item.client = bot
+        item.guild = MagicMock(
+            spec=discord.Guild, id=123, voice_client=MagicMock(channel=channel)
+        )
+        item.user = MagicMock(spec=discord.Member, id=42)
+        item.user.voice = MagicMock(channel=channel)
+        item.user.guild_permissions = discord.Permissions.none()
+        item.type = discord.InteractionType.application_command
+        item.created_at = datetime.now(UTC)
+        self.enterContext(patch.object(bot, "dispatch", MagicMock()))
+        self.enterContext(
+            patch.object(bot.block_manager, "is_user_blocked", return_value=False)
+        )
+        self.enterContext(
+            patch.object(bot.preferences_repository, "get", return_value=Preferences())
+        )
+        for command, operation, private in (
+            (cog.join, service.join, True),
+            (cog.leave, service.leave, True),
+            (cog.play, service.play, False),
+            (cog.play_next, service.play, False),
+        ):
+            with self.subTest(command=command.name):
+                bot.tree.add_command(command)
+                item.command = command
+                item.command_failed = False
+                item.extras = {}
+                item.data = {
+                    "name": command.name,
+                    "type": 1,
+                    "options": [{"name": "query", "type": 3, "value": "track"}]
+                    if command.name.startswith("play")
+                    else [],
+                }
+                item.response = MagicMock(spec=discord.InteractionResponse)
+                item.response.is_done.return_value = False
+                item.response.type = None
+                item.edit_original_response = AsyncMock()
+
+                async def defer(
+                    *,
+                    thinking: bool,
+                    ephemeral: bool,
+                    expected_private: bool = private,
+                    expected_operation: AsyncMock = operation,
+                ) -> None:
+                    self.assertTrue(thinking)
+                    self.assertEqual(ephemeral, expected_private)
+                    expected_operation.assert_not_awaited()
+                    item.response.is_done.return_value = True
+                    item.response.type = (
+                        discord.InteractionResponseType.deferred_channel_message
+                    )
+
+                operation.reset_mock()
+                item.response.defer.side_effect = defer
+                await bot.tree._call(item)
+
+                self.assertFalse(item.command_failed)
+                operation.assert_awaited_once()
+                item.response.defer.assert_awaited_once_with(
+                    thinking=True, ephemeral=private
+                )
+                item.response.send_message.assert_not_awaited()
+                item.edit_original_response.assert_awaited_once()
+
     async def test_play_command_passes_end_placement(self) -> None:
         cog = _make_cog()
         interaction = _make_interaction()
@@ -82,10 +179,6 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
                 "stupidbot.features.music.discord.music_cog.send_warning",
                 new=AsyncMock(),
             ) as send_warning,
-            patch(
-                "stupidbot.features.music.discord.music_cog.run_with_defer",
-                new=AsyncMock(),
-            ) as run_flow,
         ):
             await cog._run_play_command(interaction, "   ", "end")
 
@@ -95,7 +188,6 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
             ephemeral=True,
         )
         service.play.assert_not_called()
-        run_flow.assert_not_awaited()
 
     async def test_missing_voice_warns_without_starting_operation(self) -> None:
         cog = _make_cog()
@@ -115,15 +207,10 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
                 "_get_voice_channel_for_play",
                 new=AsyncMock(return_value=None),
             ),
-            patch(
-                "stupidbot.features.music.discord.music_cog.run_with_defer",
-                new=AsyncMock(),
-            ) as run_flow,
         ):
             await cog._run_play_command(interaction, "query", "next")
 
         service.play.assert_not_called()
-        run_flow.assert_not_awaited()
 
     async def test_voice_preflight_warning_is_private(self) -> None:
         cog = _make_cog()
@@ -170,18 +257,6 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         service.get_queue_duration = AsyncMock(return_value=track.length)
         cog.service = service
 
-        async def wait_for_operation(
-            flow_interaction: object,
-            operation: Awaitable[MusicResult[object]],
-            *,
-            defer_after: float = 1.5,
-            ephemeral: bool = False,
-        ) -> MusicResult[object]:
-            self.assertIs(flow_interaction, interaction)
-            self.assertEqual(defer_after, 1.5)
-            self.assertFalse(ephemeral)
-            return await operation
-
         with (
             patch.object(cog, "_require_guild", new=AsyncMock(return_value=guild)),
             patch.object(
@@ -195,10 +270,6 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=data),
             ),
             patch.object(cog, "_send_play_feedback", new=AsyncMock()) as send_feedback,
-            patch(
-                "stupidbot.features.music.discord.music_cog.run_with_defer",
-                side_effect=wait_for_operation,
-            ) as run_flow,
         ):
             await cog._run_play_command(interaction, " query ", "next")
 
@@ -211,10 +282,9 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
             placement="next",
         )
         service.get_queue_duration.assert_awaited_once_with(guild.id)
-        run_flow.assert_awaited_once()
         send_feedback.assert_awaited_once()
 
-    async def test_play_end_placement_uses_public_flow(self) -> None:
+    async def test_run_play_command_calls_service_with_end_placement(self) -> None:
         cog = _make_cog()
         interaction = _make_interaction()
         guild = MagicMock()
@@ -228,18 +298,6 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
         service.play = AsyncMock(return_value=result)
         cog.service = service
 
-        async def await_public_operation(
-            flow_interaction: object,
-            operation: Awaitable[MusicResult[object]],
-            *,
-            defer_after: float = 1.5,
-            ephemeral: bool = False,
-        ) -> MusicResult[object]:
-            self.assertIs(flow_interaction, interaction)
-            self.assertEqual(defer_after, 1.5)
-            self.assertFalse(ephemeral)
-            return await operation
-
         with (
             patch.object(cog, "_require_guild", new=AsyncMock(return_value=guild)),
             patch.object(
@@ -252,14 +310,9 @@ class TestMusicCogPlay(unittest.IsolatedAsyncioTestCase):
                 "_resolve_play_response_data",
                 new=AsyncMock(return_value=None),
             ),
-            patch(
-                "stupidbot.features.music.discord.music_cog.run_with_defer",
-                side_effect=await_public_operation,
-            ) as run_flow,
         ):
             await cog._run_play_command(interaction, "query", "end")
 
-        run_flow.assert_awaited_once()
         service.play.assert_awaited_once_with(
             guild,
             channel,

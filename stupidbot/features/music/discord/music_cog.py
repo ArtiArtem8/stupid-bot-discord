@@ -13,7 +13,7 @@ from stupidbot.app.health import ComponentHealth, TaskHealth
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.exceptions import CommandFeedbackError
 from stupidbot.discord_ui.feedback import FeedbackUI
-from stupidbot.discord_ui.interaction_flow import defer_command, run_with_defer
+from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.features.music.composition import create_music_components
 from stupidbot.features.music.contracts import TrackExceptionPayload
 from stupidbot.features.music.discord.access import (
@@ -93,8 +93,8 @@ class MusicCog(BaseCog):
     def command_response_ephemeral(self, _interaction: Interaction) -> bool:
         command = _interaction.command
         if command is not None and command.name == "queue":
-            private: object = getattr(_interaction.namespace, "ephemeral", True)
-            return private is not False
+            options: dict[str, object] = dict(_interaction.namespace)
+            return options.get("ephemeral", True) is not False
         return command is not None and command.name in {"join", "leave", "reconnect"}
 
     @override
@@ -120,8 +120,8 @@ class MusicCog(BaseCog):
         command = interaction.command
         if command is None or command.name == "queue":
             return None
-        value: object = getattr(interaction.namespace, "value", None)
-        if command.name == "volume" and value is None:
+        options: dict[str, object] = dict(interaction.namespace)
+        if command.name == "volume" and options.get("value") is None:
             return None
         if command.name in {"join", "play", "play-next"}:
             return "join"
@@ -252,9 +252,7 @@ class MusicCog(BaseCog):
         if not channel:
             return
 
-        check_result, from_channel = await self._join_for_join_command(
-            interaction, guild, channel
-        )
+        check_result, from_channel = await self.service.join(guild, channel)
         await self._send_join_feedback(
             interaction,
             result=check_result,
@@ -312,16 +310,13 @@ class MusicCog(BaseCog):
         if not channel:
             return
 
-        result = await run_with_defer(
-            interaction,
-            self.service.play(
-                guild,
-                channel,
-                query.strip(),
-                interaction.user.id,
-                interaction.channel_id,
-                placement=placement,
-            ),
+        result = await self.service.play(
+            guild,
+            channel,
+            query.strip(),
+            interaction.user.id,
+            interaction.channel_id,
+            placement=placement,
         )
 
         data = await self._resolve_play_response_data(interaction, result, channel)
@@ -350,19 +345,6 @@ class MusicCog(BaseCog):
             )
             return None
         return interaction.user.voice.channel
-
-    async def _join_for_join_command(
-        self,
-        interaction: Interaction,
-        guild: discord.Guild,
-        channel: discord.VoiceChannel | discord.StageChannel,
-    ) -> tuple[VoiceCheckResult, discord.abc.GuildChannel | None]:
-        """Join on behalf of `/join`; `/play` delegates connection to the service."""
-        return await run_with_defer(
-            interaction,
-            self.service.join(guild, channel),
-            ephemeral=True,
-        )
 
     async def _resolve_play_response_data(
         self,
@@ -662,11 +644,7 @@ class MusicCog(BaseCog):
         context = await interaction_context(interaction, private=True)
         messages = MusicMessages(catalog("music", context.language))
         guild = await self._require_guild(interaction)
-        res = await run_with_defer(
-            interaction,
-            self.service.leave(guild),
-            ephemeral=True,
-        )
+        res = await self.service.leave(guild)
         match res.status:
             case MusicResultStatus.SUCCESS:
                 await send_info(
@@ -841,8 +819,7 @@ class MusicCog(BaseCog):
             title=messages.catalog.pgettext("ui", "Not restored"),
             message=messages.catalog.pgettext(
                 "ui",
-                "Reconnected, but the track could not be restarted. The source "
-                "most likely returned a temporary error.",
+                "Could not restore the music session. Please try again.",
             ),
             ephemeral=True,
         )

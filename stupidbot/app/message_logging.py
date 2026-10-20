@@ -49,18 +49,15 @@ def log_message_edit(before: Message, after: Message) -> None:
     changes: list[str] = []
     before_flags: list[str] | None = None
     after_flags: list[str] | None = None
-    attr_whitelist = [
-        "content",
-        "embeds",
-        "attachments",
-        "stickers",
-        "components",
-        "pinned",
-        "reference",
-    ]
-    for attr in attr_whitelist:
-        before_val = getattr(before, attr, None)
-        after_val = getattr(after, attr, None)
+    for attr, before_val, after_val in (
+        ("content", before.content, after.content),
+        ("embeds", before.embeds, after.embeds),
+        ("attachments", before.attachments, after.attachments),
+        ("stickers", before.stickers, after.stickers),
+        ("components", before.components, after.components),
+        ("pinned", before.pinned, after.pinned),
+        ("reference", before.reference, after.reference),
+    ):
         if before_val != after_val:
             changes.append(attr)
     if before.flags.value != after.flags.value:

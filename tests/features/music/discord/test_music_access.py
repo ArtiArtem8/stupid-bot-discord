@@ -298,6 +298,29 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.feedback.call_args.kwargs["title"], "Restored")
         self.assertTrue(self.feedback.call_args.kwargs["ephemeral"])
 
+    async def test_registered_reconnect_failure_does_not_claim_a_connection(
+        self,
+    ) -> None:
+        self.get_player.return_value = None
+        self.item.guild.voice_client = MagicMock(
+            spec=MusicPlayer, channel=self.channel, connected=False
+        )
+        self.heal.return_value = False
+        self.item.user = _member(11, 20)
+        self.item.command = self.cog.heal
+        self.item.data = {"name": "reconnect", "type": 1, "options": []}
+
+        await self.bot.tree._call(self.item)
+
+        self.heal.assert_awaited_once_with(42)
+        self.feedback.assert_awaited_once()
+        self.assertEqual(self.feedback.call_args.kwargs["title"], "Not restored")
+        self.assertEqual(
+            self.feedback.call_args.kwargs["description"],
+            "Could not restore the music session. Please try again.",
+        )
+        self.assertTrue(self.feedback.call_args.kwargs["ephemeral"])
+
     async def test_registered_reconnect_without_session_reports_no_player(
         self,
     ) -> None:

@@ -2,6 +2,7 @@
 
 import asyncio
 import unittest
+from datetime import UTC, datetime
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -12,6 +13,7 @@ from sqlalchemy import select
 
 from stupidbot.discord_ui.theme import Color
 from stupidbot.features.access.operations import BlockManager
+from stupidbot.features.access.repository import BlockingRepository
 from stupidbot.features.reports import ui as report_ui
 from stupidbot.features.reports.repository import ReportRepository
 from stupidbot.features.reports.ui import (
@@ -28,6 +30,75 @@ from tests.storage.fixtures import temporary_database
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):
+    async def test_modal_submission_rechecks_block_added_after_opening(self) -> None:
+        self.interaction.type = discord.InteractionType.component
+        self.interaction.guild = MagicMock(spec=discord.Guild, id=42)
+        blocking = BlockingRepository(self.database)
+        self.interaction.client.block_manager = BlockManager(blocking)
+        await handle_report_button(self.repository, self.interaction)
+        modal = self.interaction.response.send_modal.call_args.args[0]
+        if not isinstance(modal, ReportModal):
+            self.fail("Expected a report modal")
+        await blocking.change(
+            42,
+            1,
+            blocked=True,
+            display_name="Author",
+            username="Author",
+            admin_id=2,
+            reason="Blocked after opening the modal",
+            observed_at=datetime.now(UTC),
+        )
+        modal.reason._value = "a useful report"
+        adapter = self._prepare_modal_response()
+        token = async_context.set(adapter)
+        try:
+            with patch.object(report_ui, "_notify_report", new=AsyncMock()) as notify:
+                await modal._scheduled_task(self.interaction, [], {})
+        finally:
+            async_context.reset(token)
+
+        notify.assert_not_awaited()
+        self.interaction.edit_original_response.assert_awaited_once()
+        embed = self.interaction.edit_original_response.call_args.kwargs["embed"]
+        self.assertIn("Доступ к командам запрещён", embed.description)
+        self.assertEqual(
+            adapter.create_interaction_response.call_args.kwargs["params"].payload,
+            {"type": 5, "data": {"flags": 64}},
+        )
+        async with self.database.transaction() as connection:
+            self.assertIsNone(await connection.scalar(select(reports.c.report_id)))
+
+    async def test_failed_modal_access_check_cannot_persist_or_notify(self) -> None:
+        self.interaction.guild = MagicMock(spec=discord.Guild, id=42)
+        self.interaction.client.block_manager = MagicMock(spec=BlockManager)
+        self.interaction.client.block_manager.is_user_blocked.side_effect = OSError(
+            "private access failure"
+        )
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
+        modal.reason._value = "a useful report"
+        adapter = self._prepare_modal_response()
+        token = async_context.set(adapter)
+        try:
+            with (
+                patch.object(report_ui, "_notify_report", new=AsyncMock()) as notify,
+                self.assertLogs("stupidbot.features.reports.ui", level="ERROR") as logs,
+            ):
+                await modal._scheduled_task(self.interaction, [], {})
+        finally:
+            async_context.reset(token)
+
+        notify.assert_not_awaited()
+        self.assertEqual(len(logs.records), 1)
+        self.interaction.edit_original_response.assert_awaited_once()
+        reply = self.interaction.edit_original_response.call_args.kwargs
+        self.assertNotIn("private access failure", str(reply))
+        self.assertNotIn("view", reply)
+        async with self.database.transaction() as connection:
+            self.assertIsNone(await connection.scalar(select(reports.c.report_id)))
+
     async def test_report_button_rechecks_new_block_before_opening_modal(self) -> None:
         self.interaction.type = discord.InteractionType.component
         self.interaction.guild = MagicMock(spec=discord.Guild, id=42)

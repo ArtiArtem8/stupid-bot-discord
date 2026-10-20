@@ -30,6 +30,30 @@ async def handle_app_command_error(
     original = (
         error.original if isinstance(error, app_commands.CommandInvokeError) else error
     )
+    discord_failure = isinstance(original, discord.DiscordException) and not isinstance(
+        original, app_commands.AppCommandError
+    )
+    if not isinstance(
+        original,
+        (
+            app_commands.CheckFailure,
+            app_commands.CommandOnCooldown,
+            InteractionAcknowledgementError,
+        ),
+    ):
+        category = (
+            "Discord command failed" if discord_failure else "Unhandled command failure"
+        )
+        logger.error(
+            "%s: command=%r guild=%s channel=%s user=%s interaction=%s",
+            category,
+            interaction.command,
+            interaction.guild_id,
+            interaction.channel_id,
+            interaction.user.id,
+            interaction.id,
+            exc_info=original,
+        )
     if not await _acknowledge_error(interaction, original):
         return
     if isinstance(
@@ -39,10 +63,7 @@ async def handle_app_command_error(
         return
     context = await error_context(interaction)
     messages = catalog("discord_ui", context.language)
-    if isinstance(original, discord.DiscordException) and not isinstance(
-        original, app_commands.AppCommandError
-    ):
-        category = "Discord command failed"
+    if discord_failure:
         title = messages.pgettext("discord_title", "Discord error")
         description = messages.pgettext(
             "discord_error",
@@ -50,23 +71,12 @@ async def handle_app_command_error(
         )
         delete_after = 600
     else:
-        category = "Unhandled command failure"
         title = messages.pgettext("internal_title", "Internal error")
         description = messages.pgettext(
             "internal_error", "Could not complete the command. Details were logged."
         )
         delete_after = 300
 
-    logger.error(
-        "%s: command=%r guild=%s channel=%s user=%s interaction=%s",
-        category,
-        interaction.command,
-        interaction.guild_id,
-        interaction.channel_id,
-        interaction.user.id,
-        interaction.id,
-        exc_info=original,
-    )
     await FeedbackUI.send(
         interaction,
         feedback_type=FeedbackType.ERROR,

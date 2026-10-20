@@ -80,7 +80,7 @@ class HealthSnapshot:
             self.ready,
             not self.database.closing,
             all(task.running for task in self.tasks),
-            self.analytics == "ready",
+            self.analytics in ("ready", "updating"),
             not self.voice_enabled or self.voice_writer,
         )
         return not all(checks)
