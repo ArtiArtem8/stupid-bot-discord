@@ -184,5 +184,9 @@ class MusicMessages:
                 "not_member", "Invalid user type"
             ),
             VoiceCheckResult.RECOVERING: self.failure(MusicResultReason.RECOVERING),
+            VoiceCheckResult.OTHER_CHANNEL: self.catalog.pgettext(
+                "other_channel",
+                "The bot is already in another voice channel. Join it there.",
+            ),
         }
         return templates[result].format(destination=destination, origin=origin)

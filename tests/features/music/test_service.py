@@ -1266,7 +1266,10 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         entered = asyncio.Event()
         release = asyncio.Event()
 
-        async def skip() -> tuple[PlaybackAttempt, None]:
+        async def skip(
+            *, expected: PlaybackAttempt | None
+        ) -> tuple[PlaybackAttempt, None]:
+            self.assertIsNone(expected)
             entered.set()
             await release.wait()
             return actually_skipped, None

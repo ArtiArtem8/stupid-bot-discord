@@ -6,6 +6,7 @@ from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
+from typing import Literal
 
 from stupidbot.common.asyncio import run_in_thread
 from stupidbot.features.voice.facts import VoiceJournalRecord
@@ -17,6 +18,7 @@ from stupidbot.features.voice.repository import (
 from stupidbot.features.voice.timeline import VoiceReplayState, VoiceTimeline
 
 logger = logging.getLogger(__name__)
+type AnalyticsStatus = Literal["ready", "recovering", "unavailable", "closed"]
 
 
 class AnalyticsUnavailableError(RuntimeError):
@@ -51,6 +53,17 @@ class VoiceAnalytics:
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
         self._snapshots: OrderedDict[int | None, AnalysisSnapshot] = OrderedDict()
+
+    @property
+    def status(self) -> AnalyticsStatus:
+        """Report snapshot readiness and recovery without initiating any work."""
+        if self._closed:
+            return "closed"
+        if self._state is not None:
+            return "ready"
+        if self._recovery is not None and not self._recovery.done():
+            return "recovering"
+        return "unavailable"
 
     async def start(self) -> None:
         """Restore once before collection; propagate startup failures."""

@@ -25,6 +25,11 @@ class UptimeManager:
         self._monotonic_origin_ns = 0
         self._lock = asyncio.Lock()
 
+    @property
+    def checkpoint_microseconds(self) -> int | None:
+        """Return the wall timestamp of the last confirmed checkpoint, if restored."""
+        return self._checkpoint.checkpoint_us if self._checkpoint is not None else None
+
     async def restore_uptime(self) -> None:
         """Resume or start a period after schema validation, once per process."""
         async with self._lock:

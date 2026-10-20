@@ -97,6 +97,7 @@ class VoiceCheckResult(StrEnum):
     USER_NOT_IN_VOICE = auto()
     USER_NOT_MEMBER = auto()
     RECOVERING = auto()
+    OTHER_CHANNEL = auto()
 
     @property
     def status(self) -> MusicResultStatus:

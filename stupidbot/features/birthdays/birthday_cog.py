@@ -11,8 +11,10 @@ from discord.ext import commands, tasks
 from sqlalchemy.exc import SQLAlchemyError
 
 from stupidbot import settings as config
+from stupidbot.app.health import ComponentHealth, TaskHealth
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.features.birthdays.dates import parse_birthday
 from stupidbot.features.birthdays.delivery import BirthdayDeliveryService
 from stupidbot.features.birthdays.messages import BirthdayMessages
@@ -48,6 +50,20 @@ class BirthdayCog(BaseCog):
         super().__init__(bot)
         self.manager = manager
         self.delivery = BirthdayDeliveryService(bot, manager)
+
+    @property
+    def runtime_health(self) -> ComponentHealth:
+        """Expose the daily delivery loop without restarting failed work."""
+        loop = self.birthday_timer
+        return ComponentHealth(
+            loop.is_running(),
+            (TaskHealth("birthday_timer", loop.is_running(), loop.failed()),),
+        )
+
+    @override
+    def command_response_ephemeral(self, _interaction: Interaction) -> bool:
+        private: object = getattr(_interaction.namespace, "ephemeral", True)
+        return private is not False
 
     @override
     async def cog_load(self) -> None:
@@ -207,12 +223,9 @@ class BirthdayCog(BaseCog):
         msg = messages.catalog.pgettext(
             "ui", "Are you sure you want to remove your birthday?"
         )
-        await FeedbackUI.send(
-            interaction,
-            feedback_type=FeedbackType.WARNING,
-            description=msg,
-            view=view,
-            ephemeral=True,
+        await defer_command(interaction, ephemeral=True)
+        view.message = await interaction.edit_original_response(
+            embed=FeedbackUI.make_embed(None, msg, FeedbackType.WARNING), view=view
         )
 
     @app_commands.command(

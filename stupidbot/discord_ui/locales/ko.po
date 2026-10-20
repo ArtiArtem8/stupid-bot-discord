@@ -23,6 +23,14 @@ msgctxt "access_title"
 msgid "Access denied"
 msgstr "접근 거부"
 
+msgctxt "access_unavailable"
+msgid "Could not check access. Please try again."
+msgstr "접근 권한을 확인하지 못했습니다. 다시 시도해 주세요."
+
+msgctxt "private_response"
+msgid "Your response is shown privately."
+msgstr "답변은 본인에게만 표시됩니다."
+
 msgctxt "discord_error"
 msgid "Could not complete the action in Discord. Please try again."
 msgstr "Discord에서 작업을 완료하지 못했습니다. 다시 시도해 주세요."

@@ -621,9 +621,13 @@ class ConnectionManager:
         await self.detach_stale_voice_client(guild, voice_client)
 
     async def join(
-        self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
+        self,
+        guild: discord.Guild,
+        channel: discord.VoiceChannel | discord.StageChannel,
+        *,
+        allow_move: bool = False,
     ) -> VoiceJoinResult:
-        """Join a voice channel."""
+        """Join without moving an existing session unless recovery requests it."""
         if self._closing:
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         lock = self._join_locks.setdefault(guild.id, asyncio.Lock())
@@ -633,6 +637,16 @@ class ConnectionManager:
             owner = self._recovery_tasks.get(guild.id)
             if owner is not None and owner is not asyncio.current_task():
                 return VoiceCheckResult.RECOVERING, None
+            voice_client = guild.voice_client
+            if (
+                not allow_move
+                and voice_client is not None
+                and isinstance(
+                    voice_client.channel, (discord.VoiceChannel, discord.StageChannel)
+                )
+                and voice_client.channel.id != channel.id
+            ):
+                return VoiceCheckResult.OTHER_CHANNEL, None
             result = await self._join_unlocked(guild, channel)
             if self._closing:
                 return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None

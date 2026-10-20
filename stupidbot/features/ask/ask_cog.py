@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import secrets
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from discord import Interaction, app_commands
 from discord.ext import commands
@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 class QuestionCog(BaseCog):
+    @override
+    def command_response_ephemeral(self, _interaction: Interaction) -> bool:
+        return False
+
     def __init__(self, bot: commands.Bot, repository: QuestionRepository) -> None:
         super().__init__(bot)
         self.answers = secrets.SystemRandom().sample(

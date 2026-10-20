@@ -110,3 +110,19 @@ msgstr[2] "{count:d} лет"
 msgctxt "join"
 msgid "{first} and {last}"
 msgstr "{first} и {last}"
+
+msgctxt "command"
+msgid "Show runtime health (owner only)"
+msgstr "Показать состояние бота (только владелец)"
+
+msgctxt "ui"
+msgid "Runtime health"
+msgstr "Состояние бота"
+
+msgctxt "ui"
+msgid "Local state; no external checks are performed."
+msgstr "Состояние текущего процесса. Внешние сервисы не проверяются."
+
+msgctxt "ui"
+msgid "Status"
+msgstr "Статус"

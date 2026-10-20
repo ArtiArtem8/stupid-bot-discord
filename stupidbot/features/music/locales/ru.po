@@ -399,10 +399,6 @@ msgid "There are no tracks in this session."
 msgstr "В этой сессии нет треков."
 
 msgctxt "ui"
-msgid "This is not your controller."
-msgstr "Это не ваш контроллер."
-
-msgctxt "ui"
 msgid "Track moved to the end"
 msgstr "Трек перемещён в конец"
 
@@ -498,3 +494,11 @@ msgid ""
 msgstr ""
 "{link}\n"
 "**Причина:** Источник временно недоступен или не ответил."
+
+msgctxt "voice_control"
+msgid "Join the bot's voice channel to use this control."
+msgstr "Чтобы управлять музыкой, зайдите в голосовой канал бота."
+
+msgctxt "other_channel"
+msgid "The bot is already in another voice channel. Join it there."
+msgstr "Бот уже в другом голосовом канале. Присоединитесь к нему."

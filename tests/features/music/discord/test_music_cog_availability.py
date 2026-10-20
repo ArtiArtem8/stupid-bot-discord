@@ -268,6 +268,9 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         interaction = MagicMock()
         interaction.guild = guild
         interaction.response = _ResponseStub()
+        interaction.original_response = AsyncMock(
+            return_value=MagicMock(flags=discord.MessageFlags(ephemeral=True))
+        )
         interaction.followup.send = AsyncMock()
         message = MagicMock()
         message.delete = AsyncMock()

@@ -23,10 +23,6 @@ msgctxt "wish"
 msgid "A heartfelt happy birthday! Wishing you lots of love and happiness, and many pleasant surprises. May your life be interesting and full, with all the strength you need to reach your goals!"
 msgstr "진심으로 생일을 축하해요! 사랑과 행복, 기분 좋은 놀라움이 가득하길 바라요. 흥미롭고 풍성한 삶 속에서 목표를 이룰 힘도 늘 함께하길!"
 
-msgctxt "ui"
-msgid "An error occurred while removing the birthday"
-msgstr "생일을 삭제하는 중 오류가 발생했습니다"
-
 msgctxt "month"
 msgid "April"
 msgstr "4월"
@@ -70,10 +66,6 @@ msgstr "이 서버의 생일 기능 설정"
 msgctxt "month"
 msgid "December"
 msgstr "12월"
-
-msgctxt "ui"
-msgid "Error"
-msgstr "오류"
 
 msgctxt "month"
 msgid "February"
@@ -216,16 +208,20 @@ msgid "You cannot perform this action"
 msgstr "이 작업을 수행할 수 없습니다"
 
 msgctxt "ui"
-msgid "You cannot perform this action."
-msgstr "이 작업을 수행할 수 없습니다."
-
-msgctxt "ui"
 msgid "You have not set your birthday"
 msgstr "생일을 등록하지 않았습니다"
 
 msgctxt "ui"
 msgid "Your birthday has been removed"
 msgstr "생일을 삭제했습니다"
+
+msgctxt "remove_failed"
+msgid "Could not remove the birthday. Open /remove-birthday to try again."
+msgstr "생일을 삭제하지 못했습니다. /remove-birthday를 열어 다시 시도해 주세요."
+
+msgctxt "remove_expired"
+msgid "Confirmation expired. Open /remove-birthday to try again."
+msgstr "확인 시간이 만료되었습니다. /remove-birthday를 열어 다시 시도해 주세요."
 
 msgctxt "saved"
 msgid "Your birthday has been saved: {date}"

@@ -1,5 +1,6 @@
 """Resolve response audiences once and retain a safe context after storage failure."""
 
+import asyncio
 import logging
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -11,6 +12,7 @@ from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.i18n.policy import PresentationContext, resolve_context
 
 logger = logging.getLogger(__name__)
+ERROR_PREFERENCES_TIMEOUT = 0.5
 
 
 def fallback_timezone() -> ZoneInfo:
@@ -91,15 +93,18 @@ async def profile_context(interaction: discord.Interaction) -> PresentationConte
     return personal
 
 
-async def error_context(interaction: discord.Interaction) -> PresentationContext:
+async def error_context(
+    interaction: discord.Interaction, *, private: bool = True
+) -> PresentationContext:
     """Keep storage failure from preventing the error response itself."""
     try:
-        return await interaction_context(interaction, private=True)
+        async with asyncio.timeout(ERROR_PREFERENCES_TIMEOUT):
+            return await interaction_context(interaction, private=private)
     except Exception:
         logger.warning("Preferences unavailable while reporting an interaction error")
         logger.debug("Preferences lookup failed", exc_info=True)
         # The first attempt installed a fallback and prohibited a database retry.
-        return await interaction_context(interaction, private=True)
+        return await interaction_context(interaction, private=private)
 
 
 async def guild_context(client: discord.Client, guild_id: int) -> PresentationContext:

@@ -27,6 +27,9 @@ from tests.features.music.fixtures import make_entry
 
 def _interaction() -> MagicMock:
     item = MagicMock()
+    item.user = MagicMock(spec=discord.Member)
+    item.user.voice = MagicMock(channel=MagicMock(spec=discord.VoiceChannel, id=20))
+    item.user.guild_permissions = discord.Permissions.none()
     item.client = MagicMock()
     item.client.block_manager = MagicMock()
     item.client.block_manager.is_user_blocked = AsyncMock(return_value=False)
@@ -625,6 +628,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
     ) -> tuple[TrackControllerView, MagicMock, AsyncMock]:
         if player is None:
             player = MagicMock(current_attempt=attempt, paused=False, position=0)
+        player.channel = MagicMock(spec=discord.VoiceChannel, id=20)
         player.seek_attempt = AsyncMock(return_value=True)
         player.toggle_pause_for_attempt = AsyncMock(return_value=True)
         player.skip = AsyncMock(return_value=(attempt, None))
@@ -700,13 +704,14 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         send_warning.assert_not_awaited()
         self.assertTrue(view.is_finished())
 
-    async def test_unauthorized_interaction_warns_without_ack_or_operation(
+    async def test_remote_listener_is_acknowledged_without_operation(
         self,
     ) -> None:
         attempt = PlaybackAttempt(1, make_entry("track"))
         view, player, _ = self._make_view(attempt)
         interaction = _interaction()
         interaction.user.id = 99
+        interaction.user.voice = None
 
         with (
             patch(
@@ -722,11 +727,11 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         send.assert_awaited_once_with(
             interaction,
             feedback_type=FeedbackType.WARNING,
-            description="Это не ваш контроллер.",
+            description="Чтобы управлять музыкой, зайдите в голосовой канал бота.",
             ephemeral=True,
             disable_report_btn=True,
         )
-        acknowledge.assert_not_awaited()
+        acknowledge.assert_awaited_once_with(interaction)
         player.seek_attempt.assert_not_awaited()
 
     async def test_owner_denial_http_error_is_best_effort(self) -> None:
@@ -734,6 +739,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
         view, player, _ = self._make_view(attempt)
         interaction = _interaction()
         interaction.user.id = 99
+        interaction.user.voice = None
         response = MagicMock(status=500, reason="test")
         error = discord.HTTPException(response, "failed")
 
@@ -751,7 +757,7 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(callback)
             await callback(interaction)
 
-        acknowledge.assert_not_awaited()
+        acknowledge.assert_awaited_once_with(interaction)
         player.seek_attempt.assert_not_awaited()
         debug.assert_called_once()
 
@@ -865,7 +871,11 @@ class TestTrackControllerView(unittest.IsolatedAsyncioTestCase):
 
     async def test_pause_resume_handles_lavalink_io_error(self) -> None:
         attempt = PlaybackAttempt(1, make_entry("track"))
-        player = MagicMock(current_attempt=attempt, paused=False)
+        player = MagicMock(
+            current_attempt=attempt,
+            paused=False,
+            channel=MagicMock(spec=discord.VoiceChannel, id=20),
+        )
         player.cleanup = MagicMock()
         on_stop = AsyncMock()
         on_player_failure = AsyncMock()

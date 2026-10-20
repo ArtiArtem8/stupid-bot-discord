@@ -1,14 +1,39 @@
 import argparse
 import asyncio
 import logging
+import signal
 import tracemalloc
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
+from types import FrameType
 
 from stupidbot import settings as config
 from stupidbot.app.bot import StupidBot
 from stupidbot.app.logging import setup_logging
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _handle_sigterm() -> Generator[asyncio.Event]:
+    """Turn the first SIGTERM into application cancellation through final cleanup."""
+    task = asyncio.current_task()
+    if task is None:
+        raise RuntimeError("Termination handling requires the application task")
+    loop = asyncio.get_running_loop()
+    requested = asyncio.Event()
+
+    def terminate(_signal: int, _frame: FrameType | None) -> None:
+        if not requested.is_set():
+            requested.set()
+            loop.call_soon_threadsafe(task.cancel)
+
+    previous = signal.signal(signal.SIGTERM, terminate)
+    try:
+        yield requested
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 
 class Arguments(argparse.Namespace):
@@ -56,16 +81,18 @@ async def main() -> None:
     )
 
     logger.info("Starting bot...")
-    try:
-        async with bot:
-            await bot.restore_state()
-            await bot.start(token=config.DISCORD_BOT_TOKEN)
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Keyboard Interrupt detected.")
-        raise
-    finally:
-        await bot.close()
-        logger.info("Bot stopped.")
+    with _handle_sigterm() as termination:
+        try:
+            async with bot:
+                await bot.restore_state()
+                await bot.start(token=config.DISCORD_BOT_TOKEN)
+        except asyncio.CancelledError:
+            if not termination.is_set():
+                raise
+            logger.info("SIGTERM received")
+        finally:
+            await bot.close()
+            logger.info("Bot stopped.")
 
 
 def run() -> None:

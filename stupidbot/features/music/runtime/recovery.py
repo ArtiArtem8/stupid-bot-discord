@@ -548,7 +548,9 @@ class SessionHealer(HealerProtocol):
     async def _join_restore_voice(self, target: RestoreTarget, guild_id: int) -> bool:
         if isinstance(target.guild.voice_client, MusicPlayer):
             return False
-        result, _old_channel = await self.connection.join(target.guild, target.channel)
+        result, _old_channel = await self.connection.join(
+            target.guild, target.channel, allow_move=True
+        )
         if result.status is not MusicResultStatus.SUCCESS:
             logger.warning(
                 "Cannot restore session for guild %s: voice join failed with %s",

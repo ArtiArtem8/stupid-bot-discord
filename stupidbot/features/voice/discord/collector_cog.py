@@ -21,6 +21,7 @@ from discord.ext import commands, tasks
 from discord.utils import utcnow
 
 from stupidbot import settings as config
+from stupidbot.app.health import ComponentHealth, TaskHealth
 from stupidbot.common.json import JsonObject, JsonValue, is_json_object
 from stupidbot.features.voice.facts import (
     GapReason,
@@ -62,6 +63,22 @@ class VoiceCollectorCog(commands.Cog):
         self._running = False
         self._last_tick: tuple[datetime, float] | None = None
         self._last_snapshot = 0.0
+
+    @property
+    def runtime_health(self) -> ComponentHealth:
+        """Report heartbeat liveness without treating disabled collection as failure."""
+        if not config.VOICE_PROBE_ENABLED:
+            return ComponentHealth(True)
+        return ComponentHealth(
+            self._running and self.journal.writer_running,
+            (
+                TaskHealth(
+                    "voice_heartbeat",
+                    self._heartbeat.is_running(),
+                    self._heartbeat.failed(),
+                ),
+            ),
+        )
 
     @override
     async def cog_load(self) -> None:

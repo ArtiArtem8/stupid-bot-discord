@@ -36,10 +36,6 @@ msgstr ""
 "дарила приятные сюрпризы. Пусть жизнь будет интересной и насыщенной, пусть всегда "
 "хватает сил для достижения желаемых высот!"
 
-msgctxt "ui"
-msgid "An error occurred while removing the birthday"
-msgstr "Произошла ошибка при удалении дня рождения"
-
 msgctxt "month"
 msgid "April"
 msgstr "апреля"
@@ -84,10 +80,6 @@ msgstr "Настроить систему дней рождений для се�
 msgctxt "month"
 msgid "December"
 msgstr "декабря"
-
-msgctxt "ui"
-msgid "Error"
-msgstr "Ошибка"
 
 msgctxt "month"
 msgid "February"
@@ -291,16 +283,20 @@ msgid "You cannot perform this action"
 msgstr "Вы не можете выполнить это действие"
 
 msgctxt "ui"
-msgid "You cannot perform this action."
-msgstr "Вы не можете выполнить это действие."
-
-msgctxt "ui"
 msgid "You have not set your birthday"
 msgstr "Вы не установили свой день рождения"
 
 msgctxt "ui"
 msgid "Your birthday has been removed"
 msgstr "Ваш день рождения удалён"
+
+msgctxt "remove_failed"
+msgid "Could not remove the birthday. Open /remove-birthday to try again."
+msgstr "Не удалось удалить день рождения. Откройте /remove-birthday и попробуйте ещё раз."
+
+msgctxt "remove_expired"
+msgid "Confirmation expired. Open /remove-birthday to try again."
+msgstr "Время подтверждения истекло. Откройте /remove-birthday и попробуйте ещё раз."
 
 #, python-brace-format
 msgctxt "saved"

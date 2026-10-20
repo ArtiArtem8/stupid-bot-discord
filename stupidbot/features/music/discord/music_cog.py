@@ -9,11 +9,18 @@ from discord import Interaction, Member, app_commands
 from discord.ext import commands, tasks
 
 from stupidbot import settings as config
+from stupidbot.app.health import ComponentHealth, TaskHealth
 from stupidbot.discord_ui.base_cog import BaseCog
-from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
-from stupidbot.discord_ui.interaction_flow import run_with_defer
+from stupidbot.discord_ui.exceptions import CommandFeedbackError
+from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.discord_ui.interaction_flow import defer_command, run_with_defer
 from stupidbot.features.music.composition import create_music_components
 from stupidbot.features.music.contracts import TrackExceptionPayload
+from stupidbot.features.music.discord.access import (
+    MusicAction,
+    check_music_access,
+    require_music_access,
+)
 from stupidbot.features.music.discord.feedback import (
     send_error,
     send_info,
@@ -54,7 +61,7 @@ from stupidbot.features.music.results import (
 )
 from stupidbot.features.music.runtime.session import MusicSession
 from stupidbot.i18n.catalog import catalog
-from stupidbot.i18n.discord import guild_context, interaction_context
+from stupidbot.i18n.discord import error_context, guild_context, interaction_context
 from stupidbot.i18n.policy import Language
 
 if TYPE_CHECKING:
@@ -83,6 +90,14 @@ class MusicCog(BaseCog):
     """Music playback controller."""
 
     @override
+    def command_response_ephemeral(self, _interaction: Interaction) -> bool:
+        command = _interaction.command
+        if command is not None and command.name == "queue":
+            private: object = getattr(_interaction.namespace, "ephemeral", True)
+            return private is not False
+        return command is not None and command.name in {"join", "leave", "reconnect"}
+
+    @override
     async def interaction_check(self, interaction: Interaction) -> bool:
         if not await super().interaction_check(interaction):
             return False
@@ -92,15 +107,47 @@ class MusicCog(BaseCog):
             and interaction.command is not None
             and interaction.command.name not in {"leave", "queue"}
         ):
-            context = await interaction_context(interaction, private=True)
+            context = await error_context(interaction)
             messages = MusicMessages(catalog("music", context.language))
-            await FeedbackUI.send(
-                interaction,
-                description=messages.failure(MusicResultReason.RECOVERING),
-                feedback_type=FeedbackType.INFO,
-                ephemeral=True,
+            raise CommandFeedbackError(
+                messages.failure(MusicResultReason.RECOVERING),
+                severity="info",
             )
-            return False
+        return await self._check_command_voice(interaction)
+
+    def _command_voice_action(self, interaction: Interaction) -> MusicAction | None:
+        """Keep read-only commands outside the voice-control permission policy."""
+        command = interaction.command
+        if command is None or command.name == "queue":
+            return None
+        value: object = getattr(interaction.namespace, "value", None)
+        if command.name == "volume" and value is None:
+            return None
+        if command.name in {"join", "play", "play-next"}:
+            return "join"
+        if command.name in {"leave", "reconnect"}:
+            return "manage_session"
+        if command.name == "skip":
+            return "skip"
+        return "control"
+
+    async def _check_command_voice(self, interaction: Interaction) -> bool:
+        action = self._command_voice_action(interaction)
+        if action is None:
+            return True
+        player = (
+            self.service.get_player(interaction.guild_id)
+            if interaction.guild_id is not None
+            else None
+        )
+        voice_client = interaction.guild.voice_client if interaction.guild else None
+        channel = voice_client.channel if voice_client is not None else None
+        await require_music_access(
+            interaction,
+            channel,
+            action=action,
+            attempt=player.current_attempt if player is not None else None,
+        )
         return True
 
     def __init__(self, bot: commands.Bot, volumes: VolumeStore) -> None:
@@ -108,6 +155,20 @@ class MusicCog(BaseCog):
 
         self.components = create_music_components(bot, volumes)
         self.service = self.components.service
+
+    @property
+    def runtime_health(self) -> ComponentHealth:
+        """Expose cached availability and the owned monitor without external I/O."""
+        return ComponentHealth(
+            ready=self.service.connection.has_ready_node(),
+            tasks=(
+                TaskHealth(
+                    "auto_leave_monitor",
+                    self.auto_leave_monitor.is_running(),
+                    self.auto_leave_monitor.failed(),
+                ),
+            ),
+        )
 
     @override
     async def cog_load(self) -> None:
@@ -480,11 +541,24 @@ class MusicCog(BaseCog):
     )
     @app_commands.guild_only()
     async def skip(self, interaction: Interaction) -> None:
+        guild = await self._require_guild(interaction)
+        player = self.service.get_player(guild.id)
+        expected = player.current_attempt if player is not None else None
+        channel = player.channel if player is not None else None
+        if not await check_music_access(
+            interaction,
+            channel,
+            action="skip",
+            attempt=expected,
+        ):
+            return
+        if expected is None:
+            await send_warning_no_player(interaction)
+            return
         context = await interaction_context(interaction, private=False)
         messages = MusicMessages(catalog("music", context.language))
-        guild = await self._require_guild(interaction)
         res = await self.service.skip(
-            guild.id, interaction.user.id, interaction.channel_id
+            guild.id, interaction.user.id, interaction.channel_id, expected=expected
         )
         if res.status is MusicResultStatus.FAILURE:
             await self._send_no_player_or_unavailable(interaction, res)
@@ -751,7 +825,7 @@ class MusicCog(BaseCog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await defer_command(interaction, ephemeral=True)
 
         restored = await self.service.heal(interaction.guild_id)
         if restored:

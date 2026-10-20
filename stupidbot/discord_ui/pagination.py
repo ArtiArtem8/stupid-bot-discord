@@ -1,5 +1,5 @@
 from collections.abc import Awaitable, Callable
-from typing import Any, Protocol, Self, override
+from typing import Protocol, Self, override
 
 import discord
 from discord import Interaction
@@ -84,16 +84,24 @@ class ManagedView(discord.ui.View):
         self,
         interaction: Interaction,
         *,
+        embed: discord.Embed,
         ephemeral: bool = False,
         silent: bool = False,
-        **kwargs: Any,  # pyright: ignore[reportExplicitAny, reportAny]
     ) -> None:
         """Send the view and track the message."""
+        if (
+            interaction.response.type
+            is discord.InteractionResponseType.deferred_channel_message
+        ):
+            self._message = await interaction.edit_original_response(
+                view=self, embed=embed
+            )
+            return
         response = await interaction.response.send_message(
             view=self,
+            embed=embed,
             ephemeral=ephemeral,
             silent=silent,
-            **kwargs,  # pyright: ignore[reportAny]
         )
         if isinstance(response.resource, discord.InteractionMessage):
             self._message = response.resource
@@ -226,15 +234,14 @@ class BasePaginator(ManagedView):
         self,
         interaction: Interaction,
         *,
+        embed: discord.Embed | None = None,
         ephemeral: bool = False,
         silent: bool = False,
-        **kwargs: Any,  # pyright: ignore[reportExplicitAny, reportAny]
     ) -> None:
         """Send the paginated message."""
         await super().send(
             interaction,
-            embed=self.make_embed(),
+            embed=embed if embed is not None else self.make_embed(),
             ephemeral=ephemeral,
             silent=silent,
-            **kwargs,
         )

@@ -1,6 +1,8 @@
 """Allocation tracing is an explicit runtime choice, never an import side effect."""
 
+import asyncio
 import importlib
+import signal
 import sys
 import tracemalloc
 import unittest
@@ -66,3 +68,85 @@ class TestMainTracing(unittest.IsolatedAsyncioTestCase):
                 bot.start.assert_awaited_once_with(token=credential)
                 bot.save_state.assert_not_awaited()
                 bot.close.assert_awaited_once()
+
+
+class TestTerminationHandling(unittest.IsolatedAsyncioTestCase):
+    async def test_repeated_sigterm_preserves_cleanup_and_restores_handler(
+        self,
+    ) -> None:
+        previous = signal.getsignal(signal.SIGTERM)
+        running = asyncio.Event()
+        cleaning = asyncio.Event()
+        release = asyncio.Event()
+        cleaned = asyncio.Event()
+
+        async def application() -> None:
+            with entry._handle_sigterm():
+                try:
+                    running.set()
+                    await asyncio.Event().wait()
+                finally:
+                    cleaning.set()
+                    await release.wait()
+                    cleaned.set()
+
+        task = asyncio.create_task(application())
+        await running.wait()
+        handler = signal.getsignal(signal.SIGTERM)
+        if not callable(handler):
+            self.fail("Expected an application termination handler")
+        try:
+            handler(signal.SIGTERM, None)
+            await asyncio.wait_for(cleaning.wait(), timeout=2)
+            handler(signal.SIGTERM, None)
+            self.assertFalse(task.done())
+        finally:
+            release.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+        self.assertTrue(cleaned.is_set())
+        self.assertEqual(signal.getsignal(signal.SIGTERM), previous)
+
+    async def test_sigterm_does_not_hide_cancelled_final_cleanup(self) -> None:
+        bot = MagicMock()
+        bot.restore_state = AsyncMock()
+        bot.close = AsyncMock(side_effect=asyncio.CancelledError)
+        bot.__aenter__ = AsyncMock(return_value=bot)
+        bot.__aexit__ = AsyncMock(return_value=False)
+
+        async def terminate(*, token: str) -> None:
+            self.assertEqual(token, "test")
+            handler = signal.getsignal(signal.SIGTERM)
+            if not callable(handler):
+                self.fail("Expected an application termination handler")
+            handler(signal.SIGTERM, None)
+            await asyncio.Event().wait()
+
+        bot.start = AsyncMock(side_effect=terminate)
+        with (
+            TemporaryDirectory() as directory,
+            patch.object(sys, "argv", ["main.py"]),
+            patch.object(config, "DISCORD_BOT_TOKEN", "test"),
+            patch.object(config, "DATA_DIR", Path(directory)),
+            patch.object(entry, "setup_logging"),
+            patch.object(entry, "StupidBot", return_value=bot),
+        ):
+            with self.assertRaises(asyncio.CancelledError):
+                await asyncio.create_task(entry.main())
+        bot.close.assert_awaited_once()
+
+    async def test_unrelated_cancellation_propagates_and_restores_handler(self) -> None:
+        previous = signal.getsignal(signal.SIGTERM)
+        running = asyncio.Event()
+
+        async def application() -> None:
+            with entry._handle_sigterm():
+                running.set()
+                await asyncio.Event().wait()
+
+        task = asyncio.create_task(application())
+        await running.wait()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual(signal.getsignal(signal.SIGTERM), previous)

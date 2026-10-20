@@ -7,6 +7,7 @@ from pathlib import Path
 from discord.ext import commands
 
 from stupidbot.app.extensions import EXTENSIONS
+from stupidbot.app.health import ComponentHealth, TaskHealth
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,21 @@ class CogLoader:
         self.enable_watch = watch
         self._watcher_task: asyncio.Task[typing.NoReturn] | None = None
         self._close_task: asyncio.Task[None] | None = None
+
+    @property
+    def runtime_health(self) -> ComponentHealth:
+        """Distinguish a disabled watcher from one that unexpectedly stopped."""
+        if not self.enable_watch:
+            return ComponentHealth(True)
+        task = self._watcher_task
+        running = task is not None and not task.done()
+        failed = (
+            task is not None
+            and task.done()
+            and not task.cancelled()
+            and task.exception() is not None
+        )
+        return ComponentHealth(running, (TaskHealth("cog_watcher", running, failed),))
 
     async def load_cogs(self) -> None:
         """Load entry extensions until closed; the bot owns the in-flight load."""

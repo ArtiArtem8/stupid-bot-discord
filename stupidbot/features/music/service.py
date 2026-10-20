@@ -20,6 +20,7 @@ from stupidbot.features.music.errors import (
 )
 from stupidbot.features.music.playback.models import (
     EnqueueOutcome,
+    PlaybackAttempt,
     PlayPlacement,
     QueueEntry,
     QueuePlacement,
@@ -470,13 +471,15 @@ class CoreMusicService:
         guild_id: int,
         requester_id: int | None = None,
         text_channel_id: int | None = None,
+        *,
+        expected: PlaybackAttempt | None = None,
     ) -> MusicResult[SkipTrackData]:
         player = self._operation_player(guild_id, context="skip")
         if isinstance(player, MusicResult):
             return player
 
         try:
-            skipped_attempt, started_attempt = await player.skip()
+            skipped_attempt, started_attempt = await player.skip(expected=expected)
             if skipped_attempt:
                 await self.ui.controller.destroy_for_guild(
                     guild_id,

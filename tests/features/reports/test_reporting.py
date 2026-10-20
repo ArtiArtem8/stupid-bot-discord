@@ -1,5 +1,6 @@
 """Reports commit before success feedback and deduplicate interaction retries."""
 
+import asyncio
 import unittest
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,12 +11,15 @@ from discord.webhook.async_ import async_context
 from sqlalchemy import select
 
 from stupidbot.discord_ui.theme import Color
+from stupidbot.features.access.operations import BlockManager
+from stupidbot.features.reports import ui as report_ui
 from stupidbot.features.reports.repository import ReportRepository
 from stupidbot.features.reports.ui import (
     ReportModal,
     _build_report_data,
     _create_report_embed,
     _notify_report,
+    handle_report_button,
     submit_report,
 )
 from stupidbot.i18n.policy import Language, PresentationContext
@@ -24,6 +28,40 @@ from tests.storage.fixtures import temporary_database
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):
+    async def test_report_button_rechecks_new_block_before_opening_modal(self) -> None:
+        self.interaction.type = discord.InteractionType.component
+        self.interaction.guild = MagicMock(spec=discord.Guild, id=42)
+        self.interaction.client.block_manager = MagicMock(spec=BlockManager)
+        self.interaction.client.block_manager.is_user_blocked.return_value = True
+        await handle_report_button(self.repository, self.interaction)
+        self.interaction.response.send_modal.assert_not_awaited()
+        self.interaction.response.defer.assert_awaited_once_with(
+            thinking=True, ephemeral=True
+        )
+        self.interaction.client.block_manager.is_user_blocked.assert_awaited_once_with(
+            42, 1
+        )
+
+    async def test_report_button_access_timeout_fails_closed(self) -> None:
+        self.interaction.type = discord.InteractionType.component
+        self.interaction.guild = MagicMock(spec=discord.Guild, id=42)
+        self.interaction.client.block_manager = MagicMock(spec=BlockManager)
+        cancelled = asyncio.Event()
+
+        async def access(_guild: int, _user: int) -> bool:
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+            return False
+
+        self.interaction.client.block_manager.is_user_blocked.side_effect = access
+        with patch.object(report_ui, "MODAL_ACCESS_TIMEOUT", 0):
+            await handle_report_button(self.repository, self.interaction)
+        self.assertTrue(cancelled.is_set())
+        self.interaction.response.send_modal.assert_not_awaited()
+        self.interaction.response.defer.assert_awaited_once()
+
     async def test_unnamed_locations_are_localized_after_persistence(self) -> None:
         for channel, ru, en in (
             (None, "Неизвестный канал", "Unknown channel"),
@@ -226,6 +264,16 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         self.interaction.channel = None
         self.interaction.message = None
         self.interaction.response = MagicMock(spec=discord.InteractionResponse)
+        self.interaction.response.is_done.return_value = False
+        self.interaction.extras = {}
+
+        async def defer(**_kwargs: object) -> None:
+            self.interaction.response.type = (
+                discord.InteractionResponseType.deferred_channel_message
+            )
+            self.interaction.response.is_done.return_value = True
+
+        self.interaction.response.defer.side_effect = defer
 
     async def test_missing_notification_channel_logs_persisted_report_id(self) -> None:
         await self.repository.set_channel(99)

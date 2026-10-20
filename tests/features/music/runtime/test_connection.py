@@ -55,6 +55,43 @@ def _as_music_player(player: _FakeMusicPlayer) -> MusicPlayer:
 
 
 class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
+    async def test_competing_channel_join_cannot_move_first_session(self) -> None:
+        guild = MagicMock(id=123, voice_client=None)
+        first_channel = MagicMock(spec=discord.VoiceChannel, id=10)
+        second_channel = MagicMock(spec=discord.VoiceChannel, id=20)
+        entered, release, queued = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        player = _FakeMusicPlayer(guild)
+        player.channel = first_channel
+
+        async def connect(**_kwargs: object) -> _FakeMusicPlayer:
+            entered.set()
+            await release.wait()
+            guild.voice_client = player
+            return player
+
+        async def competing_join() -> object:
+            queued.set()
+            return await self.manager.join(guild, second_channel)
+
+        first_channel.connect = AsyncMock(side_effect=connect)
+        second_channel.connect = AsyncMock()
+        with (
+            patch.object(self.manager, "ensure_available", return_value=True),
+            patch.object(self.manager, "is_player_usable", return_value=True),
+            patch.object(self.manager, "_move_player", new=AsyncMock()) as move,
+        ):
+            first = asyncio.create_task(self.manager.join(guild, first_channel))
+            await entered.wait()
+            second = asyncio.create_task(competing_join())
+            await queued.wait()
+            release.set()
+            self.assertEqual(await first, (VoiceCheckResult.SUCCESS, None))
+            self.assertEqual(await second, (VoiceCheckResult.OTHER_CHANNEL, None))
+        self.assertIs(guild.voice_client, player)
+        self.assertIs(player.channel, first_channel)
+        second_channel.connect.assert_not_awaited()
+        move.assert_not_awaited()
+
     async def test_shutdown_drains_accepted_join_and_rejects_queued_and_late_joins(
         self,
     ) -> None:
@@ -766,7 +803,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(self.manager, "invalidate_player", invalidate_player),
         ):
-            result = await self.manager.join(guild, new_channel)
+            result = await self.manager.join(guild, new_channel, allow_move=True)
 
         self.assertEqual(
             result,
@@ -797,7 +834,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             patch.object(player, "move_to", AsyncMock(side_effect=move), create=True),
             patch.object(self.manager, "is_player_usable", return_value=True),
         ):
-            moving = asyncio.create_task(self.manager.join(guild, new_channel))
+            moving = asyncio.create_task(
+                self.manager.join(guild, new_channel, allow_move=True)
+            )
             await entered.wait()
             self.assertTrue(self.manager.is_transitioning(_as_music_player(player)))
             moving.cancel()
@@ -826,7 +865,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(self.manager, "invalidate_player", invalidate_player),
         ):
-            result = await self.manager.join(guild, new_channel)
+            result = await self.manager.join(guild, new_channel, allow_move=True)
 
         self.assertEqual(
             result,

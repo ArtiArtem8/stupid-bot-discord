@@ -8,7 +8,30 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
-from stupidbot.discord_ui.pagination import BasePaginator, CallbackButton
+from stupidbot.discord_ui.pagination import BasePaginator, CallbackButton, ManagedView
+
+
+class TestManagedView(unittest.IsolatedAsyncioTestCase):
+    async def test_deferred_command_edits_and_retains_original_for_timeout(
+        self,
+    ) -> None:
+        view = ManagedView()
+        self.addCleanup(view.stop)
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.response = MagicMock(spec=discord.InteractionResponse)
+        interaction.response.type = (
+            discord.InteractionResponseType.deferred_channel_message
+        )
+        message = MagicMock(spec=discord.InteractionMessage)
+        interaction.edit_original_response = AsyncMock(return_value=message)
+        embed = discord.Embed(description="A page")
+        await view.send(interaction, embed=embed, ephemeral=True, silent=True)
+        interaction.response.send_message.assert_not_awaited()
+        interaction.edit_original_response.assert_awaited_once_with(
+            embed=embed, view=view
+        )
+        await view.on_timeout()
+        message.edit.assert_awaited_once_with(view=None)
 
 
 class TestCallbackButton(unittest.IsolatedAsyncioTestCase):

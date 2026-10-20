@@ -37,6 +37,7 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         self.journal.start()
+        self.assertTrue(self.journal.writer_running)
         for seconds in range(5):
             self.assertEqual(
                 self.journal.submit(record(seconds, VoiceObservation(human()))),
@@ -44,8 +45,13 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(self.journal.counts.accepted, 5)
         self.assertEqual(self.journal.counts.persisted, 0)
+        self.assertEqual(self.journal.pending, 5)
+        self.assertIsNone(self.journal.last_commit_at)
         await self.journal.close()
         self.assertEqual(self.journal.counts.persisted, 5)
+        self.assertEqual(self.journal.pending, 0)
+        self.assertFalse(self.journal.writer_running)
+        self.assertIsNotNone(self.journal.last_commit_at)
         self.assertEqual(len(await self.store.read_all(1, START.date())), 5)
         self.assertEqual(
             self.journal.submit(record(6, VoiceCheckpoint())), Submission.CLOSED
@@ -64,6 +70,7 @@ class TestVoiceJournal(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.journal.counts.accepted, 1)
         self.assertEqual(self.journal.counts.failed, 1)
         self.assertEqual(self.journal.counts.persisted, 0)
+        self.assertIsNone(self.journal.last_commit_at)
 
     async def test_recovered_writer_persists_failure_gap_without_retrying_batch(
         self,

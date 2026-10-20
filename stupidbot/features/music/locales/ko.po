@@ -364,10 +364,6 @@ msgid "There are no tracks in this session."
 msgstr "이 세션에는 재생 기록이 없습니다."
 
 msgctxt "ui"
-msgid "This is not your controller."
-msgstr "다른 사용자의 재생 컨트롤러입니다."
-
-msgctxt "ui"
 msgid "Track moved to the end"
 msgstr "곡을 대기열 맨 뒤로 이동했습니다"
 
@@ -451,3 +447,11 @@ msgstr[0] "{count:d}일"
 msgctxt "track_exception"
 msgid "{link}\n**Reason:** The source is temporarily unavailable or did not respond."
 msgstr "{link}\n**사유:** 음원 제공처를 일시적으로 이용할 수 없거나 응답이 없습니다."
+
+msgctxt "voice_control"
+msgid "Join the bot's voice channel to use this control."
+msgstr "음악을 제어하려면 봇이 있는 음성 채널에 참여하세요."
+
+msgctxt "other_channel"
+msgid "The bot is already in another voice channel. Join it there."
+msgstr "봇이 이미 다른 음성 채널에 있습니다. 해당 채널에 참여하세요."

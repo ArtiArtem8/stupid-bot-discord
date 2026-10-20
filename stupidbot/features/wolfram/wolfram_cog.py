@@ -15,6 +15,7 @@ from discord.ext import commands
 from stupidbot import settings as config
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.features.wolfram.client import (
     WolframAPIError,
     WolframClient,
@@ -124,7 +125,7 @@ class WolframCog(BaseCog):
         interaction: Interaction,
         problem: app_commands.Range[str, 1, config.WOLFRAM_MAX_QUERY_LEN],
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await defer_command(interaction, ephemeral=True)
         await self._handle_query(interaction, problem, mode="solve")
 
     @app_commands.command(
@@ -144,14 +145,14 @@ class WolframCog(BaseCog):
         interaction: Interaction,
         function: app_commands.Range[str, 1, config.WOLFRAM_MAX_QUERY_LEN],
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await defer_command(interaction, ephemeral=True)
         await self._handle_query(interaction, function, mode="plot")
 
     @_wolfram_cooldown
     async def _context_solve(
         self, interaction: Interaction, message: discord.Message
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await defer_command(interaction, ephemeral=True)
         await self._handle_query(interaction, message.content, mode="solve")
 
     async def _handle_query(

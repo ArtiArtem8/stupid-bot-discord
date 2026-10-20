@@ -2,6 +2,7 @@
   "keys": [
     "access\u0004The command access check failed.",
     "access_title\u0004Access denied",
+    "access_unavailable\u0004Could not check access. Please try again.",
     "blocked\u0004You cannot use commands.",
     "cooldown\u0004Please wait: {relative_time}",
     "deletion\u0004-# Deletes {relative_time}",
@@ -12,6 +13,7 @@
     "internal_title\u0004Internal error",
     "not_yours\u0004This is not your message.",
     "page\u0004{name} (page {page:d})",
+    "private_response\u0004Your response is shown privately.",
     "report\u0004Report a problem"
   ]
 }

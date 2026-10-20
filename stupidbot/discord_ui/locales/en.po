@@ -25,6 +25,14 @@ msgctxt "access_title"
 msgid "Access denied"
 msgstr "Access denied"
 
+msgctxt "access_unavailable"
+msgid "Could not check access. Please try again."
+msgstr "Could not check access. Please try again."
+
+msgctxt "private_response"
+msgid "Your response is shown privately."
+msgstr "Your response is shown privately."
+
 msgctxt "discord_error"
 msgid "Could not complete the action in Discord. Please try again."
 msgstr "Could not complete the action in Discord. Please try again."

@@ -1,7 +1,7 @@
 import asyncio
 import logging
-import sqlite3
 from functools import partial
+from math import isfinite
 from pathlib import Path
 from typing import override
 
@@ -9,9 +9,16 @@ import discord
 from discord import Intents
 from discord.ext import commands, tasks
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from stupidbot import settings as config
 from stupidbot.app.cog_loader import CogLoader
+from stupidbot.app.health import (
+    ComponentHealth,
+    HealthSnapshot,
+    TaskHealth,
+    component_health,
+)
 from stupidbot.app.messages import AppMessages
 from stupidbot.app.uptime import UptimeManager
 from stupidbot.app.uptime_repository import UptimeRepository
@@ -34,7 +41,12 @@ from stupidbot.features.voice.runtime import VoiceAnalytics
 from stupidbot.i18n.catalog import catalog, catalogs
 from stupidbot.i18n.commands import CommandTranslator
 from stupidbot.i18n.policy import Language
-from stupidbot.storage.database import Database, open_engine, validate_schema
+from stupidbot.storage.database import (
+    Database,
+    is_sqlite_contention,
+    open_engine,
+    validate_schema,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +103,44 @@ class StupidBot(commands.Bot):
         self._prepare_lock = asyncio.Lock()
         self._startup_task: asyncio.Task[None] | None = None
         self._shutdown_task: asyncio.Task[None] | None = None
+        self._health_failures = (0, 0, 0, 0)
+
+    def health_snapshot(self) -> HealthSnapshot:
+        """Read local status even when database admission or external services fail."""
+        components = component_health(self.cogs)
+        loops = (self.update_activity_task, self.autosave_task, self.health_task)
+        tasks = [
+            TaskHealth(loop.coro.__name__, loop.is_running(), loop.failed())
+            for loop in loops
+        ]
+        for component in components.values():
+            tasks.extend(component.tasks)
+        tasks.extend(self.cog_loader.runtime_health.tasks)
+        checkpoint = self.uptime_manager.checkpoint_microseconds
+        journal = self._voice_journal
+        unavailable = ComponentHealth(False)
+        return HealthSnapshot(
+            ready=self.is_ready(),
+            latency_ms=self.latency * 1000 if isfinite(self.latency) else None,
+            uptime_seconds=(
+                self.uptime_manager.elapsed_microseconds() / 1_000_000
+                if checkpoint is not None
+                else None
+            ),
+            checkpoint_us=checkpoint,
+            database=self._database.health,
+            tasks=tuple(tasks),
+            voice_enabled=config.VOICE_PROBE_ENABLED,
+            voice_writer=journal is not None and journal.writer_running,
+            voice_pending=journal.pending if journal is not None else 0,
+            voice_counts=journal.counts if journal is not None else None,
+            voice_last_commit_at=journal.last_commit_at
+            if journal is not None
+            else None,
+            analytics=self.voice_analytics.status,
+            music_ready=components.get("MusicCog", unavailable).ready,
+            renderer_ready=components.get("VoiceProfileCog", unavailable).ready,
+        )
 
     def create_voice_journal(self) -> VoiceJournal:
         """Give a collector reload a fresh queue only after its predecessor drained."""
@@ -176,7 +226,7 @@ class StupidBot(commands.Bot):
 
     async def _stop_background_loops(self) -> None:
         pending: list[tuple[str, asyncio.Task[None]]] = []
-        for loop in (self.update_activity_task, self.autosave_task):
+        for loop in (self.update_activity_task, self.autosave_task, self.health_task):
             task = loop.get_task()
             loop.cancel()
             if task is not None:
@@ -219,6 +269,7 @@ class StupidBot(commands.Bot):
         logger.debug("Synced commands: %s", commands)
         self.update_activity_task.start()
         self.autosave_task.start()
+        self.health_task.start()
         self.cog_loader.start_watcher()
 
     async def on_ready(self) -> None:
@@ -256,20 +307,30 @@ class StupidBot(commands.Bot):
     async def autosave_task(self) -> None:
         try:
             uptime = await self.save_state()
+        except PoolTimeoutError:
+            logger.warning("Uptime checkpoint deferred: database checkout timed out")
+            return
         except OperationalError as exc:
-            code = getattr(exc.orig, "sqlite_errorcode", None)
-            if not isinstance(code, int) or code & 0xFF not in (
-                sqlite3.SQLITE_BUSY,
-                sqlite3.SQLITE_LOCKED,
-            ):
+            if not is_sqlite_contention(exc):
                 raise
-            logger.warning(
-                "Uptime checkpoint deferred: SQLite busy/locked (code=%s)", code
-            )
+            logger.warning("Uptime checkpoint deferred: SQLite busy/locked")
             return
         logger.debug("Autosaved uptime: %.0f seconds", uptime)
 
+    @tasks.loop(minutes=5)
+    async def health_task(self) -> None:
+        snapshot = self.health_snapshot()
+        failures = snapshot.failures
+        new_failure = any(
+            current > previous
+            for current, previous in zip(failures, self._health_failures, strict=True)
+        )
+        self._health_failures = failures
+        level = logging.WARNING if snapshot.degraded or new_failure else logging.INFO
+        logger.log(level, "Runtime health: %s", " | ".join(snapshot.lines()))
+
     @update_activity_task.before_loop
     @autosave_task.before_loop
+    @health_task.before_loop
     async def before_tasks(self) -> None:
         await self.wait_until_ready()

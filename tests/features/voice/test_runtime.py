@@ -157,7 +157,9 @@ class TestVoiceAnalytics(unittest.IsolatedAsyncioTestCase):
 
     async def _commit_during_rebuild(self, late_fact: VoiceJournalRecord) -> None:
         await self.analytics.close()
+        self.assertEqual(self.analytics.status, "closed")
         analytics = VoiceAnalytics(self.store)
+        self.assertEqual(analytics.status, "unavailable")
         self.addAsyncCleanup(analytics.close)
         self.analytics = analytics
         loaded, release = asyncio.Event(), asyncio.Event()
@@ -176,11 +178,13 @@ class TestVoiceAnalytics(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.store, "history", side_effect=pause):
             starting = asyncio.create_task(analytics.start())
             await loaded.wait()
+            self.assertEqual(analytics.status, "recovering")
             with self.assertRaises(AnalyticsUnavailableError):
                 await analytics.snapshot(1)
             await analytics.append(f"late-{late_fact.boot_id}", [late_fact])
             release.set()
             await starting
+        self.assertEqual(analytics.status, "ready")
         expected = await history()
         result = await analytics.snapshot()
         self.assertEqual(result.timeline, build_timeline(expected.records))

@@ -19,6 +19,8 @@ class TestDeleteMessage(unittest.IsolatedAsyncioTestCase):
         cog = OwnerCog(MagicMock())
         interaction = MagicMock(spec=discord.Interaction)
         interaction.response = MagicMock(spec=discord.InteractionResponse)
+        interaction.response.is_done.return_value = False
+        interaction.extras = {}
         channel = MagicMock(spec=discord.TextChannel)
         channel.fetch_message = AsyncMock()
         interaction.channel = channel
@@ -69,7 +71,9 @@ class TestDeleteMessage(unittest.IsolatedAsyncioTestCase):
         ) -> PresentationContext:
             self.assertIs(request, interaction)
             self.assertTrue(private)
-            interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+            interaction.response.defer.assert_awaited_once_with(
+                ephemeral=True, thinking=True
+            )
             return PresentationContext(Language.RU, ZoneInfo("UTC"))
 
         with (

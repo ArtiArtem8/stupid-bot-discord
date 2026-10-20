@@ -85,3 +85,19 @@ msgstr[0] "{count:d}년"
 msgctxt "join"
 msgid "{first} and {last}"
 msgstr "{first} {last}"
+
+msgctxt "command"
+msgid "Show runtime health (owner only)"
+msgstr "봇 상태 보기 (소유자 전용)"
+
+msgctxt "ui"
+msgid "Runtime health"
+msgstr "봇 상태"
+
+msgctxt "ui"
+msgid "Local state; no external checks are performed."
+msgstr "현재 프로세스의 상태입니다. 외부 서비스는 확인하지 않습니다."
+
+msgctxt "ui"
+msgid "Status"
+msgstr "상태"

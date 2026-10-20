@@ -398,10 +398,6 @@ msgid "There are no tracks in this session."
 msgstr "There are no tracks in this session."
 
 msgctxt "ui"
-msgid "This is not your controller."
-msgstr "This is not your controller."
-
-msgctxt "ui"
 msgid "Track moved to the end"
 msgstr "Track moved to the end"
 
@@ -496,3 +492,11 @@ msgid ""
 msgstr ""
 "{link}\n"
 "**Reason:** The source is temporarily unavailable or did not respond."
+
+msgctxt "voice_control"
+msgid "Join the bot's voice channel to use this control."
+msgstr "Join the bot's voice channel to use this control."
+
+msgctxt "other_channel"
+msgid "The bot is already in another voice channel. Join it there."
+msgstr "The bot is already in another voice channel. Join it there."

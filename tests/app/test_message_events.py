@@ -4,6 +4,7 @@ import unittest
 from typing import cast, override
 from unittest.mock import MagicMock, patch
 
+from stupidbot import settings as config
 from stupidbot.app import message_logging
 from stupidbot.app.message_events_cog import MessageEventsCog
 
@@ -12,6 +13,7 @@ class TestMessageLogging(unittest.TestCase):
     @override
     def setUp(self) -> None:
         self.cog = MessageEventsCog(MagicMock(), MagicMock())
+        self.enterContext(patch.object(config, "MESSAGE_LOG_ENABLED", True))
 
     def _message(self, content: str) -> MagicMock:
         message = MagicMock()
@@ -85,3 +87,30 @@ class TestMessageLogging(unittest.TestCase):
         log_args = log_info.call_args.args
         rendered = cast(str, log_args[0]) % log_args[1:]
         self.assertIn("'content': 'доброе утро'", rendered)
+
+    def test_disabled_logging_does_not_access_message_payload(self) -> None:
+        message = MagicMock()
+        with (
+            patch.object(config, "MESSAGE_LOG_ENABLED", False),
+            patch.object(message_logging.logger, "info") as info,
+            patch.object(message_logging.logger, "debug") as debug,
+        ):
+            message_logging.log_message(message)
+            message_logging.log_message_edit(message, message)
+        self.assertEqual(message.mock_calls, [])
+        info.assert_not_called()
+        debug.assert_not_called()
+
+    def test_disabled_logging_preserves_fuzzy_reply_without_recording_content(
+        self,
+    ) -> None:
+        message = self._message("доброе утро")
+        with (
+            patch.object(config, "MESSAGE_LOG_ENABLED", False),
+            patch("stupidbot.features.greetings.responder.logger.info") as log_info,
+        ):
+            answer = self.cog.greetings.process_fuzzy_message(
+                message, ["доброе утро"], ["И тебе"]
+            )
+        self.assertEqual(answer, "И тебе")
+        log_info.assert_not_called()

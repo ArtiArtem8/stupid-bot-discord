@@ -55,6 +55,11 @@ class AdminCog(BaseCog):
         self.block_manager = block_manager
 
     @override
+    def command_response_ephemeral(self, _interaction: discord.Interaction) -> bool:
+        private: object = getattr(_interaction.namespace, "ephemeral", True)
+        return private is not False
+
+    @override
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:
         """Allow admin commands to bypass block checks."""
         return True

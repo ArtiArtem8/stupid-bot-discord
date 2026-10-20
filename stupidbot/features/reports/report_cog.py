@@ -1,6 +1,6 @@
 """Issue-report commands and owner-only report-channel configuration."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import discord
 from discord import Interaction, app_commands
@@ -33,6 +33,10 @@ class ReportCog(BaseCog):
     def __init__(self, bot: commands.Bot, repository: ReportRepository) -> None:
         super().__init__(bot)
         self.repository = repository
+
+    @override
+    def command_response_ephemeral(self, _interaction: Interaction) -> bool | None:
+        return None if _interaction.command is self.report else True
 
     @app_commands.command(
         name="report",

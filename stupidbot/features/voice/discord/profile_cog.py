@@ -14,8 +14,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from stupidbot.app.health import ComponentHealth
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.features.preferences.reminders import maybe_remind
 from stupidbot.features.voice.discord.attachments import detail_embed
 from stupidbot.features.voice.discord.view import (
@@ -97,6 +99,16 @@ class VoiceProfileCog(BaseCog):
         self._close_task: asyncio.Task[None] | None = None
 
     @override
+    def command_response_ephemeral(self, _interaction: discord.Interaction) -> bool:
+        private: object = getattr(_interaction.namespace, "private", True)
+        return private is not False
+
+    @property
+    def runtime_health(self) -> ComponentHealth:
+        """Report completed renderer initialization without performing native work."""
+        return ComponentHealth(self._revision is not None and self._close_task is None)
+
+    @override
     async def cog_load(self) -> None:
         try:
             self._revision = await self._media_renderer.astart()
@@ -140,14 +152,16 @@ class VoiceProfileCog(BaseCog):
     ) -> None:
         if interaction.guild is None:
             context = await interaction_context(interaction, private=True)
-            await interaction.response.send_message(
-                catalog("voice", context.language).pgettext(
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description=catalog("voice", context.language).pgettext(
                     "guild_only", "This command is only available in a server."
                 ),
                 ephemeral=True,
             )
             return
-        await interaction.response.defer(thinking=True, ephemeral=private)
+        await defer_command(interaction, ephemeral=private)
         # Visibility controls delivery; the profile always belongs to its requester.
         context = await profile_context(interaction)
         guild_id, user_id = interaction.guild.id, interaction.user.id

@@ -8,11 +8,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def discord_emoji_id(name: str, default: int) -> int | None:
+    """Read an emoji override; absent keeps the default, empty selects Unicode."""
+    key = f"DISCORD_EMOJI_{name.upper()}_ID"
+    value = os.environ.get(key)
+    if value is None:
+        return default
+    value = value.strip()
+    if not value:
+        return None
+    if (
+        len(value) > 20
+        or not value.isascii()
+        or not value.isdecimal()
+        or not 0 < int(value) < 2**64
+    ):
+        raise ValueError(f"{key} must be a Discord emoji ID or empty.")
+    return int(value)
+
+
 # --- Environment variables ---
 # Required
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 # Optional
 DISCORD_BOT_OWNER_ID = os.environ.get("DISCORD_BOT_OWNER_ID")
+MESSAGE_LOG_ENABLED = os.getenv("MESSAGE_LOG_ENABLED", "false").lower() == "true"
 # Wolfram Alpha API (https://developer.wolframalpha.com/access)
 WOLFRAM_APP_ID = os.environ.get("WOLFRAM_APP_ID")
 # Voice collector

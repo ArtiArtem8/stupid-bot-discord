@@ -67,6 +67,7 @@ def interaction(user_id: int = 10, *, guild: bool = True) -> MagicMock:
         icon = item.guild.icon.with_format.return_value
         icon.with_size.return_value = icon
     item.response.defer = AsyncMock()
+    item.response.is_done.return_value = False
     item.response.send_message = AsyncMock()
     item.edit_original_response = AsyncMock()
     message = MagicMock(spec=discord.InteractionMessage)

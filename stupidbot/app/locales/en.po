@@ -102,3 +102,19 @@ msgstr[1] "{count:d} years"
 msgctxt "join"
 msgid "{first} and {last}"
 msgstr "{first} and {last}"
+
+msgctxt "command"
+msgid "Show runtime health (owner only)"
+msgstr "Show runtime health (owner only)"
+
+msgctxt "ui"
+msgid "Runtime health"
+msgstr "Runtime health"
+
+msgctxt "ui"
+msgid "Local state; no external checks are performed."
+msgstr "Local state; no external checks are performed."
+
+msgctxt "ui"
+msgid "Status"
+msgstr "Status"
