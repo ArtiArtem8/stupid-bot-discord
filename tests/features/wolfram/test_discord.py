@@ -647,6 +647,46 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
             to_thread.await_args_list[-1].kwargs["max_output_bytes"], 1_000_000
         )
 
+    async def test_plot_query_mentions_only_notify_requester(self) -> None:
+        query = "sin(x) ` @everyone <@&4567> <@8901> `"
+        for prefix, uses_embed in (("", False), ("𝑥" * 160, True)):
+            with self.subTest(uses_embed=uses_embed):
+                cog, client = self._make_cog()
+                interaction, channel = self._make_interaction()
+                interaction.user.mention = "<@1234>"
+                client.query.return_value = WolframResult(
+                    success=True,
+                    pods=(
+                        Pod(
+                            "Plot",
+                            "Plot",
+                            (SubPod(None, "https://example.invalid/plot", None),),
+                        ),
+                    ),
+                )
+                submitted = prefix + query
+                self.assertLessEqual(len(submitted), config.WOLFRAM_MAX_QUERY_LEN)
+                with (
+                    patch.object(FeedbackUI, "send", new=AsyncMock()),
+                    patch(
+                        "stupidbot.features.wolfram.wolfram_cog.asyncio.to_thread",
+                        new=AsyncMock(return_value=b"webp"),
+                    ),
+                ):
+                    await cog._handle_query(interaction, submitted, mode="plot")
+
+                upload = channel.send.call_args.kwargs
+                mentions = upload.get("allowed_mentions")
+                self.assertIsInstance(mentions, discord.AllowedMentions)
+                self.assertEqual(mentions.to_dict(), {"parse": [], "users": [1234]})
+                self.assertTrue(upload["content"].startswith("<@1234>"))
+                self.assertEqual("embed" in upload, uses_embed)
+                caption = (
+                    upload["embed"].description if uses_embed else upload["content"]
+                )
+                self.assertIn(submitted, caption)
+                self.assertIn(wolfram_result_url(f"plot {submitted}"), caption)
+
     async def test_unicode_plot_caption_preserves_full_query_and_url_in_embed(
         self,
     ) -> None:

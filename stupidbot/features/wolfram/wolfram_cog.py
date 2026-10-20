@@ -447,9 +447,18 @@ class WolframCog(BaseCog):
                 caption = messages.plot(
                     mention=interaction.user.mention, url=result_url, query=query
                 )
+                allowed_mentions = discord.AllowedMentions(
+                    everyone=False,
+                    users=[discord.Object(id=interaction.user.id)],
+                    roles=False,
+                    replied_user=False,
+                )
                 if len(caption) <= 2_000:
                     return await channel.send(
-                        content=caption, file=file, suppress_embeds=True
+                        content=caption,
+                        file=file,
+                        suppress_embeds=True,
+                        allowed_mentions=allowed_mentions,
                     )
                 # Encoding a Unicode query can make the URL too long for a message.
                 # The full caption still fits in an embed.
@@ -461,7 +470,10 @@ class WolframCog(BaseCog):
                 )
                 embed.set_image(url="attachment://wolfram_plot.webp")
                 return await channel.send(
-                    content=interaction.user.mention, embed=embed, file=file
+                    content=interaction.user.mention,
+                    embed=embed,
+                    file=file,
+                    allowed_mentions=allowed_mentions,
                 )
             finally:
                 file.close()
