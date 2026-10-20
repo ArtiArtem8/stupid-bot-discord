@@ -2,6 +2,7 @@
 
 import asyncio
 import copy
+import secrets
 import unittest
 from collections.abc import Mapping
 from typing import override
@@ -126,7 +127,7 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
             "state": {"time": 1000, "position": 0, "connected": True, "ping": 1},
             "voice": {
                 "sessionId": "session",
-                "token": "token",
+                "token": secrets.token_hex(16),
                 "endpoint": "voice.example.com",
                 "channelId": "10",
             },
