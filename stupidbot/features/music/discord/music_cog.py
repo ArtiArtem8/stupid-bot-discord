@@ -155,7 +155,6 @@ class MusicCog(BaseCog):
 
         self.components = create_music_components(bot, volumes)
         self.service = self.components.service
-        self._close_task: asyncio.Task[None] | None = None
 
     @property
     def runtime_health(self) -> ComponentHealth:
@@ -180,12 +179,6 @@ class MusicCog(BaseCog):
 
     @override
     async def cog_unload(self) -> None:
-        """Finish owned cleanup before a cancelled reload can release this cog."""
-        if self._close_task is None:
-            self._close_task = asyncio.create_task(self._close())
-        await self._wait_for_unload(self._close_task)
-
-    async def _close(self) -> None:
         monitor = self.auto_leave_monitor.get_task()
         if monitor is not None:
             self.auto_leave_monitor.cancel()

@@ -75,7 +75,6 @@ class WolframCog(BaseCog):
         self.wolfram_client: WolframClient | None = None
         self._request_semaphore = asyncio.Semaphore(2)
         self._closing = False
-        self._close_task: asyncio.Task[None] | None = None
         self._requests: set[asyncio.Task[object]] = set()
 
         self.ctx_menu = app_commands.ContextMenu(
@@ -96,13 +95,8 @@ class WolframCog(BaseCog):
 
     @override
     async def cog_unload(self) -> None:
-        """Finish request and session cleanup before propagating reload cancellation."""
+        """Drain requests before closing the HTTP session and removing commands."""
         self._closing = True
-        if self._close_task is None:
-            self._close_task = asyncio.create_task(self._close())
-        await self._wait_for_unload(self._close_task)
-
-    async def _close(self) -> None:
         requests = tuple(self._requests)
         for task in requests:
             task.cancel()

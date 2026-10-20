@@ -133,7 +133,7 @@ class VoiceProfileCog(GenericBaseCog["StupidBot"]):
         self._revision = None
         if self._close_task is None:
             self._close_task = asyncio.create_task(self._close())
-        await self._wait_for_unload(self._close_task)
+        await asyncio.shield(self._close_task)
 
     async def _close(self) -> None:
         await self._media_cache.aclose()
