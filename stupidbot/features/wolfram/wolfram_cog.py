@@ -13,9 +13,9 @@ from discord import File, Interaction, app_commands
 from discord.ext import commands
 
 from stupidbot import settings as config
+from stupidbot.common.asyncio import wait_for_completion
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
-from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.features.wolfram.client import (
     WolframAPIError,
     WolframClient,
@@ -76,6 +76,7 @@ class WolframCog(BaseCog):
         self.wolfram_client: WolframClient | None = None
         self._request_semaphore = asyncio.Semaphore(2)
         self._closing = False
+        self._close_task: asyncio.Task[None] | None = None
         self._requests: set[asyncio.Task[object]] = set()
 
         self.ctx_menu = app_commands.ContextMenu(
@@ -96,8 +97,13 @@ class WolframCog(BaseCog):
 
     @override
     async def cog_unload(self) -> None:
-        """Cleanup session and commands."""
+        """Finish request and session cleanup before propagating reload cancellation."""
         self._closing = True
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self._close())
+        await wait_for_completion(self._close_task)
+
+    async def _close(self) -> None:
         requests = tuple(self._requests)
         for task in requests:
             task.cancel()
@@ -125,7 +131,6 @@ class WolframCog(BaseCog):
         interaction: Interaction,
         problem: app_commands.Range[str, 1, config.WOLFRAM_MAX_QUERY_LEN],
     ) -> None:
-        await defer_command(interaction, ephemeral=True)
         await self._handle_query(interaction, problem, mode="solve")
 
     @app_commands.command(
@@ -145,14 +150,12 @@ class WolframCog(BaseCog):
         interaction: Interaction,
         function: app_commands.Range[str, 1, config.WOLFRAM_MAX_QUERY_LEN],
     ) -> None:
-        await defer_command(interaction, ephemeral=True)
         await self._handle_query(interaction, function, mode="plot")
 
     @_wolfram_cooldown
     async def _context_solve(
         self, interaction: Interaction, message: discord.Message
     ) -> None:
-        await defer_command(interaction, ephemeral=True)
         await self._handle_query(interaction, message.content, mode="solve")
 
     async def _handle_query(

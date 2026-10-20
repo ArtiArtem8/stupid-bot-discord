@@ -101,7 +101,6 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         cog, client = self._make_cog()
-        cog.ctx_menu = MagicMock()
         admitted = asyncio.Event()
         active = asyncio.Event()
         count = 0
@@ -147,15 +146,11 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         close.assert_awaited_once()
 
     def _make_cog(self) -> tuple[WolframCog, MagicMock]:
-        cog = object.__new__(WolframCog)
+        cog = WolframCog(MagicMock(spec=commands.Bot))
         client = MagicMock(spec=WolframClient)
         client.fetch_plot_image.return_value = b"source"
         cog.wolfram_client = client
         cog.client_session = MagicMock(spec=aiohttp.ClientSession)
-        cog._request_semaphore = asyncio.Semaphore(2)
-        cog._closing = False
-        cog._requests = set()
-        cog.bot = MagicMock(spec=commands.Bot)
         return cog, client
 
     def _make_interaction(
@@ -708,12 +703,7 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         feedback.assert_not_awaited()
 
     async def test_cog_load_creates_one_client_for_persistent_session(self) -> None:
-        cog = object.__new__(WolframCog)
-        cog.client_session = None
-        cog.wolfram_client = None
-        cog._request_semaphore = asyncio.Semaphore(2)
-        cog._closing = False
-        cog._requests = set()
+        cog = WolframCog(MagicMock(spec=commands.Bot))
         session = MagicMock(spec=aiohttp.ClientSession)
         client = MagicMock(spec=WolframClient)
 
@@ -742,9 +732,6 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         cog.client_session = session
         remove_command = MagicMock()
         cog.bot.tree.remove_command = remove_command
-        cog.ctx_menu = MagicMock()
-        cog.ctx_menu.name = "Solve with Wolfram"
-        cog.ctx_menu.type = discord.AppCommandType.message
 
         await cog.cog_unload()
 

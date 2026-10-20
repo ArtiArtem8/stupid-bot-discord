@@ -14,6 +14,7 @@ import discord
 from discord import app_commands
 
 from stupidbot.app.health import ComponentHealth
+from stupidbot.common.asyncio import wait_for_completion
 from stupidbot.discord_ui.base_cog import GenericBaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.interaction_flow import defer_command
@@ -130,7 +131,7 @@ class VoiceProfileCog(GenericBaseCog["StupidBot"]):
         self._revision = None
         if self._close_task is None:
             self._close_task = asyncio.create_task(self._close())
-        await asyncio.shield(self._close_task)
+        await wait_for_completion(self._close_task)
 
     async def _close(self) -> None:
         await self._media_cache.aclose()
