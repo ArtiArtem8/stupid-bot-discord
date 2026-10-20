@@ -62,6 +62,9 @@ def _runtime_player(current: PlaybackAttempt) -> MusicPlayer:
     player._next_attempt_id = current.attempt_id + 1
     player._current_attempt = current
     player._pending_end_attempts = deque()
+    player._restore_entry = None
+    player._finished_restore_attempt = None
+    player._unreported_restore_end = None
     player._exception_attempt_ids = set()
     player._transition_lock = asyncio.Lock()
     player._is_stale = False
@@ -434,6 +437,9 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player._next_attempt_id = 1
         player._current_attempt = None
         player._pending_end_attempts = deque()
+        player._restore_entry = None
+        player._finished_restore_attempt = None
+        player._unreported_restore_end = None
         player._exception_attempt_ids = set()
         player._transition_lock = asyncio.Lock()
         player._is_stale = False
@@ -880,6 +886,9 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player._next_attempt_id = 2
         player._current_attempt = None
         player._pending_end_attempts = deque()
+        player._restore_entry = None
+        player._finished_restore_attempt = None
+        player._unreported_restore_end = None
         player._exception_attempt_ids = set()
         player._transition_lock = asyncio.Lock()
         player._current = None

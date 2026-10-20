@@ -110,6 +110,8 @@ class SessionHealer(HealerProtocol):
         """Confirm that Lavalink did not immediately drop the restored track."""
         await asyncio.sleep(RESTORE_CONFIRM_DELAY_SECONDS)
 
+        if player.finished_restore_attempt is expected_attempt:
+            return await self._settle_finished_restore(player, expected_attempt)
         if self._is_expected_restore_attempt_active(player, expected_attempt):
             return True
 
@@ -119,6 +121,23 @@ class SessionHealer(HealerProtocol):
             guild_id=guild_id,
             context=context,
         )
+
+    async def _settle_finished_restore(
+        self, player: MusicPlayer, expected: PlaybackAttempt
+    ) -> bool:
+        """Let the player settle an observed natural end before using its successor."""
+        if not self.connection.is_player_usable(player):
+            return False
+        try:
+            settled = await player.settle_restore_finish(expected)
+            return settled and self.connection.is_player_usable(player)
+        except EXPECTED_LAVALINK_IO_ERRORS as exc:
+            await self.connection.invalidate_player(
+                player,
+                context="restore_finished_transition",
+                error=type(exc).__name__,
+            )
+            return False
 
     def _is_expected_restore_attempt_active(
         self,
@@ -196,6 +215,9 @@ class SessionHealer(HealerProtocol):
             player, expected_attempt
         ):
             return expected_attempt
+        if player.finished_restore_attempt is expected_attempt:
+            settled = await self._settle_finished_restore(player, expected_attempt)
+            return expected_attempt if settled else None
 
         await self._fail_expected_restore_attempt(
             player,
@@ -221,6 +243,9 @@ class SessionHealer(HealerProtocol):
         If the seek itself breaks playback, fall back to playing from the start
         instead of disconnecting from voice.
         """
+        if player.finished_restore_attempt is expected_attempt:
+            settled = await self._settle_finished_restore(player, expected_attempt)
+            return expected_attempt if settled else None
         try:
             sought = await player.seek_attempt(expected_attempt, position)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
@@ -239,6 +264,9 @@ class SessionHealer(HealerProtocol):
             )
 
         if not sought:
+            if player.finished_restore_attempt is expected_attempt:
+                settled = await self._settle_finished_restore(player, expected_attempt)
+                return expected_attempt if settled else None
             await self._fail_expected_restore_attempt(
                 player,
                 expected_attempt,
@@ -248,7 +276,31 @@ class SessionHealer(HealerProtocol):
             return None
 
         await asyncio.sleep(RESTORE_SEEK_CONFIRM_DELAY_SECONDS)
+        return await self._confirm_warm_seek(
+            guild=guild,
+            player=player,
+            entry=entry,
+            position=position,
+            volume=volume,
+            pause=pause,
+            expected_attempt=expected_attempt,
+        )
 
+    async def _confirm_warm_seek(
+        self,
+        *,
+        guild: discord.Guild,
+        player: MusicPlayer,
+        entry: QueueEntry,
+        position: int,
+        volume: int,
+        pause: bool,
+        expected_attempt: PlaybackAttempt,
+    ) -> PlaybackAttempt | None:
+        """Restore session settings or restart playback if the warm seek failed."""
+        if player.finished_restore_attempt is expected_attempt:
+            settled = await self._settle_finished_restore(player, expected_attempt)
+            return expected_attempt if settled else None
         if self._is_expected_restore_attempt_active(player, expected_attempt):
             return await self._restore_expected_attempt_state(
                 player,
@@ -623,37 +675,17 @@ class SessionHealer(HealerProtocol):
         guild: discord.Guild,
     ) -> bool:
         if snapshot.current_entry is not None:
-            restored_track = await self._resolve_fresh_track_for_restore(
-                player, snapshot.current_entry.track
+            restored = await self._restore_snapshot_playback(
+                player, snapshot.current_entry, snapshot, guild
             )
-            if not self.connection.is_current_player(player):
-                return False
-            restored_entry = replace(snapshot.current_entry, track=restored_track)
-
-            restore_position = max(0, snapshot.position)
-
-            if self._should_restore_with_warm_seek(restored_track, restore_position):
-                restored = await self._play_with_warm_seek_restore(
-                    guild=guild,
-                    player=player,
-                    entry=restored_entry,
-                    position=restore_position,
-                    volume=snapshot.volume,
-                    pause=snapshot.is_paused,
-                )
-            else:
-                restored = await self._play_and_confirm_restore(
-                    player=player,
-                    entry=restored_entry,
-                    start_time=restore_position,
-                    volume=snapshot.volume,
-                    pause=snapshot.is_paused,
-                )
 
             if restored is None:
                 return False
 
-            if not self._is_expected_restore_attempt_active(player, restored):
+            if player.finished_restore_attempt is restored:
+                if not await self._restore_after_completion(player, restored, snapshot):
+                    return False
+            elif not self._is_expected_restore_attempt_active(player, restored):
                 await self._fail_expected_restore_attempt(
                     player,
                     restored,
@@ -662,9 +694,7 @@ class SessionHealer(HealerProtocol):
                 )
                 return False
 
-            self.state.record_track_start(snapshot.guild_id, restored)
-            await self.ui.spawn_controller(player, restored)
-            if not self._is_expected_restore_attempt_active(player, restored):
+            if not await self._publish_restored_controller(player, restored, snapshot):
                 return False
 
         if snapshot.session is not None:
@@ -672,6 +702,86 @@ class SessionHealer(HealerProtocol):
             self.state.sessions.setdefault(snapshot.guild_id, session)
 
         return True
+
+    async def _restore_snapshot_playback(
+        self,
+        player: MusicPlayer,
+        entry: QueueEntry,
+        snapshot: PlayerStateSnapshot,
+        guild: discord.Guild,
+    ) -> PlaybackAttempt | None:
+        restored_track = await self._resolve_fresh_track_for_restore(
+            player, entry.track
+        )
+        if not self.connection.is_current_player(player):
+            return None
+        restored_entry = replace(entry, track=restored_track)
+        restore_position = max(0, snapshot.position)
+        if self._should_restore_with_warm_seek(restored_track, restore_position):
+            return await self._play_with_warm_seek_restore(
+                guild=guild,
+                player=player,
+                entry=restored_entry,
+                position=restore_position,
+                volume=snapshot.volume,
+                pause=snapshot.is_paused,
+            )
+        return await self._play_and_confirm_restore(
+            player=player,
+            entry=restored_entry,
+            start_time=restore_position,
+            volume=snapshot.volume,
+            pause=snapshot.is_paused,
+        )
+
+    async def _restore_after_completion(
+        self,
+        player: MusicPlayer,
+        expected: PlaybackAttempt,
+        snapshot: PlayerStateSnapshot,
+    ) -> bool:
+        """Unmute a warm restore's successor without applying the old seek position."""
+        if not await self._settle_finished_restore(player, expected):
+            return False
+        try:
+            return await player.restore_session_settings(
+                volume=snapshot.volume, pause=snapshot.is_paused
+            )
+        except EXPECTED_LAVALINK_IO_ERRORS as exc:
+            await self.connection.invalidate_player(
+                player,
+                context="restore_completed_settings",
+                error=type(exc).__name__,
+            )
+            return False
+
+    async def _publish_restored_controller(
+        self,
+        player: MusicPlayer,
+        restored: PlaybackAttempt,
+        snapshot: PlayerStateSnapshot,
+    ) -> bool:
+        """Publish the live attempt while recovery still owns controller delivery."""
+        while self.connection.is_player_usable(player):
+            current = player.current_attempt
+            if current is None:
+                return player.finished_restore_attempt is restored
+            self.state.record_track_start(snapshot.guild_id, current)
+            await self.ui.spawn_controller(player, current)
+            if current is restored and player.finished_restore_attempt is restored:
+                if not await self._restore_after_completion(player, restored, snapshot):
+                    return False
+                continue
+            if player.current_attempt is current:
+                return self.connection.is_player_usable(player) and (
+                    self._is_expected_restore_attempt_active(player, current)
+                    or player.finished_restore_attempt is restored
+                )
+            if player.finished_restore_attempt is not restored:
+                return False
+            if not await self._restore_after_completion(player, restored, snapshot):
+                return False
+        return False
 
 
 @dataclass(slots=True)

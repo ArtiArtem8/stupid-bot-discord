@@ -50,7 +50,7 @@ class StateManager:
 
     def record_track_start(self, guild_id: int, attempt: PlaybackAttempt) -> None:
         self.get_or_create_session(guild_id)
-        self._track_start_times_dt[(guild_id, attempt.attempt_id)] = utcnow()
+        self._track_start_times_dt.setdefault((guild_id, attempt.attempt_id), utcnow())
 
     def record_history(
         self, guild_id: int, attempt: PlaybackAttempt, reason: mafic.EndReason

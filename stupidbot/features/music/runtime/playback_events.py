@@ -85,7 +85,9 @@ class PlaybackEventHandlers:
         await asyncio.shield(self._cleanup_task)
 
     async def _on_track_start(self, event: mafic.TrackStartEvent[MusicPlayer]) -> None:
-        if not self._should_handle_player_event(event.player, "track_start"):
+        if not self._should_handle_player_event(
+            event.player, "track_start", allow_healing=True
+        ):
             return
         token = self._event_token(event.track, "TrackStartEvent")
         if token is None:
@@ -95,7 +97,7 @@ class PlaybackEventHandlers:
             player = event.player
             attempt = await player.resolve_track_start(token)
             if attempt is None or not self._should_handle_player_event(
-                player, "track_start"
+                player, "track_start", allow_healing=True
             ):
                 return
 
@@ -105,13 +107,19 @@ class PlaybackEventHandlers:
                 player.guild.id,
                 attempt.attempt_id,
             )
-            await self.ui.spawn_controller(player, attempt)
+            if not self._is_healing(player.guild.id):
+                await self.ui.spawn_controller(player, attempt)
 
     async def _on_track_end(self, event: mafic.TrackEndEvent[MusicPlayer]) -> None:
-        if not self._should_handle_player_event(event.player, "track_end"):
-            return
         token = self._event_token(event.track, "TrackEndEvent")
         if token is None:
+            return
+        allow_healing = event.reason is mafic.EndReason.FINISHED or (
+            self._is_restore_successor(event.player, token)
+        )
+        if not self._should_handle_player_event(
+            event.player, "track_end", allow_healing=allow_healing
+        ):
             return
 
         with self._handling_event():
@@ -129,7 +137,9 @@ class PlaybackEventHandlers:
 
             if outcome.is_stale or outcome.ended_attempt is None:
                 return
-            if not self._should_handle_player_event(player, "track_end"):
+            if not self._should_handle_player_event(
+                player, "track_end", allow_healing=allow_healing
+            ):
                 return
 
             ended = outcome.ended_attempt
@@ -176,10 +186,13 @@ class PlaybackEventHandlers:
     async def _on_track_exception(
         self, event: mafic.TrackExceptionEvent[MusicPlayer]
     ) -> None:
-        if not self._should_handle_player_event(event.player, "track_exception"):
-            return
         token = self._event_token(event.track, "TrackExceptionEvent")
         if token is None:
+            return
+        allow_healing = self._is_restore_successor(event.player, token)
+        if not self._should_handle_player_event(
+            event.player, "track_exception", allow_healing=allow_healing
+        ):
             return
 
         with self._handling_event():
@@ -192,7 +205,9 @@ class PlaybackEventHandlers:
                     token,
                 )
                 return
-            if not self._should_handle_player_event(player, "track_exception"):
+            if not self._should_handle_player_event(
+                player, "track_exception", allow_healing=allow_healing
+            ):
                 return
 
             reason, severity = self._extract_exception_details(event.exception)
@@ -301,11 +316,13 @@ class PlaybackEventHandlers:
         self,
         player: MusicPlayer,
         event_name: str,
+        *,
+        allow_healing: bool = False,
     ) -> bool:
         guild_id = player.guild.id
         if (
             self._closing
-            or self._is_healing(guild_id)
+            or (self._is_healing(guild_id) and not allow_healing)
             or not self.connection.is_current_player(player)
         ):
             logger.debug(
@@ -315,6 +332,10 @@ class PlaybackEventHandlers:
             )
             return False
         return True
+
+    def _is_restore_successor(self, player: MusicPlayer, event_token: str) -> bool:
+        finished = player.finished_restore_attempt
+        return finished is not None and finished.event_token != event_token
 
     def _extract_exception_details(
         self, exception: LavalinkException

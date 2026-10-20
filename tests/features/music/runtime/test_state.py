@@ -2,11 +2,14 @@
 
 import time
 import unittest
+from datetime import UTC, datetime, timedelta
 from typing import override
+from unittest.mock import patch
 
 import mafic
 
 from stupidbot.features.music.playback.models import PlaybackAttempt
+from stupidbot.features.music.runtime import state
 from stupidbot.features.music.runtime.state import StateManager
 from tests.features.music.fixtures import make_entry
 
@@ -76,6 +79,23 @@ class TestStateManager(unittest.TestCase):
         if session is None:
             self.fail("expected active session")
         self.assertTrue(session.tracks[-1].skipped)
+
+    def test_duplicate_start_preserves_first_history_timestamp(self) -> None:
+        attempt = PlaybackAttempt(1, make_entry("track"))
+        first = datetime(2026, 10, 21, tzinfo=UTC)
+        with patch.object(
+            state, "utcnow", side_effect=(first, first + timedelta(seconds=2))
+        ):
+            self.manager.record_track_start(123, attempt)
+            self.manager.record_track_start(123, attempt)
+
+        self.manager.record_history(123, attempt, mafic.EndReason.FINISHED)
+
+        session = self.manager.get_session(123)
+        if session is None:
+            self.fail("Expected active session")
+        self.assertEqual(len(session.tracks), 1)
+        self.assertEqual(session.tracks[0].start_timestamp, first)
 
     def test_get_expired_timers(self) -> None:
         self.manager.start_timer(123, "test")

@@ -4,8 +4,9 @@ import asyncio
 import copy
 import secrets
 import unittest
-from collections.abc import Mapping
-from typing import override
+from collections.abc import AsyncGenerator, Mapping
+from contextlib import asynccontextmanager
+from typing import Literal, override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -13,11 +14,14 @@ import mafic
 from discord.ext import commands
 from mafic.typings import JSONValue, TrackWithInfo
 from mafic.typings import Player as PlayerPayload
+from mafic.typings.incoming import TrackEndEvent as TrackEndPayload
 
 from stupidbot.features.music.composition import create_music_components
+from stupidbot.features.music.playback.models import PlaybackAttempt
 from stupidbot.features.music.playback.player import MusicPlayer
 from stupidbot.features.music.repository import VolumeData, VolumeRepository
 from stupidbot.features.music.results import MusicResult
+from stupidbot.features.music.runtime import recovery
 from tests.features.music.fixtures import make_playlist, make_track
 from tests.storage.fixtures import temporary_database
 
@@ -171,6 +175,185 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
         if player is None:
             self.fail("Expected a usable voice player")
         return player
+
+    @asynccontextmanager
+    async def _restoring_confirmation(
+        self,
+    ) -> AsyncGenerator[tuple[MusicPlayer, asyncio.Event, asyncio.Task[bool]]]:
+        entered, release = asyncio.Event(), asyncio.Event()
+        confirm = self.components.healer._confirm_restored_track_active
+
+        async def hold_confirmation(
+            player: MusicPlayer,
+            attempt: PlaybackAttempt,
+            *,
+            guild_id: int,
+            context: str,
+        ) -> bool:
+            entered.set()
+            await release.wait()
+            return await confirm(player, attempt, guild_id=guild_id, context=context)
+
+        with (
+            patch.object(
+                self.components.healer,
+                "_confirm_restored_track_active",
+                side_effect=hold_confirmation,
+            ),
+            patch.object(recovery, "RESTORE_CONFIRM_DELAY_SECONDS", 0),
+        ):
+            healing = asyncio.create_task(self.components.service.heal(1))
+            try:
+                await asyncio.wait_for(entered.wait(), 5)
+                yield self._current_player(), release, healing
+            finally:
+                release.set()
+                if not healing.done():
+                    healing.cancel()
+                await asyncio.gather(healing, return_exceptions=True)
+
+    async def _dispatch_restore_end(
+        self, player: MusicPlayer, reason: Literal["finished", "loadFailed"]
+    ) -> mafic.TrackEndEvent[MusicPlayer]:
+        track = player.current
+        if track is None:
+            self.fail("Expected active transport playback")
+        await self.components.playback_events._on_track_start(
+            mafic.TrackStartEvent(player=player, track=track)
+        )
+        payload: TrackEndPayload = {
+            "op": "event",
+            "type": "TrackEndEvent",
+            "guildId": "1",
+            "track": track_payload(track, track.user_data),
+            "reason": reason,
+        }
+        self.remote["track"] = None
+        player.dispatch_event(payload)
+        return mafic.TrackEndEvent(player=player, track=track, payload=payload)
+
+    async def test_restore_completion_before_listener_preserves_queue_and_history(
+        self,
+    ) -> None:
+        self.original._position = 59_500
+        async with self._restoring_confirmation() as (player, release, healing):
+            event = await self._dispatch_restore_end(player, "finished")
+            release.set()
+            self.assertTrue(await asyncio.wait_for(healing, 5))
+            self.assertIs(self._current_player(), player)
+            current = player.current_entry
+            if current is None:
+                self.fail("Expected the next queued entry")
+            self.assertEqual(current.track.identifier, "next")
+            self.assertEqual(
+                [entry.track.identifier for entry in player.queue], ["last"]
+            )
+            await self.components.playback_events._on_track_end(event)
+            await self.components.playback_events._on_track_end(event)
+            self.assertIs(player.current_entry, current)
+            session = self.components.state.get_session(1)
+            if session is None:
+                self.fail("Expected preserved session")
+            self.assertEqual(
+                [track.title for track in session.tracks], ["Track current"]
+            )
+            controller = self.components.controllers.controllers[1]
+            self.assertIs(controller.attempt, player.current_attempt)
+
+    async def test_restore_completion_after_listener_keeps_idle_session_connected(
+        self,
+    ) -> None:
+        self.original.clear_queue()
+        async with self._restoring_confirmation() as (player, release, healing):
+            event = await self._dispatch_restore_end(player, "finished")
+            await self.components.playback_events._on_track_end(event)
+            release.set()
+            self.assertTrue(await asyncio.wait_for(healing, 5))
+            self.assertIs(self._current_player(), player)
+            self.assertIsNone(player.current_attempt)
+            self.assertEqual(player.queue_snapshot(), ())
+            self.assertNotIn(1, self.components.controllers.controllers)
+
+    async def test_warm_completion_and_successor_failure_restore_audible_queue(
+        self,
+    ) -> None:
+        current = self.original.current_entry
+        if current is None:
+            self.fail("Expected original entry")
+        current.track.source = "youtube"
+        self.original._position = 59_500
+        async with self._restoring_confirmation() as (player, release, healing):
+            with patch.object(
+                player, "seek_attempt", wraps=player.seek_attempt
+            ) as seek:
+                finished = await self._dispatch_restore_end(player, "finished")
+                await self.components.playback_events._on_track_end(finished)
+                self.assertEqual(self.remote["volume"], 0)
+                failed = await self._dispatch_restore_end(player, "loadFailed")
+                await self.components.playback_events._on_track_end(failed)
+                release.set()
+                self.assertTrue(await asyncio.wait_for(healing, 5))
+                seek.assert_not_awaited()
+            successor = player.current_entry
+            if successor is None:
+                self.fail("Expected the last queued entry")
+            self.assertEqual(successor.track.identifier, "last")
+            self.assertEqual(player.queue_snapshot(), ())
+            self.assertEqual(self.remote["volume"], 37)
+            self.assertFalse(player.paused)
+            self.assertIs(
+                self.components.controllers.controllers[1].attempt,
+                player.current_attempt,
+            )
+
+    async def test_original_restore_load_failure_still_fails(self) -> None:
+        async with self._restoring_confirmation() as (player, release, healing):
+            event = await self._dispatch_restore_end(player, "loadFailed")
+            await self.components.playback_events._on_track_end(event)
+            release.set()
+            self.assertFalse(await asyncio.wait_for(healing, 5))
+            self.assertIsNone(self.guild.voice_client)
+            self.assertNotIn(1, self.components.controllers.controllers)
+
+    async def test_restore_finishing_during_controller_delivery_publishes_successor(
+        self,
+    ) -> None:
+        entered, release_delivery = asyncio.Event(), asyncio.Event()
+        spawn = self.components.ui.spawn_controller
+
+        async def hold_original_controller(
+            player: MusicPlayer, attempt: PlaybackAttempt
+        ) -> None:
+            if attempt.entry.track.identifier == "current":
+                entered.set()
+                await release_delivery.wait()
+            await spawn(player, attempt)
+
+        async with self._restoring_confirmation() as (player, release, healing):
+            with patch.object(
+                self.components.ui,
+                "spawn_controller",
+                side_effect=hold_original_controller,
+            ):
+                try:
+                    release.set()
+                    await asyncio.wait_for(entered.wait(), 5)
+                    event = await self._dispatch_restore_end(player, "finished")
+                    release_delivery.set()
+                    self.assertTrue(await asyncio.wait_for(healing, 5))
+                finally:
+                    release_delivery.set()
+
+            successor = player.current_entry
+            if successor is None:
+                self.fail("Expected the next queued entry")
+            self.assertEqual(successor.track.identifier, "next")
+            self.assertIs(
+                self.components.controllers.controllers[1].attempt,
+                player.current_attempt,
+            )
+            await self.components.playback_events._on_track_end(event)
+            self.assertIs(player.current_entry, successor)
 
     async def test_heal_restores_current_queue_and_persisted_volume(self) -> None:
         current = self.original.current_entry
