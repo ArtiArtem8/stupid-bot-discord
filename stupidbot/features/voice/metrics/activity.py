@@ -2,6 +2,7 @@
 
 from datetime import UTC, date, datetime, timedelta, tzinfo
 
+from stupidbot.common.timezones import find_offset_transition
 from stupidbot.features.voice.read_models import ActivityProfile
 from stupidbot.features.voice.scope import GLOBAL_SCOPE, VoiceScope, observed_rooms
 from stupidbot.features.voice.timeline import VoiceTimeline
@@ -44,4 +45,8 @@ def _next_local_hour(moment: datetime, timezone: tzinfo) -> datetime:
     # A boundary may be ambiguous or nonexistent at a DST transition. Resolve
     # both folds in UTC and keep the first future instant, never wall duration.
     candidates = (boundary.replace(fold=fold).astimezone(UTC) for fold in (0, 1))
-    return min(candidate for candidate in candidates if candidate > moment)
+    stop = min(candidate for candidate in candidates if candidate > moment)
+    # An offset change can enter another hour before that wall-clock boundary.
+    if local.utcoffset() != stop.astimezone(timezone).utcoffset():
+        return find_offset_transition(moment, stop, timezone)
+    return stop

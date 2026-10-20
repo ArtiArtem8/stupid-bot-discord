@@ -8,6 +8,7 @@ clock-change spans explicitly mark that ambiguity instead of inventing a
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
+from stupidbot.common.timezones import find_offset_transition
 from stupidbot.features.voice.scope import (
     TimeRange,
     VoiceScope,
@@ -137,24 +138,13 @@ def _clock_parts(
             cursor.astimezone(timezone).utcoffset()
             != stop.astimezone(timezone).utcoffset()
         ):
-            stop = _offset_boundary(cursor, stop, timezone)
+            stop = find_offset_transition(cursor, stop, timezone)
             parts.append((TimeRange(boundary, stop), _clock_minute(boundary, timezone)))
             boundary = stop
         cursor = stop
     if boundary < end:
         parts.append((TimeRange(boundary, end), _clock_minute(boundary, timezone)))
     return tuple(parts)
-
-
-def _offset_boundary(lower: datetime, upper: datetime, timezone: tzinfo) -> datetime:
-    offset = lower.astimezone(timezone).utcoffset()
-    while upper - lower > timedelta(microseconds=1):
-        middle = lower + (upper - lower) // 2
-        if middle.astimezone(timezone).utcoffset() == offset:
-            lower = middle
-        else:
-            upper = middle
-    return upper
 
 
 def _clock_minute(moment: datetime, timezone: tzinfo) -> float:

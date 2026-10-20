@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from stupidbot.features.voice.facts import VoiceCheckpoint, VoiceSnapshot
 from stupidbot.features.voice.metrics.activity import activity
+from stupidbot.features.voice.scope import TimeRange, VoiceScope
 from stupidbot.features.voice.timeline import build_timeline
 from tests.features.voice.fixtures import START, human, record
 
@@ -100,3 +101,86 @@ class TestActivity(unittest.TestCase):
         result = activity(timeline, 1, timezone=new_york_2026())
         self.assertEqual(result.hourly_seconds[1:3], (7200, 3600))
         self.assertEqual(sum(result.hourly_seconds), 10800)
+
+    def test_offset_changes_split_hours_without_moving_time_between_buckets(
+        self,
+    ) -> None:
+        cases = (
+            (
+                "Pacific/Chatham",
+                datetime(2026, 9, 26, 12, 30, tzinfo=UTC),
+                {1: 2700, 2: 2700, 3: 900, 4: 900},
+            ),
+            (
+                "Pacific/Chatham",
+                datetime(2026, 4, 4, 12, 30, tzinfo=UTC),
+                {2: 3600, 3: 3600},
+            ),
+            (
+                "Antarctica/Troll",
+                datetime(2026, 10, 24, 23, 30, tzinfo=UTC),
+                {1: 3600, 2: 3600},
+            ),
+        )
+        for name, start, expected in cases:
+            with self.subTest(zone=name, start=start):
+                zone = ZoneInfo(name)
+                timeline = build_timeline(
+                    [
+                        replace(
+                            record(0, VoiceSnapshot((human(),))), observed_at=start
+                        ),
+                        replace(
+                            record(7200, VoiceCheckpoint()),
+                            observed_at=start + timedelta(hours=2),
+                        ),
+                    ]
+                )
+                result = activity(timeline, 1, timezone=zone)
+                self.assertEqual(
+                    result.hourly_seconds,
+                    tuple(expected.get(hour, 0) for hour in range(24)),
+                )
+                self.assertEqual(sum(result.hourly_seconds), 7200)
+                day = start.astimezone(zone).date()
+                self.assertEqual(result.daily_seconds, ((day, 7200),))
+                self.assertEqual(
+                    result.weekday_seconds,
+                    tuple(
+                        7200 if weekday == day.weekday() else 0 for weekday in range(7)
+                    ),
+                )
+
+    def test_query_end_and_start_at_transition_keep_half_open_hour_buckets(
+        self,
+    ) -> None:
+        cases = (
+            ("Pacific/Chatham", datetime(2026, 9, 26, 14, tzinfo=UTC), 2, 3),
+            ("Pacific/Chatham", datetime(2026, 4, 4, 14, tzinfo=UTC), 3, 2),
+            ("Antarctica/Troll", datetime(2026, 10, 25, 1, tzinfo=UTC), 2, 1),
+        )
+        for name, transition, before_hour, after_hour in cases:
+            zone = ZoneInfo(name)
+            start = transition - timedelta(minutes=45)
+            end = transition + timedelta(minutes=15)
+            timeline = build_timeline(
+                [
+                    replace(record(0, VoiceSnapshot((human(),))), observed_at=start),
+                    replace(record(3600, VoiceCheckpoint()), observed_at=end),
+                ]
+            )
+            for window, hour, seconds in (
+                (TimeRange(start, transition), before_hour, 2700),
+                (TimeRange(transition, end), after_hour, 900),
+            ):
+                with self.subTest(zone=name, transition=transition, window=window):
+                    result = activity(
+                        timeline,
+                        1,
+                        VoiceScope(1, time_range=window),
+                        timezone=zone,
+                    )
+                    self.assertEqual(
+                        result.hourly_seconds,
+                        tuple(seconds if value == hour else 0 for value in range(24)),
+                    )
