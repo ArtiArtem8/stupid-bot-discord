@@ -22,6 +22,7 @@ from stupidbot.features.music.results import (
     MusicResultReason,
     MusicResultStatus,
 )
+from stupidbot.features.music.runtime.recovery import SessionHealer
 from stupidbot.features.preferences.models import Preferences
 from stupidbot.i18n.discord import interaction_context
 from stupidbot.i18n.policy import Language, PresentationContext
@@ -120,7 +121,8 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
         self.attempt = PlaybackAttempt(1, make_entry("own", requester_id=10))
         self.channel = MagicMock(spec=discord.VoiceChannel, id=20)
         self.player = MagicMock(current_attempt=self.attempt, channel=self.channel)
-        self.service.get_player = MagicMock(return_value=self.player)
+        self.get_player = MagicMock(return_value=self.player)
+        self.service.get_player = self.get_player
         self.pause = AsyncMock(
             return_value=MusicResult(
                 MusicResultStatus.SUCCESS, "Paused", reason=MusicResultReason.PAUSED
@@ -180,6 +182,7 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
         self.item.guild_id = 42
         self.item.channel_id = 44
         self.item.user = _member(10, None)
+        self.item.locale = discord.Locale.american_english
         self.item.created_at = datetime.now(UTC)
         self.item.type = discord.InteractionType.application_command
         self.item.command_failed = False
@@ -200,6 +203,20 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
             )
 
         self.item.response.defer.side_effect = defer
+        healer = SessionHealer(
+            self.bot,
+            MagicMock(get_player=self.get_player),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+        )
+        for target, name, replacement in (
+            (self.cog.components, "healer", healer),
+            (self.bot, "get_guild", MagicMock(return_value=self.item.guild)),
+        ):
+            patcher = patch.object(target, name, replacement)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         feedback = patch.object(FeedbackUI, "send", new=AsyncMock())
         self.feedback = feedback.start()
         self.addCleanup(feedback.stop)
@@ -255,10 +272,65 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
         await self.bot.tree._call(self.item)
         self.leave.assert_awaited_once_with(self.item.guild)
 
+        self.get_player.return_value = None
+        self.item.guild.voice_client = MagicMock(
+            spec=MusicPlayer, channel=self.channel, connected=False
+        )
         self.item.command = self.cog.heal
         self.item.data = {"name": "reconnect", "type": 1, "options": []}
         await self.bot.tree._call(self.item)
         self.heal.assert_awaited_once_with(42)
+
+    async def test_registered_reconnect_accepts_unusable_cached_player(self) -> None:
+        self.get_player.return_value = None
+        self.item.guild.voice_client = MagicMock(
+            spec=MusicPlayer, channel=self.channel, connected=False, is_stale=True
+        )
+        self.item.user = _member(11, 20)
+        self.item.command = self.cog.heal
+        self.item.data = {"name": "reconnect", "type": 1, "options": []}
+
+        await self.bot.tree._call(self.item)
+
+        self.heal.assert_awaited_once_with(42)
+        self.assertFalse(self.item.command_failed)
+        self.feedback.assert_awaited_once()
+        self.assertEqual(self.feedback.call_args.kwargs["title"], "Restored")
+        self.assertTrue(self.feedback.call_args.kwargs["ephemeral"])
+
+    async def test_registered_reconnect_without_session_reports_no_player(
+        self,
+    ) -> None:
+        self.get_player.return_value = None
+        self.item.guild.voice_client = None
+        self.item.user = _member(11, None, manager=True)
+        self.item.command = self.cog.heal
+        self.item.data = {"name": "reconnect", "type": 1, "options": []}
+
+        await self.bot.tree._call(self.item)
+
+        self.heal.assert_not_awaited()
+        self.feedback.assert_awaited_once()
+        self.assertEqual(self.feedback.call_args.kwargs["description"], "no player")
+        self.assertTrue(self.feedback.call_args.kwargs["ephemeral"])
+
+    async def test_registered_reconnect_rejects_listener_in_another_channel(
+        self,
+    ) -> None:
+        self.get_player.return_value = None
+        self.item.guild.voice_client = MagicMock(
+            spec=MusicPlayer, channel=self.channel, connected=False
+        )
+        self.item.user = _member(11, 30)
+        self.item.command = self.cog.heal
+        self.item.data = {"name": "reconnect", "type": 1, "options": []}
+
+        await self.bot.tree._call(self.item)
+
+        self.heal.assert_not_awaited()
+        self.assertTrue(self.item.command_failed)
+        self.feedback.assert_awaited_once()
+        self.assertTrue(self.feedback.call_args.kwargs["ephemeral"])
 
     async def test_registered_remote_skip_is_limited_to_current_requester(self) -> None:
         self.item.command = self.cog.skip

@@ -321,7 +321,7 @@ class ConnectionManager:
     async def mark_node_unavailable(
         self, node: mafic.Node[discord.Client] | None = None
     ) -> None:
-        """Mark Lavalink unavailable and remove stale node resources."""
+        """Remove stale node resources and retry if no ready node remains."""
         async with self._init_lock:
             self._initialized = False
             self._last_connect_error = "Lavalink node became unavailable"
@@ -333,6 +333,9 @@ class ConnectionManager:
                 await self._remove_or_close_node(node)
 
             await self._cleanup_unavailable_nodes()
+
+        # Removing a Mafic node also cancels its websocket reconnect task.
+        self.start_lazy_connect()
 
     async def invalidate_player(
         self,
@@ -495,7 +498,7 @@ class ConnectionManager:
         )
 
     def start_lazy_connect(self) -> None:
-        """Start at most one bootstrap task, ending when Lavalink becomes ready."""
+        """Start at most one retry task, ending when Lavalink becomes ready."""
         if self._closing or self.has_ready_node():
             return
 

@@ -1564,6 +1564,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool_instance.remove_node.side_effect = remove_node_side_effect
         mock_pool_class.return_value = mock_pool_instance
         manager = ConnectionManager(self.bot)
+        self.addAsyncCleanup(manager.stop_connecting)
 
         await manager.mark_node_unavailable(node)
 
@@ -1585,6 +1586,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool_instance.label_to_node = {}
         mock_pool_class.return_value = mock_pool_instance
         manager = ConnectionManager(self.bot)
+        self.addAsyncCleanup(manager.stop_connecting)
 
         await manager.mark_node_unavailable(node)
 
@@ -1871,6 +1873,129 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
         initialize.assert_awaited_once_with()
         sleep.assert_not_awaited()
         self.assertTrue(task.done())
+
+    async def test_ready_node_outage_reconnects_without_command(self) -> None:
+        original = MagicMock(label="test", available=True, players=())
+        replacement = MagicMock(label="test", available=True)
+
+        def connect(node: object, *, player_cls: object) -> None:
+            self.assertIs(player_cls, MusicPlayer)
+            self.pool.nodes = [node]
+            self.pool.label_to_node = {"test": node}
+
+        def remove_node(node: object, *, transfer_players: bool) -> None:
+            self.assertIs(node, original)
+            self.assertFalse(transfer_players)
+            self.pool.nodes = []
+            self.pool.label_to_node = {}
+
+        self.pool.add_node = AsyncMock(side_effect=connect)
+        self.pool.remove_node = AsyncMock(side_effect=remove_node)
+        with (
+            patch.object(mafic, "Node", side_effect=[original, replacement]),
+            patch.object(time, "monotonic", return_value=100.0) as clock,
+            patch.object(asyncio, "sleep", new=AsyncMock()) as sleep,
+        ):
+
+            def advance_clock(delay: float) -> None:
+                self.assertFalse(self.manager._init_lock.locked())
+                clock.return_value = 100.0 + delay
+
+            sleep.side_effect = advance_clock
+            self.manager.start_lazy_connect()
+            bootstrap = self.manager._lazy_connect_task
+            if bootstrap is None:
+                self.fail("Bootstrap task was not scheduled")
+            await bootstrap
+            self.assertTrue(self.manager.has_ready_node())
+
+            original.available = False
+            await self.manager.handle_node_unavailable(original)
+            reconnecting = self.manager._lazy_connect_task
+            if reconnecting is None:
+                self.fail("Reconnect task was not scheduled")
+            self.assertIsNot(reconnecting, bootstrap)
+            await reconnecting
+
+        self.assertEqual(self.pool.add_node.await_count, 2)
+        self.pool.add_node.assert_awaited_with(replacement, player_cls=MusicPlayer)
+        self.pool.remove_node.assert_awaited_once_with(original, transfer_players=False)
+        sleep.assert_awaited_once_with(config.LAVALINK_CONNECT_RETRY_DELAY)
+        self.assertTrue(self.manager.has_ready_node())
+        self.assertIsNone(self.manager._last_connect_error)
+
+    async def test_duplicate_outage_events_share_one_reconnect(self) -> None:
+        node = MagicMock(label="test", available=False, players=())
+        node.close = AsyncMock()
+        sleeping, resume = asyncio.Event(), asyncio.Event()
+        initialize = AsyncMock(
+            side_effect=lambda: setattr(self.pool, "nodes", [MagicMock(available=True)])
+        )
+
+        with (
+            patch.object(time, "monotonic", return_value=100.0) as clock,
+            patch.object(self.manager, "initialize", initialize),
+            patch.object(asyncio, "sleep", new=AsyncMock()) as sleep,
+        ):
+
+            async def wait_for_retry(delay: float) -> None:
+                sleeping.set()
+                await resume.wait()
+                clock.return_value = 100.0 + delay
+
+            sleep.side_effect = wait_for_retry
+            await self.manager.handle_node_unavailable(node)
+            reconnecting = self.manager._lazy_connect_task
+            if reconnecting is None:
+                self.fail("Reconnect task was not scheduled")
+            await sleeping.wait()
+            await self.manager.handle_node_unavailable(node)
+            self.assertIs(self.manager._lazy_connect_task, reconnecting)
+            initialize.assert_not_awaited()
+            resume.set()
+            await reconnecting
+
+        initialize.assert_awaited_once_with()
+        sleep.assert_awaited_once_with(config.LAVALINK_CONNECT_RETRY_DELAY)
+        self.assertTrue(self.manager.has_ready_node())
+
+    async def test_shutdown_during_outage_cleanup_does_not_restart_connection(
+        self,
+    ) -> None:
+        node = MagicMock(label="test", available=False, players=())
+        self.pool.label_to_node = {"test": node}
+        removing, release, closing_entered = (
+            asyncio.Event(),
+            asyncio.Event(),
+            asyncio.Event(),
+        )
+        initialize = AsyncMock()
+
+        async def remove_node(_node: object, *, transfer_players: bool) -> None:
+            self.assertFalse(transfer_players)
+            removing.set()
+            await release.wait()
+            self.pool.label_to_node = {}
+
+        async def close() -> None:
+            closing_entered.set()
+            await self.manager.cleanup()
+
+        self.pool.remove_node = AsyncMock(side_effect=remove_node)
+        with patch.object(self.manager, "initialize", initialize):
+            outage = asyncio.create_task(self.manager.handle_node_unavailable(node))
+            await removing.wait()
+            closing = asyncio.create_task(close())
+            await closing_entered.wait()
+            self.assertFalse(closing.done())
+            self.pool.close.assert_not_awaited()
+            release.set()
+            await outage
+            await closing
+
+        initialize.assert_not_awaited()
+        self.assertIsNone(self.manager._lazy_connect_task)
+        self.pool.close.assert_awaited_once_with()
 
     async def test_unavailable_attempt_retries_after_remaining_cooldown(self) -> None:
         await self._assert_bootstrap_retries_after_cooldown(

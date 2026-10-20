@@ -816,8 +816,7 @@ class MusicCog(BaseCog):
             )
             return
 
-        player = self.service.get_player(interaction.guild_id)
-        if not player:
+        if self.components.healer.get_recoverable_player(interaction.guild_id) is None:
             await send_warning(
                 interaction,
                 messages.catalog.pgettext("ui", "no player"),

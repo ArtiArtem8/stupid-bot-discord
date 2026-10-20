@@ -74,8 +74,12 @@ class SessionHealer(HealerProtocol):
 
         self._locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
-    def _get_recoverable_player(self, guild_id: int) -> MusicPlayer | None:
-        """Return a player suitable for snapshotting, even if it is no longer usable."""
+    def get_recoverable_player(self, guild_id: int) -> MusicPlayer | None:
+        """Find a cached session even when its voice or node connection is down.
+
+        This is a local existence check, not a guarantee that restoration will
+        succeed. Recovery selects the player again after acquiring ownership.
+        """
         player = self.connection.get_player(guild_id)
         if player:
             return player
@@ -439,7 +443,7 @@ class SessionHealer(HealerProtocol):
         async with self._locks[guild_id], self.connection.recovery(guild_id):
             logger.info("Attempting to heal session for guild %s", guild_id)
 
-            player = self._get_recoverable_player(guild_id)
+            player = self.get_recoverable_player(guild_id)
             if not player:
                 logger.warning("Cannot heal: No player found for %s", guild_id)
                 return False
