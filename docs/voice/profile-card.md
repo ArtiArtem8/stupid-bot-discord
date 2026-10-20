@@ -134,10 +134,12 @@ and the font cache. Missing Inkscape or fonts disables the profile command;
 the rest of the bot can start. The command returns an unavailable message and
 logs the initialization failure. After fixing setup, restart or reload the Cog.
 
-Buttons use the custom emoji references in `stupidbot/features/voice/discord/view.py`: `statistic` for
-Activity, `social` for People, `xp` for XP, and the shared `restart` and `trash`
-controls for Refresh and Delete. Emoji IDs are bound directly to the buttons;
-startup does not fetch or discover emojis by name.
+Buttons use resources from `stupidbot/discord_ui/emojis.py`: `statistic` for
+Activity, `social` for People, `xp` for XP, and `restart` and `trash` for Refresh
+and Delete. `stupidbot/features/voice/discord/view.py` owns these action mappings.
+See [emoji setup](../../INSTALLATION.md#emoji-controls) for environment overrides
+and Unicode fallbacks. Restart after changing them; startup does not fetch or
+discover emojis by name.
 
 ## Images and caches
 

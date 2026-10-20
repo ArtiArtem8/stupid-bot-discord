@@ -69,7 +69,72 @@ publication can leave a COMPLETE staging database; its filename is not a schema 
 
 Start the bot with `main.py --database PATH` to use the published database.
 
-## Backup, restore and rollback
+## Backup, restore and upgrades
+
+Run these commands from the repository root. They work in PowerShell and a POSIX
+shell. Replace the paths if the bot uses a different `--database` file. Choose a
+new destination name for each operation; maintenance never overwrites a file.
+
+### Back up a running installation
+
+```sh
+uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite backup data/app-backup.sqlite
+uv run --locked --no-dev python -m stupidbot.storage --database data/app-backup.sqlite check
+```
+
+Backup uses SQLite Online Backup and includes committed WAL contents. Never copy
+just the main file of an active WAL database. A successful backup checks structure;
+`check` also requires the current revision, COMPLETE state and valid foreign keys.
+Backup may preserve a diagnostic copy with invalid foreign keys, so keep the check
+step. Copy completed backups to separate storage if they must survive loss of the
+bot's disk.
+
+### Restore and verify a backup
+
+Stop the bot and restore to a new file:
+
+```sh
+uv run --locked --no-dev python -m stupidbot.storage --database data/app-restored.sqlite restore data/app-backup.sqlite
+uv run --locked --no-dev python -m stupidbot.storage --database data/app-restored.sqlite check
+uv run --locked --no-dev main.py --database data/app-restored.sqlite
+```
+
+Restore validates the copied file before returning. A failure never falls back to
+empty data; keep the error and diagnose the selected backup. After startup, inspect
+`/health` and a few known saved settings or profiles. Keep the previous database
+until you have checked the restored instance, and update the service's database
+path before its next start.
+
+An older backup may need migration. Work on a new copy using the procedure below,
+rather than altering the only backup.
+
+### Upgrade the schema
+
+Stop the bot, make a backup using the old installation, then select the new code
+and run `uv sync --locked --no-dev`. Prepare a separate database with that code:
+
+```sh
+uv run --locked --no-dev python -m stupidbot.storage --database data/app-backup.sqlite backup data/app-upgraded.sqlite
+uv run --locked --no-dev python -m stupidbot.storage --database data/app-upgraded.sqlite migrate
+uv run --locked --no-dev python -m stupidbot.storage --database data/app-upgraded.sqlite check
+uv run --locked --no-dev main.py --database data/app-upgraded.sqlite
+```
+
+Migrations are explicit; ordinary startup only validates. Preserve the existing
+`VOICE_PROFILE_TIMEZONE`. When adopting the language-settings release for an
+existing installation, also perform the guild review below before starting.
+
+Before the upgraded instance accepts new work, rollback means selecting the old
+code and its untouched database. Once new records have been written, switching
+back to an earlier backup loses those records. There is no schema downgrade or
+automatic reverse transfer.
+
+<a id="backup-restore-and-rollback"></a>
+
+## Existing guild language rollout
+
+This section describes the one-time language rollout for installations upgrading
+from the older Russian-only behavior. Routine maintenance is covered above.
 
 Before deploying the architecture/i18n upgrade, inventory every existing guild
 and review explicit language overrides. Discord's guild locale can be a default
@@ -103,22 +168,8 @@ including a deliberate null-language reset. Repeating apply is a no-op. The bot
 must remain stopped until the prepared database and new code are selected
 together. No automatic migration or rollout seed runs at startup.
 
-```powershell
-uv run --locked python -m stupidbot.storage --database "$localDb" backup "$env:TEMP/stupid-local/backup.sqlite"
-uv run --locked python -m stupidbot.storage --database "$env:TEMP/stupid-local/restored.sqlite" restore "$env:TEMP/stupid-local/backup.sqlite"
-```
-
-Backup uses SQLite Online Backup, including committed WAL contents, and refuses
-an existing destination. It checks structure, but can retain a diagnostic copy
-with invalid foreign keys. Restore/check additionally require current revision,
-COMPLETE state and valid FKs; failed validation never falls back to empty data.
-An older backup needs explicit `migrate` on its new copy before current startup.
-Never copy just the main file of an active WAL database.
-
-Before cutover, rollback means the old code and untouched old data. After new
-SQLite writes, reverting to those JSON snapshots loses the new records unless a
-separate reverse transfer is implemented. There is no dual-write rollback copy,
-no automatic repair and no downgrade from the normalized schema.
+For installations imported from JSON, the original files remain an offline
+snapshot. They are not a dual-write rollback copy and do not receive new records.
 
 ## Runtime contracts
 

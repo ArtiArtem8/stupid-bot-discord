@@ -8,17 +8,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![discord.py](https://img.shields.io/badge/discord.py-2.7.1%2B-5865F2?style=flat-square&logo=discord&logoColor=white)](https://github.com/Rapptz/discord.py)
-[![Lavalink](https://img.shields.io/badge/Lavalink-E3A008?style=flat-square)](https://lavalink.dev/)
-[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-<br>
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json&style=flat-square)](https://github.com/astral-sh/uv)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square)](https://github.com/astral-sh/ruff)
-[![basedpyright](https://img.shields.io/endpoint?url=https://docs.basedpyright.com/latest/badge.json&style=flat-square)](https://docs.basedpyright.com/)
-[![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json&style=flat-square)](https://github.com/astral-sh/ty)
-[![prek](https://raw.githubusercontent.com/j178/prek/master/docs/assets/badge.svg)](https://github.com/j178/prek)
 [![CI](https://img.shields.io/github/actions/workflow/status/ArtiArtem8/stupid-bot-discord/ci.yml?branch=main&style=flat-square&label=CI&logo=githubactions&logoColor=white)](https://github.com/ArtiArtem8/stupid-bot-discord/actions/workflows/ci.yml)
-[![Codacy](https://app.codacy.com/project/badge/Grade/b094540d4d7b4bbea618b775ce0597e7)](https://app.codacy.com/gh/ArtiArtem8/stupid-bot-discord/dashboard)
-[![Scrutinizer](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/badges/quality-score.png?b=main)](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/?branch=main)
 [![License](https://img.shields.io/badge/license-MIT-57A773?style=flat-square)](LICENSE)
 
 **StupidBot** помогает слушать музыку, смотреть голосовые профили и поздравлять
@@ -27,6 +17,9 @@
 Интерфейс и карточки профиля доступны на русском, английском и корейском.
 
 [English](README.md) · **Русский**
+
+- **Запустить своего бота:** [инструкция по установке](INSTALLATION.md).
+- **Разобраться в коде или внести изменения:** [окружение разработчика и карта кода](CONTRIBUTING.md).
 
 [Музыка](#музыка) · [Голосовые профили](#голосовые-профили) ·
 [Дни рождения](#дни-рождения) · [Язык и часовой пояс](#язык-и-часовой-пояс) ·
@@ -66,6 +59,11 @@
 трансляций. Для музыки нужен Lavalink; доступность YouTube, SoundCloud,
 Яндекс Музыки и других источников зависит от его настроек и плагинов.
 Остальные функции работают и без подключения к Lavalink.
+
+Для управления воспроизведением нужно быть в голосовом канале бота. Заказавший
+текущий трек может пропустить его и вне голосового канала. Право «Управление
+сервером» позволяет удалённо вызвать `/leave` и `/reconnect`, но не даёт обходить
+проверку для остальных элементов управления.
 
 ## Голосовые профили
 
@@ -170,6 +168,19 @@ People показывает время с другими участниками,
 
 ## Инженерные решения
 
+<details>
+<summary>Воспроизведение, голосовая аналитика и хранение данных</summary>
+
+[![Lavalink](https://img.shields.io/badge/Lavalink-E3A008?style=flat-square)](https://lavalink.dev/)
+[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json&style=flat-square)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square)](https://github.com/astral-sh/ruff)
+[![basedpyright](https://img.shields.io/endpoint?url=https://docs.basedpyright.com/latest/badge.json&style=flat-square)](https://docs.basedpyright.com/)
+[![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json&style=flat-square)](https://github.com/astral-sh/ty)
+[![prek](https://raw.githubusercontent.com/j178/prek/master/docs/assets/badge.svg)](https://github.com/j178/prek)
+[![Codacy](https://app.codacy.com/project/badge/Grade/b094540d4d7b4bbea618b775ce0597e7)](https://app.codacy.com/gh/ArtiArtem8/stupid-bot-discord/dashboard)
+[![Scrutinizer](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/badges/quality-score.png?b=main)](https://scrutinizer-ci.com/g/ArtiArtem8/stupid-bot-discord/?branch=main)
+
 - **Состояние плеера учитывает конкурирующие события.** [MusicPlayer](stupidbot/features/music/playback/player.py)
   выполняет изменения очереди последовательно и присваивает каждой попытке
   воспроизведения идентификатор. [Обработчики](stupidbot/features/music/runtime/playback_events.py)
@@ -194,100 +205,23 @@ People показывает время с другими участниками,
   затем дожидается транзакций и закрывает базу. [Документация хранилища](docs/storage/README.md)
   описывает явные миграции, офлайн-импорт, резервные копии и восстановление.
 
+</details>
+
 ## Локальный запуск
 
-Перед обновлением существующей установки
-[проверьте языки всех серверов](docs/storage/README.md#backup-restore-and-rollback).
+В [INSTALLATION.md](INSTALLATION.md) описан путь от создания приложения Discord до
+первого запуска на Windows или Linux: установка через uv, настройка `.env`,
+подготовка SQLite и проверка работы. Там же — свои эмодзи, дополнительные сервисы,
+`/health`, частые проблемы и запуск в качестве службы. Инструкция на английском.
 
-Для новой установки явно выберите часовой пояс календаря профиля:
-пример конфигурации предлагает `Europe/Moscow`. При обновлении сохраните
-прежнее значение `VOICE_PROFILE_TIMEZONE`. Если значение не задано, используется
-`UTC`; дни рождения по-прежнему определяются по локальной дате хоста.
+Для самого бота нужны Python 3.12, Git, uv и токен Discord. Музыка использует
+отдельный сервер Lavalink, изображения профилей — Inkscape. Их можно настроить
+после первого запуска. Запись содержимого сообщений в логи по умолчанию отключена.
 
-Нужны **Python 3.12**, Git, [uv](https://docs.astral.sh/uv/getting-started/installation/)
-и приложение бота из [Discord Developer Portal](https://discord.com/developers/applications).
-На странице Bot включите привилегированные intents: **Presence**, **Server Members**
-и **Message Content**. Добавьте приложение на сервер со scopes бота и команд
-приложения. Выдайте права на сообщения, вложения и голосовое воспроизведение,
-а для ролей именинников и восстановления ролей также на управление ролями.
-
-### Установка и настройка
-
-```bash
-git clone https://github.com/ArtiArtem8/stupid-bot-discord.git
-cd stupid-bot-discord
-uv sync --locked --no-dev
-```
-
-Скопируйте [.env.example](.env.example) в `.env` (`cp .env.example .env` в POSIX shell
-или `Copy-Item .env.example .env` в PowerShell). До запуска укажите `DISCORD_BOT_TOKEN`.
-
-| Параметр | Назначение |
-| --- | --- |
-| `DISCORD_BOT_TOKEN` | Обязательный токен Discord-бота. |
-| `DISCORD_BOT_OWNER_ID` | Необязательный ID владельца. |
-| `VOICE_PROBE_ENABLED` | По умолчанию `true`: сбор голосовой активности. Наблюдения хранятся в SQLite бессрочно. |
-| `VOICE_PROFILE_TIMEZONE` | Часовой пояс IANA для календарных подробностей профиля без личной и серверной настройки; если не задан, используется `UTC`. Не меняет длительность пребывания в голосе или суммарный XP. |
-| `WOLFRAM_APP_ID` | [App ID WolframAlpha](https://developer.wolframalpha.com/) для `/solve` и `/plot`; остальным функциям не нужен. |
-| `LAVALINK_HOST`, `LAVALINK_PORT` | Адрес Lavalink, по умолчанию `localhost:2333`. |
-| `LAVALINK_PASSWORD`, `LAVALINK_SECURE` | Пароль и настройка TLS должны совпадать с сервером Lavalink. |
-
-Для музыки запустите [Lavalink](https://lavalink.dev/getting-started/) отдельно
-и настройте нужные плагины источников. Требование к Java смотрите в инструкции
-для выбранной версии Lavalink.
-
-Для профилей установите **Inkscape** на хост бота и сохраните поставляемые
-[шрифты из проекта](stupidbot/assets/fonts/) (Inter и корейские символы Noto Sans KR).
-Проверьте `inkscape --version` от имени учётной
-записи службы. Без Inkscape или шрифтов команда профиля недоступна; остальные
-функции могут запускаться. Подробнее: [настройка рендерера](docs/voice/profile-card.md#setup).
-Пользовательские emoji приложения из [shared emoji references](stupidbot/discord_ui/emojis.py) и
-[музыкального контроллера](stupidbot/features/music/discord/views/controller.py) должны быть доступны вашему боту.
-
-### Подготовка базы и запуск
-
-Для **новой установки** создайте и проверьте базу SQLite:
-
-```bash
-uv run --locked --no-dev python -c "from pathlib import Path; Path('data').mkdir(exist_ok=True)"
-uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite migrate
-uv run --locked --no-dev python -m stupidbot.storage --database data/app.sqlite check
-uv run --locked --no-dev main.py
-```
-
-> [!IMPORTANT]
-> Запуск требует подготовленной базы. Отсутствующие, несовместимые и
-> незавершённые файлы отклоняются. Для существующей установки сначала изучите
-> [миграцию и восстановление](docs/storage/README.md):
-> команды выше не импортируют старые данные.
-
-Другой подготовленный файл можно выбрать так:
-
-```bash
-uv run --locked --no-dev main.py --database /path/to/app.sqlite
-```
-
-<details>
-<summary>Скрипты запуска и эксплуатационные настройки</summary>
-
-Из корня репозитория бот запускается через `./runstupidbot.sh` (Linux/macOS)
-или `.\runstupidbot.bat` (Windows PowerShell).
-
-`LAVALINK_NODE_LABEL` по умолчанию равен `MAIN`, а `LAVALINK_CONNECT_RETRY_DELAY` равен
-30 секундам. Пути рендерера, права на кеш шрифтов и `INKSCAPE_BIN` описаны
-в [настройке профилей](docs/voice/profile-card.md#setup).
-
-Рабочие файлы используют `data/` и временные каталоги рендерера. Резервные копии
-создаются отдельными командами обслуживания SQLite. В [stupidbot/settings.py](stupidbot/settings.py)
-находятся эксплуатационные константы, [общие эмодзи](stupidbot/discord_ui/emojis.py) содержат
-ссылки на элементы управления; [настройка логирования](stupidbot/app/logging.py)
-управляет журналами. Тексты остальных функций находятся рядом с их кодом.
-
-Отслеживание выделения памяти по умолчанию выключено.
-`uv run --locked --no-dev main.py --tracemalloc` включает его для диагностики,
-увеличивая нагрузку на CPU и потребление памяти.
-
-</details>
+Если бот уже работает, перед изменением базы прочитайте
+[о резервных копиях и обновлении](docs/storage/README.md#backup-restore-and-upgrades).
+При переходе старой установки на настройки языка также нужно
+[проверить языки серверов](docs/storage/README.md#backup-restore-and-rollback).
 
 ## Участие в разработке
 
