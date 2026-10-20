@@ -7,7 +7,7 @@ from fractions import Fraction
 
 @dataclass(frozen=True, slots=True)
 class PresenceStat:
-    """Credited voice seconds and contiguous observed visits within a query."""
+    """Credited voice seconds and grouped visits within a query."""
 
     total_seconds: float = 0.0
     solo_seconds: float = 0.0

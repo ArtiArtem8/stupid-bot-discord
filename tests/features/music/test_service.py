@@ -1,4 +1,4 @@
-"""Tests for soft music service availability failures."""
+"""Music command results, shutdown, and recovery."""
 
 import asyncio
 import unittest

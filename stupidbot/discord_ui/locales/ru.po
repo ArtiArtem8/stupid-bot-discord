@@ -44,7 +44,7 @@ msgstr "Не удалось выполнить команду. Детали за
 
 msgctxt "discord_title"
 msgid "Discord error"
-msgstr "Discord Ошибка"
+msgstr "Ошибка Discord"
 
 msgctxt "internal_title"
 msgid "Internal error"

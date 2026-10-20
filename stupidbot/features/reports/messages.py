@@ -18,11 +18,9 @@ class ReportMessages:
         ).format(report_id=report_id)
 
     def guild(self, *, name: str) -> str:
-        """Label the original guild name without modifying it."""
         return self.catalog.pgettext("guild", "**Server:** {name}").format(name=name)
 
     def channel(self, *, name: str) -> str:
-        """Label the original channel name without modifying it."""
         return self.catalog.pgettext("channel", "**Channel:** {name}").format(name=name)
 
     def destination(self, *, mention: str) -> str:

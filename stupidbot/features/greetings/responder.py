@@ -100,5 +100,5 @@ class Greetings:
                         "score": best_score,
                     },
                 )
-            return secrets.choice(answers or [None])
+            return secrets.choice(answers) if answers else None
         return None

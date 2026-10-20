@@ -23,7 +23,6 @@ class WolframMessages:
                 return self.catalog.pgettext("invalid_response", "Invalid XML response")
 
     def query(self, *, query: str) -> str:
-        """Label the original query."""
         return self.catalog.pgettext("query", "Query: `{query}`").format(query=query)
 
     def results(self, *, url: str) -> str:

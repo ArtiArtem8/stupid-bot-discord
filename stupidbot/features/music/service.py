@@ -63,10 +63,7 @@ EXPECTED_PLAY_ERRORS = (
 
 
 class CoreMusicService:
-    """Coordinate music operations without duplicating component state.
-
-    Delegates responsibility to specialized managers.
-    """
+    """Coordinate music operations while components retain ownership of their state."""
 
     def __init__(
         self,
@@ -90,7 +87,7 @@ class CoreMusicService:
         self._closing = False
 
     async def initialize(self) -> None:
-        """Initialize the service and its components."""
+        """Register listeners and start the background node connection."""
         if self._closing:
             return
         if self._initialized:
@@ -119,7 +116,7 @@ class CoreMusicService:
     async def join(
         self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
     ) -> VoiceJoinResult:
-        """Join a voice channel."""
+        """Join a voice channel and apply the guild's saved volume."""
         if self._is_recovering(guild.id):
             return VoiceCheckResult.RECOVERING, None
         result, old_channel = await self.connection.join(guild, channel)
@@ -145,11 +142,10 @@ class CoreMusicService:
         return result, old_channel
 
     async def leave(self, guild: discord.Guild) -> MusicResult[None]:
-        """Leave voice channel and clean local music state.
+        """Leave the voice channel even when its Lavalink player is stale.
 
-        This must work even when the Lavalink player is already stale/dead.
-        `connection.get_player()` is intentionally stricter than `guild.voice_client`,
-        so do not use it as the only source of truth for whether the bot is in voice.
+        Use ``guild.voice_client`` because ``connection.get_player()`` hides stale
+        players that still need to be disconnected.
         """
         async with self.voice_lifecycle.leaving(guild.id):
             await self.connection.cancel_recovery(guild.id)

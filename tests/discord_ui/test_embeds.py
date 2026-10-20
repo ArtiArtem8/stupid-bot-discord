@@ -280,9 +280,9 @@ class TestSafeEmbed(unittest.TestCase):
         ret: SafeEmbed = e.add_field_pages(
             name="P",
             lines=["line1", "line2"],
-            page_size=1,  # 2 pages
+            page_size=1,
             separator="\n",
-            strict=True,  # no raise because max_fields allows it
+            strict=True,
         )
         self.assertIs(ret, e)
 

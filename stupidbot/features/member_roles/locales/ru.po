@@ -182,7 +182,7 @@ msgstr[2] "TTL: {days:d} дней"
 
 msgctxt "ui"
 msgid "The bot needs the Manage Roles permission."
-msgstr "Боту необходимо разрешение управление ролями."
+msgstr "Боту нужно право «Управлять ролями»."
 
 #, python-brace-format
 msgctxt "enabled"

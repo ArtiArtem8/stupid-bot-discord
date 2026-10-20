@@ -17,8 +17,6 @@ if TYPE_CHECKING:
 
 
 class OwnerCog(GenericBaseCog["StupidBot"]):
-    """Owner-only diagnostics and message management."""
-
     @override
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:
         """Allow admin commands to bypass block checks."""
@@ -80,7 +78,7 @@ class OwnerCog(GenericBaseCog["StupidBot"]):
         context = await interaction_context(interaction, private=True)
         messages = catalog("app", context.language)
         channel = interaction.channel
-        if channel is None or not isinstance(channel, discord.abc.Messageable):
+        if not isinstance(channel, discord.abc.Messageable):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,

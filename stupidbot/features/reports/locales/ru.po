@@ -30,7 +30,7 @@ msgstr "**Сервер:** {name}"
 #, python-brace-format
 msgctxt "receipt"
 msgid "-# Your personal ID: `{report_id}`"
-msgstr "-# Ваш персональный ID: `{report_id}`"
+msgstr "-# Номер отчёта: `{report_id}`"
 
 msgctxt "ui"
 msgid "Could not finish processing the report. Details have been logged."
@@ -79,7 +79,7 @@ msgstr "Отправитель"
 
 msgctxt "command"
 msgid "Set the report channel (developers only)"
-msgstr "Установить канал для жалоб (для разработчиков)"
+msgstr "Настроить канал для отчётов (для разработчиков)"
 
 msgctxt "ui"
 msgid "Submit a bug report"

@@ -97,14 +97,10 @@ class VoiceCollectorCog(commands.Cog):
             await self.journal.close()
             return
         self._online = False
-        pending: list[asyncio.Task[None]] = []
-        for loop in (self._heartbeat,):
-            task = loop.get_task()
-            if task is not None:
-                loop.cancel()
-                pending.append(task)
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
+        task = self._heartbeat.get_task()
+        if task is not None:
+            self._heartbeat.cancel()
+            await asyncio.gather(task, return_exceptions=True)
         if self._running:
             self._record(VoiceLifecycle(stopped=True))
             self._running = False
@@ -391,5 +387,5 @@ def _flag(value: JsonValue) -> bool | None:
 
 
 async def setup(bot: StupidBot) -> None:
-    """Register the voice collector through the normal extension lifecycle."""
+    """Use the bot's shared analytics owner for the collector's journal."""
     await bot.add_cog(VoiceCollectorCog(bot, journal=bot.create_voice_journal()))

@@ -99,9 +99,9 @@ than short ones; inactive dates contribute neither XP nor voice hours.
 The small neutral caption below lifetime XP explicitly says "in voice" and shows
 approximate hours, or minutes below one hour. It is omitted with less than one
 observed voice hour, or without earning voice in the last seven local dates.
-These are availability guards, not calibrated accuracy thresholds. Coverage describes completeness separately and
-does not multiply the measured pace. The estimate has no confidence range or
-calendar completion date.
+These are availability guards, not calibrated accuracy thresholds. Coverage
+reports how much of the period was observed; it does not change the measured pace.
+The estimate has no confidence range or calendar completion date.
 
 Every card labels recent coverage. People and XP also label lifetime coverage,
 measured from the earliest retained guild evidence to the request time. Missing

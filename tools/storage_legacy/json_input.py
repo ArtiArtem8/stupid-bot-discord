@@ -1,4 +1,4 @@
-"""Validate migration inputs before writing either repository."""
+"""Validate legacy birthday and volume JSON before importing it into SQLite."""
 
 import json
 from pathlib import Path

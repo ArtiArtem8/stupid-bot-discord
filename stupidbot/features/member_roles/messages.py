@@ -7,12 +7,11 @@ from stupidbot.i18n.catalog import Catalog
 
 @dataclass(frozen=True, slots=True)
 class RoleMessages:
-    """Format semantic values after selecting the response audience."""
+    """Format role-restoration messages with counts in the selected language."""
 
     catalog: Catalog
 
     def ttl(self, *, days: int) -> str:
-        """Label finite snapshot retention."""
         return self.catalog.npgettext(
             "ttl", "TTL: {days:d} day", "TTL: {days:d} days", days
         ).format(days=days)
@@ -31,13 +30,11 @@ class RoleMessages:
         )
 
     def days(self, *, days: int) -> str:
-        """Display a finite retention period."""
         return self.catalog.npgettext(
             "days", "{days:d} day", "{days:d} days", days
         ).format(days=days)
 
     def snapshot(self, *, name: str, count: int, timestamp: str) -> str:
-        """Describe one retained role snapshot."""
         return self.catalog.npgettext(
             "snapshot",
             "- **{name}** — {count:d} role, left {timestamp}",
@@ -46,13 +43,11 @@ class RoleMessages:
         ).format(name=name, count=count, timestamp=timestamp)
 
     def recent(self, *, shown: int, total: int) -> str:
-        """Label the bounded snapshot preview."""
         return self.catalog.pgettext(
             "recent", "Recent members ({shown:d} of {total:d})"
         ).format(shown=shown, total=total)
 
     def footer(self, *, total: int) -> str:
-        """Explain the preview limit."""
         return self.catalog.pgettext(
             "footer", "Showing the first 10 of {total:d} snapshots"
         ).format(total=total)
@@ -64,7 +59,6 @@ class RoleMessages:
         ).format(mention=mention)
 
     def missing(self, *, mention: str) -> str:
-        """Report an absent snapshot."""
         return self.catalog.pgettext(
             "missing", "No saved roles found for {mention}."
         ).format(mention=mention)
@@ -89,7 +83,6 @@ class RoleMessages:
         ).format(count=count)
 
     def restoration(self, *, name: str) -> str:
-        """Label the member whose roles were processed."""
         return self.catalog.pgettext("restoration", "Role restoration: {name}").format(
             name=name
         )

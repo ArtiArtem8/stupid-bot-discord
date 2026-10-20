@@ -1,4 +1,4 @@
-"""Bounded voice admission and conservative gaps survive the SQL storage change."""
+"""Voice queue admission, write failures and conservative observation gaps."""
 
 import asyncio
 import unittest

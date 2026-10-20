@@ -1,9 +1,4 @@
-"""Feedback UI Module.
-
-This module provides a unified interface for sending standardized feedback messages
-to users via Discord interactions. It supports various feedback types (Success,
-Info, Warning, Error), custom embeds, and automatic report button generation for errors.
-"""
+"""Route interaction feedback and attach optional error-report controls."""
 
 import logging
 from collections.abc import Awaitable, Callable
@@ -91,7 +86,7 @@ class ReportButtonView(View):
 
 
 class FeedbackUI:
-    """Unified UI for sending feedback messages (Success, Info, Warning, Error)."""
+    """Send feedback through the interaction's initial response or a followup."""
 
     _default_report_callback: ReportCallback | None = None
 
@@ -106,7 +101,6 @@ class FeedbackUI:
         description: str,
         feedback_type: FeedbackType,
     ) -> SafeEmbed:
-        """Create a standard embed for feedback."""
         embed = SafeEmbed(
             title=title,
             description=description,
@@ -159,21 +153,13 @@ class FeedbackUI:
         embed: discord.Embed = MISSING,
         error_info: str | None = None,
     ) -> None:
-        """Send a standardized feedback message.
+        """Send feedback, preserving the original response's visibility.
 
-        Args:
-            interaction: The interaction to respond to.
-            feedback_type: The type of feedback (SUCCESS, INFO, WARNING, ERROR)
-            description: The main content of the message.
-            title: Optional title.
-            delete_after: Auto-delete after N seconds.
-            ephemeral: Whether the message is ephemeral.
-            view: Custom view, or None to clear a deferred original response view.
-            disable_report_btn: If True, suppresses the Report button for ERROR type.
-            embed: Optional custom embed. If provided, type/description/title are
-                ignored.
-            error_info: Optional error information to pre-fill the report modal.
-
+        A supplied embed replaces the generated title, description and styling.
+        Omit ``view`` to preserve existing controls or allow an error-report
+        button; pass ``None`` to clear controls on a deferred original response.
+        ``delete_after`` is measured in seconds. Expected Discord and transport
+        failures are logged without raising.
         """
         context = await interaction_context(interaction, private=ephemeral)
         resolved_embed = FeedbackUI._resolve_embed(

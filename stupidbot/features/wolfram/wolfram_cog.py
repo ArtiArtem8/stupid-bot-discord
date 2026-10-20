@@ -344,9 +344,7 @@ class WolframCog(BaseCog):
             )
             return
 
-        if not interaction.channel or not isinstance(
-            interaction.channel, discord.abc.Messageable
-        ):
+        if not isinstance(interaction.channel, discord.abc.Messageable):
             await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
             return
 
@@ -368,11 +366,11 @@ class WolframCog(BaseCog):
         *,
         result_query: str | None = None,
     ) -> None:
-        """Download, process, and send image."""
+        """Upload a plot and return its public link in a private response."""
         context = await interaction_context(interaction, private=True)
         messages = WolframMessages(catalog("wolfram", context.language))
         channel = interaction.channel
-        if not channel or not isinstance(channel, discord.abc.Messageable):
+        if not isinstance(channel, discord.abc.Messageable):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -479,7 +477,6 @@ class WolframCog(BaseCog):
                 file.close()
 
     async def _send_plot_error(self, interaction: Interaction) -> None:
-        """Send the stable user-facing response for image pipeline failures."""
         context = await interaction_context(interaction, private=True)
         messages = WolframMessages(catalog("wolfram", context.language))
         await FeedbackUI.send(

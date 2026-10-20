@@ -1,4 +1,4 @@
-"""Wolfram Alpha API Client."""
+"""Bound Wolfram downloads and parse their XML into displayable results."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ _PI_APPROXIMATION_RE = re.compile(r"(?<![\w.])3\.14159\d*(?![\w.])")
 
 
 def format_math_text(text: str) -> str:
-    """Format mathematical text for better readability."""
+    """Replace decimal pi approximations and the word 'approx' with symbols."""
     text = _PI_APPROXIMATION_RE.sub("π", text)
     text = text.replace(" approx ", " ≈ ")
     return text
@@ -42,7 +42,7 @@ class SubPod:
 
     @property
     def display_text(self) -> str | None:
-        """Return the best text representation."""
+        """Prefer plaintext, falling back to the image title."""
         return self.plaintext or self.image_title
 
 
@@ -125,7 +125,6 @@ def _raise_http_error(
 
 
 def _first_image_url(pod: Pod) -> str | None:
-    """Return the first image URL in a pod."""
     return next((subpod.image_url for subpod in pod.subpods if subpod.image_url), None)
 
 
@@ -153,7 +152,6 @@ def _parse_unsuccessful_result(root: Element) -> WolframResult:
 
 
 def _parse_subpod(element: Element) -> SubPod:
-    """Parse one Wolfram subpod."""
     plaintext = element.find("plaintext")
     image = element.find("img")
     return SubPod(
@@ -173,7 +171,6 @@ def _should_ignore_pod(*, title: str, pod_id: str) -> bool:
 
 
 def _has_displayable_content(subpods: Sequence[SubPod]) -> bool:
-    """Return whether at least one subpod has text or an image URL."""
     return any(subpod.display_text or subpod.image_url for subpod in subpods)
 
 
@@ -210,7 +207,7 @@ async def _read_limited_response(
 
 
 class WolframClient:
-    """Async HTTP client for Wolfram Alpha v2 API."""
+    """Query Wolfram v2 with a supplied or context-managed HTTP session."""
 
     def __init__(
         self, app_id: str | None, session: aiohttp.ClientSession | None = None
@@ -224,13 +221,13 @@ class WolframClient:
         self._owns_session: Final[bool] = session is None
 
     async def __aenter__(self) -> Self:
-        """Enter async context manager."""
+        """Create a session only when the caller has not supplied one."""
         if self._owns_session:
             self._session = aiohttp.ClientSession()
         return self
 
     async def __aexit__(self, *args: object) -> None:
-        """Exit async context manager and cleanup resources."""
+        """Close the owned session; leave an injected session open."""
         if self._owns_session and self._session:
             await self._session.close()
 
@@ -245,7 +242,6 @@ class WolframClient:
 
         Raises:
             WolframAPIError: The request failed or the response is empty or too large.
-
         """
         params = {
             "appid": self.app_id,

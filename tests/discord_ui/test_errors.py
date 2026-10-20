@@ -196,7 +196,7 @@ class TestAppCommandErrors(unittest.IsolatedAsyncioTestCase):
 
         send.assert_awaited_once()
         kwargs = _feedback_kwargs(send)
-        self.assertEqual(kwargs["title"], "Discord Ошибка")
+        self.assertEqual(kwargs["title"], "Ошибка Discord")
         self.assertEqual(kwargs["error_info"], "DiscordException")
         self.assertNotIn("private Discord detail", str(kwargs))
 
@@ -216,7 +216,7 @@ class TestAppCommandErrors(unittest.IsolatedAsyncioTestCase):
 
         send.assert_awaited_once()
         kwargs = _feedback_kwargs(send)
-        self.assertEqual(kwargs["title"], "Discord Ошибка")
+        self.assertEqual(kwargs["title"], "Ошибка Discord")
         self.assertEqual(kwargs["delete_after"], 600)
         self.assertEqual(kwargs["error_info"], "Forbidden")
         self.assertTrue(kwargs["ephemeral"])

@@ -12,7 +12,7 @@ from types import MappingProxyType
 
 
 class AppearanceFeature(Flag):
-    """Independent visual capabilities for a later renderer."""
+    """Visual capabilities associated with a level tier."""
 
     NONE = 0
     BORDER_MOTION = 1
@@ -152,7 +152,7 @@ DEFAULT_BANDS = (
 
 @dataclass(frozen=True, slots=True)
 class LevelAppearance:
-    """Presentation metadata, not an Embed, role, permission or reward."""
+    """Tier, color and visual features selected for a level."""
 
     tier: LevelTier
     color: int

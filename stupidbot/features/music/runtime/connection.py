@@ -91,7 +91,7 @@ class _PlayerStatus:
 
 
 class ConnectionManager:
-    """Manages Lavalink node connections and Discord voice state."""
+    """Own Lavalink nodes and guild voice connections."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -587,14 +587,7 @@ class ConnectionManager:
         *,
         failure_context: str | None = None,
     ) -> MusicPlayer | None:
-        """Retrieve the music player for a guild.
-
-        Returns None if the guild is not connected or does not have a music player.
-
-        Returns:
-            MusicPlayer | None
-
-        """
+        """Return the guild's current usable music player, or None."""
         guild = self.bot.get_guild(guild_id)
         voice_client = guild.voice_client if guild is not None else None
         if isinstance(voice_client, MusicPlayer) and self.is_player_usable(

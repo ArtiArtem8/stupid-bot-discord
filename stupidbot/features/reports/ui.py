@@ -167,11 +167,7 @@ async def _remove_report_button(message: discord.Message | None) -> None:
 
 
 class ReportModal(Modal):
-    """Modal dialog for submitting bug reports.
-
-    Provides a text area for users to describe issues or bugs
-    they've encountered with the bot.
-    """
+    """Collect a report and confirm only after it has been committed."""
 
     def __init__(
         self,

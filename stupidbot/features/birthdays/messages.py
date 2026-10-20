@@ -18,7 +18,6 @@ class BirthdayMessages:
         )
 
     def title(self, *, guild: str) -> str:
-        """Label the server's birthday list."""
         return self.catalog.pgettext("title", "Birthdays on {guild}").format(
             guild=guild
         )
@@ -30,11 +29,9 @@ class BirthdayMessages:
         )
 
     def days_until(self, *, days: int) -> str:
-        """Format days remaining until a birthday."""
         return self.catalog.pgettext("days_until", "in {days:d} d.").format(days=days)
 
     def page(self, *, page: int) -> str:
-        """Label continuation fields."""
         return self.catalog.pgettext(
             "page", "Upcoming birthdays (page {page:d})"
         ).format(page=page)
@@ -52,7 +49,6 @@ class BirthdayMessages:
         ).format(mention=mention)
 
     def role(self, *, mention: str) -> str:
-        """Append the configured birthday role."""
         return self.catalog.pgettext("role", "\n- Role: {mention}").format(
             mention=mention
         )

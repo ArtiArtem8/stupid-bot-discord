@@ -96,7 +96,7 @@ def encode_webp(prepared: PreparedCard) -> bytes:
 
 
 class ProfileMediaRenderer:
-    """Own native resources and an uncancellable worker; the cache admits jobs."""
+    """Own native resources and rendering tasks; the cache controls admission."""
 
     def __init__(self, *, svg: SvgProfileRenderer | None = None) -> None:
         self.svg = svg
@@ -206,10 +206,9 @@ class ProfileMediaRenderer:
         if self._tasks:
             raise RenderBusyError("The profile renderer is busy; retry shortly")
 
-        async def work() -> ProfileMedia:
-            return await asyncio.to_thread(render)
-
-        task = asyncio.create_task(work(), name="voice-profile-render")
+        task = asyncio.create_task(
+            asyncio.to_thread(render), name="voice-profile-render"
+        )
         self._tasks.add(task)
 
         def completed(done: asyncio.Task[ProfileMedia]) -> None:

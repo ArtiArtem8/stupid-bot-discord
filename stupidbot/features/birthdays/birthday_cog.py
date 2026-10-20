@@ -33,17 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class BirthdayCog(BaseCog):
-    """Cog for birthday management and automatic congratulations.
-
-    Features:
-    - User birthday registration
-    - Automatic daily checks
-    - Birthday role management
-    - Birthday list display
-
-    Configuration:
-        Set BIRTHDAY_CHECK_INTERVAL in config for check frequency (seconds)
-    """
+    """Manage saved birthdays and own the periodic role and delivery checks."""
 
     def __init__(self, bot: commands.Bot, manager: BirthdayRepository) -> None:
         super().__init__(bot)

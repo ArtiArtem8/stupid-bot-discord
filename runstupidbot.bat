@@ -8,7 +8,6 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Verify that the virtual environment exists
 if not exist ".venv\Scripts\activate" (
     echo ERROR: Virtual environment not found.
     echo Please create a virtual environment in the .venv folder.
@@ -23,7 +22,6 @@ echo         Starting the application
 echo ==============================================
 echo.
 
-:: Activate the virtual environment
 echo Activating Python virtual environment...
 call ".venv\Scripts\activate"
 

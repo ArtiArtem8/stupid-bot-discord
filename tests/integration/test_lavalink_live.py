@@ -1,13 +1,7 @@
 """Opt-in checks for the pinned Mafic fork against a real Lavalink v4 node.
 
-Manual run::
-
-    RUN_LAVALINK_LIVE_TESTS=1 \
-    LAVALINK_LIVE_TRACK_QUERY="Never Gonna Give You Up" \
-    uv run pytest -m lavalink_live -q
-
-The Lavalink connection variables are read from ``stupidbot/settings.py``. The test
-uses generated client and guild IDs and does not require a Discord voice channel.
+See CONTRIBUTING.md for the opt-in environment variables and run commands.
+These tests use generated client and guild IDs; no Discord voice channel is needed.
 """
 
 from __future__ import annotations

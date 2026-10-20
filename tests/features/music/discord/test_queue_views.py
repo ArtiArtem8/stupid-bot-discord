@@ -486,8 +486,8 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(view.is_finished())
         edit.assert_awaited_once_with(view=None)
         followup.assert_awaited_once_with(
-            "Ничего из этого запроса уже не ожидает в очереди. "
-            "Возможно, треки уже запустились или очередь была изменена.",
+            "Треков из этого запроса больше нет в очереди. "
+            "Возможно, они уже запустились или очередь изменилась.",
             ephemeral=True,
         )
 

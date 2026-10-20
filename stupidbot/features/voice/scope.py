@@ -16,7 +16,7 @@ class TimeRange:
     end: datetime
 
     def __post_init__(self) -> None:
-        """Validate the value object invariants at construction."""
+        """Require aware bounds with positive duration."""
         require_aware(self.start)
         require_aware(self.end)
         if self.end <= self.start:
@@ -32,7 +32,7 @@ class VoiceScope:
     time_range: TimeRange | None = None
 
     def __post_init__(self) -> None:
-        """Validate the value object invariants at construction."""
+        """Require a guild when selecting a channel."""
         if self.channel_id is not None and self.guild_id is None:
             raise ValueError("Channel scope requires a guild")
 

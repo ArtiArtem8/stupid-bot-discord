@@ -177,7 +177,7 @@ msgstr "июня"
 
 msgctxt "command"
 msgid "List server birthdays, with the nearest first"
-msgstr "Список дней рождений на сервере, отсортированные по ближайшим"
+msgstr "Показать дни рождения на сервере, начиная с ближайших"
 
 msgctxt "month"
 msgid "March"
@@ -250,7 +250,7 @@ msgstr ""
 
 msgctxt "command"
 msgid "Show the response only to you"
-msgstr "Скрыть сообщение после выполнения"
+msgstr "Показать ответ только вам"
 
 msgctxt "ui"
 msgid "The date has already changed or been removed. Open a new confirmation."

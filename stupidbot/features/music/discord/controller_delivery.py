@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class UIOrchestrator:
-    """Orchestrates the creation of the Music UI Controller."""
+    """Choose a text channel and create controls for a playback attempt."""
 
     def __init__(
         self,
@@ -33,7 +33,7 @@ class UIOrchestrator:
     def _resolve_channel(
         self, player: MusicPlayer, attempt: PlaybackAttempt
     ) -> tuple[discord.abc.Messageable, TrackRequester] | None:
-        """Resolve the best messageable channel for a track."""
+        """Use the requester's channel or the session's most-used channel."""
         track = attempt.entry.track
         requester_info = attempt.entry.requester
         if not requester_info:

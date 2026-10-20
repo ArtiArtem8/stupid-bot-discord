@@ -132,6 +132,7 @@ up to a fixed cutoff under it. An unsafe tail causes a full rebuild while writer
 wait in the existing journal queue. Dirty state is never published as current.
 A derived failure cannot turn a successful commit into a failed journal write.
 
-Snapshots finish detached containers. Gap candidate windows restrict intersection
-work while retaining source metadata order; long or open gaps can still require
-broad scans. Shutdown drains the journal and analytics workers before closing SQL.
+Snapshots finalize copies of replay state without changing the live state.
+Gap candidate windows restrict intersection work while retaining source metadata
+order; long or open gaps can still require broad scans. Shutdown drains the journal
+and analytics workers before closing SQL.

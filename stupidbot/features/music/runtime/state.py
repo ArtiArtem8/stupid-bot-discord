@@ -20,7 +20,7 @@ class EmptyTimerInfo(TypedDict):
 
 
 class StateManager:
-    """Manages music sessions, history recording, and auto-leave timers."""
+    """Own music sessions, playback history, and auto-leave timers."""
 
     def __init__(self) -> None:
         self.sessions: dict[int, MusicSession] = {}
@@ -32,7 +32,9 @@ class StateManager:
         return self.sessions.get(guild_id)
 
     def get_or_create_session(self, guild_id: int) -> MusicSession:
-        return self.sessions.setdefault(guild_id, MusicSession(guild_id=guild_id))
+        if guild_id not in self.sessions:
+            self.sessions[guild_id] = MusicSession(guild_id=guild_id)
+        return self.sessions[guild_id]
 
     def end_session(self, guild_id: int) -> MusicSession | None:
         """Remove and return the session for a guild."""
@@ -50,7 +52,9 @@ class StateManager:
 
     def record_track_start(self, guild_id: int, attempt: PlaybackAttempt) -> None:
         self.get_or_create_session(guild_id)
-        self._track_start_times_dt.setdefault((guild_id, attempt.attempt_id), utcnow())
+        key = (guild_id, attempt.attempt_id)
+        if key not in self._track_start_times_dt:
+            self._track_start_times_dt[key] = utcnow()
 
     def record_history(
         self, guild_id: int, attempt: PlaybackAttempt, reason: mafic.EndReason
@@ -105,7 +109,7 @@ class StateManager:
     def get_expired_timers(
         self, timeout_duration: float
     ) -> list[tuple[int, str | None]]:
-        """Return list of (guild_id, reason) for expired timers."""
+        """Return expired guilds and reasons after a timeout measured in seconds."""
         expired: list[tuple[int, str | None]] = []
         current_time = time.monotonic()
         for guild_id, info in self.empty_channel_timers.items():

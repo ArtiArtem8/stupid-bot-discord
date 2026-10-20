@@ -34,7 +34,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 
 
-# --- Bot schema ---
+# --- Prefix messages ---
 BOT_PREFIX = "s!"  # Prefix messages receive slash-command guidance.
 
 
@@ -46,20 +46,20 @@ ENCODING = "utf-8"
 VOICE_PROFILE_TIMEZONE = os.getenv("VOICE_PROFILE_TIMEZONE", "UTC")
 
 
-# --- Cog settings ---
-# stupidbot/app/cli.py
+# --- Feature settings ---
+# Uptime
 AUTOSAVE_UPTIME_INTERVAL = 1800  # seconds (30 minutes)
 DISCONNECT_TIMER_THRESHOLD = 3600  # seconds (1 hour)
 
-# birthday_cog.py
+# Birthdays
 BIRTHDAY_CHECK_INTERVAL = 300  # seconds (5 minutes)
 
-# music_cog.py
+# Music
 MUSIC_AUTO_LEAVE_CHECK_INTERVAL = 60  # seconds (1 minute)
 MUSIC_AUTO_LEAVE_TIMEOUT = 900  # seconds (15 minutes)
 MUSIC_DEFAULT_VOLUME = 10  # percentage (10%)
 
-# wolfram_cog.py
+# Wolfram
 # https://developer.wolframalpha.com/access
 WOLFRAM_API_URL = "https://api.wolframalpha.com/v2/query"
 WOLFRAM_MAX_QUERY_LEN = 200
@@ -79,7 +79,7 @@ FUZZY_THRESHOLD_DEFAULT = 90
 FUZZY_MATCH_LIMIT = 10
 """Maximum number of fuzzy search results to return."""
 
-# ask_cog.py
+# Questions
 MAX_ANSWER_SAMPLE_SIZE = 8
 """Maximum number of answer samples to consider."""
 

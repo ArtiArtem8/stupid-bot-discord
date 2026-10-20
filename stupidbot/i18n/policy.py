@@ -46,7 +46,7 @@ def resolve_context(
     locale: str | None,
     fallback_timezone: ZoneInfo,
 ) -> PresentationContext:
-    """Resolve an audience selected by the caller; never infer a new installation.
+    """Resolve language and timezone for the audience selected by the caller.
 
     Personal and guild preferences are deliberately not merged. Only None
     resets an override; malformed timezone identifiers propagate as errors.

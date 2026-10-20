@@ -300,7 +300,7 @@ def bind_design(
     template: Path,
     raster: NativeRasterizer,
 ) -> BoundDesign:
-    """Bind and measure approved artwork without changing domain policy."""
+    """Bind profile values and measure the resulting artwork."""
     original = template.read_bytes()
     root, nodes = check_template(original)
     for index, node in enumerate(root.iter()):

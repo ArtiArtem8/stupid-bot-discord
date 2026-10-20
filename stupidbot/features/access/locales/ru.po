@@ -45,7 +45,7 @@ msgstr "Блокировка"
 
 msgctxt "command"
 msgid "Block a user from using the bot"
-msgstr "Заблокировать пользователя от использования бота."
+msgstr "Запретить пользователю пользоваться ботом."
 
 #, python-brace-format
 msgctxt "list_title"
@@ -132,7 +132,7 @@ msgstr "Разблокировка"
 
 msgctxt "command"
 msgid "Unblock a user from using the bot"
-msgstr "Снять блокировку использования бота с пользователя."
+msgstr "Снять запрет на использование бота."
 
 #, python-brace-format
 msgctxt "departed"
