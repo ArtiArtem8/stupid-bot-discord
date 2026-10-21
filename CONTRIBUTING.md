@@ -2,6 +2,10 @@
 
 ## Setup
 
+For a first run with your own Discord application, follow
+[INSTALLATION.md](INSTALLATION.md). Development uses the same configuration and
+prepared database, with the development dependencies and hooks added:
+
 ```bash
 uv sync --locked
 uv run --locked prek install --force
@@ -34,12 +38,11 @@ voice separates facts and analytics, `discord/`, and `profile/rendering/`.
 SVG assets live beside their renderer; bundled fonts live in `stupidbot/assets/`.
 Tests follow the same owners under `tests/features/`, `tests/app/`,
 `tests/discord_ui/`, `tests/common/`, and `tests/storage/`.
+Catalog maintenance lives in [tools/catalogs.py](tools/catalogs.py).
 
-Add each extension once to `stupidbot/app/extensions.py`. Folder scanning no
-longer registers cogs. Imported modules and assets still require a restart.
-`main.py` remains a supported clone-and-run entry; `python -m stupidbot` invokes
-the same CLI. SQLite maintenance uses `python -m stupidbot.storage`; the previous
-`python -m repositories.sqlite` entry remains a thin compatibility command.
+Add each extension once to `stupidbot/app/extensions.py`. Changes to imported
+modules and assets require a restart. `main.py` and `python -m stupidbot` invoke
+the same CLI. SQLite maintenance uses `python -m stupidbot.storage`.
 
 Translations live in each owner's `locales/` directory. Runtime uses stdlib
 gettext; Babel is a development dependency. Use readable English `msgid` text
@@ -47,7 +50,6 @@ and stable English `msgctxt` values describing meaning, not filenames or classes
 English translations equal their source text; Russian and Korean translations
 live in `ru.po` and `ko.po`. Korean uses one plural form. Keep catalog creation
 and revision dates explicit so compilation is reproducible.
-This source convention does not change the Russian audience fallback.
 Translate complete phrases, with plural forms for counts and named placeholders
 for values; keep user content, external answers and technical identifiers intact.
 Parameterized messages have typed methods in the owner's `messages.py`.
@@ -81,8 +83,6 @@ selected user/guild override, then that audience's Discord locale, then Russian.
 Gateway DM messages have no locale, so they use the personal override or Russian.
 The single bot-wide uptime presence stays Russian because Discord provides no
 per-guild audience for it. Birthday scheduling still uses the host calendar.
-Before an existing deployment adopts the new policy, follow the
-[guild inventory and explicit seeding procedure](docs/storage/README.md#backup-restore-and-rollback).
 
 ## Full Check
 
@@ -99,6 +99,49 @@ The full check runs pytest in up to six processes with `--dist worksteal`.
 
 Set `PREK_CONCURRENT_HOOKS=1` and `PYTEST_XDIST_AUTO_NUM_WORKERS=1` on machines
 with limited resources.
+
+## Optional integration checks
+
+The normal suite does not require a live Discord application, Lavalink server or
+Wolfram account. Two opt-in tests under `tests/integration/` exercise real external
+services. Run them against your own test configuration:
+
+| Check | Configuration | What it verifies |
+| --- | --- | --- |
+| Lavalink | `LAVALINK_*` from `.env`, plus `LAVALINK_LIVE_TRACK_QUERY` | A v4 connection, track loading and playback-attempt `userData` through the player API. No Discord voice channel is required. |
+| Wolfram | `WOLFRAM_APP_ID` | A real plot request, image download and bounded WebP processing. This uses the account's API allowance. |
+
+For Lavalink on Linux:
+
+```sh
+RUN_LAVALINK_LIVE_TESTS=1 LAVALINK_LIVE_TRACK_QUERY="Never Gonna Give You Up" uv run --locked pytest -q tests/integration/test_lavalink_live.py
+```
+
+In PowerShell:
+
+```powershell
+$env:RUN_LAVALINK_LIVE_TESTS = '1'
+$env:LAVALINK_LIVE_TRACK_QUERY = 'Never Gonna Give You Up'
+uv run --locked pytest -q tests/integration/test_lavalink_live.py
+Remove-Item Env:RUN_LAVALINK_LIVE_TESTS, Env:LAVALINK_LIVE_TRACK_QUERY
+```
+
+The default search type is `ytsearch`. Use `LAVALINK_LIVE_SEARCH_TYPE` for a
+different configured source. The test creates and removes an ephemeral Lavalink
+player through its HTTP API.
+
+For Wolfram on Linux:
+
+```sh
+RUN_WOLFRAM_LIVE_TESTS=1 uv run --locked pytest -q tests/integration/test_wolfram_live.py
+```
+
+In PowerShell, set `$env:RUN_WOLFRAM_LIVE_TESTS = '1'`, run
+`uv run --locked pytest -q tests/integration/test_wolfram_live.py`, then remove the flag with
+`Remove-Item Env:RUN_WOLFRAM_LIVE_TESTS`.
+
+For real Inkscape rendering without Discord, use the
+[native profile check](docs/voice/profile-card.md#native-check).
 
 ## Commit Messages
 

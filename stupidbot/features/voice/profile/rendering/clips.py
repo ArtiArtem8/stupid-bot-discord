@@ -24,7 +24,7 @@ class AuthoredClip:
 
 
 def load_clips(directory: Path, design: BoundDesign) -> tuple[AuthoredClip, ...]:
-    """Load approved anchored PNG sequences with bounded decoded memory."""
+    """Load PNG sequences at SVG anchors within the decoded-memory limit."""
     manifest = directory / "clips.json"
     if not manifest.exists():
         return ()

@@ -32,7 +32,11 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
         ):
             try:
                 await bot.setup_hook()
-                for loop in (bot.autosave_task, bot.update_activity_task):
+                for loop in (
+                    bot.autosave_task,
+                    bot.update_activity_task,
+                    bot.health_task,
+                ):
                     self.assertIsNotNone(loop.get_task())
                     self.assertTrue(loop.is_running())
                 loader.start_watcher.assert_called_once()
@@ -42,7 +46,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
         sync.assert_awaited_once()
         loader.close.assert_awaited_once()
         self.assertTrue(bot.is_closed())
-        for loop in (bot.autosave_task, bot.update_activity_task):
+        for loop in (bot.autosave_task, bot.update_activity_task, bot.health_task):
             task = loop.get_task()
             self.assertIsNotNone(task)
             if task is not None:
@@ -55,6 +59,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(bot.is_closed())
         self.assertIsNone(bot.autosave_task.get_task())
         self.assertIsNone(bot.update_activity_task.get_task())
+        self.assertIsNone(bot.health_task.get_task())
 
     async def test_partial_startup_failure_still_closes_loaded_resources(self) -> None:
         loader = MagicMock(spec=CogLoader)
@@ -97,6 +102,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
                         self.assertTrue(bot.is_closed())
                         self.assertIsNone(bot.autosave_task.get_task())
                         self.assertIsNone(bot.update_activity_task.get_task())
+                        self.assertIsNone(bot.health_task.get_task())
                         loader.start_watcher.assert_not_called()
                         if stage == "load":
                             sync.assert_not_awaited()
@@ -104,7 +110,11 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
                     finally:
                         release.set()
                         await asyncio.gather(startup, return_exceptions=True)
-                        for loop in (bot.autosave_task, bot.update_activity_task):
+                        for loop in (
+                            bot.autosave_task,
+                            bot.update_activity_task,
+                            bot.health_task,
+                        ):
                             loop.cancel()
                             if task := loop.get_task():
                                 await asyncio.gather(task, return_exceptions=True)
@@ -162,6 +172,7 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
                     self.assertTrue(bot.is_closed())
                     self.assertIsNone(bot.autosave_task.get_task())
                     self.assertIsNone(bot.update_activity_task.get_task())
+                    self.assertIsNone(bot.health_task.get_task())
                     loader.start_watcher.assert_not_called()
                     if stage == "load":
                         sync.assert_not_awaited()
@@ -183,7 +194,11 @@ class TestBotShutdown(unittest.IsolatedAsyncioTestCase):
                 sync.assert_not_awaited()
                 loader.start_watcher.assert_not_called()
             finally:
-                for loop in (bot.autosave_task, bot.update_activity_task):
+                for loop in (
+                    bot.autosave_task,
+                    bot.update_activity_task,
+                    bot.health_task,
+                ):
                     loop.cancel()
                     if task := loop.get_task():
                         await asyncio.gather(task, return_exceptions=True)

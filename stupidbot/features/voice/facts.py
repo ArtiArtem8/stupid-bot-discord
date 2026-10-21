@@ -29,8 +29,8 @@ class VoiceStateSnapshot:
 
     A known null channel is a leave. An unresolved cache channel instead has
     channel_known=False. Humans, bots and unresolved members share this model.
-    requested_to_speak_at is a timestamp when available; None does not invent a
-    timestamp for legacy raised-hand booleans, which requested_to_speak preserves.
+    requested_to_speak_at holds the timestamp when available. Legacy raised-hand
+    booleans use requested_to_speak without a timestamp.
     """
 
     user_id: int
@@ -50,7 +50,7 @@ class VoiceStateSnapshot:
     requested_to_speak: bool | None = None
 
     def __post_init__(self) -> None:
-        """Validate the value object invariants at construction."""
+        """Validate IDs and keep raised-hand state consistent with its timestamp."""
         if self.user_id <= 0 or (self.channel_id is not None and self.channel_id <= 0):
             raise ValueError("Discord IDs must be positive")
         if self.requested_to_speak_at is not None:
@@ -79,7 +79,7 @@ class VoiceSnapshot:
     authoritative: bool = True
 
     def __post_init__(self) -> None:
-        """Validate the value object invariants at construction."""
+        """Require unique users and known channels for authoritative snapshots."""
         if len({state.user_id for state in self.states}) != len(self.states):
             raise ValueError("A snapshot cannot repeat a user")
         if self.authoritative and any(not state.channel_known for state in self.states):
@@ -101,7 +101,7 @@ class ObservationGap:
     known_bounds: bool = True
 
     def __post_init__(self) -> None:
-        """Validate the value object invariants at construction."""
+        """Require aware, chronologically ordered gap bounds."""
         require_aware(self.started_at)
         if self.ended_at is not None:
             require_aware(self.ended_at)
@@ -138,7 +138,7 @@ class VoiceJournalRecord:
     guild_id: int | None = None
 
     def __post_init__(self) -> None:
-        """Validate the value object invariants at construction."""
+        """Require a boot identity, finite clocks and consistent guild scope."""
         require_aware(self.observed_at)
         if not isfinite(self.monotonic):
             raise ValueError("Monotonic time must be finite")

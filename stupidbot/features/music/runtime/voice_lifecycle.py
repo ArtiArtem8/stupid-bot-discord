@@ -296,12 +296,18 @@ class VoiceLifecycleHandlers:
                 guild_id,
             )
         finally:
-            current_task = asyncio.current_task()
-            if self._voice_transition_validation_tasks.get(guild_id) is current_task:
-                self._voice_transition_validation_tasks.pop(guild_id, None)
-                self._transition_heal_players.pop(guild_id, None)
-                if self._recent_voice_transitions.get(guild_id) == transition_at:
-                    self._recent_voice_transitions.pop(guild_id, None)
+            self._release_voice_transition_validation(guild_id, transition_at)
+
+    def _release_voice_transition_validation(
+        self, guild_id: int, transition_at: float | None
+    ) -> None:
+        """Leave a newer validation task's state intact."""
+        current_task = asyncio.current_task()
+        if self._voice_transition_validation_tasks.get(guild_id) is current_task:
+            self._voice_transition_validation_tasks.pop(guild_id, None)
+            self._transition_heal_players.pop(guild_id, None)
+            if self._recent_voice_transitions.get(guild_id) == transition_at:
+                self._recent_voice_transitions.pop(guild_id, None)
 
     async def _recover_failed_voice_transition(self, player: MusicPlayer) -> None:
         guild_id = player.guild.id
@@ -438,26 +444,36 @@ class VoiceLifecycleHandlers:
             return True
 
         if before.channel is not None and before.channel != after.channel:
-            self._recent_voice_transitions[guild_id] = time.monotonic()
-            validation_task = self._voice_transition_validation_tasks.get(guild_id)
-            voice_client = member.guild.voice_client
-            if (
-                validation_task is not None
-                and not validation_task.done()
-                and isinstance(voice_client, MusicPlayer)
-            ):
-                self._schedule_voice_transition_validation(guild_id, voice_client)
-            logger.info(
-                "Bot moved from %s to %s in guild %s. Continuing playback.",
-                before.channel.name,
-                after.channel.name,
-                guild_id,
+            await self._handle_bot_voice_move(
+                member.guild, before.channel, after.channel
             )
-            if self.state.is_timer_active(guild_id):
-                await self._update_channel_timer(guild_id, after.channel)
             return True
 
         return False
+
+    async def _handle_bot_voice_move(
+        self,
+        guild: discord.Guild,
+        before: discord.VoiceChannel | discord.StageChannel,
+        after: discord.VoiceChannel | discord.StageChannel,
+    ) -> None:
+        guild_id = guild.id
+        self._recent_voice_transitions[guild_id] = time.monotonic()
+        validation_task = self._voice_transition_validation_tasks.get(guild_id)
+        voice_client = guild.voice_client
+        if (
+            validation_task is not None
+            and not validation_task.done()
+            and isinstance(voice_client, MusicPlayer)
+        ):
+            self._schedule_voice_transition_validation(guild_id, voice_client)
+        logger.info(
+            "Bot moved from %s to %s in guild %s. Continuing playback.",
+            before.name,
+            after.name,
+            guild_id,
+        )
+        await self._update_channel_timer(guild_id, after)
 
     async def _cleanup_after_disconnect(
         self,

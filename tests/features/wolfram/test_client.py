@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from collections.abc import AsyncIterator
+from threading import get_ident
 from typing import Any, Self, override
 from unittest.mock import MagicMock, patch
 
@@ -49,12 +50,10 @@ class _Response:
         *,
         chunks: tuple[bytes | BaseException, ...] = (),
         content_length: int | None = None,
-        text: str = "",
         error: BaseException | None = None,
     ) -> None:
         self.content = _ContentStream(chunks)
         self.content_length = content_length
-        self._text = text
         self._error = error
 
     async def __aenter__(self) -> Self:
@@ -66,9 +65,6 @@ class _Response:
     def raise_for_status(self) -> None:
         if self._error:
             raise self._error
-
-    async def text(self) -> str:
-        return self._text
 
 
 class _Session:
@@ -129,7 +125,7 @@ class TestWolframParsing(unittest.TestCase):
             with self.subTest(description=description):
                 self.assertEqual(format_math_text(text), expected)
 
-    def _assert_invalid_xml(self, xml: str) -> None:
+    def _assert_invalid_xml(self, xml: str | bytes) -> None:
         result = self.client._parse_xml(xml)
 
         self.assertFalse(result.success)
@@ -143,6 +139,19 @@ class TestWolframParsing(unittest.TestCase):
                 "entity declaration",
                 "<!DOCTYPE queryresult [<!ENTITY injected 'unsafe'>]>"
                 '<queryresult success="true">&injected;</queryresult>',
+            ),
+            (
+                "unknown byte encoding",
+                b'<?xml version="1.0" encoding="unknown"?><queryresult/>',
+            ),
+            (
+                "unsupported byte encoding",
+                b'<?xml version="1.0" encoding="utf-32"?><queryresult/>',
+            ),
+            (
+                "malformed encoded text",
+                b'<?xml version="1.0" encoding="utf-8"?>'
+                b"<queryresult>\xff</queryresult>",
             ),
         )
 
@@ -330,7 +339,7 @@ class TestWolframHTTP(unittest.IsolatedAsyncioTestCase):
         return WolframClient("test-app-id", session=session_argument), session
 
     async def test_query_builds_expected_request(self) -> None:
-        response = _Response(text='<queryresult success="false"/>')
+        response = _Response(chunks=(b'<queryresult success="false"/>',))
         client, session = self._client(response)
 
         with patch.object(config, "WOLFRAM_HTTP_TIMEOUT_SECONDS", 17):
@@ -355,6 +364,133 @@ class TestWolframHTTP(unittest.IsolatedAsyncioTestCase):
         timeout = arguments["timeout"]
         self.assertIsInstance(timeout, aiohttp.ClientTimeout)
         self.assertEqual(timeout.total, 17)
+
+    async def test_query_rejects_declared_oversize_before_reading_or_parsing(
+        self,
+    ) -> None:
+        response = _Response(chunks=(b"unread body",), content_length=33)
+        client, _ = self._client(response)
+        with (
+            patch.object(config, "WOLFRAM_XML_MAX_RESPONSE_BYTES", 32),
+            patch.object(client, "_parse_xml", wraps=client._parse_xml) as parse,
+            self.assertRaisesRegex(
+                WolframAPIError, "^Wolfram response exceeds the size limit$"
+            ),
+        ):
+            await client.query("solve x")
+        self.assertFalse(response.content.iterated)
+        parse.assert_not_called()
+
+    async def test_query_limits_streamed_bytes_even_with_understated_length(
+        self,
+    ) -> None:
+        for declared_length in (None, 1):
+            with self.subTest(content_length=declared_length):
+                response = _Response(
+                    chunks=(b"a" * 20, b"b" * 13, AssertionError("read after limit")),
+                    content_length=declared_length,
+                )
+                client, _ = self._client(response)
+                with (
+                    patch.object(config, "WOLFRAM_XML_MAX_RESPONSE_BYTES", 32),
+                    patch.object(
+                        client, "_parse_xml", wraps=client._parse_xml
+                    ) as parse,
+                    self.assertRaisesRegex(WolframAPIError, "exceeds the size limit"),
+                ):
+                    await client.query("solve x")
+                parse.assert_not_called()
+
+    async def test_query_accepts_valid_xml_at_the_exact_byte_limit(self) -> None:
+        xml = b'<queryresult success="true"/>'
+        for declared_length in (None, len(xml)):
+            with self.subTest(content_length=declared_length):
+                response = _Response(
+                    chunks=(xml[:10], xml[10:]), content_length=declared_length
+                )
+                client, _ = self._client(response)
+                with patch.object(config, "WOLFRAM_XML_MAX_RESPONSE_BYTES", len(xml)):
+                    result = await client.query("solve x")
+                self.assertTrue(result.success)
+
+    async def test_query_rejects_empty_xml_before_parsing(self) -> None:
+        client, _ = self._client(_Response())
+        with (
+            patch.object(client, "_parse_xml", wraps=client._parse_xml) as parse,
+            self.assertRaisesRegex(WolframAPIError, "^Wolfram response is empty$"),
+        ):
+            await client.query("solve x")
+        parse.assert_not_called()
+
+    async def test_query_parses_declared_encoding_in_a_worker_thread(self) -> None:
+        xml = (
+            b'<?xml version="1.0" encoding="iso-8859-1"?>'
+            b'<queryresult success="true"><pod title="Result" id="Result">'
+            b"<subpod><plaintext>caf\xe9</plaintext></subpod></pod></queryresult>"
+        )
+        client, _ = self._client(_Response(chunks=(xml,)))
+        parse = client._parse_xml
+        parser_threads: list[int] = []
+
+        def parse_in_worker(payload: str | bytes) -> WolframResult:
+            parser_threads.append(get_ident())
+            return parse(payload)
+
+        with patch.object(client, "_parse_xml", side_effect=parse_in_worker):
+            result = await client.query("solve x")
+        self.assertEqual(result.pods[0].get_joined_text(), "caf\u00e9")
+        self.assertEqual(len(parser_threads), 1)
+        self.assertNotEqual(parser_threads[0], get_ident())
+
+    async def test_query_cancellation_during_body_read_does_not_parse(self) -> None:
+        client, _ = self._client(_Response(chunks=(asyncio.CancelledError(),)))
+        with (
+            patch.object(client, "_parse_xml", wraps=client._parse_xml) as parse,
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await client.query("solve x")
+        parse.assert_not_called()
+
+    async def test_query_preserves_safe_xml_validation_through_http(self) -> None:
+        for xml in (
+            b'<queryresult success="true"><pod>',
+            b'<!DOCTYPE queryresult><queryresult success="true"/>',
+            b'<!DOCTYPE queryresult [<!ENTITY unsafe "value">]>'
+            b'<queryresult success="true">&unsafe;</queryresult>',
+        ):
+            with self.subTest(xml=xml):
+                client, _ = self._client(_Response(chunks=(xml,)))
+                result = await client.query("solve x")
+                self.assertFalse(result.success)
+                self.assertEqual(result.error_msg, "Invalid XML response")
+
+    async def test_query_failure_logs_exclude_sensitive_request_details(self) -> None:
+        private_url = "https://example.invalid/?appid=private-key&input=private-query"
+        for error in (
+            aiohttp.ClientResponseError(
+                request_info=MagicMock(real_url=private_url), history=(), status=429
+            ),
+            aiohttp.ClientResponseError(
+                request_info=MagicMock(real_url=private_url), history=(), status=500
+            ),
+            aiohttp.ClientError(private_url),
+            TimeoutError(private_url),
+        ):
+            with self.subTest(
+                error=type(error).__name__, status=getattr(error, "status", None)
+            ):
+                client, _ = self._client(_Response(error=error))
+                with (
+                    self.assertLogs(
+                        "stupidbot.features.wolfram.client", level="WARNING"
+                    ) as logs,
+                    self.assertRaises(WolframAPIError),
+                ):
+                    await client.query("private-query")
+                self.assertEqual(len(logs.records), 1)
+                self.assertNotIn("private-key", logs.output[0])
+                self.assertNotIn("private-query", logs.output[0])
+                self.assertIsNone(logs.records[0].exc_info)
 
     async def test_query_429_has_specific_error_without_retry(self) -> None:
         client, session = self._client(_Response(error=_client_response_error(429)))

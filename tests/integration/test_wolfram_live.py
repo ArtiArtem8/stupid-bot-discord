@@ -1,10 +1,6 @@
 """Opt-in smoke test for the Wolfram plot pipeline.
 
-Manual run::
-
-    RUN_WOLFRAM_LIVE_TESTS=1 \
-    WOLFRAM_APP_ID="$WOLFRAM_APP_ID" \
-    uv run pytest -m wolfram_live -q
+See CONTRIBUTING.md for the opt-in environment variables and run commands.
 """
 
 from __future__ import annotations

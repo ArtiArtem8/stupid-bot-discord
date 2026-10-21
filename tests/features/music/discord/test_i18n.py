@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 import discord
 
 from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.errors import handle_app_command_error
+from stupidbot.discord_ui.exceptions import CommandFeedbackError
 from stupidbot.discord_ui.feedback import FeedbackUI
 from stupidbot.features.music.contracts import TrackExceptionPayload
 from stupidbot.features.music.discord.music_cog import MusicCog
@@ -199,17 +201,32 @@ class TestMusicPresentationAdmission(unittest.IsolatedAsyncioTestCase):
         ):
             with self.subTest(healing=healing, command=command):
                 request = interaction()
+                voice_channel = MagicMock(spec=discord.VoiceChannel, id=20)
+                request.user = MagicMock(
+                    spec=discord.Member,
+                    id=10,
+                    voice=MagicMock(channel=voice_channel),
+                    guild_permissions=discord.Permissions.none(),
+                )
+                request.guild.voice_client = MagicMock(channel=voice_channel)
                 request.client.preferences_repository = self.repository
                 request.command = MagicMock()
                 request.command.name = command
                 self.service.voice_lifecycle.is_healing.return_value = healing
                 self.repository.get.reset_mock()
                 with patch.object(FeedbackUI, "send", new=AsyncMock()) as send:
-                    self.assertEqual(await self.cog.interaction_check(request), allowed)
+                    if allowed:
+                        self.assertTrue(await self.cog.interaction_check(request))
+                    else:
+                        with self.assertRaises(CommandFeedbackError) as raised:
+                            await self.cog.interaction_check(request)
+                        send.assert_not_awaited()
+                        await handle_app_command_error(request, raised.exception)
                 if allowed:
                     self.repository.get.assert_not_awaited()
                     send.assert_not_awaited()
                 else:
+                    send.assert_awaited_once()
                     self.repository.get.assert_awaited_once_with(
                         PreferenceScope.USER, 10
                     )

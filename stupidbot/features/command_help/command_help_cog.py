@@ -50,7 +50,7 @@ class PrefixBlockerCog(commands.Cog):
         return False
 
     def _get_visible_commands(self, message: Message) -> list[Command]:
-        """Filter commands based on context (Guild/DM) and Permissions (Admin)."""
+        """Hide guild-only commands in DMs and admin commands from other users."""
         visible: list[Command] = []
         is_guild = message.guild is not None
 
@@ -70,10 +70,7 @@ class PrefixBlockerCog(commands.Cog):
     async def _get_app_command_map(
         self, guild_id: int | None
     ) -> dict[str, app_commands.AppCommand]:
-        """Fetch current AppCommands.
-
-        Cached to avoid extra HTTP traffic.
-        """
+        """Cache registered commands for ten minutes, with guild overrides."""
         async with self._lock:
             now = time.time()
             ttl = 600

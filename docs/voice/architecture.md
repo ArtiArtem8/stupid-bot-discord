@@ -38,9 +38,7 @@ and AFK status. Unknown fields remain `None`. A known null channel means leave;
 `channel_known=False` means the channel is unresolved.
 
 A raw requested-to-speak timestamp means `True`, explicit null means `False`,
-and an absent field stays unknown. The offline importer maps earlier records
-without the explicit boolean to unknown; a null timestamp alone cannot establish
-`False`.
+and an absent field stays unknown.
 AFK comes from the channel ID and available guild AFK configuration; without that
 configuration it stays unknown.
 
@@ -104,14 +102,11 @@ Activity arithmetic uses elapsed UTC seconds, while hour, weekday and date
 buckets use the requested timezone, default UTC. Repeated DST hours accumulate
 in one bucket; skipped hours receive no time.
 
-## Retention and older records
+## Retention
 
-SQLite facts are retained indefinitely. The one-shot importer reads the original
-and v2 JSONL/gzip formats
-from offline copies; it rejects conflicting alternate files and unknown schemas.
-Legacy events map to observations, presence maps to snapshots and heartbeats to
-checkpoints. Missing population/flags remain unknown. Resume/drop/clock/drift
-markers map to conservative gaps. The original files remain untouched. See [storage operations](../../docs/storage/README.md).
+SQLite facts are retained indefinitely. See
+[imported voice records](../../LEGACY.md#imported-voice-records) for offline
+JSONL/gzip conversion.
 
 ## Discord integration
 
@@ -137,6 +132,7 @@ up to a fixed cutoff under it. An unsafe tail causes a full rebuild while writer
 wait in the existing journal queue. Dirty state is never published as current.
 A derived failure cannot turn a successful commit into a failed journal write.
 
-Snapshots finish detached containers. Gap candidate windows restrict intersection
-work while retaining source metadata order; long or open gaps can still require
-broad scans. Shutdown drains the journal and analytics workers before closing SQL.
+Snapshots finalize copies of replay state without changing the live state.
+Gap candidate windows restrict intersection work while retaining source metadata
+order; long or open gaps can still require broad scans. Shutdown drains the journal
+and analytics workers before closing SQL.

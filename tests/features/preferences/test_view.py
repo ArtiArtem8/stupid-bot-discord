@@ -10,7 +10,6 @@ from zoneinfo import ZoneInfo
 
 import discord
 
-from stupidbot.features.preferences import view as view_module
 from stupidbot.features.preferences.models import Preferences, PreferenceScope
 from stupidbot.features.preferences.preferences_cog import open_settings
 from stupidbot.features.preferences.repository import PreferencesRepository
@@ -253,14 +252,11 @@ class SettingsViewTests(IsolatedAsyncioTestCase):
     ) -> None:
         modal = TimezoneModal(self.view)
         self.addCleanup(modal.stop)
-        with (
-            patch.object(view_module, "check_component_access", return_value=True),
-            patch.object(
-                discord.ui.TextInput,
-                "value",
-                new_callable=PropertyMock,
-                return_value="Bad/Zone",
-            ),
+        with patch.object(
+            discord.ui.TextInput,
+            "value",
+            new_callable=PropertyMock,
+            return_value="Bad/Zone",
         ):
             request = interaction()
             await modal.on_submit(request)

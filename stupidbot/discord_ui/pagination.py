@@ -1,5 +1,5 @@
 from collections.abc import Awaitable, Callable
-from typing import Any, Protocol, Self, override
+from typing import Protocol, Self, override
 
 import discord
 from discord import Interaction
@@ -84,16 +84,24 @@ class ManagedView(discord.ui.View):
         self,
         interaction: Interaction,
         *,
+        embed: discord.Embed,
         ephemeral: bool = False,
         silent: bool = False,
-        **kwargs: Any,  # pyright: ignore[reportExplicitAny, reportAny]
     ) -> None:
         """Send the view and track the message."""
+        if (
+            interaction.response.type
+            is discord.InteractionResponseType.deferred_channel_message
+        ):
+            self._message = await interaction.edit_original_response(
+                view=self, embed=embed
+            )
+            return
         response = await interaction.response.send_message(
             view=self,
+            embed=embed,
             ephemeral=ephemeral,
             silent=silent,
-            **kwargs,  # pyright: ignore[reportAny]
         )
         if isinstance(response.resource, discord.InteractionMessage):
             self._message = response.resource
@@ -115,6 +123,9 @@ class BasePaginator(ManagedView):
         self.data = data
         self.page = 0
         self._user_id = user_id
+        self.first_btn: CallbackButton[Self] | None = None
+        self.last_btn: CallbackButton[Self] | None = None
+        self.close_btn: CallbackButton[Self] | None = None
 
         self._setup_buttons(show_first_last, show_close)
 
@@ -171,9 +182,9 @@ class BasePaginator(ManagedView):
         is_last_page = self.page >= total_pages - 1
         disable_nav = total_pages <= 1
 
-        if hasattr(self, "first_btn"):
+        if self.first_btn is not None:
             self.first_btn.disabled = is_first_page or disable_nav
-        if hasattr(self, "last_btn"):
+        if self.last_btn is not None:
             self.last_btn.disabled = is_last_page or disable_nav
 
         self.prev_btn.disabled = is_first_page or disable_nav
@@ -226,15 +237,14 @@ class BasePaginator(ManagedView):
         self,
         interaction: Interaction,
         *,
+        embed: discord.Embed | None = None,
         ephemeral: bool = False,
         silent: bool = False,
-        **kwargs: Any,  # pyright: ignore[reportExplicitAny, reportAny]
     ) -> None:
         """Send the paginated message."""
         await super().send(
             interaction,
-            embed=self.make_embed(),
+            embed=embed if embed is not None else self.make_embed(),
             ephemeral=ephemeral,
             silent=silent,
-            **kwargs,
         )

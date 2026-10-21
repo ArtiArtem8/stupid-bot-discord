@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, override
 
 import discord
 import mafic
-from mafic.typings.incoming import PlayerUpdateState
+from mafic.typings.incoming import EventPayload, PlayerUpdateState
 
 from stupidbot.features.music.playback.models import (
     PLAYBACK_USER_DATA_KEY,
@@ -84,6 +84,35 @@ class MusicPlayer(mafic.Player[discord.Client]):
         self._exception_attempt_ids: set[int] = set()
         self._transition_lock = asyncio.Lock()
         self._is_stale = False
+        self._restore_entry: QueueEntry | None = None
+        self._finished_restore_attempt: PlaybackAttempt | None = None
+        self._unreported_restore_end: TrackEndOutcome | None = None
+
+    @property
+    def finished_restore_attempt(self) -> PlaybackAttempt | None:
+        """Return the exact restored attempt that naturally ended on Lavalink."""
+        return self._finished_restore_attempt
+
+    @override
+    def dispatch_event(self, data: EventPayload) -> None:
+        """Observe restored completion before Mafic clears its transport state."""
+        if data["type"] == "TrackEndEvent" and data["reason"] in (
+            "finished",
+            "FINISHED",
+        ):
+            track = data.get("track")
+            token = (
+                track.get("userData", {}).get(PLAYBACK_USER_DATA_KEY) if track else None
+            )
+            attempt = self._current_attempt
+            if (
+                attempt is not None
+                and attempt.entry is self._restore_entry
+                and attempt.event_token == token
+                and self._finished_restore_attempt is None
+            ):
+                self._finished_restore_attempt = attempt
+        super().dispatch_event(data)
 
     @property
     def current_attempt(self) -> PlaybackAttempt | None:
@@ -356,33 +385,74 @@ class MusicPlayer(mafic.Player[discord.Client]):
     ) -> TrackEndOutcome:
         """Classify one Mafic end event and perform any required transition."""
         async with self._transition_lock:
-            if self._is_stale:
-                return TrackEndOutcome(None, None, True)
-            old_queue = self.queue.snapshot()
-            old_pending = self._pending_end_attempts.copy()
-            old_current = self._current_attempt
+            deferred = self._unreported_restore_end
+            if (
+                not self._is_stale
+                and reason is mafic.EndReason.FINISHED
+                and deferred is not None
+                and deferred.ended_attempt is not None
+                and deferred.ended_attempt.event_token == event_token
+            ):
+                self._unreported_restore_end = None
+                return deferred
+            return await self._handle_track_end_unlocked(event_token, reason)
 
-            pending = self._pop_pending_match_unlocked(event_token)
-            if pending is not None:
-                self._exception_attempt_ids.discard(pending.attempt_id)
-                return TrackEndOutcome(pending, None, False)
+    async def settle_restore_finish(self, expected: PlaybackAttempt) -> bool:
+        """Finish the observed restore end before recovery publishes its successor.
 
-            current = self.resolve_current_attempt(event_token)
-            if current is None:
-                return TrackEndOutcome(None, None, True)
-
-            self._current_attempt = None
-            try:
-                started = await self._transition_after_current_end_unlocked(
-                    current, reason
+        The listener may not have run yet. Preserve its outcome so it still owns
+        history and controller cleanup, without advancing the queue a second time.
+        """
+        async with self._transition_lock:
+            if (
+                self._is_stale
+                or self.guild.voice_client is not self
+                or self._finished_restore_attempt is not expected
+            ):
+                return False
+            if self._current_attempt is expected:
+                self._unreported_restore_end = await self._handle_track_end_unlocked(
+                    expected.event_token, mafic.EndReason.FINISHED
                 )
-            except (Exception, asyncio.CancelledError):
-                self.queue.restore(old_queue)
-                self._pending_end_attempts = old_pending
-                self._current_attempt = old_current
-                raise
-            self._exception_attempt_ids.discard(current.attempt_id)
-            return TrackEndOutcome(current, started, False)
+            return True
+
+    async def restore_session_settings(self, *, volume: int, pause: bool) -> bool:
+        """Restore volume and pause after completion without seeking the successor."""
+        async with self._transition_lock:
+            if self._is_stale or self.guild.voice_client is not self:
+                return False
+            await self.update(volume=volume, pause=pause)
+            return not self._is_stale and self.guild.voice_client is self
+
+    async def _handle_track_end_unlocked(
+        self, event_token: str, reason: mafic.EndReason
+    ) -> TrackEndOutcome:
+        """Apply one correlated end while the transition lock is held."""
+        if self._is_stale:
+            return TrackEndOutcome(None, None, True)
+        old_queue = self.queue.snapshot()
+        old_pending = self._pending_end_attempts.copy()
+        old_current = self._current_attempt
+
+        pending = self._pop_pending_match_unlocked(event_token)
+        if pending is not None:
+            self._exception_attempt_ids.discard(pending.attempt_id)
+            return TrackEndOutcome(pending, None, False)
+
+        current = self.resolve_current_attempt(event_token)
+        if current is None:
+            return TrackEndOutcome(None, None, True)
+
+        self._current_attempt = None
+        try:
+            started = await self._transition_after_current_end_unlocked(current, reason)
+        except (Exception, asyncio.CancelledError):
+            self.queue.restore(old_queue)
+            self._pending_end_attempts = old_pending
+            self._current_attempt = old_current
+            raise
+        self._exception_attempt_ids.discard(current.attempt_id)
+        return TrackEndOutcome(current, started, False)
 
     def _pop_pending_match_unlocked(self, event_token: str) -> PlaybackAttempt | None:
         for index, attempt in enumerate(self._pending_end_attempts):
@@ -478,6 +548,9 @@ class MusicPlayer(mafic.Player[discord.Client]):
                 raise mafic.PlayerNotConnected
             previous = self._current_attempt
             self._current_attempt = None
+            self._restore_entry = entry
+            self._finished_restore_attempt = None
+            self._unreported_restore_end = None
             try:
                 started = await self._start_entry_unlocked(
                     entry,

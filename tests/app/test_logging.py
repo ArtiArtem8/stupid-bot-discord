@@ -3,14 +3,52 @@ from __future__ import annotations
 import json
 import logging
 import logging.config
+import multiprocessing
+import os
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, cast
 from unittest.mock import patch
 
 from stupidbot.app.logging import CredentialSafeFormatter, setup_logging
 
 
+def _write_log_samples(directory: str) -> None:
+    os.chdir(directory)
+    setup_logging()
+    driver = logging.getLogger("aiosqlite")
+    driver.debug("private SQL value marker")
+    driver.warning("driver warning marker")
+    logging.getLogger("stupidbot.test").debug("application debug marker")
+    logging.shutdown()
+
+
 class TestLoggingSetup(unittest.TestCase):
+    def test_driver_payloads_stay_out_of_logs_without_disabling_app_debug(self) -> None:
+        with TemporaryDirectory() as directory:
+            process = multiprocessing.get_context("spawn").Process(
+                target=_write_log_samples, args=(directory,)
+            )
+            process.start()
+            try:
+                process.join(timeout=15)
+                self.assertFalse(process.is_alive(), "Logging child did not finish")
+                self.assertEqual(process.exitcode, 0)
+            finally:
+                if process.is_alive():
+                    process.terminate()
+                    process.join(timeout=5)
+                process.close()
+            main = (Path(directory) / "discord-bot.log").read_text(encoding="utf-8")
+            debug = (Path(directory) / "discord-bot-debug.log").read_text(
+                encoding="utf-8"
+            )
+            for content in (main, debug):
+                self.assertNotIn("private SQL value marker", content)
+                self.assertIn("driver warning marker", content)
+            self.assertIn("application debug marker", debug)
+
     def test_transport_payload_preserves_chat_and_track_text(self) -> None:
         content = 'token: chat-token; "password": "chat-password"; don\'t erase this'
         payload = {

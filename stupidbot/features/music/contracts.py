@@ -1,4 +1,4 @@
-"""Music controller delivery and recovery capability boundaries."""
+"""Interfaces for music controller delivery and session recovery."""
 
 from __future__ import annotations
 
@@ -11,14 +11,12 @@ import discord
 from stupidbot.features.music.playback.models import Track
 
 if TYPE_CHECKING:
-    import discord
-
     from stupidbot.features.music.playback.models import PlaybackAttempt
     from stupidbot.features.music.playback.player import MusicPlayer
 
 
 class ControllerManagerProtocol(Protocol):
-    """Protocol for controller management."""
+    """Controller operations used by music services and recovery."""
 
     async def refresh_for_attempt(
         self, player: MusicPlayer, attempt: PlaybackAttempt
@@ -35,7 +33,7 @@ class ControllerManagerProtocol(Protocol):
         player: MusicPlayer,
         attempt: PlaybackAttempt,
     ) -> None:
-        """Create a controller for a user."""
+        """Create controls for the player's current attempt."""
         ...
 
     async def destroy_for_guild(
@@ -46,7 +44,7 @@ class ControllerManagerProtocol(Protocol):
         expected_attempt_id: int | None = None,
         expected_player: MusicPlayer | None = None,
     ) -> None:
-        """Destroy controller for a guild."""
+        """Remove guild controls when the supplied ownership checks match."""
         ...
 
 
@@ -72,7 +70,7 @@ class ControllerDestroyReason(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class TrackExceptionPayload:
-    """Payload for track exception events dispatched to the bot layer."""
+    """Track failure details dispatched to the music cog."""
 
     guild_id: int
     track: Track

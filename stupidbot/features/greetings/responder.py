@@ -89,15 +89,16 @@ class Greetings:
         )
         _, best_score, _ = max(fuzzy_results, key=lambda x: x[1])
         if best_score >= threshold:
-            logger.info(
-                "Fuzzy response matched: %s",
-                {
-                    "message_id": message.id,
-                    "guild_id": message.guild.id if message.guild else None,
-                    "channel_id": message.channel.id,
-                    "content": message.content,
-                    "score": best_score,
-                },
-            )
-            return secrets.choice(answers or [None])
+            if config.MESSAGE_LOG_ENABLED:
+                logger.info(
+                    "Fuzzy response matched: %s",
+                    {
+                        "message_id": message.id,
+                        "guild_id": message.guild.id if message.guild else None,
+                        "channel_id": message.channel.id,
+                        "content": message.content,
+                        "score": best_score,
+                    },
+                )
+            return secrets.choice(answers) if answers else None
         return None

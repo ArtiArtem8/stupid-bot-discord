@@ -15,7 +15,7 @@ async def send_error(
     *,
     ephemeral: bool = False,
 ) -> None:
-    """Send an error feedback."""
+    """Send error feedback with a ten-minute deletion delay."""
     await FeedbackUI.send(
         interaction,
         feedback_type=FeedbackType.ERROR,
@@ -32,7 +32,7 @@ async def send_warning(
     ephemeral: bool = True,
     delete_after: float | None = None,
 ) -> None:
-    """Send a warning feedback."""
+    """Send warning feedback, private by default."""
     await FeedbackUI.send(
         interaction,
         feedback_type=FeedbackType.WARNING,
@@ -44,7 +44,7 @@ async def send_warning(
 
 
 async def send_warning_no_player(interaction: Interaction) -> None:
-    """Send a warning feedback about there is no player."""
+    """Tell the user there is no player in their preferred language."""
     context = await interaction_context(interaction, private=True)
     messages = MusicMessages(catalog("music", context.language))
     await send_warning(interaction, messages.failure(MusicResultReason.NO_PLAYER))
@@ -58,7 +58,7 @@ async def send_info(
     *,
     ephemeral: bool = False,
 ) -> None:
-    """Send info feedback."""
+    """Send informational feedback with a deletion delay measured in seconds."""
     await FeedbackUI.send(
         interaction,
         feedback_type=FeedbackType.INFO,
@@ -72,7 +72,7 @@ async def send_info(
 async def send_success(
     interaction: Interaction, message: str, delete_after: float | None = 60
 ) -> None:
-    """Send success feedback."""
+    """Send success feedback with a deletion delay measured in seconds."""
     await FeedbackUI.send(
         interaction,
         feedback_type=FeedbackType.SUCCESS,

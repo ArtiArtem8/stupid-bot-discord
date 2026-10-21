@@ -1,4 +1,4 @@
-"""Birthday commands and daily congratulation orchestration."""
+"""Reconcile birthday roles and deliver congratulations from versioned claims."""
 
 import asyncio
 import logging
@@ -31,16 +31,10 @@ logger = logging.getLogger(__name__)
 async def safe_fetch_member(
     guild: discord.Guild, user_id: int
 ) -> discord.Member | None:
-    """Safely fetch a member from a guild.
+    """Use the cached member or fetch it, retrying one server error.
 
-    Args:
-        guild: The guild to fetch the member from.
-        user_id: The ID of the member to fetch.
-
-    Returns:
-        The cached or fetched member, or None for a missing member or an expected
-        permission/request failure. Retry one server error; other failures propagate.
-
+    Return ``None`` for missing members, denied access and HTTP 400 responses.
+    Other request failures propagate.
     """
     member = guild.get_member(user_id)
     if member:
@@ -66,16 +60,9 @@ async def safe_role_edit(
     role: discord.Role,
     operation: Literal["add", "remove"],
 ) -> bool:
-    """Safely add or remove a role.
+    """Return whether Discord accepted the role change.
 
-    Args:
-        member: Member to modify.
-        role: Role to add or remove.
-        operation: Requested role operation.
-
-    Returns:
-        ``True`` when Discord accepted the edit, otherwise ``False`` for an
-        expected permission or request failure.
+    HTTP 400, 403 and 404 responses return ``False``; other failures propagate.
     """
     try:
         match operation:
@@ -117,13 +104,7 @@ class BirthdayDeliveryService:
         self._unavailable_channels: dict[int, int | None] = {}
 
     async def process_guild(self, guild_id: int, today: date) -> None:
-        """Process birthday checks for a single server.
-
-        Args:
-            guild_id: Guild ID to process
-            today: Current date
-
-        """
+        """Update roles first, then send any congratulations due on ``today``."""
         guild = self.bot.get_guild(guild_id)
         if not guild:
             return

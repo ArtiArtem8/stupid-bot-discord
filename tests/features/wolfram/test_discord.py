@@ -22,7 +22,10 @@ from stupidbot.features.wolfram.client import (
     WolframResult,
 )
 from stupidbot.features.wolfram.plot_image import ImageOutputTooLargeError
-from stupidbot.features.wolfram.presentation import build_text_results_embed
+from stupidbot.features.wolfram.presentation import (
+    build_text_results_embed,
+    wolfram_result_url,
+)
 from stupidbot.features.wolfram.wolfram_cog import (
     WolframCog,
     WolframMode,
@@ -101,7 +104,6 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         cog, client = self._make_cog()
-        cog.ctx_menu = MagicMock()
         admitted = asyncio.Event()
         active = asyncio.Event()
         count = 0
@@ -147,15 +149,11 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         close.assert_awaited_once()
 
     def _make_cog(self) -> tuple[WolframCog, MagicMock]:
-        cog = object.__new__(WolframCog)
+        cog = WolframCog(MagicMock(spec=commands.Bot))
         client = MagicMock(spec=WolframClient)
         client.fetch_plot_image.return_value = b"source"
         cog.wolfram_client = client
         cog.client_session = MagicMock(spec=aiohttp.ClientSession)
-        cog._request_semaphore = asyncio.Semaphore(2)
-        cog._closing = False
-        cog._requests = set()
-        cog.bot = MagicMock(spec=commands.Bot)
         return cog, client
 
     def _make_interaction(
@@ -252,6 +250,41 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
             feedback.await_args_list[-1].kwargs["description"],
             "Query empty or too long.",
         )
+
+    async def test_query_content_logging_is_opt_in_for_slash_and_context_menu(
+        self,
+    ) -> None:
+        query = "private expression\nsecond private line"
+        for enabled in (False, True):
+            for context_menu in (False, True):
+                with self.subTest(enabled=enabled, context_menu=context_menu):
+                    cog, client = self._make_cog()
+                    interaction, _ = self._make_interaction()
+                    client.query.return_value = WolframResult(success=False)
+                    with (
+                        patch.object(config, "MESSAGE_LOG_ENABLED", enabled),
+                        patch.object(FeedbackUI, "send", new=AsyncMock()),
+                        self.assertLogs(
+                            "stupidbot.features.wolfram.wolfram_cog", level="INFO"
+                        ) as logs,
+                    ):
+                        if context_menu:
+                            message = MagicMock(spec=discord.Message, content=query)
+                            await cog._context_solve(interaction, message)
+                        else:
+                            await cog.cmd_solve._do_call(
+                                interaction, {"problem": query}
+                            )
+                    self.assertEqual(len(logs.records), 1)
+                    recorded = logs.records[0].getMessage()
+                    self.assertIn("Wolfram solve:", recorded)
+                    self.assertIn("user_id=1234", recorded)
+                    self.assertNotIn("\n", recorded)
+                    if enabled:
+                        self.assertIn(repr(query), recorded)
+                    else:
+                        self.assertNotIn("private expression", recorded)
+                        self.assertNotIn("second private line", recorded)
 
     async def test_wolfram_processing_is_limited_to_two_concurrent_requests(
         self,
@@ -614,6 +647,90 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
             to_thread.await_args_list[-1].kwargs["max_output_bytes"], 1_000_000
         )
 
+    async def test_plot_query_mentions_only_notify_requester(self) -> None:
+        query = "sin(x) ` @everyone <@&4567> <@8901> `"
+        for prefix, uses_embed in (("", False), ("𝑥" * 160, True)):
+            with self.subTest(uses_embed=uses_embed):
+                cog, client = self._make_cog()
+                interaction, channel = self._make_interaction()
+                interaction.user.mention = "<@1234>"
+                client.query.return_value = WolframResult(
+                    success=True,
+                    pods=(
+                        Pod(
+                            "Plot",
+                            "Plot",
+                            (SubPod(None, "https://example.invalid/plot", None),),
+                        ),
+                    ),
+                )
+                submitted = prefix + query
+                self.assertLessEqual(len(submitted), config.WOLFRAM_MAX_QUERY_LEN)
+                with (
+                    patch.object(FeedbackUI, "send", new=AsyncMock()),
+                    patch(
+                        "stupidbot.features.wolfram.wolfram_cog.asyncio.to_thread",
+                        new=AsyncMock(return_value=b"webp"),
+                    ),
+                ):
+                    await cog._handle_query(interaction, submitted, mode="plot")
+
+                upload = channel.send.call_args.kwargs
+                mentions = upload.get("allowed_mentions")
+                self.assertIsInstance(mentions, discord.AllowedMentions)
+                self.assertEqual(mentions.to_dict(), {"parse": [], "users": [1234]})
+                self.assertTrue(upload["content"].startswith("<@1234>"))
+                self.assertEqual("embed" in upload, uses_embed)
+                caption = (
+                    upload["embed"].description if uses_embed else upload["content"]
+                )
+                self.assertIn(submitted, caption)
+                self.assertIn(wolfram_result_url(f"plot {submitted}"), caption)
+
+    async def test_unicode_plot_caption_preserves_full_query_and_url_in_embed(
+        self,
+    ) -> None:
+        for character in ("한", "𝑥"):
+            for locale in (
+                discord.Locale.american_english,
+                discord.Locale.russian,
+                discord.Locale.korean,
+            ):
+                with self.subTest(character=character, locale=locale):
+                    cog, _ = self._make_cog()
+                    interaction, channel = self._make_interaction()
+                    interaction.guild_locale = locale
+                    query = character * config.WOLFRAM_MAX_QUERY_LEN
+                    with (
+                        patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback,
+                        patch(
+                            "stupidbot.features.wolfram.wolfram_cog.asyncio.to_thread",
+                            new=AsyncMock(return_value=b"webp"),
+                        ),
+                    ):
+                        await cog._send_plot(
+                            interaction,
+                            "https://example.invalid/plot",
+                            query,
+                            result_query=f"plot {query}",
+                        )
+                    upload = channel.send.call_args.kwargs
+                    self.assertEqual(upload["content"], "@plotter")
+                    self.assertNotIn("suppress_embeds", upload)
+                    embed = upload["embed"]
+                    self.assertIsInstance(embed, discord.Embed)
+                    self.assertLessEqual(len(embed.description), 4096)
+                    self.assertIn(query, embed.description)
+                    self.assertIn(
+                        wolfram_result_url(f"plot {query}"), embed.description
+                    )
+                    self.assertEqual(embed.image.url, "attachment://wolfram_plot.webp")
+                    self.assertEqual(upload["file"].filename, "wolfram_plot.webp")
+                    self.assertTrue(upload["file"].fp.closed)
+                    self.assertEqual(
+                        feedback.call_args.kwargs["feedback_type"], FeedbackType.SUCCESS
+                    )
+
     async def test_global_limit_caps_larger_guild_limit(self) -> None:
         cog, _ = self._make_cog()
         interaction, _ = self._make_interaction(guild_limit=50_000_000)
@@ -708,12 +825,7 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         feedback.assert_not_awaited()
 
     async def test_cog_load_creates_one_client_for_persistent_session(self) -> None:
-        cog = object.__new__(WolframCog)
-        cog.client_session = None
-        cog.wolfram_client = None
-        cog._request_semaphore = asyncio.Semaphore(2)
-        cog._closing = False
-        cog._requests = set()
+        cog = WolframCog(MagicMock(spec=commands.Bot))
         session = MagicMock(spec=aiohttp.ClientSession)
         client = MagicMock(spec=WolframClient)
 
@@ -742,9 +854,6 @@ class TestWolframCog(unittest.IsolatedAsyncioTestCase):
         cog.client_session = session
         remove_command = MagicMock()
         cog.bot.tree.remove_command = remove_command
-        cog.ctx_menu = MagicMock()
-        cog.ctx_menu.name = "Solve with Wolfram"
-        cog.ctx_menu.type = discord.AppCommandType.message
 
         await cog.cog_unload()
 

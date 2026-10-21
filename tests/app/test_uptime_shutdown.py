@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from stupidbot.app.bot import StupidBot
 from stupidbot.app.cog_loader import CogLoader
@@ -22,6 +23,42 @@ from tests.storage.fixtures import temporary_database
 
 
 class TestUptimeShutdown(unittest.IsolatedAsyncioTestCase):
+    async def test_periodic_loop_continues_after_checkout_timeout(self) -> None:
+        bot = object.__new__(StupidBot)
+        saved = asyncio.Event()
+        attempts = 0
+
+        async def save() -> float:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise PoolTimeoutError("Pool checkout timed out")
+            saved.set()
+            return 1.0
+
+        loop = bot.autosave_task
+        loop.before_loop(AsyncMock())
+        loop.change_interval(seconds=0.001)
+        with patch.object(bot, "save_state", side_effect=save):
+            task = loop.start()
+            try:
+                await asyncio.wait_for(saved.wait(), timeout=2.0)
+                self.assertFalse(loop.failed())
+            finally:
+                loop.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+        self.assertGreaterEqual(attempts, 2)
+
+    async def test_unclassified_checkpoint_error_still_propagates(self) -> None:
+        bot = object.__new__(StupidBot)
+        error = OperationalError(
+            "checkpoint", None, sqlite3.OperationalError("bad SQL")
+        )
+        with patch.object(bot, "save_state", side_effect=error):
+            with self.assertRaises(OperationalError) as raised:
+                await bot.autosave_task.coro(bot)
+        self.assertIs(raised.exception, error)
+
     async def test_periodic_loop_continues_after_sqlite_busy(self) -> None:
         bot = object.__new__(StupidBot)
         saved = asyncio.Event()

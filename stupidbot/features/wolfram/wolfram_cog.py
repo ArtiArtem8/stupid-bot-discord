@@ -14,7 +14,9 @@ from discord.ext import commands
 
 from stupidbot import settings as config
 from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.embeds import SafeEmbed
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.theme import Color
 from stupidbot.features.wolfram.client import (
     WolframAPIError,
     WolframClient,
@@ -95,7 +97,7 @@ class WolframCog(BaseCog):
 
     @override
     async def cog_unload(self) -> None:
-        """Cleanup session and commands."""
+        """Drain requests before closing the HTTP session and removing commands."""
         self._closing = True
         requests = tuple(self._requests)
         for task in requests:
@@ -124,7 +126,6 @@ class WolframCog(BaseCog):
         interaction: Interaction,
         problem: app_commands.Range[str, 1, config.WOLFRAM_MAX_QUERY_LEN],
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
         await self._handle_query(interaction, problem, mode="solve")
 
     @app_commands.command(
@@ -144,14 +145,12 @@ class WolframCog(BaseCog):
         interaction: Interaction,
         function: app_commands.Range[str, 1, config.WOLFRAM_MAX_QUERY_LEN],
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
         await self._handle_query(interaction, function, mode="plot")
 
     @_wolfram_cooldown
     async def _context_solve(
         self, interaction: Interaction, message: discord.Message
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
         await self._handle_query(interaction, message.content, mode="solve")
 
     async def _handle_query(
@@ -224,7 +223,12 @@ class WolframCog(BaseCog):
             )
             return
 
-        logger.info("Wolfram %s: %s | User: %s", mode, query, interaction.user)
+        if config.MESSAGE_LOG_ENABLED:
+            logger.info(
+                "Wolfram %s: user_id=%s query=%r", mode, interaction.user.id, query
+            )
+        else:
+            logger.info("Wolfram %s: user_id=%s", mode, interaction.user.id)
         async with self._request_semaphore:
             if self._closing:
                 await self._send_stopped(interaction)
@@ -340,9 +344,7 @@ class WolframCog(BaseCog):
             )
             return
 
-        if not interaction.channel or not isinstance(
-            interaction.channel, discord.abc.Messageable
-        ):
+        if not isinstance(interaction.channel, discord.abc.Messageable):
             await FeedbackUI.send(interaction, embed=embed, ephemeral=True)
             return
 
@@ -364,11 +366,11 @@ class WolframCog(BaseCog):
         *,
         result_query: str | None = None,
     ) -> None:
-        """Download, process, and send image."""
+        """Upload a plot and return its public link in a private response."""
         context = await interaction_context(interaction, private=True)
         messages = WolframMessages(catalog("wolfram", context.language))
         channel = interaction.channel
-        if not channel or not isinstance(channel, discord.abc.Messageable):
+        if not isinstance(channel, discord.abc.Messageable):
             await FeedbackUI.send(
                 interaction,
                 feedback_type=FeedbackType.WARNING,
@@ -440,22 +442,41 @@ class WolframCog(BaseCog):
             file = File(buffer, filename="wolfram_plot.webp")
             try:
                 result_url = wolfram_result_url(result_query)
+                caption = messages.plot(
+                    mention=interaction.user.mention, url=result_url, query=query
+                )
+                allowed_mentions = discord.AllowedMentions(
+                    everyone=False,
+                    users=[discord.Object(id=interaction.user.id)],
+                    roles=False,
+                    replied_user=False,
+                )
+                if len(caption) <= 2_000:
+                    return await channel.send(
+                        content=caption,
+                        file=file,
+                        suppress_embeds=True,
+                        allowed_mentions=allowed_mentions,
+                    )
+                # Encoding a Unicode query can make the URL too long for a message.
+                # The full caption still fits in an embed.
+                embed = SafeEmbed(
+                    description=messages.plot(
+                        mention="", url=result_url, query=query
+                    ).strip(),
+                    color=Color.INFO,
+                )
+                embed.set_image(url="attachment://wolfram_plot.webp")
                 return await channel.send(
-                    content=(
-                        messages.plot(
-                            mention=interaction.user.mention,
-                            url=result_url,
-                            query=query,
-                        )
-                    ),
+                    content=interaction.user.mention,
+                    embed=embed,
                     file=file,
-                    suppress_embeds=True,
+                    allowed_mentions=allowed_mentions,
                 )
             finally:
                 file.close()
 
     async def _send_plot_error(self, interaction: Interaction) -> None:
-        """Send the stable user-facing response for image pipeline failures."""
         context = await interaction_context(interaction, private=True)
         messages = WolframMessages(catalog("wolfram", context.language))
         await FeedbackUI.send(

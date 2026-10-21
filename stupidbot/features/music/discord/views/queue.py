@@ -21,6 +21,7 @@ from stupidbot.discord_ui.pagination import (
     PaginationData,
 )
 from stupidbot.discord_ui.theme import Color
+from stupidbot.features.music.discord.access import check_music_access
 from stupidbot.features.music.discord.feedback import send_warning
 from stupidbot.features.music.discord.presentation import format_track_link
 from stupidbot.features.music.messages import MusicMessages
@@ -81,12 +82,18 @@ class QueueUndoView(discord.ui.View):
 
     @override
     async def interaction_check(self, interaction: Interaction) -> bool:
+        await ack_component(interaction)
+        voice_client = interaction.guild.voice_client if interaction.guild else None
+        channel = voice_client.channel if voice_client is not None else None
+        if not await check_music_access(interaction, channel):
+            return False
         context = await interaction_context(interaction, private=True)
         messages = MusicMessages(catalog("music", context.language))
         if interaction.user.id == self.requester_id:
             return True
-        await interaction.response.send_message(
-            messages.catalog.pgettext(
+        await FeedbackUI.send(
+            interaction,
+            description=messages.catalog.pgettext(
                 "ui", "Only the requester can remove these tracks from the queue."
             ),
             ephemeral=True,
@@ -94,11 +101,15 @@ class QueueUndoView(discord.ui.View):
         return False
 
     async def remove(self, interaction: Interaction) -> None:
+        await ack_component(interaction)
         context = await interaction_context(interaction, private=True)
         messages = MusicMessages(catalog("music", context.language))
         if not await check_component_access(interaction):
             return
-        await ack_component(interaction)
+        voice_client = interaction.guild.voice_client if interaction.guild else None
+        channel = voice_client.channel if voice_client is not None else None
+        if not await check_music_access(interaction, channel):
+            return
         message = interaction.message
         if message is None:
             logger.debug("Queue undo component has no source message.")

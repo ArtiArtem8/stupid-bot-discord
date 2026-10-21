@@ -11,6 +11,7 @@ from discord.ext import commands, tasks
 from sqlalchemy.exc import SQLAlchemyError
 
 from stupidbot import settings as config
+from stupidbot.app.health import ComponentHealth, TaskHealth
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.features.birthdays.dates import parse_birthday
@@ -32,22 +33,26 @@ logger = logging.getLogger(__name__)
 
 
 class BirthdayCog(BaseCog):
-    """Cog for birthday management and automatic congratulations.
-
-    Features:
-    - User birthday registration
-    - Automatic daily checks
-    - Birthday role management
-    - Birthday list display
-
-    Configuration:
-        Set BIRTHDAY_CHECK_INTERVAL in config for check frequency (seconds)
-    """
+    """Manage saved birthdays and own the periodic role and delivery checks."""
 
     def __init__(self, bot: commands.Bot, manager: BirthdayRepository) -> None:
         super().__init__(bot)
         self.manager = manager
         self.delivery = BirthdayDeliveryService(bot, manager)
+
+    @property
+    def runtime_health(self) -> ComponentHealth:
+        """Expose the daily delivery loop without restarting failed work."""
+        loop = self.birthday_timer
+        return ComponentHealth(
+            loop.is_running(),
+            (TaskHealth("birthday_timer", loop.is_running(), loop.failed()),),
+        )
+
+    @override
+    def command_response_ephemeral(self, _interaction: Interaction) -> bool:
+        options: dict[str, object] = dict(iter(_interaction.namespace))
+        return options.get("ephemeral", True) is not False
 
     @override
     async def cog_load(self) -> None:
@@ -207,12 +212,8 @@ class BirthdayCog(BaseCog):
         msg = messages.catalog.pgettext(
             "ui", "Are you sure you want to remove your birthday?"
         )
-        await FeedbackUI.send(
-            interaction,
-            feedback_type=FeedbackType.WARNING,
-            description=msg,
-            view=view,
-            ephemeral=True,
+        view.message = await interaction.edit_original_response(
+            embed=FeedbackUI.make_embed(None, msg, FeedbackType.WARNING), view=view
         )
 
     @app_commands.command(

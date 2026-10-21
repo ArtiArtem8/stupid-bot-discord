@@ -1,29 +1,143 @@
 """Reports commit before success feedback and deduplicate interaction retries."""
 
+import asyncio
 import unittest
+from datetime import UTC, datetime
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import discord
+from discord.ui.view import ViewStore
 from discord.webhook.async_ import async_context
 from sqlalchemy import select
 
+from stupidbot.discord_ui.feedback import FeedbackUI
 from stupidbot.discord_ui.theme import Color
+from stupidbot.features.access.operations import BlockManager
+from stupidbot.features.access.repository import BlockingRepository
+from stupidbot.features.preferences.models import Preferences, PreferenceScope
+from stupidbot.features.preferences.repository import PreferencesRepository
+from stupidbot.features.reports import ui as report_ui
 from stupidbot.features.reports.repository import ReportRepository
 from stupidbot.features.reports.ui import (
     ReportModal,
     _build_report_data,
     _create_report_embed,
     _notify_report,
+    handle_report_button,
     submit_report,
 )
+from stupidbot.i18n import discord as discord_i18n
 from stupidbot.i18n.policy import Language, PresentationContext
 from stupidbot.storage.schema import reports
 from tests.storage.fixtures import temporary_database
 
 
 class TestReporting(unittest.IsolatedAsyncioTestCase):
+    async def test_modal_submission_rechecks_block_added_after_opening(self) -> None:
+        self.interaction.type = discord.InteractionType.component
+        self.interaction.guild = MagicMock(spec=discord.Guild, id=42)
+        blocking = BlockingRepository(self.database)
+        self.interaction.client.block_manager = BlockManager(blocking)
+        await handle_report_button(self.repository, self.interaction)
+        modal = self.interaction.response.send_modal.call_args.args[0]
+        if not isinstance(modal, ReportModal):
+            self.fail("Expected a report modal")
+        await blocking.change(
+            42,
+            1,
+            blocked=True,
+            display_name="Author",
+            username="Author",
+            admin_id=2,
+            reason="Blocked after opening the modal",
+            observed_at=datetime.now(UTC),
+        )
+        modal.reason._value = "a useful report"
+        adapter = self._prepare_modal_response()
+        token = async_context.set(adapter)
+        try:
+            with patch.object(report_ui, "_notify_report", new=AsyncMock()) as notify:
+                await modal._scheduled_task(self.interaction, [], {})
+        finally:
+            async_context.reset(token)
+
+        notify.assert_not_awaited()
+        self.interaction.edit_original_response.assert_awaited_once()
+        embed = self.interaction.edit_original_response.call_args.kwargs["embed"]
+        self.assertIn("Доступ к командам запрещён", embed.description)
+        self.assertEqual(
+            adapter.create_interaction_response.call_args.kwargs["params"].payload,
+            {"type": 5, "data": {"flags": 64}},
+        )
+        async with self.database.transaction() as connection:
+            self.assertIsNone(await connection.scalar(select(reports.c.report_id)))
+
+    async def test_failed_modal_access_check_cannot_persist_or_notify(self) -> None:
+        self.interaction.guild = MagicMock(spec=discord.Guild, id=42)
+        self.interaction.client.block_manager = MagicMock(spec=BlockManager)
+        self.interaction.client.block_manager.is_user_blocked.side_effect = OSError(
+            "private access failure"
+        )
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
+        )
+        modal.reason._value = "a useful report"
+        adapter = self._prepare_modal_response()
+        token = async_context.set(adapter)
+        try:
+            with (
+                patch.object(report_ui, "_notify_report", new=AsyncMock()) as notify,
+                self.assertLogs("stupidbot.features.reports.ui", level="ERROR") as logs,
+            ):
+                await modal._scheduled_task(self.interaction, [], {})
+        finally:
+            async_context.reset(token)
+
+        notify.assert_not_awaited()
+        self.assertEqual(len(logs.records), 1)
+        self.interaction.edit_original_response.assert_awaited_once()
+        reply = self.interaction.edit_original_response.call_args.kwargs
+        self.assertNotIn("private access failure", str(reply))
+        self.assertNotIn("view", reply)
+        async with self.database.transaction() as connection:
+            self.assertIsNone(await connection.scalar(select(reports.c.report_id)))
+
+    async def test_report_button_rechecks_new_block_before_opening_modal(self) -> None:
+        self.interaction.type = discord.InteractionType.component
+        self.interaction.guild = MagicMock(spec=discord.Guild, id=42)
+        self.interaction.client.block_manager = MagicMock(spec=BlockManager)
+        self.interaction.client.block_manager.is_user_blocked.return_value = True
+        await handle_report_button(self.repository, self.interaction)
+        self.interaction.response.send_modal.assert_not_awaited()
+        self.interaction.response.defer.assert_awaited_once_with(
+            thinking=True, ephemeral=True
+        )
+        self.interaction.client.block_manager.is_user_blocked.assert_awaited_once_with(
+            42, 1
+        )
+
+    async def test_report_button_access_timeout_fails_closed(self) -> None:
+        self.interaction.type = discord.InteractionType.component
+        self.interaction.guild = MagicMock(spec=discord.Guild, id=42)
+        self.interaction.client.block_manager = MagicMock(spec=BlockManager)
+        cancelled = asyncio.Event()
+
+        async def access(_guild: int, _user: int) -> bool:
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+            return False
+
+        self.interaction.client.block_manager.is_user_blocked.side_effect = access
+        with patch.object(report_ui, "MODAL_ACCESS_TIMEOUT", 0):
+            await handle_report_button(self.repository, self.interaction)
+        self.assertTrue(cancelled.is_set())
+        self.interaction.response.send_modal.assert_not_awaited()
+        self.interaction.response.defer.assert_awaited_once()
+
     async def test_unnamed_locations_are_localized_after_persistence(self) -> None:
         for channel, ru, en in (
             (None, "Неизвестный канал", "Unknown channel"),
@@ -121,6 +235,134 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
             {"type": 5, "data": {"flags": 64}},
         )
         notify.assert_not_awaited()
+
+    async def test_modal_failure_bounds_fresh_error_preferences_lookup(self) -> None:
+        preferences = PreferencesRepository(self.database)
+        self.interaction.client.preferences_repository = preferences
+        self.interaction.locale = discord.Locale.russian
+        adapter = self._prepare_modal_response()
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.EN, ZoneInfo("UTC"))
+        )
+        self.addCleanup(modal.stop)
+        store = ViewStore(MagicMock())
+        store.add_view(modal)
+        modal.reason._value = "a useful report"
+        cancelled = asyncio.Event()
+
+        async def stalled_preferences(
+            _scope: PreferenceScope, _subject_id: int
+        ) -> Preferences:
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+            return Preferences()
+
+        error = OSError("private storage failure")
+        token = async_context.set(adapter)
+        try:
+            with (
+                patch.object(self.repository, "submit", side_effect=error),
+                patch.object(
+                    preferences, "get", side_effect=stalled_preferences
+                ) as read,
+                patch.object(discord_i18n, "ERROR_PREFERENCES_TIMEOUT", 0),
+                patch.object(report_ui, "_notify_report", new=AsyncMock()) as notify,
+                self.assertLogs("stupidbot", level="WARNING") as logs,
+            ):
+                await asyncio.wait_for(
+                    modal._scheduled_task(self.interaction, [], {}), timeout=2
+                )
+        finally:
+            async_context.reset(token)
+
+        read.assert_awaited_once_with(PreferenceScope.USER, 1)
+        self.assertTrue(cancelled.is_set())
+        self.assertTrue(modal.is_finished())
+        self.assertNotIn(modal.custom_id, store._modals)
+        notify.assert_not_awaited()
+        failures = [record for record in logs.records if record.exc_info]
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0].name, "stupidbot.features.reports.ui")
+        failure_info = failures[0].exc_info
+        if failure_info is None:
+            self.fail("Expected the original report failure traceback")
+        self.assertIs(failure_info[1], error)
+        self.interaction.edit_original_response.assert_awaited_once()
+        reply = self.interaction.edit_original_response.call_args.kwargs
+        self.assertEqual(
+            reply["embed"].description,
+            "Could not finish processing the report. Details have been logged.",
+        )
+        self.assertNotIn("private storage failure", str(reply))
+        self.assertNotIn("view", reply)
+        self.assertEqual(
+            adapter.create_interaction_response.call_args.kwargs["params"].payload,
+            {"type": 5, "data": {"flags": 64}},
+        )
+        async with self.database.transaction() as connection:
+            self.assertIsNone(await connection.scalar(select(reports.c.report_id)))
+
+    async def test_modal_error_releases_registration_when_feedback_fails(self) -> None:
+        adapter = self._prepare_modal_response()
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.EN, ZoneInfo("UTC"))
+        )
+        self.addCleanup(modal.stop)
+        store = ViewStore(MagicMock())
+        store.add_view(modal)
+        modal.reason._value = "a useful report"
+        token = async_context.set(adapter)
+        try:
+            with (
+                patch.object(
+                    self.repository, "submit", side_effect=OSError("storage failure")
+                ),
+                patch.object(
+                    FeedbackUI,
+                    "send",
+                    side_effect=OSError("feedback failure"),
+                ),
+                self.assertLogs("stupidbot.features.reports.ui", level="ERROR"),
+            ):
+                with self.assertRaisesRegex(OSError, "feedback failure"):
+                    await modal._scheduled_task(self.interaction, [], {})
+        finally:
+            async_context.reset(token)
+        self.assertTrue(modal.is_finished())
+        self.assertNotIn(modal.custom_id, store._modals)
+
+    async def test_modal_failed_ack_is_not_retried_or_persisted(self) -> None:
+        adapter = self._prepare_modal_response()
+        adapter.create_interaction_response.side_effect = discord.NotFound(
+            MagicMock(status=404, reason="Not Found"),
+            {"code": 10062, "message": "Unknown interaction"},
+        )
+        modal = ReportModal(
+            self.repository, context=PresentationContext(Language.EN, ZoneInfo("UTC"))
+        )
+        self.addCleanup(modal.stop)
+        store = ViewStore(MagicMock())
+        store.add_view(modal)
+        token = async_context.set(adapter)
+        try:
+            with (
+                patch.object(self.repository, "submit", new=AsyncMock()) as submit,
+                patch.object(report_ui, "_notify_report", new=AsyncMock()) as notify,
+                self.assertLogs("stupidbot", level="WARNING") as logs,
+            ):
+                await modal._scheduled_task(self.interaction, [], {})
+        finally:
+            async_context.reset(token)
+        submit.assert_not_awaited()
+        notify.assert_not_awaited()
+        self.interaction.edit_original_response.assert_not_awaited()
+        adapter.create_interaction_response.assert_awaited_once()
+        self.assertEqual(len(logs.records), 1)
+        self.assertIsNone(logs.records[0].exc_info)
+        self.assertTrue(modal.is_finished())
+        self.assertNotIn(modal.custom_id, store._modals)
 
     async def test_modal_defers_a_separate_private_confirmation(self) -> None:
         adapter = self._prepare_modal_response()
@@ -226,6 +468,16 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         self.interaction.channel = None
         self.interaction.message = None
         self.interaction.response = MagicMock(spec=discord.InteractionResponse)
+        self.interaction.response.is_done.return_value = False
+        self.interaction.extras = {}
+
+        async def defer(**_kwargs: object) -> None:
+            self.interaction.response.type = (
+                discord.InteractionResponseType.deferred_channel_message
+            )
+            self.interaction.response.is_done.return_value = True
+
+        self.interaction.response.defer.side_effect = defer
 
     async def test_missing_notification_channel_logs_persisted_report_id(self) -> None:
         await self.repository.set_channel(99)

@@ -52,6 +52,35 @@ class PolicyTests(TestCase):
 
 
 class InteractionPolicyTests(IsolatedAsyncioTestCase):
+    async def test_error_preferences_timeout_reuses_fallback_without_retry(
+        self,
+    ) -> None:
+        _, database = await temporary_database(self)
+        repository = PreferencesRepository(database)
+        request = interaction()
+        request.client.preferences_repository = repository
+        cancelled = asyncio.Event()
+
+        async def wait_for_storage(
+            _scope: PreferenceScope, _subject: int
+        ) -> Preferences:
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+            return Preferences()
+
+        with (
+            patch.object(repository, "get", side_effect=wait_for_storage) as read,
+            patch.object(discord_i18n, "ERROR_PREFERENCES_TIMEOUT", 0),
+            self.assertLogs("stupidbot.i18n.discord", level="WARNING"),
+        ):
+            context = await error_context(request)
+            self.assertEqual(await error_context(request), context)
+        self.assertTrue(cancelled.is_set())
+        self.assertEqual(context.language, Language.EN)
+        read.assert_awaited_once()
+
     async def test_dm_uses_and_caches_personal_preferences_for_either_visibility(
         self,
     ) -> None:

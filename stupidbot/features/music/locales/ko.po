@@ -99,6 +99,10 @@ msgctxt "ui"
 msgid "Could not refresh the queue"
 msgstr "대기열을 새로 고치지 못했습니다"
 
+msgctxt "ui"
+msgid "Could not restore the music session. Please try again."
+msgstr "음악 세션을 복구하지 못했습니다. 다시 시도해 주세요."
+
 msgctxt "command"
 msgid "Disconnect"
 msgstr "연결 해제"
@@ -260,10 +264,6 @@ msgid "Reconnect after an error"
 msgstr "오류 발생 후 다시 연결"
 
 msgctxt "ui"
-msgid "Reconnected, but the track could not be restarted. The source most likely returned a temporary error."
-msgstr "다시 연결했지만 곡을 다시 재생하지 못했습니다. 음원 제공처에서 일시적인 오류가 발생했을 가능성이 높습니다."
-
-msgctxt "ui"
 msgid "Reconnection attempted"
 msgstr "다시 연결을 시도했습니다"
 
@@ -364,10 +364,6 @@ msgid "There are no tracks in this session."
 msgstr "이 세션에는 재생 기록이 없습니다."
 
 msgctxt "ui"
-msgid "This is not your controller."
-msgstr "다른 사용자의 재생 컨트롤러입니다."
-
-msgctxt "ui"
 msgid "Track moved to the end"
 msgstr "곡을 대기열 맨 뒤로 이동했습니다"
 
@@ -451,3 +447,11 @@ msgstr[0] "{count:d}일"
 msgctxt "track_exception"
 msgid "{link}\n**Reason:** The source is temporarily unavailable or did not respond."
 msgstr "{link}\n**사유:** 음원 제공처를 일시적으로 이용할 수 없거나 응답이 없습니다."
+
+msgctxt "voice_control"
+msgid "Join the bot's voice channel to use this control."
+msgstr "음악을 제어하려면 봇이 있는 음성 채널에 참여하세요."
+
+msgctxt "other_channel"
+msgid "The bot is already in another voice channel. Join it there."
+msgstr "봇이 이미 다른 음성 채널에 있습니다. 해당 채널에 참여하세요."

@@ -38,9 +38,7 @@ def is_birthday_today(birthday_str: str, today: date) -> bool:
         original_bday = datetime.strptime(birthday_str, DATE_FORMAT).date()
         effective_bday = _get_safe_birthday(today.year, original_bday)
 
-        return (effective_bday.month == today.month) and (
-            effective_bday.day == today.day
-        )
+        return effective_bday == today
     except ValueError:
         return False
 

@@ -34,6 +34,7 @@
     "not_in_voice\u0004You must be in a voice channel!",
     "not_member\u0004Invalid user type",
     "nothing_found\u0004Nothing found. Please try again.",
+    "other_channel\u0004The bot is already in another voice channel. Join it there.",
     "player_changed\u0004The player changed during the search. Try playing the track again.",
     "player_disconnected\u0004The player lost its connection. Try playing the track again.",
     "player_lost\u0004The player lost its connection. Try playing the track again.",
@@ -58,6 +59,7 @@
     "ui\u0004Added to the queue",
     "ui\u0004Could not play the track",
     "ui\u0004Could not refresh the queue",
+    "ui\u0004Could not restore the music session. Please try again.",
     "ui\u0004Disconnected",
     "ui\u0004Duration",
     "ui\u0004Empty",
@@ -82,7 +84,6 @@
     "ui\u0004Please leave this alone; it is not your message.",
     "ui\u0004Queue repeat is **on**",
     "ui\u0004Recent tracks:",
-    "ui\u0004Reconnected, but the track could not be restarted. The source most likely returned a temporary error.",
     "ui\u0004Reconnection attempted",
     "ui\u0004Remove",
     "ui\u0004Removed from the queue",
@@ -96,7 +97,6 @@
     "ui\u0004Summary:",
     "ui\u0004The queue is empty",
     "ui\u0004There are no tracks in this session.",
-    "ui\u0004This is not your controller.",
     "ui\u0004Track moved to the end",
     "ui\u0004Track repeat is **on**",
     "ui\u0004Track skipped",
@@ -108,6 +108,7 @@
     "ui\u0004server not found",
     "unavailable\u0004The music service is currently unavailable. Please try again later.",
     "unknown_channel\u0004Unknown channel",
+    "voice_control\u0004Join the bot's voice channel to use this control.",
     "volume\u0004Volume: {percent:d}%"
   ]
 }

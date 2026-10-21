@@ -10,6 +10,7 @@ from discord.utils import format_dt
 
 from stupidbot.common.text import TextPaginator
 from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
 from stupidbot.discord_ui.pagination import BasePaginator, PaginationData
 from stupidbot.discord_ui.theme import Color
@@ -118,6 +119,7 @@ class SessionSummaryView(ui.View):
     async def view_full_button(
         self, interaction: Interaction, _: ui.Button[Self]
     ) -> None:
+        await defer_command(interaction, ephemeral=True)
         context = await interaction_context(interaction, private=True)
         messages = MusicMessages(catalog("music", context.language))
         if not await check_component_access(interaction):

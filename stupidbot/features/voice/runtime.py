@@ -6,6 +6,7 @@ from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
+from typing import Literal
 
 from stupidbot.common.asyncio import run_in_thread
 from stupidbot.features.voice.facts import VoiceJournalRecord
@@ -17,6 +18,9 @@ from stupidbot.features.voice.repository import (
 from stupidbot.features.voice.timeline import VoiceReplayState, VoiceTimeline
 
 logger = logging.getLogger(__name__)
+type AnalyticsStatus = Literal[
+    "ready", "updating", "recovering", "unavailable", "closed"
+]
 
 
 class AnalyticsUnavailableError(RuntimeError):
@@ -44,6 +48,7 @@ class VoiceAnalytics:
         self._repository = repository
         self._lock = asyncio.Lock()
         self._state: VoiceReplayState | None = None
+        self._applying = False
         self._cutoff = VoiceCommit(0, 0)
         self._shared_revision = 0
         self._guild_revisions: dict[int, int] = {}
@@ -51,6 +56,19 @@ class VoiceAnalytics:
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
         self._snapshots: OrderedDict[int | None, AnalysisSnapshot] = OrderedDict()
+
+    @property
+    def status(self) -> AnalyticsStatus:
+        """Distinguish normal committed updates from unavailable or recovering state."""
+        if self._closed:
+            return "closed"
+        if self._state is not None:
+            return "ready"
+        if self._recovery is not None and not self._recovery.done():
+            return "recovering"
+        if self._applying:
+            return "updating"
+        return "unavailable"
 
     async def start(self) -> None:
         """Restore once before collection; propagate startup failures."""
@@ -121,6 +139,7 @@ class VoiceAnalytics:
         if committed.revision <= self._cutoff.revision:
             return
         state, self._state = self._state, None
+        self._applying = state is not None
         try:
             if (
                 state is not None
@@ -141,6 +160,7 @@ class VoiceAnalytics:
             )
             logger.debug("Voice apply traceback", exc_info=True)
         finally:
+            self._applying = False
             if self._state is None and not self._closed:
                 self._recover()
 

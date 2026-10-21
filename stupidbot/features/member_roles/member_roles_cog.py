@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from stupidbot.app.health import ComponentHealth, TaskHealth
 from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.discord_ui.theme import Color
@@ -28,6 +29,15 @@ class ServerMonitorCog(BaseCog):
     def __init__(self, bot: commands.Bot, manager: ServerMonitoringManager) -> None:
         super().__init__(bot)
         self.manager = manager
+
+    @property
+    def runtime_health(self) -> ComponentHealth:
+        """Expose snapshot cleanup liveness without performing persistence work."""
+        loop = self.cleanup_task
+        return ComponentHealth(
+            loop.is_running(),
+            (TaskHealth("role_cleanup", loop.is_running(), loop.failed()),),
+        )
 
     @override
     async def cog_load(self) -> None:
@@ -329,8 +339,6 @@ class ServerMonitorCog(BaseCog):
                 ephemeral=True,
             )
             return
-
-        await interaction.response.defer(ephemeral=True)
 
         restored, skipped = await self.manager.restore_snapshot(user)
 

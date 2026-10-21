@@ -225,18 +225,7 @@ class SafeEmbed(discord.Embed):
         inline: bool = False,
         strict: bool = True,
     ) -> Self:
-        """Add a field when ``condition`` is truthy.
-
-        Args:
-            condition: Value controlling whether the field is added.
-            name: Field name.
-            value: Field value.
-            inline: Forwarded to Discord's field layout.
-            strict: Forwarded to :meth:`safe_add_field`.
-
-        Returns:
-            This embed whether or not a field was added.
-        """
+        """Call :meth:`safe_add_field` only when ``condition`` is truthy."""
         if condition:
             return self.safe_add_field(
                 name=name, value=value, inline=inline, strict=strict

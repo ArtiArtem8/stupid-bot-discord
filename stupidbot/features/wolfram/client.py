@@ -1,7 +1,8 @@
-"""Wolfram Alpha API Client."""
+"""Bound Wolfram downloads and parse their XML into displayable results."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -25,7 +26,7 @@ _PI_APPROXIMATION_RE = re.compile(r"(?<![\w.])3\.14159\d*(?![\w.])")
 
 
 def format_math_text(text: str) -> str:
-    """Format mathematical text for better readability."""
+    """Replace decimal pi approximations and the word 'approx' with symbols."""
     text = _PI_APPROXIMATION_RE.sub("π", text)
     text = text.replace(" approx ", " ≈ ")
     return text
@@ -41,7 +42,7 @@ class SubPod:
 
     @property
     def display_text(self) -> str | None:
-        """Return the best text representation."""
+        """Prefer plaintext, falling back to the image title."""
         return self.plaintext or self.image_title
 
 
@@ -124,7 +125,6 @@ def _raise_http_error(
 
 
 def _first_image_url(pod: Pod) -> str | None:
-    """Return the first image URL in a pod."""
     return next((subpod.image_url for subpod in pod.subpods if subpod.image_url), None)
 
 
@@ -152,7 +152,6 @@ def _parse_unsuccessful_result(root: Element) -> WolframResult:
 
 
 def _parse_subpod(element: Element) -> SubPod:
-    """Parse one Wolfram subpod."""
     plaintext = element.find("plaintext")
     image = element.find("img")
     return SubPod(
@@ -172,7 +171,6 @@ def _should_ignore_pod(*, title: str, pod_id: str) -> bool:
 
 
 def _has_displayable_content(subpods: Sequence[SubPod]) -> bool:
-    """Return whether at least one subpod has text or an image URL."""
     return any(subpod.display_text or subpod.image_url for subpod in subpods)
 
 
@@ -189,34 +187,27 @@ def _parse_pod(element: Element) -> Pod | None:
     return Pod(title=title, id=pod_id, subpods=subpods)
 
 
-def _validate_content_length(
-    content_length: int | None,
-    *,
-    max_bytes: int,
-) -> None:
-    """Reject a declared plot size before its response body is read."""
-    if content_length is not None and content_length > max_bytes:
-        raise WolframAPIError("Plot download exceeds the size limit")
-
-
 async def _read_limited_response(
     response: aiohttp.ClientResponse,
     *,
     max_bytes: int,
+    resource: str,
 ) -> bytes:
-    """Read a plot response while enforcing its streaming byte limit."""
+    """Read at most max_bytes, even if Content-Length is missing or incorrect."""
+    if response.content_length is not None and response.content_length > max_bytes:
+        raise WolframAPIError(f"{resource} exceeds the size limit")
     payload = bytearray()
     async for chunk in response.content.iter_chunked(64 * 1024):
+        if len(payload) + len(chunk) > max_bytes:
+            raise WolframAPIError(f"{resource} exceeds the size limit")
         payload.extend(chunk)
-        if len(payload) > max_bytes:
-            raise WolframAPIError("Plot download exceeds the size limit")
     if not payload:
-        raise WolframAPIError("Plot download is empty")
+        raise WolframAPIError(f"{resource} is empty")
     return bytes(payload)
 
 
 class WolframClient:
-    """Async HTTP client for Wolfram Alpha v2 API."""
+    """Query Wolfram v2 with a supplied or context-managed HTTP session."""
 
     def __init__(
         self, app_id: str | None, session: aiohttp.ClientSession | None = None
@@ -230,13 +221,13 @@ class WolframClient:
         self._owns_session: Final[bool] = session is None
 
     async def __aenter__(self) -> Self:
-        """Enter async context manager."""
+        """Create a session only when the caller has not supplied one."""
         if self._owns_session:
             self._session = aiohttp.ClientSession()
         return self
 
     async def __aexit__(self, *args: object) -> None:
-        """Exit async context manager and cleanup resources."""
+        """Close the owned session; leave an injected session open."""
         if self._owns_session and self._session:
             await self._session.close()
 
@@ -247,11 +238,10 @@ class WolframClient:
         return self._session
 
     async def query(self, input_str: str) -> WolframResult:
-        """Execute a query and return parsed results.
+        """Download bounded XML and parse it off the event loop.
 
         Raises:
-            WolframAPIError: On network or parsing failure.
-
+            WolframAPIError: The request failed or the response is empty or too large.
         """
         params = {
             "appid": self.app_id,
@@ -272,8 +262,12 @@ class WolframClient:
                 ),
             ) as resp:
                 resp.raise_for_status()
-                xml_data = await resp.text()
-                return self._parse_xml(xml_data)
+                xml_data = await _read_limited_response(
+                    resp,
+                    max_bytes=config.WOLFRAM_XML_MAX_RESPONSE_BYTES,
+                    resource="Wolfram response",
+                )
+            return await asyncio.to_thread(self._parse_xml, xml_data)
         except aiohttp.ClientResponseError as error:
             _raise_http_error(
                 error,
@@ -293,11 +287,11 @@ class WolframClient:
             timeout = aiohttp.ClientTimeout(total=config.WOLFRAM_HTTP_TIMEOUT_SECONDS)
             async with self.session.get(url, timeout=timeout) as response:
                 response.raise_for_status()
-                _validate_content_length(
-                    response.content_length,
+                return await _read_limited_response(
+                    response,
                     max_bytes=max_bytes,
+                    resource="Plot download",
                 )
-                return await _read_limited_response(response, max_bytes=max_bytes)
         except aiohttp.ClientResponseError as error:
             _raise_http_error(
                 error,
@@ -308,11 +302,11 @@ class WolframClient:
             logger.warning("Wolfram plot download failed: %s", type(error).__name__)
             raise WolframAPIError("Plot download failed") from error
 
-    def _parse_xml(self, xml_content: str) -> WolframResult:
+    def _parse_xml(self, xml_content: str | bytes) -> WolframResult:
         """Parse raw XML into structured dataclasses."""
         try:
             root = ET.fromstring(xml_content, forbid_dtd=True)
-        except (ET.ParseError, DefusedXmlException):
+        except (ET.ParseError, DefusedXmlException, LookupError, ValueError):
             return WolframResult(
                 success=False,
                 error_msg="Invalid XML response",

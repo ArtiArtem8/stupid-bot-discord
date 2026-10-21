@@ -1,5 +1,3 @@
-"""Tests for text utility helpers."""
-
 from __future__ import annotations
 
 import unittest
@@ -66,8 +64,6 @@ class TestTextUtils(unittest.TestCase):
         )
 
     def test_truncate_sequence_truncate_at_separator_boundary(self) -> None:
-        # full_text = "aaa|bbb|ccc" (len=11), max_length=8 => truncation
-
         out = truncate_sequence(
             ["aaa", "bbb", "ccc"], 8, separator="|", placeholder="..."
         )

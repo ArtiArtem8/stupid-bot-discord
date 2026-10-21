@@ -78,18 +78,7 @@ def create_block_embed(
     *,
     language: Language = Language.RU,
 ) -> discord.Embed:
-    """Create standardized embed for block/unblock actions.
-
-    Args:
-        user: User being blocked/unblocked
-        action: "block" or "unblock"
-        reason: Optional reason for action
-        language: Language for the action labels.
-
-    Returns:
-        Formatted Discord embed
-
-    """
+    """Format a block or unblock confirmation, including a reason when supplied."""
     messages = AccessMessages(catalog("access", language))
     description = (
         messages.blocked(mention=user.mention)
@@ -114,16 +103,7 @@ def create_block_embed(
 
 
 def format_danger_level(block_count: int, *, language: Language = Language.RU) -> str:
-    """Determine danger level emoji based on block count.
-
-    Args:
-        block_count: Number of times user was blocked
-        language: Language for the severity label.
-
-    Returns:
-        Emoji string representing danger level
-
-    """
+    """Return the risk emoji and localized label for a member's block count."""
     messages = AccessMessages(catalog("access", language))
     if block_count <= 2:
         return messages.catalog.pgettext("ui", "🟢 Low")

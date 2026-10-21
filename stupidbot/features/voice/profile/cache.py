@@ -2,7 +2,7 @@
 
 All access runs on the event loop. Admission and task registration have no await
 between them; one worker serializes builds across awaits. Cancelled Discord
-waiters cannot release a running native job or erase its strong owner.
+waiters cannot release a running native job or remove its owning task.
 """
 
 import asyncio
@@ -45,7 +45,7 @@ class RenderedProfile:
 
 
 class ProfileMediaCache:
-    """Own a bounded single-flight queue, TTL/LRU bytes and orderly draining."""
+    """Share matching jobs, bound cached media and drain accepted work on close."""
 
     def __init__(
         self,
@@ -166,9 +166,6 @@ class ProfileMediaCache:
         build: Callable[[], Awaitable[RenderedProfile]],
     ) -> RenderedProfile:
         async with self._worker:
-            cached = self._lookup(key)
-            if cached is not None:
-                return cached
             media = await build()
             size = self._size(media)
             if (

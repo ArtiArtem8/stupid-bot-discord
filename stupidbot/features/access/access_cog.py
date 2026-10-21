@@ -1,12 +1,4 @@
-"""Administrative commands for user blocking and management.
-
-Provides:
-- Blocking/unblocking users from bot access
-- Viewing detailed block history
-- Listing all blocked users
-- Tracking name changes over time
-
-"""
+"""Administrative commands for blocking users and viewing their access history."""
 
 import logging
 from typing import TYPE_CHECKING, override
@@ -53,6 +45,11 @@ class AdminCog(BaseCog):
     def __init__(self, bot: commands.Bot, block_manager: BlockManager) -> None:
         super().__init__(bot)
         self.block_manager = block_manager
+
+    @override
+    def command_response_ephemeral(self, _interaction: discord.Interaction) -> bool:
+        options: dict[str, object] = dict(iter(_interaction.namespace))
+        return options.get("ephemeral", True) is not False
 
     @override
     def should_bypass_block(self, interaction: discord.Interaction) -> bool:

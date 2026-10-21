@@ -11,6 +11,7 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
@@ -68,11 +69,27 @@ class VoiceJournal:
         self._losses: dict[int | None, VoiceJournalRecord] = {}
         self._write_error: Exception | None = None
         self._close_task: asyncio.Task[None] | None = None
+        self._last_commit_at: datetime | None = None
 
     @property
     def closed(self) -> bool:
         """Return whether this queue owner has finished draining."""
         return self._close_task is not None and self._close_task.done()
+
+    @property
+    def writer_running(self) -> bool:
+        """Report the writer task's liveness without starting or restarting it."""
+        return self._writer is not None and not self._writer.done()
+
+    @property
+    def pending(self) -> int:
+        """Count accepted records still queued or being committed."""
+        return self._accepted - self._persisted - self._failed
+
+    @property
+    def last_commit_at(self) -> datetime | None:
+        """Return this journal owner's last confirmed batch completion in UTC."""
+        return self._last_commit_at
 
     @property
     def counts(self) -> JournalCounts:
@@ -205,3 +222,4 @@ class VoiceJournal:
             logger.debug("Voice journal write traceback", exc_info=True)
         else:
             self._persisted += len(batch)
+            self._last_commit_at = datetime.now(UTC)

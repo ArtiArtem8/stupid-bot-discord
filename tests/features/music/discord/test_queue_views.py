@@ -13,6 +13,7 @@ from stupidbot.features.music.discord.views import (
     QueuePaginator,
     QueueUndoView,
 )
+from stupidbot.features.music.discord.views import queue as queue_module
 from stupidbot.features.music.discord.views.queue import logger as queue_logger
 from stupidbot.features.music.playback.models import (
     QueueEntry,
@@ -30,6 +31,13 @@ from tests.features.music.fixtures import make_entry
 
 def _interaction() -> MagicMock:
     item = MagicMock()
+    channel = MagicMock(spec=discord.VoiceChannel, id=20)
+    item.user = MagicMock(spec=discord.Member, id=42)
+    item.user.voice = MagicMock(channel=channel)
+    item.guild = MagicMock(
+        spec=discord.Guild, id=123, voice_client=MagicMock(channel=channel)
+    )
+    item.guild_id = 123
     item.client = MagicMock()
     item.client.block_manager = MagicMock()
     item.client.block_manager.is_user_blocked = AsyncMock(return_value=False)
@@ -478,8 +486,8 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(view.is_finished())
         edit.assert_awaited_once_with(view=None)
         followup.assert_awaited_once_with(
-            "Ничего из этого запроса уже не ожидает в очереди. "
-            "Возможно, треки уже запустились или очередь была изменена.",
+            "Треков из этого запроса больше нет в очереди. "
+            "Возможно, они уже запустились или очередь изменилась.",
             ephemeral=True,
         )
 
@@ -676,17 +684,67 @@ class TestQueueUndoView(unittest.IsolatedAsyncioTestCase):
         interaction = _interaction()
         interaction.user.id = 99
 
-        with patch.object(
-            interaction.response,
-            "send_message",
-            new=AsyncMock(),
-        ) as send:
+        with patch.object(FeedbackUI, "send", new=AsyncMock()) as send:
             allowed = await view.interaction_check(interaction)
 
         self.assertFalse(allowed)
         self.assertFalse(view.is_finished())
         remove.assert_not_awaited()
         send.assert_awaited_once_with(
-            "Удалить из очереди может только автор запроса.",
+            interaction,
+            description="Удалить из очереди может только автор запроса.",
             ephemeral=True,
         )
+
+    async def test_dispatched_undo_requires_requester_in_current_voice_channel(
+        self,
+    ) -> None:
+        for user_id, channel_id, allowed in (
+            (42, 20, True),
+            (42, None, False),
+            (42, 30, False),
+            (99, 20, False),
+        ):
+            with self.subTest(user_id=user_id, channel_id=channel_id):
+                expected = make_entry("expected", requester_id=42)
+                remove = AsyncMock(
+                    return_value=MusicResult(
+                        MusicResultStatus.SUCCESS,
+                        "Removed",
+                        data=(expected,),
+                        reason=MusicResultReason.REMOVED_FROM_QUEUE,
+                    )
+                )
+                view = QueueUndoView(
+                    guild_id=123,
+                    expected_entries=(expected,),
+                    requester_id=42,
+                    remove_callback=remove,
+                    timeout=120,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                )
+                self.addCleanup(view.stop)
+                interaction = _interaction()
+                interaction.user.id = user_id
+                interaction.user.voice = (
+                    MagicMock(
+                        channel=MagicMock(spec=discord.VoiceChannel, id=channel_id)
+                    )
+                    if channel_id is not None
+                    else None
+                )
+                interaction.message.edit = AsyncMock()
+                with (
+                    patch.object(queue_module, "ack_component", new=AsyncMock()),
+                    patch.object(FeedbackUI, "send", new=AsyncMock()) as feedback,
+                ):
+                    await view._scheduled_task(view.remove_button, interaction)
+                if allowed:
+                    remove.assert_awaited_once_with(123, (expected,), 42)
+                    self.assertTrue(view.is_finished())
+                    feedback.assert_not_awaited()
+                else:
+                    remove.assert_not_awaited()
+                    self.assertFalse(view.is_finished())
+                    feedback.assert_awaited_once()
+                    self.assertTrue(feedback.call_args.kwargs["ephemeral"])

@@ -2,6 +2,7 @@
   "keys": [
     "command\u0004Delete a message by ID (owner only)",
     "command\u0004ID of the message to delete",
+    "command\u0004Show runtime health (owner only)",
     "command\u0004Test error handling",
     "day\u0004{count:d} day",
     "hour\u0004{count:d} hour",
@@ -13,7 +14,10 @@
     "ui\u0004Cannot delete messages in this channel.",
     "ui\u0004Deleted.",
     "ui\u0004Insufficient permissions.",
+    "ui\u0004Local state; no external checks are performed.",
     "ui\u0004Message not found.",
+    "ui\u0004Runtime health",
+    "ui\u0004Status",
     "week\u0004{count:d} week",
     "year\u0004{count:d} year"
   ]

@@ -20,10 +20,7 @@ def is_json_value(value: object) -> TypeGuard[JsonValue]:
     if isinstance(value, list):
         items = cast(list[object], value)
         return all(is_json_value(item) for item in items)
-    if isinstance(value, dict):
-        items = cast(dict[object, object], value)
-        return all(isinstance(k, str) and is_json_value(v) for k, v in items.items())
-    return False
+    return is_json_object(value)
 
 
 def is_json_object(value: object) -> TypeGuard[JsonObject]:

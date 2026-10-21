@@ -43,7 +43,7 @@ class PreferenceMessages:
         ).format(language=language, timezone=timezone, local_time=local_time)
 
     def conflict(self, *, language: str, timezone: str) -> str:
-        """Report current values after another editor wins a CAS race."""
+        """Report the saved values when another editor has already changed them."""
         return self.catalog.pgettext(
             "conflict",
             "Settings have changed. Current values: {language}, {timezone}. Open the "

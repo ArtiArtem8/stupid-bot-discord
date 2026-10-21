@@ -64,9 +64,9 @@ class VoiceXpPolicy:
     def rate(self, room: RoomInterval, user_id: int) -> VoiceXpBreakdown:
         """Return the component award for exactly one hour in this room state.
 
-        Five-plus means five known human accounts INCLUDING this user. Known
-        bots and unidentified occupants do not count. Peer mute/deaf states do
-        not affect the headcount. AFK is an eligibility gate for the recipient.
+        The group count includes this user and excludes bots and unidentified
+        occupants. Other users' mute/deaf states do not affect the count.
+        A known AFK state prevents this user from earning XP.
         """
         if user_id <= 0:
             raise ValueError("User ID must be positive")

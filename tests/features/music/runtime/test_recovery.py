@@ -62,6 +62,9 @@ def _runtime_player(current: PlaybackAttempt) -> MusicPlayer:
     player._next_attempt_id = current.attempt_id + 1
     player._current_attempt = current
     player._pending_end_attempts = deque()
+    player._restore_entry = None
+    player._finished_restore_attempt = None
+    player._unreported_restore_end = None
     player._exception_attempt_ids = set()
     player._transition_lock = asyncio.Lock()
     player._is_stale = False
@@ -147,21 +150,26 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         healer = SessionHealer(MagicMock(), connection, StateManager(), _volumes(), ui)
         return healer, connection, ui
 
-    def test_youtube_source_identification_uses_track_source_only(self) -> None:
+    def test_warm_seek_uses_source_seekability_and_position(self) -> None:
         healer, _, _ = self._make_warm_restore_healer()
         cases = (
-            ("youtube", "https://example.com/track", True),
-            ("YouTube", "https://example.com/track", True),
-            ("http", "https://youtube.com/watch?v=track", False),
-            ("http", "https://youtu.be/track", False),
+            ("youtube", "https://example.com/track", True, 4000, True),
+            ("YouTube", "https://example.com/track", True, 4000, True),
+            ("http", "https://youtube.com/watch?v=track", True, 4000, False),
+            ("http", "https://youtu.be/track", True, 4000, False),
+            ("youtube", "https://example.com/track", False, 4000, False),
+            ("youtube", "https://example.com/track", True, 3000, False),
         )
 
-        for source, uri, expected in cases:
-            with self.subTest(source=source, uri=uri):
+        for source, uri, seekable, position, expected in cases:
+            with self.subTest(source=source, seekable=seekable, position=position):
                 track = make_entry("source-check").track
                 track.source = source
                 track.uri = uri
-                self.assertIs(healer._is_youtube_track(track), expected)
+                track.seekable = seekable
+                self.assertIs(
+                    healer._should_restore_with_warm_seek(track, position), expected
+                )
 
     async def test_refresh_track_propagates_unexpected_failure(self) -> None:
         healer, _, _ = self._make_warm_restore_healer()
@@ -429,6 +437,9 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player._next_attempt_id = 1
         player._current_attempt = None
         player._pending_end_attempts = deque()
+        player._restore_entry = None
+        player._finished_restore_attempt = None
+        player._unreported_restore_end = None
         player._exception_attempt_ids = set()
         player._transition_lock = asyncio.Lock()
         player._is_stale = False
@@ -875,6 +886,9 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         player._next_attempt_id = 2
         player._current_attempt = None
         player._pending_end_attempts = deque()
+        player._restore_entry = None
+        player._finished_restore_attempt = None
+        player._unreported_restore_end = None
         player._exception_attempt_ids = set()
         player._transition_lock = asyncio.Lock()
         player._current = None

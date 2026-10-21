@@ -34,13 +34,14 @@ from stupidbot.discord_ui.emojis import (
     RESTART_EMOJI,
     SKIP_EMOJI,
 )
-from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.exceptions import InteractionAcknowledgementError
 from stupidbot.discord_ui.interaction_flow import ack_component
 from stupidbot.discord_ui.theme import Color
 from stupidbot.features.music.contracts import (
     ControllerDestroyReason,
     ControllerManagerProtocol,
 )
+from stupidbot.features.music.discord.access import MusicAction, check_music_access
 from stupidbot.features.music.discord.feedback import send_warning
 from stupidbot.features.music.errors import EXPECTED_LAVALINK_IO_ERRORS
 from stupidbot.features.music.messages import MusicMessages
@@ -265,10 +266,7 @@ class TrackControllerManager(ControllerManagerProtocol):
         expected_attempt_id: int | None = None,
         expected_player: MusicPlayer | None = None,
     ) -> None:
-        """Destroys the controller for a guild.
-
-        If requesting_view is provided, only destroys if current active view.
-        """
+        """Remove controls only if the supplied view, player, and attempt match."""
         async with self._locks[guild_id]:
             current_view = self.controllers.get(guild_id)
             if (
@@ -336,12 +334,10 @@ type ButtonCallback = Callable[
 
 
 def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
-    """Handle exceptions raised by controller button callbacks.
+    """Handle response failures and close controls when playback becomes unusable.
 
-    Catches mafic.PlayerNotConnected and mafic.PlayerException exceptions,
-    stopping the view and calling the on_stop_callback if provided.
-    Logs any unhandled exceptions.
-
+    A failed acknowledgement or Discord response leaves playback alone. Player
+    I/O errors invalidate the player; unexpected failures stop the view and are logged.
     """
     func_name = callable_name(func)
 
@@ -352,6 +348,10 @@ def handle_view_errors(func: ButtonCallback) -> ButtonCallback:
     ) -> None:
         try:
             await func(self, interaction, button)
+        except InteractionAcknowledgementError:
+            logger.debug("Controller acknowledgement was not accepted.", exc_info=True)
+        except discord.HTTPException:
+            logger.debug("Controller response failed.", exc_info=True)
         except EXPECTED_LAVALINK_IO_ERRORS as exc:
             logger.warning("Player IO error in %s: %s", func_name, type(exc).__name__)
             await self.handle_player_io_error(interaction)
@@ -411,7 +411,7 @@ class TrackControllerView(ui.View):
 
     @override
     def stop(self) -> None:
-        """Stop the updater loop and interaction."""
+        """Stop interactions and cancel the updater unless it is the current task."""
         logger.debug("Stopping %s", self.__class__.__name__)
         self._running = False
         if (
@@ -622,28 +622,20 @@ class TrackControllerView(ui.View):
         except discord.HTTPException as exc:
             logger.debug("View: Could not update controller message: %s", exc)
 
-    async def _check_owner(self, interaction: Interaction) -> bool:
-        context = await interaction_context(interaction, private=True)
-        messages = MusicMessages(catalog("music", context.language))
-        if interaction.user.id != self.user_id:
-            await FeedbackUI.send(
-                interaction,
-                feedback_type=FeedbackType.WARNING,
-                description=messages.catalog.pgettext(
-                    "ui", "This is not your controller."
-                ),
-                ephemeral=True,
-                disable_report_btn=True,
-            )
-            return False
-        return True
-
-    async def _prepare_action(self, interaction: Interaction) -> PlaybackAttempt | None:
-        if not await self._check_owner(interaction):
-            return None
+    async def _prepare_action(
+        self, interaction: Interaction, *, action: MusicAction = "control"
+    ) -> PlaybackAttempt | None:
+        await ack_component(interaction)
         if not await check_component_access(interaction):
             return None
-        await ack_component(interaction)
+        channel = self.player.channel
+        if not await check_music_access(
+            interaction,
+            channel,
+            action=action,
+            attempt=self.attempt,
+        ):
+            return None
         if self.player.current_attempt is not self.attempt:
             await self._request_stop(ControllerDestroyReason.STALE_VIEW)
             return None
@@ -724,7 +716,7 @@ class TrackControllerView(ui.View):
     )
     @handle_view_errors
     async def skip(self, interaction: Interaction, _: ui.Button[Self]) -> None:
-        expected = await self._prepare_action(interaction)
+        expected = await self._prepare_action(interaction, action="skip")
         if expected is None:
             return
         ended, _started = await self.player.skip(expected=expected)

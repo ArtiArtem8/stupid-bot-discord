@@ -99,9 +99,9 @@ than short ones; inactive dates contribute neither XP nor voice hours.
 The small neutral caption below lifetime XP explicitly says "in voice" and shows
 approximate hours, or minutes below one hour. It is omitted with less than one
 observed voice hour, or without earning voice in the last seven local dates.
-These are availability guards, not calibrated accuracy thresholds. Coverage describes completeness separately and
-does not multiply the measured pace. The estimate has no confidence range or
-calendar completion date.
+These are availability guards, not calibrated accuracy thresholds. Coverage
+reports how much of the period was observed; it does not change the measured pace.
+The estimate has no confidence range or calendar completion date.
 
 Every card labels recent coverage. People and XP also label lifetime coverage,
 measured from the earliest retained guild evidence to the request time. Missing
@@ -134,10 +134,11 @@ and the font cache. Missing Inkscape or fonts disables the profile command;
 the rest of the bot can start. The command returns an unavailable message and
 logs the initialization failure. After fixing setup, restart or reload the Cog.
 
-Buttons use the custom emoji references in `stupidbot/features/voice/discord/view.py`: `statistic` for
-Activity, `social` for People, `xp` for XP, and the shared `restart` and `trash`
-controls for Refresh and Delete. Emoji IDs are bound directly to the buttons;
-startup does not fetch or discover emojis by name.
+Buttons use resources from `stupidbot/discord_ui/emojis.py`: `statistic` for
+Activity, `social` for People, `xp` for XP, and `restart` and `trash` for Refresh
+and Delete. `stupidbot/features/voice/discord/view.py` owns these action mappings.
+See [emoji setup](../../INSTALLATION.md#custom-emoji) to choose Unicode controls
+or configure your application's artwork.
 
 ## Images and caches
 

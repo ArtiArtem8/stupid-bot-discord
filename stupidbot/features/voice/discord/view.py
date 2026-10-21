@@ -62,8 +62,6 @@ _ACTION_EMOJIS = {
 
 
 class ProfileActionButton(discord.ui.Button["VoiceProfileView"]):
-    """Forward a concrete action to the owning View."""
-
     def __init__(self, action: ProfileAction) -> None:
         super().__init__(
             emoji=_ACTION_EMOJIS[action],
@@ -152,7 +150,7 @@ class VoiceProfileView(discord.ui.View):
         """Authorize and acknowledge before waiting for a running card action."""
         if not await self.interaction_check(interaction):
             return
-        # Owners retain the existing ability to remove their published message.
+        # Owners can delete their published card even when access is blocked.
         if action is not ProfileAction.DELETE and not await check_component_access(
             interaction
         ):

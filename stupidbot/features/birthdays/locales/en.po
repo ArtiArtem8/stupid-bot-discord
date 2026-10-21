@@ -35,10 +35,6 @@ msgstr ""
 " surprises. May your life be interesting and full, with all the strength you need to "
 "reach your goals!"
 
-msgctxt "ui"
-msgid "An error occurred while removing the birthday"
-msgstr "An error occurred while removing the birthday"
-
 msgctxt "month"
 msgid "April"
 msgstr "April"
@@ -83,10 +79,6 @@ msgstr "Configure birthdays for this server"
 msgctxt "month"
 msgid "December"
 msgstr "December"
-
-msgctxt "ui"
-msgid "Error"
-msgstr "Error"
 
 msgctxt "month"
 msgid "February"
@@ -286,16 +278,20 @@ msgid "You cannot perform this action"
 msgstr "You cannot perform this action"
 
 msgctxt "ui"
-msgid "You cannot perform this action."
-msgstr "You cannot perform this action."
-
-msgctxt "ui"
 msgid "You have not set your birthday"
 msgstr "You have not set your birthday"
 
 msgctxt "ui"
 msgid "Your birthday has been removed"
 msgstr "Your birthday has been removed"
+
+msgctxt "remove_failed"
+msgid "Could not remove the birthday. Open /remove-birthday to try again."
+msgstr "Could not remove the birthday. Open /remove-birthday to try again."
+
+msgctxt "remove_expired"
+msgid "Confirmation expired. Open /remove-birthday to try again."
+msgstr "Confirmation expired. Open /remove-birthday to try again."
 
 #, python-brace-format
 msgctxt "saved"

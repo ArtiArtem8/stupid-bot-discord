@@ -1,9 +1,4 @@
-"""Feedback UI Module.
-
-This module provides a unified interface for sending standardized feedback messages
-to users via Discord interactions. It supports various feedback types (Success,
-Info, Warning, Error), custom embeds, and automatic report button generation for errors.
-"""
+"""Route interaction feedback and attach optional error-report controls."""
 
 import logging
 from collections.abc import Awaitable, Callable
@@ -19,16 +14,21 @@ from discord.utils import MISSING, format_dt, utcnow  # pyright: ignore[reportAn
 
 from stupidbot.common.text import truncate_text
 from stupidbot.discord_ui.embeds import DEFAULT_LIMITS, SafeEmbed
+from stupidbot.discord_ui.interaction_flow import (
+    defer_command,
+    deferred_response_is_private,
+)
 from stupidbot.discord_ui.messages import FeedbackMessages
 from stupidbot.discord_ui.theme import ERROR_THUMBNAIL, Color
 from stupidbot.i18n.catalog import catalog
-from stupidbot.i18n.discord import interaction_context
+from stupidbot.i18n.discord import error_context, interaction_context
 from stupidbot.i18n.policy import Language
 
 logger = logging.getLogger(__name__)
 
 type ReportCallback = Callable[[discord.Interaction, str | None], Awaitable[None]]
 _TRANSPORT_ERRORS = (aiohttp.ClientError, TimeoutError)
+_FOLLOWUP_ONLY = "stupidbot.response.followup_only"
 
 
 class ViewDirective(Enum):
@@ -74,19 +74,19 @@ class ReportButtonView(View):
     @discord.ui.button(label="Report a problem", style=discord.ButtonStyle.danger)
     async def report(self, interaction: discord.Interaction, _: Button[Self]) -> None:
         if interaction.user.id != self.user_id:
+            await defer_command(interaction, ephemeral=True)
             context = await interaction_context(interaction, private=True)
-            await interaction.response.send_message(
-                catalog("discord_ui", context.language).pgettext(
+            await interaction.edit_original_response(
+                content=catalog("discord_ui", context.language).pgettext(
                     "not_yours", "This is not your message."
                 ),
-                ephemeral=True,
             )
             return
         await self.on_report(interaction, self.error_info)
 
 
 class FeedbackUI:
-    """Unified UI for sending feedback messages (Success, Info, Warning, Error)."""
+    """Send feedback through the interaction's initial response or a followup."""
 
     _default_report_callback: ReportCallback | None = None
 
@@ -101,7 +101,6 @@ class FeedbackUI:
         description: str,
         feedback_type: FeedbackType,
     ) -> SafeEmbed:
-        """Create a standard embed for feedback."""
         embed = SafeEmbed(
             title=title,
             description=description,
@@ -154,21 +153,13 @@ class FeedbackUI:
         embed: discord.Embed = MISSING,
         error_info: str | None = None,
     ) -> None:
-        """Send a standardized feedback message.
+        """Send feedback, preserving the original response's visibility.
 
-        Args:
-            interaction: The interaction to respond to.
-            feedback_type: The type of feedback (SUCCESS, INFO, WARNING, ERROR)
-            description: The main content of the message.
-            title: Optional title.
-            delete_after: Auto-delete after N seconds.
-            ephemeral: Whether the message is ephemeral.
-            view: Custom view, or None to clear a deferred original response view.
-            disable_report_btn: If True, suppresses the Report button for ERROR type.
-            embed: Optional custom embed. If provided, type/description/title are
-                ignored.
-            error_info: Optional error information to pre-fill the report modal.
-
+        A supplied embed replaces the generated title, description and styling.
+        Omit ``view`` to preserve existing controls or allow an error-report
+        button; pass ``None`` to clear controls on a deferred original response.
+        ``delete_after`` is measured in seconds. Expected Discord and transport
+        failures are logged without raising.
         """
         context = await interaction_context(interaction, private=ephemeral)
         resolved_embed = FeedbackUI._resolve_embed(
@@ -325,12 +316,42 @@ class FeedbackUI:
         if (
             interaction.response.type
             is discord.InteractionResponseType.deferred_channel_message
+            and interaction.extras.get(_FOLLOWUP_ONLY) is not True
         ):
-            message = await FeedbackUI._edit_original_response(interaction, payload)
+            if payload.ephemeral and not await deferred_response_is_private(
+                interaction
+            ):
+                message = await FeedbackUI._send_private_after_public_defer(
+                    interaction, payload
+                )
+            else:
+                message = await FeedbackUI._edit_original_response(interaction, payload)
         else:
             message = await FeedbackUI._send_followup(interaction, payload)
         if payload.delete_after:
             await message.delete(delay=payload.delete_after)
+
+    @staticmethod
+    async def _send_private_after_public_defer(
+        interaction: discord.Interaction, payload: FeedbackPayload
+    ) -> discord.WebhookMessage:
+        # Discord treats the first followup after a loading defer as an edit of the
+        # original and ignores its ephemeral flag. Complete it without private data.
+        context = await error_context(interaction, private=False)
+        text = catalog("discord_ui", context.language).pgettext(
+            "private_response", "Your response is shown privately."
+        )
+        await interaction.edit_original_response(
+            content=text, embed=None, attachments=[], view=None
+        )
+        interaction.extras[_FOLLOWUP_ONLY] = True
+        try:
+            return await FeedbackUI._send_followup(interaction, payload)
+        finally:
+            try:
+                await interaction.delete_original_response()
+            except (discord.HTTPException, *_TRANSPORT_ERRORS):
+                logger.debug("Could not remove response placeholder", exc_info=True)
 
     @staticmethod
     async def _edit_original_response(

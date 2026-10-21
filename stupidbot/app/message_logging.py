@@ -4,11 +4,15 @@ import logging
 
 from discord import Message
 
+from stupidbot import settings as config
+
 logger = logging.getLogger(__name__)
 
 
 def log_message(message: Message, *, is_edit: bool = False) -> None:
-    """Log the complete Discord message payload used for later analysis."""
+    """Record complete payloads only when the operator enables message logging."""
+    if not config.MESSAGE_LOG_ENABLED:
+        return
     payload = {
         "status": "edited" if is_edit else "new",
         "message_id": message.id,
@@ -40,21 +44,20 @@ def log_message(message: Message, *, is_edit: bool = False) -> None:
 
 def log_message_edit(before: Message, after: Message) -> None:
     """Log changed fields and the complete edited payload when relevant."""
+    if not config.MESSAGE_LOG_ENABLED:
+        return
     changes: list[str] = []
     before_flags: list[str] | None = None
     after_flags: list[str] | None = None
-    attr_whitelist = [
-        "content",
-        "embeds",
-        "attachments",
-        "stickers",
-        "components",
-        "pinned",
-        "reference",
-    ]
-    for attr in attr_whitelist:
-        before_val = getattr(before, attr, None)
-        after_val = getattr(after, attr, None)
+    for attr, before_val, after_val in (
+        ("content", before.content, after.content),
+        ("embeds", before.embeds, after.embeds),
+        ("attachments", before.attachments, after.attachments),
+        ("stickers", before.stickers, after.stickers),
+        ("components", before.components, after.components),
+        ("pinned", before.pinned, after.pinned),
+        ("reference", before.reference, after.reference),
+    ):
         if before_val != after_val:
             changes.append(attr)
     if before.flags.value != after.flags.value:

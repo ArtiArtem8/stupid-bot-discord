@@ -1,5 +1,6 @@
 """Ephemeral settings editor with a frozen presentation context and CAS save."""
 
+import asyncio
 import logging
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -9,8 +10,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import discord
 
 from stupidbot.common.timezones import timezone_label
-from stupidbot.discord_ui.access import check_component_access
+from stupidbot.discord_ui.access import check_command_access
+from stupidbot.discord_ui.base_cog import MODAL_ACCESS_TIMEOUT
 from stupidbot.discord_ui.errors import handle_app_command_error
+from stupidbot.discord_ui.exceptions import AccessCheckUnavailableError
 from stupidbot.discord_ui.pagination import CallbackButton
 from stupidbot.features.preferences.messages import PreferenceMessages
 from stupidbot.features.preferences.models import (
@@ -20,7 +23,7 @@ from stupidbot.features.preferences.models import (
 )
 from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.i18n.catalog import catalog
-from stupidbot.i18n.discord import interaction_context
+from stupidbot.i18n.discord import error_context
 from stupidbot.i18n.policy import Language, PresentationContext, resolve_context
 
 logger = logging.getLogger(__name__)
@@ -256,7 +259,7 @@ class SettingsView(discord.ui.LayoutView):
     @override
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.owner_id:
-            context = await interaction_context(interaction, private=True)
+            context = await error_context(interaction)
             await interaction.response.send_message(
                 catalog("preferences", context.language).pgettext(
                     "owner_only",
@@ -265,8 +268,11 @@ class SettingsView(discord.ui.LayoutView):
                 ephemeral=True,
             )
             return False
-        if not await check_component_access(interaction):
-            return False
+        try:
+            async with asyncio.timeout(MODAL_ACCESS_TIMEOUT):
+                await check_command_access(interaction)
+        except TimeoutError as error:
+            raise AccessCheckUnavailableError() from error
         if self.closed or self.saving:
             await interaction.response.send_message(
                 self.catalog.pgettext(

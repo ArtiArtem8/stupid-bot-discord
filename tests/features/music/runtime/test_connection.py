@@ -55,6 +55,43 @@ def _as_music_player(player: _FakeMusicPlayer) -> MusicPlayer:
 
 
 class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
+    async def test_competing_channel_join_cannot_move_first_session(self) -> None:
+        guild = MagicMock(id=123, voice_client=None)
+        first_channel = MagicMock(spec=discord.VoiceChannel, id=10)
+        second_channel = MagicMock(spec=discord.VoiceChannel, id=20)
+        entered, release, queued = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        player = _FakeMusicPlayer(guild)
+        player.channel = first_channel
+
+        async def connect(**_kwargs: object) -> _FakeMusicPlayer:
+            entered.set()
+            await release.wait()
+            guild.voice_client = player
+            return player
+
+        async def competing_join() -> object:
+            queued.set()
+            return await self.manager.join(guild, second_channel)
+
+        first_channel.connect = AsyncMock(side_effect=connect)
+        second_channel.connect = AsyncMock()
+        with (
+            patch.object(self.manager, "ensure_available", return_value=True),
+            patch.object(self.manager, "is_player_usable", return_value=True),
+            patch.object(self.manager, "_move_player", new=AsyncMock()) as move,
+        ):
+            first = asyncio.create_task(self.manager.join(guild, first_channel))
+            await entered.wait()
+            second = asyncio.create_task(competing_join())
+            await queued.wait()
+            release.set()
+            self.assertEqual(await first, (VoiceCheckResult.SUCCESS, None))
+            self.assertEqual(await second, (VoiceCheckResult.OTHER_CHANNEL, None))
+        self.assertIs(guild.voice_client, player)
+        self.assertIs(player.channel, first_channel)
+        second_channel.connect.assert_not_awaited()
+        move.assert_not_awaited()
+
     async def test_shutdown_drains_accepted_join_and_rejects_queued_and_late_joins(
         self,
     ) -> None:
@@ -189,7 +226,6 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
             await manager.initialize()
 
-        self.assertTrue(manager._initialized)
         node_class.assert_called_once()
         mock_pool_instance.add_node.assert_awaited_once_with(
             node,
@@ -766,7 +802,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(self.manager, "invalidate_player", invalidate_player),
         ):
-            result = await self.manager.join(guild, new_channel)
+            result = await self.manager.join(guild, new_channel, allow_move=True)
 
         self.assertEqual(
             result,
@@ -797,7 +833,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             patch.object(player, "move_to", AsyncMock(side_effect=move), create=True),
             patch.object(self.manager, "is_player_usable", return_value=True),
         ):
-            moving = asyncio.create_task(self.manager.join(guild, new_channel))
+            moving = asyncio.create_task(
+                self.manager.join(guild, new_channel, allow_move=True)
+            )
             await entered.wait()
             self.assertTrue(self.manager.is_transitioning(_as_music_player(player)))
             moving.cancel()
@@ -826,7 +864,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(self.manager, "invalidate_player", invalidate_player),
         ):
-            result = await self.manager.join(guild, new_channel)
+            result = await self.manager.join(guild, new_channel, allow_move=True)
 
         self.assertEqual(
             result,
@@ -972,7 +1010,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_disconnect_returns_true_when_disconnect_clears_cache(self) -> None:
         guild = MagicMock(id=123)
-        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        voice_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
         guild.voice_client = voice_client
 
         async def disconnect(*, force: bool) -> None:
@@ -989,7 +1029,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_disconnect_returns_true_when_cleanup_clears_cache(self) -> None:
         guild = MagicMock(id=123)
-        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        voice_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
         guild.voice_client = voice_client
         voice_client.disconnect = AsyncMock()
         voice_client.cleanup.side_effect = lambda: setattr(guild, "voice_client", None)
@@ -1037,7 +1079,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         guild = MagicMock(id=123)
-        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        voice_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
         guild.voice_client = voice_client
         voice_client.disconnect = AsyncMock(side_effect=RuntimeError("failed"))
 
@@ -1083,7 +1127,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         guild = MagicMock(id=123)
-        voice_client = MagicMock(spec=discord.VoiceProtocol)
+        voice_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
         guild.voice_client = voice_client
         voice_client.disconnect = AsyncMock()
 
@@ -1096,8 +1142,12 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         guild = MagicMock(id=123)
-        old_client = MagicMock(spec=discord.VoiceProtocol)
-        new_client = MagicMock(spec=discord.VoiceProtocol)
+        old_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
+        new_client = MagicMock(
+            spec=discord.VoiceProtocol, channel=MagicMock(spec=discord.VoiceChannel)
+        )
         guild.voice_client = old_client
 
         async def disconnect(*, force: bool) -> None:
@@ -1525,10 +1575,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool_instance.remove_node.side_effect = remove_node_side_effect
         mock_pool_class.return_value = mock_pool_instance
         manager = ConnectionManager(self.bot)
+        self.addAsyncCleanup(manager.stop_connecting)
 
         await manager.mark_node_unavailable(node)
 
-        self.assertFalse(manager._initialized)
         self.assertTrue(manager.is_known_unavailable())
         self.assertGreater(manager._next_connect_retry_at, 0)
         mock_pool_instance.remove_node.assert_awaited_once_with(
@@ -1546,6 +1596,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool_instance.label_to_node = {}
         mock_pool_class.return_value = mock_pool_instance
         manager = ConnectionManager(self.bot)
+        self.addAsyncCleanup(manager.stop_connecting)
 
         await manager.mark_node_unavailable(node)
 
@@ -1611,6 +1662,39 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
 
 class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
+    async def test_queued_connection_attempt_observes_new_retry_cooldown(self) -> None:
+        entered, release, queued = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        node = MagicMock(close=AsyncMock())
+
+        async def fail_connect(_node: object, **_kwargs: object) -> None:
+            entered.set()
+            await release.wait()
+            raise aiohttp.ClientConnectionError("offline")
+
+        async def queued_attempt() -> bool:
+            queued.set()
+            return await self.manager.ensure_available()
+
+        self.pool.add_node = AsyncMock(side_effect=fail_connect)
+        with patch.object(mafic, "Node", return_value=node):
+            async with asyncio.TaskGroup() as tasks:
+                first = tasks.create_task(self.manager.ensure_available())
+                try:
+                    await asyncio.wait_for(entered.wait(), 1.0)
+                    second = tasks.create_task(queued_attempt())
+                    await asyncio.wait_for(queued.wait(), 1.0)
+                finally:
+                    release.set()
+
+            self.assertFalse(first.result())
+            self.assertFalse(second.result())
+            self.pool.add_node.assert_awaited_once()
+            node.close.assert_awaited_once()
+
+            self.manager._next_connect_retry_at = 0.0
+            self.assertFalse(await self.manager.ensure_available())
+            self.assertEqual(self.pool.add_node.await_count, 2)
+
     async def test_cleanup_waits_for_active_node_initialization(self) -> None:
         entered, release = asyncio.Event(), asyncio.Event()
         closing_entered = asyncio.Event()
@@ -1635,7 +1719,6 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
             await initializing
             await closing
         self.pool.close.assert_awaited_once()
-        self.assertFalse(self.manager._initialized)
 
     @override
     def setUp(self) -> None:
@@ -1662,11 +1745,9 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 node = MagicMock()
                 node.close = AsyncMock()
                 self.pool.add_node = AsyncMock(side_effect=error)
-                self.manager._initialized = True
 
                 with patch.object(mafic, "Node", return_value=node):
                     self.assertFalse(await self.manager.ensure_available())
-                    self.assertFalse(self.manager._initialized)
                     self.assertTrue(self.manager.is_known_unavailable())
                     self.assertEqual(
                         self.manager._last_connect_error, type(error).__name__
@@ -1733,6 +1814,7 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 node = MagicMock()
                 node.close = AsyncMock()
                 self.pool.add_node = AsyncMock(side_effect=error)
+                self.manager._next_connect_retry_at = 0.0
 
                 with (
                     patch.object(mafic, "Node", return_value=node),
@@ -1801,7 +1883,6 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 self.pool.add_node.assert_awaited_once()
                 node.close.assert_awaited_once_with()
                 sleep.assert_not_awaited()
-                self.assertFalse(self.manager._initialized)
                 self.assertTrue(self.manager.is_known_unavailable())
                 self.assertEqual(self.manager._last_connect_error, type(error).__name__)
                 self.assertEqual(self.manager._next_connect_retry_at, 0.0)
@@ -1832,6 +1913,129 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
         initialize.assert_awaited_once_with()
         sleep.assert_not_awaited()
         self.assertTrue(task.done())
+
+    async def test_ready_node_outage_reconnects_without_command(self) -> None:
+        original = MagicMock(label="test", available=True, players=())
+        replacement = MagicMock(label="test", available=True)
+
+        def connect(node: object, *, player_cls: object) -> None:
+            self.assertIs(player_cls, MusicPlayer)
+            self.pool.nodes = [node]
+            self.pool.label_to_node = {"test": node}
+
+        def remove_node(node: object, *, transfer_players: bool) -> None:
+            self.assertIs(node, original)
+            self.assertFalse(transfer_players)
+            self.pool.nodes = []
+            self.pool.label_to_node = {}
+
+        self.pool.add_node = AsyncMock(side_effect=connect)
+        self.pool.remove_node = AsyncMock(side_effect=remove_node)
+        with (
+            patch.object(mafic, "Node", side_effect=[original, replacement]),
+            patch.object(time, "monotonic", return_value=100.0) as clock,
+            patch.object(asyncio, "sleep", new=AsyncMock()) as sleep,
+        ):
+
+            def advance_clock(delay: float) -> None:
+                self.assertFalse(self.manager._init_lock.locked())
+                clock.return_value = 100.0 + delay
+
+            sleep.side_effect = advance_clock
+            self.manager.start_lazy_connect()
+            bootstrap = self.manager._lazy_connect_task
+            if bootstrap is None:
+                self.fail("Bootstrap task was not scheduled")
+            await bootstrap
+            self.assertTrue(self.manager.has_ready_node())
+
+            original.available = False
+            await self.manager.handle_node_unavailable(original)
+            reconnecting = self.manager._lazy_connect_task
+            if reconnecting is None:
+                self.fail("Reconnect task was not scheduled")
+            self.assertIsNot(reconnecting, bootstrap)
+            await reconnecting
+
+        self.assertEqual(self.pool.add_node.await_count, 2)
+        self.pool.add_node.assert_awaited_with(replacement, player_cls=MusicPlayer)
+        self.pool.remove_node.assert_awaited_once_with(original, transfer_players=False)
+        sleep.assert_awaited_once_with(config.LAVALINK_CONNECT_RETRY_DELAY)
+        self.assertTrue(self.manager.has_ready_node())
+        self.assertIsNone(self.manager._last_connect_error)
+
+    async def test_duplicate_outage_events_share_one_reconnect(self) -> None:
+        node = MagicMock(label="test", available=False, players=())
+        node.close = AsyncMock()
+        sleeping, resume = asyncio.Event(), asyncio.Event()
+        initialize = AsyncMock(
+            side_effect=lambda: setattr(self.pool, "nodes", [MagicMock(available=True)])
+        )
+
+        with (
+            patch.object(time, "monotonic", return_value=100.0) as clock,
+            patch.object(self.manager, "initialize", initialize),
+            patch.object(asyncio, "sleep", new=AsyncMock()) as sleep,
+        ):
+
+            async def wait_for_retry(delay: float) -> None:
+                sleeping.set()
+                await resume.wait()
+                clock.return_value = 100.0 + delay
+
+            sleep.side_effect = wait_for_retry
+            await self.manager.handle_node_unavailable(node)
+            reconnecting = self.manager._lazy_connect_task
+            if reconnecting is None:
+                self.fail("Reconnect task was not scheduled")
+            await sleeping.wait()
+            await self.manager.handle_node_unavailable(node)
+            self.assertIs(self.manager._lazy_connect_task, reconnecting)
+            initialize.assert_not_awaited()
+            resume.set()
+            await reconnecting
+
+        initialize.assert_awaited_once_with()
+        sleep.assert_awaited_once_with(config.LAVALINK_CONNECT_RETRY_DELAY)
+        self.assertTrue(self.manager.has_ready_node())
+
+    async def test_shutdown_during_outage_cleanup_does_not_restart_connection(
+        self,
+    ) -> None:
+        node = MagicMock(label="test", available=False, players=())
+        self.pool.label_to_node = {"test": node}
+        removing, release, closing_entered = (
+            asyncio.Event(),
+            asyncio.Event(),
+            asyncio.Event(),
+        )
+        initialize = AsyncMock()
+
+        async def remove_node(_node: object, *, transfer_players: bool) -> None:
+            self.assertFalse(transfer_players)
+            removing.set()
+            await release.wait()
+            self.pool.label_to_node = {}
+
+        async def close() -> None:
+            closing_entered.set()
+            await self.manager.cleanup()
+
+        self.pool.remove_node = AsyncMock(side_effect=remove_node)
+        with patch.object(self.manager, "initialize", initialize):
+            outage = asyncio.create_task(self.manager.handle_node_unavailable(node))
+            await removing.wait()
+            closing = asyncio.create_task(close())
+            await closing_entered.wait()
+            self.assertFalse(closing.done())
+            self.pool.close.assert_not_awaited()
+            release.set()
+            await outage
+            await closing
+
+        initialize.assert_not_awaited()
+        self.assertIsNone(self.manager._lazy_connect_task)
+        self.pool.close.assert_awaited_once_with()
 
     async def test_unavailable_attempt_retries_after_remaining_cooldown(self) -> None:
         await self._assert_bootstrap_retries_after_cooldown(

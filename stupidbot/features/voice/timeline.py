@@ -22,8 +22,8 @@ from stupidbot.features.voice.facts import (
 class RoomInterval:
     """Half-open constant room state; gaps prohibit crediting this interval.
 
-    Unknown bot identity is neither human nor bot. States remain available for
-    future flag metrics without a second journal replay.
+    Unknown bot identity is neither human nor bot. States preserve the observed
+    flags used by metrics.
     """
 
     guild_id: int
@@ -82,7 +82,7 @@ class VoiceReplayState:
 
     The owner serializes mutation and snapshots. Unsupported append ordering
     returns False without mutation; recover by constructing from full history.
-    Snapshots finish detached containers and never finalize the live tail.
+    Snapshots finalize detached copies without changing the live replay state.
     """
 
     def __init__(self, records: Iterable[VoiceJournalRecord]) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -9,8 +10,16 @@ import discord
 from discord import DMChannel, Interaction
 from discord.ui import Label, Modal, TextInput
 
+from stupidbot.discord_ui.access import check_command_access, check_component_access
+from stupidbot.discord_ui.base_cog import MODAL_ACCESS_TIMEOUT
 from stupidbot.discord_ui.embeds import SafeEmbed
+from stupidbot.discord_ui.errors import handle_app_command_error
+from stupidbot.discord_ui.exceptions import (
+    AccessCheckUnavailableError,
+    InteractionAcknowledgementError,
+)
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.discord_ui.limits import MAX_EMBED_FIELD_LENGTH
 from stupidbot.discord_ui.theme import Color
 from stupidbot.features.reports.messages import ReportMessages
@@ -158,11 +167,7 @@ async def _remove_report_button(message: discord.Message | None) -> None:
 
 
 class ReportModal(Modal):
-    """Modal dialog for submitting bug reports.
-
-    Provides a text area for users to describe issues or bugs
-    they've encountered with the bot.
-    """
+    """Collect a report and confirm only after it has been committed."""
 
     def __init__(
         self,
@@ -197,7 +202,9 @@ class ReportModal(Modal):
 
     @override
     async def on_submit(self, interaction: Interaction) -> None:
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        await defer_command(interaction, ephemeral=True)
+        if not await check_component_access(interaction):
+            return
         report, report_channel_id = await submit_report(
             self._repository, interaction, self.reason.value
         )
@@ -215,12 +222,17 @@ class ReportModal(Modal):
     @override
     async def on_error(self, interaction: Interaction, error: Exception) -> None:
         """Resolve modal failures outside application-command error routing."""
+        self.stop()
+        if isinstance(error, InteractionAcknowledgementError):
+            await handle_app_command_error(interaction, error)
+            return
         logger.error(
             "Report modal failed: interaction=%s user=%s",
             interaction.id,
             interaction.user.id,
             exc_info=error,
         )
+        await error_context(interaction)
         await FeedbackUI.send(
             interaction,
             feedback_type=FeedbackType.ERROR,
@@ -238,7 +250,17 @@ async def handle_report_button(
     interaction: discord.Interaction,
     error_info: str | None = None,
 ) -> None:
-    """Open the report-submission modal."""
+    """Open the modal; old report buttons must recheck current guild access."""
+    if interaction.type is discord.InteractionType.component:
+        try:
+            async with asyncio.timeout(MODAL_ACCESS_TIMEOUT):
+                await check_command_access(interaction)
+        except TimeoutError:
+            await handle_app_command_error(interaction, AccessCheckUnavailableError())
+            return
+        except Exception as error:
+            await handle_app_command_error(interaction, error)
+            return
     context = await error_context(interaction)
     await interaction.response.send_modal(
         ReportModal(repository, error_info, context=context)

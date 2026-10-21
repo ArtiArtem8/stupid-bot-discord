@@ -7,6 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.features.preferences.models import PreferenceScope
 from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.features.preferences.view import SettingsView
@@ -52,7 +53,7 @@ async def open_settings(
     scope: PreferenceScope,
 ) -> None:
     """Freeze the viewer's context, then read the selected settings scope."""
-    await interaction.response.defer(ephemeral=True, thinking=True)
+    await defer_command(interaction, ephemeral=True)
     context = await interaction_context(interaction, private=True)
     subject_id = (
         interaction.user.id if scope is PreferenceScope.USER else interaction.guild_id

@@ -26,6 +26,14 @@ msgctxt "access_title"
 msgid "Access denied"
 msgstr "Доступ запрещён"
 
+msgctxt "access_unavailable"
+msgid "Could not check access. Please try again."
+msgstr "Не удалось проверить доступ. Попробуйте ещё раз."
+
+msgctxt "private_response"
+msgid "Your response is shown privately."
+msgstr "Ответ виден только вам."
+
 msgctxt "discord_error"
 msgid "Could not complete the action in Discord. Please try again."
 msgstr "Не удалось выполнить действие в Discord. Попробуйте ещё раз."
@@ -36,7 +44,7 @@ msgstr "Не удалось выполнить команду. Детали за
 
 msgctxt "discord_title"
 msgid "Discord error"
-msgstr "Discord Ошибка"
+msgstr "Ошибка Discord"
 
 msgctxt "internal_title"
 msgid "Internal error"

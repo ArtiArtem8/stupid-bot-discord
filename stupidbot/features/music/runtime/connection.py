@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TypeGuard
@@ -91,12 +91,11 @@ class _PlayerStatus:
 
 
 class ConnectionManager:
-    """Manages Lavalink node connections and Discord voice state."""
+    """Own Lavalink nodes and guild voice connections."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.pool: mafic.NodePool[discord.Client] = mafic.NodePool(bot)
-        self._initialized = False
         self._init_lock = asyncio.Lock()
         self._next_connect_retry_at = 0.0
         self._last_connect_error: str | None = None
@@ -161,13 +160,15 @@ class ConnectionManager:
         return False
 
     async def initialize(self) -> None:
-        """Initialize Lavalink, raising NodeNotConnectedError after shutdown starts."""
+        """Connect unless shutdown or the retry cooldown blocks initialization."""
         async with self._init_lock:
             if self._closing:
                 raise NodeNotConnectedError(MUSIC_SERVICE_UNAVAILABLE_MESSAGE)
             if self.has_ready_node():
-                self._initialized = True
                 return
+            # Another caller may have failed while this one waited for the lock.
+            if time.monotonic() < self._next_connect_retry_at:
+                raise NodeNotConnectedError(MUSIC_SERVICE_UNAVAILABLE_MESSAGE)
 
             await self._cleanup_unavailable_nodes()
 
@@ -182,19 +183,15 @@ class ConnectionManager:
             )
             try:
                 await self.pool.add_node(node, player_cls=MusicPlayer)
-                self._initialized = True
                 self._last_connect_error = None
                 self._next_connect_retry_at = 0.0
                 logger.info("Mafic node pool initialized successfully")
 
             except (aiohttp.ClientError, TimeoutError, mafic.HTTPException) as exc:
+                self._last_connect_error = type(exc).__name__
                 if not _is_retryable_connect_error(exc):
-                    self._initialized = False
-                    self._last_connect_error = type(exc).__name__
                     await self._close_failed_node(node)
                     raise
-                self._initialized = False
-                self._last_connect_error = type(exc).__name__
                 self._next_connect_retry_at = (
                     time.monotonic() + config.LAVALINK_CONNECT_RETRY_DELAY
                 )
@@ -221,7 +218,7 @@ class ConnectionManager:
 
     def has_ready_node(self) -> bool:
         """Return whether the pool has a usable Lavalink node."""
-        return any(getattr(node, "available", False) for node in self.pool.nodes)
+        return any(node.available for node in self.pool.nodes)
 
     def _pool_contains_node(self, node: mafic.Node[discord.Client]) -> bool:
         return self.pool.label_to_node.get(node.label) is node
@@ -321,9 +318,8 @@ class ConnectionManager:
     async def mark_node_unavailable(
         self, node: mafic.Node[discord.Client] | None = None
     ) -> None:
-        """Mark Lavalink unavailable and remove stale node resources."""
+        """Remove stale node resources and retry if no ready node remains."""
         async with self._init_lock:
-            self._initialized = False
             self._last_connect_error = "Lavalink node became unavailable"
             self._next_connect_retry_at = (
                 time.monotonic() + config.LAVALINK_CONNECT_RETRY_DELAY
@@ -333,6 +329,9 @@ class ConnectionManager:
                 await self._remove_or_close_node(node)
 
             await self._cleanup_unavailable_nodes()
+
+        # Removing a Mafic node also cancels its websocket reconnect task.
+        self.start_lazy_connect()
 
     async def invalidate_player(
         self,
@@ -409,14 +408,19 @@ class ConnectionManager:
         try:
             await self.mark_node_unavailable(node)
         finally:
-            for player in invalidated:
-                if self.get_player_node(player) is node:
-                    await self._cleanup_voice_client_locally(player.guild, player)
-                else:
-                    # A committed transfer left resources on a different node.
-                    await self.detach_stale_voice_client(player.guild, player)
+            await self._cleanup_failed_node_players(node, invalidated)
 
         return {player.guild.id for player in invalidated}
+
+    async def _cleanup_failed_node_players(
+        self, node: mafic.Node[discord.Client], players: Sequence[MusicPlayer]
+    ) -> None:
+        for player in players:
+            if self.get_player_node(player) is node:
+                await self._cleanup_voice_client_locally(player.guild, player)
+            else:
+                # A committed transfer left resources on a different node.
+                await self.detach_stale_voice_client(player.guild, player)
 
     async def _transfer_or_release(
         self, player: MusicPlayer, target: mafic.Node[discord.Client]
@@ -495,7 +499,7 @@ class ConnectionManager:
         )
 
     def start_lazy_connect(self) -> None:
-        """Start at most one bootstrap task, ending when Lavalink becomes ready."""
+        """Start at most one retry task, ending when Lavalink becomes ready."""
         if self._closing or self.has_ready_node():
             return
 
@@ -555,7 +559,6 @@ class ConnectionManager:
         """Drain connection work before closing Mafic resources."""
         await self.stop_connecting()
         await self.pool.close()
-        self._initialized = False
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:
         try:
@@ -571,7 +574,7 @@ class ConnectionManager:
         """Close unusable Mafic nodes left behind by a failed connection attempt."""
         nodes = list(self.pool.label_to_node.values())
         for node in nodes:
-            if getattr(node, "available", False):
+            if node.available:
                 continue
             try:
                 await self.pool.remove_node(node, transfer_players=False)
@@ -584,14 +587,7 @@ class ConnectionManager:
         *,
         failure_context: str | None = None,
     ) -> MusicPlayer | None:
-        """Retrieve the music player for a guild.
-
-        Returns None if the guild is not connected or does not have a music player.
-
-        Returns:
-            MusicPlayer | None
-
-        """
+        """Return the guild's current usable music player, or None."""
         guild = self.bot.get_guild(guild_id)
         voice_client = guild.voice_client if guild is not None else None
         if isinstance(voice_client, MusicPlayer) and self.is_player_usable(
@@ -621,9 +617,13 @@ class ConnectionManager:
         await self.detach_stale_voice_client(guild, voice_client)
 
     async def join(
-        self, guild: discord.Guild, channel: discord.VoiceChannel | discord.StageChannel
+        self,
+        guild: discord.Guild,
+        channel: discord.VoiceChannel | discord.StageChannel,
+        *,
+        allow_move: bool = False,
     ) -> VoiceJoinResult:
-        """Join a voice channel."""
+        """Join without moving an existing session unless recovery requests it."""
         if self._closing:
             return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
         lock = self._join_locks.setdefault(guild.id, asyncio.Lock())
@@ -633,6 +633,16 @@ class ConnectionManager:
             owner = self._recovery_tasks.get(guild.id)
             if owner is not None and owner is not asyncio.current_task():
                 return VoiceCheckResult.RECOVERING, None
+            voice_client = guild.voice_client
+            if (
+                not allow_move
+                and voice_client is not None
+                and isinstance(
+                    voice_client.channel, (discord.VoiceChannel, discord.StageChannel)
+                )
+                and voice_client.channel.id != channel.id
+            ):
+                return VoiceCheckResult.OTHER_CHANNEL, None
             result = await self._join_unlocked(guild, channel)
             if self._closing:
                 return VoiceCheckResult.MUSIC_SERVICE_UNAVAILABLE, None
@@ -884,7 +894,7 @@ class ConnectionManager:
 
         logger.debug(
             "Disconnecting from channel: %s",
-            getattr(voice_client, "channel", None),
+            voice_client.channel,
         )
 
         if isinstance(voice_client, MusicPlayer) and not self.is_player_usable(

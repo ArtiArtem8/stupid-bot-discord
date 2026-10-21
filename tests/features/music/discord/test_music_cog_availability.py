@@ -2,7 +2,6 @@
 
 import asyncio
 import unittest
-from collections.abc import Awaitable
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,33 +25,6 @@ from stupidbot.features.music.results import (
     VoiceCheckResult,
 )
 from stupidbot.features.music.service import CoreMusicService
-
-
-class _ResponseStub:
-    def __init__(self) -> None:
-        self.type: discord.InteractionResponseType | None = None
-        self.send_message = AsyncMock()
-        self.defer = AsyncMock(side_effect=self._defer)
-
-    def is_done(self) -> bool:
-        return self.type is not None
-
-    async def _defer(self, **_: object) -> None:
-        self.type = discord.InteractionResponseType.deferred_channel_message
-
-
-async def _await_operation(
-    _interaction: object,
-    operation: Awaitable[MusicResult[None]],
-    *,
-    defer_after: float = 1.5,
-    ephemeral: bool = False,
-) -> MusicResult[None]:
-    if defer_after != 1.5:
-        raise AssertionError("Unexpected defer threshold")
-    if not ephemeral:
-        raise AssertionError("Leave flow must be ephemeral")
-    return await operation
 
 
 class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
@@ -223,94 +195,14 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("localhost", message)
         self.assertNotIn("traceback", message.lower())
 
-    async def test_leave_uses_private_defer_flow_for_service_cleanup(self) -> None:
-        guild = MagicMock()
-        interaction = MagicMock()
-        interaction.guild = guild
-        interaction.response = _ResponseStub()
-        interaction.followup.send = AsyncMock()
-        message = MagicMock()
-        message.delete = AsyncMock()
-        interaction.edit_original_response = AsyncMock(return_value=message)
-        self.service_mock.leave = AsyncMock(
-            return_value=MusicResult(
-                MusicResultStatus.SUCCESS,
-                "ok",
-                reason=MusicResultReason.TRACK_PROCESSED,
-            )
-        )
-
-        async def wait_for_operation(
-            flow_interaction: object,
-            operation: Awaitable[MusicResult[None]],
-            *,
-            defer_after: float = 1.5,
-            ephemeral: bool = False,
-        ) -> MusicResult[None]:
-            self.assertIs(flow_interaction, interaction)
-            self.assertEqual(defer_after, 1.5)
-            self.assertTrue(ephemeral)
-            return await operation
-
-        with patch(
-            "stupidbot.features.music.discord.music_cog.run_with_defer",
-            side_effect=wait_for_operation,
-        ) as run_flow:
-            await self.cog.leave._do_call(interaction, {})
-
-        run_flow.assert_awaited_once()
-        self.service_mock.leave.assert_called_once_with(guild)
-
-    async def test_leave_after_defer_edits_response_instead_of_send_message(
-        self,
-    ) -> None:
-        guild = MagicMock()
-        interaction = MagicMock()
-        interaction.guild = guild
-        interaction.response = _ResponseStub()
-        interaction.followup.send = AsyncMock()
-        message = MagicMock()
-        message.delete = AsyncMock()
-        interaction.edit_original_response = AsyncMock(return_value=message)
-
-        async def slow_leave(_: object) -> MusicResult[None]:
-            await asyncio.sleep(0)
-            return MusicResult(
-                MusicResultStatus.SUCCESS,
-                "ok",
-                reason=MusicResultReason.TRACK_PROCESSED,
-            )
-
-        self.service_mock.leave = AsyncMock(side_effect=slow_leave)
-
-        async def defer_then_wait(
-            _flow_interaction: object,
-            operation: Awaitable[MusicResult[None]],
-            *,
-            defer_after: float = 1.5,
-            ephemeral: bool = False,
-        ) -> MusicResult[None]:
-            self.assertEqual(defer_after, 1.5)
-            self.assertTrue(ephemeral)
-            await interaction.response.defer(thinking=True, ephemeral=ephemeral)
-            return await operation
-
-        with patch(
-            "stupidbot.features.music.discord.music_cog.run_with_defer",
-            side_effect=defer_then_wait,
-        ):
-            await self.cog.leave._do_call(interaction, {})
-
-        interaction.response.defer.assert_awaited_once_with(
-            thinking=True,
-            ephemeral=True,
-        )
-        interaction.response.send_message.assert_not_awaited()
-        interaction.edit_original_response.assert_awaited_once()
-
     async def test_leave_success_sends_disconnected_message(self) -> None:
         guild = MagicMock()
         interaction = MagicMock(guild=guild)
+        interaction.command = self.cog.leave
+        interaction.user = MagicMock(
+            spec=discord.Member,
+            guild_permissions=discord.Permissions(manage_guild=True),
+        )
         service_leave = AsyncMock(
             return_value=MusicResult(
                 MusicResultStatus.SUCCESS,
@@ -321,10 +213,6 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(self.cog.service, "leave", service_leave),
-            patch(
-                "stupidbot.features.music.discord.music_cog.run_with_defer",
-                side_effect=_await_operation,
-            ),
             patch(
                 "stupidbot.features.music.discord.music_cog.send_info",
                 new_callable=AsyncMock,
@@ -353,6 +241,11 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
     async def test_leave_not_connected_uses_no_player_warning(self) -> None:
         guild = MagicMock()
         interaction = MagicMock(guild=guild)
+        interaction.command = self.cog.leave
+        interaction.user = MagicMock(
+            spec=discord.Member,
+            guild_permissions=discord.Permissions(manage_guild=True),
+        )
         result: MusicResult[None] = MusicResult(
             MusicResultStatus.FAILURE,
             "Not connected",
@@ -364,10 +257,6 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
                 self.cog.service,
                 "leave",
                 AsyncMock(return_value=result),
-            ),
-            patch(
-                "stupidbot.features.music.discord.music_cog.run_with_defer",
-                side_effect=_await_operation,
             ),
             patch.object(FeedbackUI, "send", new=AsyncMock()) as send_feedback,
             patch(
@@ -390,6 +279,11 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
     async def test_leave_disconnect_error_uses_send_error(self) -> None:
         guild = MagicMock()
         interaction = MagicMock(guild=guild)
+        interaction.command = self.cog.leave
+        interaction.user = MagicMock(
+            spec=discord.Member,
+            guild_permissions=discord.Permissions(manage_guild=True),
+        )
         message = "Не удалось отключиться от голосового канала."
         result: MusicResult[None] = MusicResult(
             MusicResultStatus.ERROR, message, reason=MusicResultReason.DISCONNECT_FAILED
@@ -400,10 +294,6 @@ class TestMusicCogAvailability(unittest.IsolatedAsyncioTestCase):
                 self.cog.service,
                 "leave",
                 AsyncMock(return_value=result),
-            ),
-            patch(
-                "stupidbot.features.music.discord.music_cog.run_with_defer",
-                side_effect=_await_operation,
             ),
             patch.object(
                 self.cog,
@@ -433,43 +323,38 @@ class TestMusicCogJoinVisibility(unittest.IsolatedAsyncioTestCase):
                 MagicMock(spec=commands.Bot), MagicMock(spec=VolumeStore)
             )
 
-    async def test_join_service_operation_uses_private_defer_flow(self) -> None:
-        interaction = MagicMock()
-        guild = MagicMock()
-        channel = MagicMock()
-        expected = (VoiceCheckResult.SUCCESS, None)
-        join = AsyncMock(return_value=expected)
-
-        async def await_join(
-            flow_interaction: object,
-            operation: Awaitable[tuple[VoiceCheckResult, None]],
-            *,
-            defer_after: float = 1.5,
-            ephemeral: bool = False,
-        ) -> tuple[VoiceCheckResult, None]:
-            self.assertIs(flow_interaction, interaction)
-            self.assertEqual(defer_after, 1.5)
-            self.assertTrue(ephemeral)
-            return await operation
+    async def test_join_passes_channel_to_service_and_reports_result(self) -> None:
+        channel = MagicMock(spec=discord.VoiceChannel)
+        guild = MagicMock(spec=discord.Guild)
+        guild.voice_client = None
+        interaction = MagicMock(guild=guild)
+        interaction.command = self.cog.join
+        interaction.user = MagicMock(
+            spec=discord.Member, voice=MagicMock(channel=channel)
+        )
+        join = AsyncMock(return_value=(VoiceCheckResult.SUCCESS, None))
 
         with (
             patch.object(self.cog.service, "join", join),
-            patch(
-                "stupidbot.features.music.discord.music_cog.run_with_defer",
-                side_effect=await_join,
-            ) as run_flow,
+            patch.object(
+                self.cog, "_get_voice_channel_for_play", AsyncMock(return_value=channel)
+            ),
+            patch.object(self.cog, "_send_join_feedback", new=AsyncMock()) as feedback,
         ):
-            result = await self.cog._join_for_join_command(
-                interaction,
-                guild,
-                channel,
-            )
+            await self.cog.join._do_call(interaction, {})
 
-        self.assertEqual(result, expected)
         join.assert_awaited_once_with(guild, channel)
-        run_flow.assert_awaited_once()
+        feedback.assert_awaited_once_with(
+            interaction,
+            result=VoiceCheckResult.SUCCESS,
+            channel=channel,
+            from_channel=None,
+            delete_after=60,
+            warn_on_failure=True,
+            ephemeral=True,
+        )
 
-    async def test_join_success_feedback_is_private_on_fast_path(self) -> None:
+    async def test_join_success_feedback_is_private(self) -> None:
         interaction = MagicMock()
         channel = MagicMock()
 
@@ -496,7 +381,7 @@ class TestMusicCogJoinVisibility(unittest.IsolatedAsyncioTestCase):
             ephemeral=True,
         )
 
-    async def test_join_failure_feedback_is_private_after_slow_flow(self) -> None:
+    async def test_join_failure_feedback_is_private(self) -> None:
         interaction = MagicMock()
         channel = MagicMock()
 

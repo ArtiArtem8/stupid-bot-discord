@@ -24,7 +24,7 @@ MUSIC_RECOVERING_MESSAGE = (
 
 
 class PlaylistResponseData(TypedDict):
-    """Data for playlist add event."""
+    """Playlist result and the queue entries eligible for undo."""
 
     type: Literal["playlist"]
     playlist: Playlist
@@ -34,7 +34,7 @@ class PlaylistResponseData(TypedDict):
 
 
 class TrackResponseData(TypedDict):
-    """Data for track play event."""
+    """Track result and the queue entries eligible for undo."""
 
     type: Literal["track"]
     track: Track
@@ -47,7 +47,7 @@ type PlayResponseData = PlaylistResponseData | TrackResponseData
 
 
 class SkipTrackData(TypedDict):
-    """Data for skip event."""
+    """Tracks before and after a skip."""
 
     before: Track | None
     after: Track | None
@@ -61,7 +61,7 @@ class RepeatModeData(TypedDict):
 
 
 class RotateTrackData(TypedDict):
-    """Data for rotate event."""
+    """Tracks before and after moving the current track to the queue's end."""
 
     skipped: Track | None
     next: Track | None
@@ -97,6 +97,7 @@ class VoiceCheckResult(StrEnum):
     USER_NOT_IN_VOICE = auto()
     USER_NOT_MEMBER = auto()
     RECOVERING = auto()
+    OTHER_CHANNEL = auto()
 
     @property
     def status(self) -> MusicResultStatus:
@@ -128,7 +129,6 @@ class MusicResult[T]:
 
     @property
     def is_success(self) -> bool:
-        """Check if the operation was successful."""
         return self.status is MusicResultStatus.SUCCESS
 
 

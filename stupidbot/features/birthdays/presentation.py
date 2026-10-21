@@ -101,22 +101,10 @@ def create_birthday_list_embed(
     *,
     language: Language = Language.RU,
 ) -> discord.Embed:
-    """Create a Discord embed representing a list of birthdays.
+    """List birthdays within Discord's embed and field limits.
 
-    Args:
-        guild_name: Name of the guild for which the embed is being generated.
-        entries: `BirthdayListEntry` objects, each representing a user's birthday.
-        max_field_length: Maximum length of a single field in the generated embed.
-        language: Language for labels and relative-day text.
-
-    Returns:
-        A Discord embed containing the list of birthdays.
-
-    Note:
-        The generated embed is trimmed to Discord's constraints on embed length
-        (6000 characters) and field count (25 fields).
-        If the input list is too long, the generated embed may be truncated.
-
+    ``max_field_length`` limits characters per field. Entries that exceed the
+    remaining embed budget are omitted; the footer still counts all entries.
     """
     messages = BirthdayMessages(catalog("birthdays", language))
     title = truncate_text(messages.title(guild=guild_name), width=DEFAULT_LIMITS.title)

@@ -3,14 +3,13 @@
 import asyncio
 import logging
 import secrets
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from discord import Interaction, app_commands
 from discord.ext import commands
 
 from stupidbot import settings as config
 from stupidbot.discord_ui.base_cog import BaseCog
-from stupidbot.discord_ui.interaction_flow import run_with_defer
 from stupidbot.features.ask.answers import CAPABILITIES, random_answer, str_local
 from stupidbot.features.ask.repository import QuestionRepository
 from stupidbot.i18n.catalog import catalog
@@ -23,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 class QuestionCog(BaseCog):
+    @override
+    def command_response_ephemeral(self, _interaction: Interaction) -> bool:
+        return False
+
     def __init__(self, bot: commands.Bot, repository: QuestionRepository) -> None:
         super().__init__(bot)
         self.answers = secrets.SystemRandom().sample(
@@ -30,7 +33,6 @@ class QuestionCog(BaseCog):
         )
         self._answer_lock = asyncio.Lock()
         self._repository = repository
-        logger.info("Initial /ask answers: %s", self.answers)
 
     @app_commands.command(
         name="ask",
@@ -39,19 +41,8 @@ class QuestionCog(BaseCog):
         ),
     )
     async def q(self, interaction: Interaction, *, text: str) -> None:
-        logger.info(
-            "/ask invoked user=%s user_id=%s question=%r",
-            interaction.user,
-            interaction.user.id,
-            text,
-        )
-        reply = await run_with_defer(
-            interaction, self._answer(interaction, text), defer_after=1.5
-        )
-        if interaction.response.is_done():
-            await interaction.edit_original_response(content=reply)
-        else:
-            await interaction.response.send_message(reply)
+        reply = await self._answer(interaction, text)
+        await interaction.edit_original_response(content=reply)
 
     async def _answer(self, interaction: Interaction, text: str) -> str:
         context = await interaction_context(interaction, private=False)
@@ -68,13 +59,19 @@ class QuestionCog(BaseCog):
                 self.answers.append(random_answer(text, answers=CAPABILITIES))
                 self.answers.pop(0)
 
-        logger.info(
-            "/ask resolved user_id=%s result=%s question=%r answer=%r",
-            interaction.user.id,
-            "new" if inserted else "cached",
-            text,
-            reply,
-        )
+        result = "new" if inserted else "cached"
+        if config.MESSAGE_LOG_ENABLED:
+            logger.info(
+                "/ask resolved user_id=%s result=%s question=%r answer=%r",
+                interaction.user.id,
+                result,
+                text,
+                reply,
+            )
+        else:
+            logger.info(
+                "/ask resolved user_id=%s result=%s", interaction.user.id, result
+            )
 
         return reply
 

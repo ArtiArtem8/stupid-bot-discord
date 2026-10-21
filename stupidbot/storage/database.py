@@ -4,12 +4,15 @@ import asyncio
 import sqlite3
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, closing
+from dataclasses import dataclass
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import URL, Connection, String, create_engine, event, select, text
 from sqlalchemy.engine.interfaces import DBAPIConnection
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, ConnectionPoolEntry
 
@@ -17,6 +20,25 @@ from stupidbot.common.asyncio import wait_for_completion
 from stupidbot.storage.schema import storage_state
 
 SCHEMA_REVISION = "0005_korean"
+
+
+@dataclass(frozen=True, slots=True)
+class DatabaseHealth:
+    """Process-local admission and contention counts, unrelated to data revisions."""
+
+    admitted: int
+    closing: bool
+    busy: int
+    checkout_timeouts: int
+
+
+def is_sqlite_contention(error: OperationalError) -> bool:
+    """Recognize SQLite busy/locked errors, including their extended result codes."""
+    code = getattr(error.orig, "sqlite_errorcode", None)
+    return isinstance(code, int) and code & 0xFF in (
+        sqlite3.SQLITE_BUSY,
+        sqlite3.SQLITE_LOCKED,
+    )
 
 
 class Database:
@@ -34,6 +56,18 @@ class Database:
         self._drained = asyncio.Event()
         self._drained.set()
         self._closing: asyncio.Task[None] | None = None
+        self._busy = 0
+        self._checkout_timeouts = 0
+
+    @property
+    def health(self) -> DatabaseHealth:
+        """Read current admissions and lifetime failure counts without a checkout."""
+        return DatabaseHealth(
+            self._active,
+            self._closing is not None,
+            self._busy,
+            self._checkout_timeouts,
+        )
 
     @asynccontextmanager
     async def transaction(self) -> AsyncGenerator[AsyncConnection]:
@@ -46,6 +80,13 @@ class Database:
         try:
             async with self.engine.begin() as connection:
                 yield connection
+        except PoolTimeoutError:
+            self._checkout_timeouts += 1
+            raise
+        except OperationalError as exc:
+            if is_sqlite_contention(exc):
+                self._busy += 1
+            raise
         finally:
             self._active -= 1
             if self._active == 0:
@@ -94,6 +135,7 @@ def open_engine(path: Path) -> AsyncEngine:
             query={"mode": "rw", "uri": "true"},
         ),
         connect_args={"isolation_level": None, "timeout": 5.0},
+        hide_parameters=True,
         poolclass=AsyncAdaptedQueuePool,
         pool_size=1,
         max_overflow=0,

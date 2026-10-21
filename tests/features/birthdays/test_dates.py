@@ -189,7 +189,7 @@ class TestIsBirthdayToday(unittest.TestCase):
 
     def test_leap_birthday_in_leap_year_match(self) -> None:
         bday = "29-02-2000"
-        today = date(2024, 2, 29)  # 2024 is leap
+        today = date(2024, 2, 29)
         self.assertTrue(is_birthday_today(bday, today))
 
     def test_leap_birthday_in_leap_year_mismatch(self) -> None:
@@ -199,7 +199,7 @@ class TestIsBirthdayToday(unittest.TestCase):
 
     def test_leap_birthday_in_non_leap_year_match(self) -> None:
         bday = "29-02-2000"
-        today = date(2025, 2, 28)  # 2025 is not leap
+        today = date(2025, 2, 28)
         self.assertTrue(is_birthday_today(bday, today))
 
     def test_leap_birthday_in_non_leap_year_mismatch(self) -> None:

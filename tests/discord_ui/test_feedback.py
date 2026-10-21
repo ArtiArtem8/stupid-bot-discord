@@ -182,6 +182,7 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
 
     async def test_deferred_ephemeral_result_edits_original_response(self) -> None:
         interaction = MagicMock()
+        interaction.extras = {"stupidbot.response.deferred_private": True}
         interaction.response.is_done.return_value = True
         interaction.response.type = (
             discord.InteractionResponseType.deferred_channel_message
@@ -196,6 +197,63 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
         )
 
         interaction.edit_original_response.assert_awaited_once()
+        interaction.followup.send.assert_not_awaited()
+
+    async def test_private_failure_after_public_defer_never_edits_private_payload(
+        self,
+    ) -> None:
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.extras = {"stupidbot.response.deferred_private": False}
+        interaction.response.is_done.return_value = True
+        interaction.response.type = (
+            discord.InteractionResponseType.deferred_channel_message
+        )
+        interaction.edit_original_response = AsyncMock()
+        interaction.followup.send = AsyncMock()
+        interaction.delete_original_response = AsyncMock()
+        ordered = MagicMock()
+        ordered.attach_mock(interaction.edit_original_response, "finish")
+        ordered.attach_mock(interaction.followup.send, "private")
+        ordered.attach_mock(interaction.delete_original_response, "remove")
+
+        await FeedbackUI.send(
+            interaction,
+            description="Private access details",
+            ephemeral=True,
+        )
+
+        self.assertEqual(
+            [call[0] for call in ordered.mock_calls], ["finish", "private", "remove"]
+        )
+        original = _await_kwargs(interaction.edit_original_response)
+        self.assertNotIn("Private access details", str(original))
+        self.assertIsNone(original["embed"])
+        private = _await_kwargs(interaction.followup.send)
+        self.assertTrue(private["ephemeral"])
+        embed = private["embed"]
+        if not isinstance(embed, discord.Embed):
+            self.fail("Expected a private feedback embed")
+        self.assertEqual(embed.description, "Private access details")
+
+    async def test_failed_placeholder_completion_does_not_send_private_followup(
+        self,
+    ) -> None:
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.extras = {"stupidbot.response.deferred_private": False}
+        interaction.response.is_done.return_value = True
+        interaction.response.type = (
+            discord.InteractionResponseType.deferred_channel_message
+        )
+        interaction.edit_original_response = AsyncMock(
+            side_effect=discord.HTTPException(
+                MagicMock(status=503, reason="Unavailable"), "test failure"
+            )
+        )
+        interaction.followup.send = AsyncMock()
+        with self.assertLogs("stupidbot.discord_ui.feedback", level="WARNING"):
+            await FeedbackUI.send(
+                interaction, description="Private access details", ephemeral=True
+            )
         interaction.followup.send.assert_not_awaited()
 
     async def test_expired_interaction_is_not_retried(self) -> None:

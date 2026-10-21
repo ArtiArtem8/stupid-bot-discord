@@ -7,15 +7,16 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
-from typing import override
+from typing import TYPE_CHECKING, override
 from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
-from discord.ext import commands
 
-from stupidbot.discord_ui.base_cog import BaseCog
+from stupidbot.app.health import ComponentHealth
+from stupidbot.discord_ui.base_cog import GenericBaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
+from stupidbot.discord_ui.interaction_flow import defer_command
 from stupidbot.features.preferences.reminders import maybe_remind
 from stupidbot.features.voice.discord.attachments import detail_embed
 from stupidbot.features.voice.discord.view import (
@@ -54,6 +55,9 @@ from stupidbot.i18n.catalog import catalog
 from stupidbot.i18n.discord import interaction_context, profile_context
 from stupidbot.i18n.policy import Language, PresentationContext
 
+if TYPE_CHECKING:
+    from stupidbot.app.bot import StupidBot
+
 logger = logging.getLogger(__name__)
 _TIMELINE_REQUEST_LIMIT = 4
 _DATA_TIMEOUT = 10
@@ -81,10 +85,10 @@ class ProfileRequest:
     media: ProfileMedia
 
 
-class VoiceProfileCog(BaseCog):
+class VoiceProfileCog(GenericBaseCog["StupidBot"]):
     """Own one media runtime/cache; analytics replacement advances the epoch."""
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: StupidBot) -> None:
         super().__init__(bot)
         self._snapshot_lock = asyncio.Lock()
         self._timeline_admitted = 0
@@ -97,11 +101,24 @@ class VoiceProfileCog(BaseCog):
         self._close_task: asyncio.Task[None] | None = None
 
     @override
+    def command_response_ephemeral(self, _interaction: discord.Interaction) -> bool:
+        options: dict[str, object] = dict(iter(_interaction.namespace))
+        return options.get("private", True) is not False
+
+    @property
+    def runtime_health(self) -> ComponentHealth:
+        """Report completed renderer initialization without performing native work."""
+        return ComponentHealth(self._revision is not None and self._close_task is None)
+
+    @override
     async def cog_load(self) -> None:
         try:
             self._revision = await self._media_renderer.astart()
         except asyncio.CancelledError:
-            await self.cog_unload()
+            try:
+                await self.cog_unload()
+            except Exception:
+                logger.exception("Voice profile cleanup failed during cancelled load")
             raise
         except Exception as error:
             logger.warning(
@@ -140,14 +157,16 @@ class VoiceProfileCog(BaseCog):
     ) -> None:
         if interaction.guild is None:
             context = await interaction_context(interaction, private=True)
-            await interaction.response.send_message(
-                catalog("voice", context.language).pgettext(
+            await FeedbackUI.send(
+                interaction,
+                feedback_type=FeedbackType.WARNING,
+                description=catalog("voice", context.language).pgettext(
                     "guild_only", "This command is only available in a server."
                 ),
                 ephemeral=True,
             )
             return
-        await interaction.response.defer(thinking=True, ephemeral=private)
+        await defer_command(interaction, ephemeral=private)
         # Visibility controls delivery; the profile always belongs to its requester.
         context = await profile_context(interaction)
         guild_id, user_id = interaction.guild.id, interaction.user.id
@@ -368,9 +387,7 @@ class VoiceProfileCog(BaseCog):
         self._timeline_admitted += 1
         try:
             async with self._snapshot_lock:
-                analytics: object = getattr(self.bot, "voice_analytics", None)
-                if not isinstance(analytics, VoiceAnalytics):
-                    raise RenderBusyError("Voice analytics is unavailable")
+                analytics = self.bot.voice_analytics
                 if self._analytics_owner is not analytics:
                     self._analytics_owner = analytics
                     self._epoch += 1
@@ -504,6 +521,6 @@ def _companion_colors(
     }
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: StupidBot) -> None:
     """Load the profile command independently of collector load order."""
     await bot.add_cog(VoiceProfileCog(bot))

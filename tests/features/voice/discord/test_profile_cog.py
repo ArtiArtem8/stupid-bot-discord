@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import discord
-from discord.ext import commands
 from PIL import Image
 
 import stupidbot.features.voice.discord.collector_cog
@@ -67,6 +66,7 @@ def interaction(user_id: int = 10, *, guild: bool = True) -> MagicMock:
         icon = item.guild.icon.with_format.return_value
         icon.with_size.return_value = icon
     item.response.defer = AsyncMock()
+    item.response.is_done.return_value = False
     item.response.send_message = AsyncMock()
     item.edit_original_response = AsyncMock()
     message = MagicMock(spec=discord.InteractionMessage)
@@ -483,14 +483,14 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
         await cog.cog_unload()
 
     async def test_missing_inkscape_does_not_prevent_bot_from_loading_cog(self) -> None:
+        database_path, _ = await temporary_database(self)
         with TemporaryDirectory() as directory:
             with patch.dict(
                 os.environ,
                 {"INKSCAPE_BIN": str(Path(directory) / "missing-inkscape.exe")},
             ):
-                async with commands.Bot(
-                    command_prefix="!", intents=discord.Intents.none()
-                ) as bot:
+                async with StupidBot(database_path=database_path) as bot:
+                    await bot.restore_state()
                     cog = VoiceProfileCog(bot)
                     with self.assertLogs(cog_module.logger, level="WARNING"):
                         await bot.add_cog(cog)
@@ -506,6 +506,61 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                     self.assertTrue(send.call_args.kwargs["ephemeral"])
                     await bot.remove_cog("VoiceProfileCog")
                     self.assertTrue(cog._media_renderer._closed)
+
+    async def test_cancelled_load_preserves_cancellation_after_cleanup_failure(
+        self,
+    ) -> None:
+        database_path, _ = await temporary_database(self)
+        bot = StupidBot(database_path=database_path)
+        self.addAsyncCleanup(bot.close)
+        cog = VoiceProfileCog(bot)
+        started = asyncio.Event()
+        cleanup_started = asyncio.Event()
+        release_cleanup = asyncio.Event()
+        failure = BrokenPipeError("renderer close failed")
+        close_renderer = cog._media_renderer.aclose
+
+        async def start_renderer() -> str:
+            started.set()
+            await asyncio.Event().wait()
+            return "unused"
+
+        async def fail_cleanup() -> None:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            await close_renderer()
+            raise failure
+
+        with (
+            patch.object(cog._media_renderer, "astart", side_effect=start_renderer),
+            patch.object(cog._media_renderer, "aclose", side_effect=fail_cleanup),
+        ):
+            loading = asyncio.create_task(bot.add_cog(cog))
+            try:
+                async with asyncio.timeout(2):
+                    await started.wait()
+                    loading.cancel("shutdown")
+                    with self.assertLogs(cog_module.logger, level="ERROR") as logs:
+                        await cleanup_started.wait()
+                        self.assertFalse(loading.done())
+                        release_cleanup.set()
+                        with self.assertRaises(asyncio.CancelledError) as raised:
+                            await loading
+                    self.assertEqual(raised.exception.args, ("shutdown",))
+                    self.assertEqual(len(logs.records), 1)
+                    info = logs.records[0].exc_info
+                    if info is None:
+                        self.fail("Expected the cleanup failure traceback")
+                    self.assertIs(info[1], failure)
+            finally:
+                release_cleanup.set()
+                if not loading.done():
+                    loading.cancel()
+                await asyncio.gather(loading, return_exceptions=True)
+        self.assertTrue(loading.cancelled())
+        self.assertTrue(cog._media_renderer._closed)
+        self.assertIsNone(bot.get_cog("VoiceProfileCog"))
+        self.assertIsNone(bot.tree.get_command("voice-profile"))
 
     async def test_refresh_resolves_member_again_and_honors_new_upload_limit(
         self,
@@ -547,6 +602,29 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
             send.call_args.kwargs["description"],
             "Не удаётся создать карточку прямо сейчас. Попробуйте чуть позже.",
         )
+
+    async def test_unavailable_analytics_owner_uses_safe_busy_feedback(self) -> None:
+        database_path, _ = await temporary_database(self)
+        async with StupidBot(database_path=database_path) as bot:
+            await bot.restore_state()
+            await bot.voice_analytics.close()
+            cog = VoiceProfileCog(bot)
+            self.addAsyncCleanup(cog.cog_unload)
+            cog._revision = "test"
+            item = interaction()
+            item.guild.get_member.return_value = item.user
+            with (
+                patch.object(bot, "get_guild", return_value=item.guild),
+                patch.object(FeedbackUI, "send", AsyncMock()) as send,
+            ):
+                await invoke(cog, item)
+            send.assert_awaited_once()
+            self.assertEqual(
+                send.call_args.kwargs["description"],
+                "Не удаётся создать карточку прямо сейчас. Попробуйте чуть позже.",
+            )
+            self.assertTrue(send.call_args.kwargs["ephemeral"])
+            item.edit_original_response.assert_not_awaited()
 
     async def test_real_profile_build_and_upload_fallback(self) -> None:
         cog = VoiceProfileCog(MagicMock())

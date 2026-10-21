@@ -66,6 +66,37 @@ class TestActivityDetail(unittest.TestCase):
         result = build_activity_detail(timeline, 1, 1, at(13 * 3600))
         self.assertEqual(result.peak_hours, (10, 11))
 
+    def test_offset_changes_preserve_equal_peak_hours(self) -> None:
+        cases = (
+            (
+                "Pacific/Chatham",
+                datetime(2026, 9, 26, 12, 30, tzinfo=UTC),
+                (1, 2),
+            ),
+            (
+                "Pacific/Chatham",
+                datetime(2026, 4, 4, 12, 30, tzinfo=UTC),
+                (2, 3),
+            ),
+            (
+                "Antarctica/Troll",
+                datetime(2026, 10, 24, 23, 30, tzinfo=UTC),
+                (1, 2),
+            ),
+        )
+        for name, start, expected in cases:
+            with self.subTest(zone=name, start=start):
+                end = start + timedelta(hours=2)
+                timeline = VoiceTimeline(
+                    (RoomInterval(1, 10, start, end, (human(),)),),
+                    (),
+                    (ObservationInterval(1, start, end),),
+                )
+                result = build_activity_detail(timeline, 1, 1, end, ZoneInfo(name))
+                self.assertEqual(result.peak_hours, expected)
+                self.assertEqual(result.presence.total_seconds, 7200)
+                self.assertEqual(result.days[-1].voice_seconds, 7200)
+
     def test_moscow_clock_and_weekday_use_local_date_from_utc_history(self) -> None:
         start = datetime(2026, 9, 20, 22, tzinfo=UTC)
         end = start + timedelta(minutes=30)

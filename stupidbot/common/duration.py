@@ -1,19 +1,7 @@
-"""Human-friendly Russian duration formatting.
+"""Break durations into display units and format them in Russian.
 
-This module converts a duration in seconds into a compact, UX-oriented breakdown
-and formats it in Russian with correct nominative counting forms.
-
-Pipeline structure:
-1) Decompose seconds into an initial parts list using an adaptive unit set.
-2) Apply a sequence of rules that may:
-   - rewrite parts (for UX),
-   - drop insignificant tail units,
-   - accumulate dropped seconds for fuzzy approximation,
-   - optionally round up based on the omitted tail.
-
-Public entry points:
-- calculate_duration: Returns a structured breakdown.
-- format_duration_ru: Convenience wrapper that returns a formatted string.
+Months and years use configured approximate lengths, not calendar arithmetic.
+Display rules limit detail; fuzzy mode also rounds up from omitted smaller units.
 """
 
 from __future__ import annotations
@@ -59,8 +47,8 @@ _MONTHS_IN_YEAR: Final[int] = 12
 class TimeUnit(IntEnum):
     """Ordered time units used for breakdown and formatting.
 
-    Lower numeric value means a larger unit. This allows simple comparisons.
-    For example, `unit <= TimeUnit.HOUR` means "unit is HOUR or larger".
+    Lower values represent larger units: ``unit <= TimeUnit.HOUR`` includes
+    hours, days, weeks, months and years.
     """
 
     YEAR = 0
@@ -74,7 +62,7 @@ class TimeUnit(IntEnum):
 
 @dataclass(frozen=True, slots=True)
 class UnitForms:
-    """Russian nominative counting forms: 1, 2-4, 5+."""
+    """Russian word forms for counts of 1, 2-4 and 5 or more."""
 
     one: str
     few: str
@@ -92,7 +80,7 @@ FORMS: Final[Mapping[TimeUnit, UnitForms]] = MappingProxyType(
         TimeUnit.SECOND: UnitForms("секунду", "секунды", "секунд"),
     }
 )
-"""Russian nominative counting forms for each unit."""
+"""Russian counting forms for each unit."""
 
 
 _DEFAULT_MIN_SIGNIFICANT_SECONDS: Final[Mapping[TimeUnit, int]] = MappingProxyType(
@@ -108,9 +96,7 @@ _DEFAULT_MIN_SIGNIFICANT_SECONDS: Final[Mapping[TimeUnit, int]] = MappingProxyTy
 
 @dataclass(frozen=True, slots=True)
 class DurationUXConfig:
-    """Configuration knobs for duration breakdown and display.
-
-    This class stores UX thresholds, not algorithmic state.
+    """Thresholds for choosing units, omitting small values and rounding.
 
     Attributes:
         depth_noise_keep_at_least: If depth is below this value, noise filtering
@@ -155,7 +141,6 @@ class DurationUXConfig:
 
     @property
     def day_seconds(self) -> int:
-        """Number of seconds in one day."""
         return DAY_SECONDS
 
     @property
@@ -191,7 +176,6 @@ class DurationBreakdown:
 
     @property
     def is_zero(self) -> bool:
-        """Whether the breakdown represents a zero duration."""
         return not self.parts or (
             len(self.parts) == 1
             and self.parts[0].unit == TimeUnit.SECOND
@@ -274,16 +258,14 @@ def _drop_below_unit(
             dropped += p.value * sec[p.unit]
         else:
             kept.append(p)
-    return kept, int(dropped)
+    return kept, dropped
 
 
 def _normalize(parts: Sequence[UnitValue], *, with_weeks: bool) -> list[UnitValue]:
-    """Normalize overflows for stable bases (60, 24, 7, 12).
+    """Carry overflow into larger units with fixed conversion ratios.
 
-    Note:
-        Day to week normalization is applied only when the breakdown already
-        includes weeks, to preserve the "7 days" style when weeks are not used.
-
+    Convert days to weeks only when weeks are already present, so a breakdown
+    expressed in days keeps that choice of units.
     """
     values: dict[TimeUnit, int] = {}
     for p in parts:
@@ -372,7 +354,7 @@ def _decompose_units(
                 approx = True
 
         if value:
-            out.append(UnitValue(unit, int(value)))
+            out.append(UnitValue(unit, value))
 
     if not fuzzy:
         return out, approx
@@ -412,11 +394,11 @@ RuleFn = Callable[[DurationState], None]
 
 @dataclass(frozen=True, slots=True)
 class Rule:
-    """A single rule.
+    """A named transformation of the current duration breakdown.
 
     Attributes:
-        name: Stable identifier used for ordering and debugging.
-        summary: One-line description for rule overview.
+        name: Identifier for inspection and custom rule selection.
+        summary: Description of the rule's display policy.
         apply: Function that mutates DurationState in place.
 
     """
@@ -431,14 +413,13 @@ def _rule_week_singularity(st: DurationState) -> None:
     week = next((p.value for p in st.parts if p.unit is TimeUnit.WEEK), 0)
     day = next((p.value for p in st.parts if p.unit is TimeUnit.DAY), 0)
     if week == 1 and day > 0:
-        days_total = st.seconds // st.cfg.day_seconds
+        days_total = week * _DAYS_IN_WEEK + day
         rest = [p for p in st.parts if p.unit not in (TimeUnit.WEEK, TimeUnit.DAY)]
-        st.parts = [UnitValue(TimeUnit.DAY, int(days_total)), *rest]
+        st.parts = [UnitValue(TimeUnit.DAY, days_total), *rest]
         st.is_approximate = True
 
 
 def _rule_visibility(st: DurationState) -> None:
-    """Apply long-scale and seconds-hiding visibility rules."""
     if any(p.unit in (TimeUnit.YEAR, TimeUnit.MONTH) for p in st.parts):
         st.parts, dropped = _drop_below_unit(
             st.parts,
@@ -453,7 +434,6 @@ def _rule_visibility(st: DurationState) -> None:
 
 
 def _rule_depth_and_noise(st: DurationState) -> None:
-    """Select parts honoring depth and noise filtering."""
     selected: list[UnitValue] = []
     dropped = 0
 
@@ -462,11 +442,9 @@ def _rule_depth_and_noise(st: DurationState) -> None:
             selected.append(p)
             continue
 
-        if len(selected) >= st.depth:
-            dropped += p.value * st.sec[p.unit]
-            continue
-
-        if _is_noise(selected[-1], p, st.depth, st.cfg, st.sec):
+        if len(selected) >= st.depth or _is_noise(
+            selected[-1], p, st.depth, st.cfg, st.sec
+        ):
             dropped += p.value * st.sec[p.unit]
             continue
 
@@ -520,11 +498,6 @@ DEFAULT_RULES: Final[tuple[Rule, ...]] = (
 """Default ordered rule list for the duration pipeline."""
 
 
-def _apply_rules(st: DurationState, rules: Sequence[Rule]) -> None:
-    for rule in rules:
-        rule.apply(st)
-
-
 def calculate_duration(
     total_seconds: int,
     depth: int = 2,
@@ -533,7 +506,7 @@ def calculate_duration(
     config: DurationUXConfig | None = None,
     rules: Sequence[Rule] = DEFAULT_RULES,
 ) -> DurationBreakdown:
-    """Convert seconds into a UX-friendly duration breakdown.
+    """Convert signed seconds into display units, ordered from largest to smallest.
 
     Args:
         total_seconds: Duration in seconds. Can be negative.
@@ -572,7 +545,8 @@ def calculate_duration(
         is_approximate=approx,
     )
 
-    _apply_rules(st, rules)
+    for rule in rules:
+        rule.apply(st)
 
     return DurationBreakdown(
         parts=tuple(st.parts),
@@ -632,5 +606,5 @@ def format_duration_ru(
         A formatted Russian string.
 
     """
-    bd = calculate_duration(total_seconds, depth, fuzzy=fuzzy, config=config)
-    return format_breakdown_ru(bd, use_tilde=use_tilde)
+    breakdown = calculate_duration(total_seconds, depth, fuzzy=fuzzy, config=config)
+    return format_breakdown_ru(breakdown, use_tilde=use_tilde)

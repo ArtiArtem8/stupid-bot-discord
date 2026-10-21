@@ -1,4 +1,4 @@
-"""Tests for explicit playable voice connection outcomes."""
+"""Queue-entry identity and enqueue results."""
 
 import unittest
 from dataclasses import FrozenInstanceError, replace
