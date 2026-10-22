@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import unittest
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -16,16 +16,50 @@ from stupidbot.features.birthdays.presentation import (
     create_birthday_list_embed,
 )
 
+START = datetime(2026, 10, 6, 21, tzinfo=UTC)
+
 
 class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
     def test_large_birthday_embed_includes_footer_in_total_budget(self) -> None:
         entries: list[BirthdayListEntry] = [
-            {"date": "01-01-2000", "name": "x" * 128, "days_until": 1, "user_id": 1}
+            {"date": "01-01-2000", "name": "x" * 128, "user_id": 1, "starts_at": START}
             for _ in range(100)
         ]
         embed = create_birthday_list_embed("g" * 256, entries)
         self.assertLessEqual(len(embed), 6000)
         self.assertIn("100", embed.footer.text or "")
+
+    def test_rows_show_relative_start_or_today_label(self) -> None:
+        entries: list[BirthdayListEntry] = [
+            {"date": "6 октября", "name": "Иван", "user_id": 1, "starts_at": None},
+            {"date": "7 октября", "name": "Анна", "user_id": 2, "starts_at": START},
+        ]
+        value = create_birthday_list_embed("g", entries).fields[0].value
+        self.assertEqual(
+            value,
+            "1. **6 октября** — Иван · сегодня\n"
+            f"2. **7 октября** — Анна · <t:{int(START.timestamp())}:R>",
+        )
+
+    def test_narrow_field_cuts_name_and_keeps_whole_timestamp(self) -> None:
+        entries: list[BirthdayListEntry] = [
+            {"date": "7 октября", "name": "x" * 128, "user_id": 1, "starts_at": START}
+        ]
+        value = create_birthday_list_embed("g", entries, max_field_length=60)
+        line = value.fields[0].value or ""
+        self.assertLessEqual(len(line), 60)
+        self.assertTrue(line.endswith(f" · <t:{int(START.timestamp())}:R>"))
+        self.assertIn("...", line)
+
+    def test_field_too_narrow_for_date_and_timestamp_omits_whole_row(self) -> None:
+        entries: list[BirthdayListEntry] = [
+            {"date": "7 октября", "name": "User", "user_id": 1, "starts_at": START}
+        ]
+        for width in (0, 1, 20, 30):
+            with self.subTest(width=width):
+                embed = create_birthday_list_embed("g", entries, max_field_length=width)
+                self.assertEqual(embed.fields, [])
+                self.assertIn("1", embed.footer.text or "")
 
     def test_small_years_round_trip_with_four_digits(self) -> None:
         for year in (1, 999, 1000):

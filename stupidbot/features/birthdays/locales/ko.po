@@ -227,10 +227,6 @@ msgctxt "saved"
 msgid "Your birthday has been saved: {date}"
 msgstr "생일을 저장했습니다: {date}"
 
-msgctxt "days_until"
-msgid "in {days:d} d."
-msgstr "{days:d}일 후"
-
 msgctxt "ui"
 msgid "today"
 msgstr "오늘"

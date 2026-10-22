@@ -622,7 +622,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(captured.records), 1)
 
         exc_info = captured.records[0].exc_info
-        if exc_info is None:
+        if not exc_info:
             self.fail("Expected the original exception in the log record")
 
         self.assertIs(exc_info[1], error)

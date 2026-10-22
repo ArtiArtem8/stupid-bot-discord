@@ -549,7 +549,7 @@ class TestVoiceProfileCog(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(raised.exception.args, ("shutdown",))
                     self.assertEqual(len(logs.records), 1)
                     info = logs.records[0].exc_info
-                    if info is None:
+                    if not info:
                         self.fail("Expected the cleanup failure traceback")
                     self.assertIs(info[1], failure)
             finally:

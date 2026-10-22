@@ -95,9 +95,9 @@ chmod 600 .env
 ```
 
 Open `.env` in a text editor. Fill in `DISCORD_BOT_TOKEN` and choose
-`VOICE_PROFILE_TIMEZONE`, such as `Europe/Moscow` or `Europe/Berlin`. This controls
-the fallback calendar timezone for profiles; birthday delivery uses the host's
-local date.
+`VOICE_PROFILE_TIMEZONE`, such as `Europe/Moscow` or `Europe/Berlin`. This is the
+fallback calendar timezone for profiles and birthday congratulations when neither
+the member nor the server has chosen one.
 
 `DISCORD_BOT_OWNER_ID` is optional. Set it to your Discord user ID if you want to
 choose the account allowed to use owner commands, including `/health`; otherwise

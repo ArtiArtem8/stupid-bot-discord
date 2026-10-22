@@ -2,7 +2,7 @@
 
 import asyncio
 import unittest
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,17 +10,26 @@ import discord
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
+from stupidbot import settings
 from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.features.birthdays import birthday_cog as birthday_cog_module
 from stupidbot.features.birthdays import delivery as birthday_module
 from stupidbot.features.birthdays.birthday_cog import BirthdayCog
+from stupidbot.features.birthdays.local_time import member_local_times
 from stupidbot.features.birthdays.models import (
     BirthdayDelivery,
     BirthdayGuildConfig,
     BirthdayUser,
 )
 from stupidbot.features.birthdays.repository import BirthdayRepository
+from stupidbot.features.preferences.models import Preferences, PreferenceScope
+from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.storage.schema import birthday_deliveries
 from tests.storage.fixtures import temporary_database
+
+
+def _at_noon(day: date) -> datetime:
+    return datetime(day.year, day.month, day.day, 12, tzinfo=UTC)
 
 
 class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
@@ -30,19 +39,19 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs(
             "stupidbot.features.birthdays.delivery", level="WARNING"
         ) as logs:
-            await self.cog.delivery.process_guild(42, today)
-            await self.cog.delivery.process_guild(42, today)
+            await self.cog.delivery.process_guild(42, _at_noon(today))
+            await self.cog.delivery.process_guild(42, _at_noon(today))
         self.assertEqual(len(logs.records), 1)
         self.assertIn("guild=42 channel=8", logs.output[0])
         self.bot.get_channel.return_value = self.channel
         with self.assertLogs(
             "stupidbot.features.birthdays.delivery", level="INFO"
         ) as logs:
-            await self.cog.delivery.process_guild(42, today)
+            await self.cog.delivery.process_guild(42, _at_noon(today))
         self.assertTrue(any("channel recovered" in line for line in logs.output))
         self.bot.get_channel.return_value = None
         with self.assertLogs("stupidbot.features.birthdays.delivery", level="WARNING"):
-            await self.cog.delivery.process_guild(42, today)
+            await self.cog.delivery.process_guild(42, _at_noon(today))
 
     async def test_timer_retries_after_guild_listing_database_failure(self) -> None:
         self.bot.wait_until_ready = AsyncMock()
@@ -97,7 +106,10 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self.manager.claim_delivery = AsyncMock(side_effect=claim)
         self.manager.begin_delivery = AsyncMock(return_value=True)
         self.manager.release_delivery = AsyncMock()
-        self.cog = BirthdayCog(self.bot, self.manager)
+        preferences = MagicMock(spec=PreferencesRepository)
+        preferences.get = AsyncMock(return_value=Preferences(timezone="UTC"))
+        preferences.user_timezones = AsyncMock(return_value={})
+        self.cog = BirthdayCog(self.bot, self.manager, preferences)
 
         async def add(role: discord.Role, **_kwargs: object) -> None:
             self.member.roles.append(role)
@@ -145,23 +157,23 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         today = date(2027, 2, 28)
-        await self.cog.delivery.process_guild(42, today)
-        await self.cog.delivery.process_guild(42, today)
+        await self.cog.delivery.process_guild(42, _at_noon(today))
+        await self.cog.delivery.process_guild(42, _at_noon(today))
         self.assertIn(self.role, self.member.roles)
         self.member.add_roles.assert_awaited_once()
         self.member.remove_roles.assert_not_awaited()
         self.channel.send.assert_awaited_once()
         self.record.assert_awaited_once()
-        await self.cog.delivery.process_guild(42, date(2027, 3, 1))
+        await self.cog.delivery.process_guild(42, _at_noon(date(2027, 3, 1)))
         self.assertNotIn(self.role, self.member.roles)
         self.member.remove_roles.assert_awaited_once()
         self.channel.send.assert_awaited_once()
 
     async def test_leap_year_does_not_celebrate_early(self) -> None:
-        await self.cog.delivery.process_guild(42, date(2028, 2, 28))
+        await self.cog.delivery.process_guild(42, _at_noon(date(2028, 2, 28)))
         self.member.add_roles.assert_not_awaited()
         self.channel.send.assert_not_awaited()
-        await self.cog.delivery.process_guild(42, date(2028, 2, 29))
+        await self.cog.delivery.process_guild(42, _at_noon(date(2028, 2, 29)))
         self.member.add_roles.assert_awaited_once()
         self.channel.send.assert_awaited_once()
 
@@ -170,7 +182,7 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         today = date(2027, 2, 28)
         self.user.add_congratulation(today)
-        await self.cog.delivery.process_guild(42, today)
+        await self.cog.delivery.process_guild(42, _at_noon(today))
         self.member.add_roles.assert_awaited_once()
         self.channel.send.assert_not_awaited()
         self.record.assert_not_awaited()
@@ -183,17 +195,17 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self.member.add_roles.side_effect = discord.Forbidden(
             MagicMock(status=403, reason="denied"), "hierarchy"
         )
-        await self.cog.delivery.process_guild(42, today)
+        await self.cog.delivery.process_guild(42, _at_noon(today))
         self.assertNotIn(self.role, self.member.roles)
         self.channel.send.assert_awaited_once()
         self.member.add_roles.side_effect = add
-        await self.cog.delivery.process_guild(42, today)
+        await self.cog.delivery.process_guild(42, _at_noon(today))
         self.assertIn(self.role, self.member.roles)
         self.channel.send.assert_awaited_once()
 
     async def test_missing_channel_does_not_prevent_role_reconciliation(self) -> None:
         self.bot.get_channel.return_value = None
-        await self.cog.delivery.process_guild(42, date(2027, 2, 28))
+        await self.cog.delivery.process_guild(42, _at_noon(date(2027, 2, 28)))
         self.member.add_roles.assert_awaited_once()
         self.record.assert_not_awaited()
 
@@ -205,10 +217,10 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
             MagicMock(status=503, reason="unavailable"), "retry"
         )
         with self.assertLogs("stupidbot.features.birthdays.delivery", level="ERROR"):
-            await self.cog.delivery.process_guild(42, today)
+            await self.cog.delivery.process_guild(42, _at_noon(today))
         self.record.assert_not_awaited()
         self.channel.send.side_effect = None
-        await self.cog.delivery.process_guild(42, today)
+        await self.cog.delivery.process_guild(42, _at_noon(today))
         self.record.assert_not_awaited()
         self.channel.send.assert_awaited_once()
 
@@ -226,7 +238,106 @@ class TestBirthdayDeliveryRecovery(unittest.IsolatedAsyncioTestCase):
         self.channel = MagicMock(spec=discord.TextChannel, id=8)
         self.channel.send.return_value = MagicMock(id=99)
         self.user = BirthdayUser(10, "User", "06-10-2000")
-        self.cog = BirthdayCog(self.bot, self.repo)
+        self.preferences = PreferencesRepository(self.database)
+        self.cog = BirthdayCog(self.bot, self.repo, self.preferences)
+
+    async def _set_timezone(
+        self, scope: PreferenceScope, subject_id: int, timezone: str | None
+    ) -> None:
+        current = await self.preferences.get(scope, subject_id)
+        await self.preferences.save(
+            scope, subject_id, Preferences(current.language, timezone, current.revision)
+        )
+
+    async def _check(self, cog: BirthdayCog, hour: int) -> None:
+        self.bot.get_guild.return_value = self.guild
+        self.bot.get_channel.return_value = self.channel
+        await cog.delivery.process_guild(42, datetime(2026, 10, 5, hour, tzinfo=UTC))
+
+    async def test_personal_timezone_decides_local_birthday_date(self) -> None:
+        await self._set_timezone(PreferenceScope.GUILD, 42, "Asia/Seoul")
+        await self._set_timezone(PreferenceScope.USER, 10, "Europe/Moscow")
+        # 20:00 UTC: already Oct. 6 in Seoul, still Oct. 5 in Moscow.
+        await self._check(self.cog, 20)
+        self.channel.send.assert_not_awaited()
+        # 21:00 UTC is midnight in Moscow.
+        await self._check(self.cog, 21)
+        self.channel.send.assert_awaited_once()
+        await self._check(self.cog, 22)
+        restarted = BirthdayCog(self.bot, self.repo, self.preferences)
+        await self._check(restarted, 23)
+        self.channel.send.assert_awaited_once()
+
+    async def test_server_timezone_applies_without_personal_timezone(self) -> None:
+        await self._set_timezone(PreferenceScope.GUILD, 42, "Asia/Seoul")
+        await self._check(self.cog, 14)
+        self.channel.send.assert_not_awaited()
+        await self._check(self.cog, 15)
+        self.channel.send.assert_awaited_once()
+
+    async def test_list_uses_member_timezone_like_delivery(self) -> None:
+        await self._set_timezone(PreferenceScope.GUILD, 42, "Asia/Seoul")
+        await self._set_timezone(PreferenceScope.USER, 10, "Europe/Moscow")
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = self.guild
+        self.guild.members = []
+        self.guild.name = "Guild"
+        moscow_start = datetime(2026, 10, 5, 21, tzinfo=UTC)
+        clock = MagicMock(wraps=datetime)
+        clock.now.return_value = datetime(2026, 10, 5, 20, tzinfo=UTC)
+
+        with (
+            patch.object(FeedbackUI, "send", new_callable=AsyncMock) as feedback,
+            patch.object(birthday_cog_module, "datetime", clock),
+        ):
+            await self.cog.list_birthdays._do_call(interaction, {"ephemeral": True})
+
+        response = feedback.await_args
+        if response is None:
+            self.fail("The birthday list did not produce a response")
+        embed: discord.Embed = response.kwargs["embed"]
+        self.assertIn(
+            f"— User · <t:{int(moscow_start.timestamp())}:R>",
+            embed.fields[0].value or "",
+        )
+
+    async def test_installation_timezone_applies_without_overrides(self) -> None:
+        with patch.object(settings, "VOICE_PROFILE_TIMEZONE", "Europe/Moscow"):
+            local_times = await member_local_times(
+                self.preferences, 42, [10], datetime(2026, 10, 5, 21, tzinfo=UTC)
+            )
+            self.assertEqual(local_times[10].date(), date(2026, 10, 6))
+            await self._check(self.cog, 20)
+            self.channel.send.assert_not_awaited()
+            await self._check(self.cog, 21)
+            self.channel.send.assert_awaited_once()
+
+    async def test_timezone_read_failure_prevents_send_and_next_check_retries(
+        self,
+    ) -> None:
+        await self._set_timezone(PreferenceScope.USER, 10, "Asia/Seoul")
+        with patch.object(
+            self.preferences, "user_timezones", side_effect=RuntimeError("read failed")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "read failed"):
+                await self._check(self.cog, 15)
+        self.channel.send.assert_not_awaited()
+        await self._check(self.cog, 15)
+        self.channel.send.assert_awaited_once()
+
+    async def test_local_time_resolution_rejects_naive_instant(self) -> None:
+        with self.assertRaisesRegex(ValueError, "timezone-aware"):
+            await member_local_times(
+                self.preferences, 42, [10], datetime(2026, 10, 5, 21)
+            )
+
+    async def test_timezone_change_does_not_repeat_same_birthday(self) -> None:
+        await self._set_timezone(PreferenceScope.USER, 10, "Asia/Seoul")
+        await self._check(self.cog, 15)
+        self.channel.send.assert_awaited_once()
+        await self._set_timezone(PreferenceScope.USER, 10, "Europe/Moscow")
+        await self._check(self.cog, 21)
+        self.channel.send.assert_awaited_once()
 
     async def _attempt(self) -> None:
         await self.cog.delivery._handle_birthday(

@@ -147,7 +147,7 @@ class TestAppCommandErrors(unittest.IsolatedAsyncioTestCase):
         failures = [record for record in logs.records if record.levelno == ERROR]
         self.assertEqual(len(failures), 1)
         diagnostic = failures[0]
-        if diagnostic.exc_info is None:
+        if not diagnostic.exc_info:
             self.fail("Missing original exception traceback")
         self.assertIs(diagnostic.exc_info[1], original)
         self.assertIsNotNone(diagnostic.exc_info[2])

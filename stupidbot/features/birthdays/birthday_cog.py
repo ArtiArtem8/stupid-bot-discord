@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import date
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, override
 
 import discord
@@ -16,6 +16,7 @@ from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.features.birthdays.dates import parse_birthday
 from stupidbot.features.birthdays.delivery import BirthdayDeliveryService
+from stupidbot.features.birthdays.local_time import member_local_times
 from stupidbot.features.birthdays.messages import BirthdayMessages
 from stupidbot.features.birthdays.presentation import (
     build_birthday_list,
@@ -23,6 +24,7 @@ from stupidbot.features.birthdays.presentation import (
 )
 from stupidbot.features.birthdays.repository import BirthdayRepository
 from stupidbot.features.birthdays.views import ConfirmDeleteView
+from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.i18n.catalog import catalog
 from stupidbot.i18n.discord import interaction_context
 
@@ -35,10 +37,16 @@ logger = logging.getLogger(__name__)
 class BirthdayCog(BaseCog):
     """Manage saved birthdays and own the periodic role and delivery checks."""
 
-    def __init__(self, bot: commands.Bot, manager: BirthdayRepository) -> None:
+    def __init__(
+        self,
+        bot: commands.Bot,
+        manager: BirthdayRepository,
+        preferences: PreferencesRepository,
+    ) -> None:
         super().__init__(bot)
         self.manager = manager
-        self.delivery = BirthdayDeliveryService(bot, manager)
+        self.preferences = preferences
+        self.delivery = BirthdayDeliveryService(bot, manager, preferences)
 
     @property
     def runtime_health(self) -> ComponentHealth:
@@ -69,7 +77,7 @@ class BirthdayCog(BaseCog):
     @tasks.loop(seconds=config.BIRTHDAY_CHECK_INTERVAL)
     async def birthday_timer(self) -> None:
         """Check registered birthdays and deliver due congratulations."""
-        today = date.today()
+        now = datetime.now(UTC)
         try:
             guild_ids = await self.manager.get_all_guild_ids()
         except SQLAlchemyError:
@@ -77,7 +85,7 @@ class BirthdayCog(BaseCog):
             return
         for guild_id in guild_ids:
             try:
-                await self.delivery.process_guild(guild_id, today)
+                await self.delivery.process_guild(guild_id, now)
             except Exception:
                 logger.exception("Failed to process birthdays for guild %s", guild_id)
 
@@ -259,13 +267,14 @@ class BirthdayCog(BaseCog):
             )
             return
 
-        today = date.today()
-
+        local_times = await member_local_times(
+            self.preferences, guild.id, config.users, datetime.now(UTC)
+        )
         context = await interaction_context(interaction, private=ephemeral)
         entries = build_birthday_list(
             config,
             {member.id: member.display_name for member in guild.members},
-            today,
+            local_times,
             language=context.language,
         )
 
@@ -288,4 +297,6 @@ class BirthdayCog(BaseCog):
 
 async def setup(bot: "StupidBot") -> None:
     """Register the birthday cog."""
-    await bot.add_cog(BirthdayCog(bot, bot.birthday_repository))
+    await bot.add_cog(
+        BirthdayCog(bot, bot.birthday_repository, bot.preferences_repository)
+    )

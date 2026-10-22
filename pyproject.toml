@@ -1,6 +1,6 @@
 [project]
 name = "stupid-bot-discord"
-version = "3.2.0"
+version = "3.2.1"
 description = "Discord bot for music, voice profiles and birthday greetings"
 authors = [
     { name = "ArtiArtem8", email = "ArtiArtem8@users.noreply.github.com" },
@@ -130,10 +130,8 @@ ignore = ["D100", "D101", "D102", "D104", "D107", "RUF001"]
 "stupidbot/features/birthdays/models.py" = ["DTZ007"]
 "stupidbot/features/reports/ui.py" = ["DTZ005"]
 "stupidbot/features/wolfram/client.py" = ["N817"]
-"stupidbot/features/birthdays/birthday_cog.py" = ["DTZ011"]
 "tests/**/*.py" = ["D103", "DTZ001"]
 "stupidbot/features/birthdays/dates.py" = ["DTZ007"]
-"stupidbot/features/birthdays/presentation.py" = ["DTZ007"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -298,11 +298,6 @@ msgctxt "saved"
 msgid "Your birthday has been saved: {date}"
 msgstr "Your birthday has been saved: {date}"
 
-#, python-brace-format
-msgctxt "days_until"
-msgid "in {days:d} d."
-msgstr "in {days:d} d."
-
 msgctxt "ui"
 msgid "today"
 msgstr "today"

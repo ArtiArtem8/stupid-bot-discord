@@ -1,132 +1,72 @@
 """Tests for birthday utility helpers."""
 
 import unittest
-from datetime import date
+from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from stupidbot.features.birthdays.dates import (
-    calculate_days_until_birthday,
+    day_start,
     is_birthday_today,
+    next_celebration,
 )
 from stupidbot.features.birthdays.presentation import format_birthday_date
 
 
-class TestCalculateDaysUntilBirthday(unittest.TestCase):
-    def test_birthday_today(self) -> None:
-        reference = date(2025, 12, 12)
-        birthday_str = "12-12-1990"
+class TestNextCelebration(unittest.TestCase):
+    def test_today_counts_as_next_celebration(self) -> None:
+        self.assertEqual(
+            next_celebration(date(1990, 12, 12), date(2025, 12, 12)),
+            date(2025, 12, 12),
+        )
 
-        result = calculate_days_until_birthday(birthday_str, reference)
-        self.assertEqual(result, 0)
+    def test_passed_birthday_moves_to_next_year(self) -> None:
+        self.assertEqual(
+            next_celebration(date(2000, 1, 1), date(2025, 6, 15)), date(2026, 1, 1)
+        )
 
-    def test_leap_year_birthday_today(self) -> None:
-        reference = date(2025, 2, 28)
-        birthday_str = "29-02-1992"
+    def test_leap_day_uses_feb_28_only_in_non_leap_years(self) -> None:
+        leap = date(2000, 2, 29)
+        self.assertEqual(next_celebration(leap, date(2025, 1, 1)), date(2025, 2, 28))
+        self.assertEqual(next_celebration(leap, date(2024, 2, 28)), date(2024, 2, 29))
+        self.assertEqual(next_celebration(leap, date(2025, 3, 1)), date(2026, 2, 28))
 
-        result = calculate_days_until_birthday(birthday_str, reference)
-        self.assertEqual(result, 0)
 
-    def test_leap_year_birthday_on_actual_day(self) -> None:
-        reference = date(2024, 2, 29)
-        birthday_str = "29-02-1992"
+class TestDayStart(unittest.TestCase):
+    def test_returns_local_midnight_in_utc(self) -> None:
+        self.assertEqual(
+            day_start(date(2026, 10, 6), ZoneInfo("Europe/Moscow")),
+            datetime(2026, 10, 5, 21, tzinfo=UTC),
+        )
 
-        result = calculate_days_until_birthday(birthday_str, reference)
-        self.assertEqual(result, 0)
+    def test_skipped_midnight_uses_first_existing_moment_of_day(self) -> None:
+        # Clocks in Havana jump from 00:00 to 01:00 on this date.
+        zone = ZoneInfo("America/Havana")
+        start = day_start(date(2026, 3, 8), zone)
+        self.assertEqual(start, datetime(2026, 3, 8, 5, tzinfo=UTC))
+        self.assertEqual(start.astimezone(zone).date(), date(2026, 3, 8))
+        self.assertEqual(
+            datetime.fromtimestamp(start.timestamp() - 1, zone).date(),
+            date(2026, 3, 7),
+        )
 
-    def test_leap_year_birthday_wait_for_29th(self) -> None:
-        reference = date(2024, 2, 28)
-        birthday_str = "29-02-2000"
-        result = calculate_days_until_birthday(birthday_str, reference)
-        self.assertEqual(result, 1)
-
-    def test_birthday_in_future_this_year(self) -> None:
-        reference = date(2025, 1, 15)
-        birthday_str = "20-03-1995"
-
-        result = calculate_days_until_birthday(birthday_str, reference)
-
-        expected = (date(2025, 3, 20) - reference).days
-        self.assertEqual(result, expected)
-        self.assertEqual(result, 64)
-
-    def test_birthday_already_passed_this_year(self) -> None:
-        reference = date(2025, 6, 15)
-        birthday_str = "01-01-2000"
-
-        result = calculate_days_until_birthday(birthday_str, reference)
-
-        expected = (date(2026, 1, 1) - reference).days
-        self.assertEqual(result, expected)
-        self.assertEqual(result, 200)
-
-    def test_leap_year_feb_29_birthday(self) -> None:
-        reference = date(2025, 1, 1)
-        birthday_str = "29-02-2000"
-
-        result = calculate_days_until_birthday(birthday_str, reference)
-        self.assertEqual(result, 58)
-
-        reference_leap = date(2024, 1, 1)
-        result_leap = calculate_days_until_birthday(birthday_str, reference_leap)
-        self.assertEqual(result_leap, 59)
-
-    def test_invalid_date_format(self) -> None:
-        reference = date(2025, 12, 12)
-
-        test_cases = [
-            "32-01-2000",
-            "01-13-2000",
-            "2000-12-12",
-            "12/12/2000",
-            "not-a-date",
-            "12-12",
-            "",
-        ]
-
-        for birthday_str in test_cases:
-            with self.subTest(birthday_str=birthday_str):
-                result = calculate_days_until_birthday(birthday_str, reference)
-                self.assertIsNone(result, msg=birthday_str)
-
-    def test_none_input(self) -> None:
-        reference = date(2025, 12, 12)
-
-        result = calculate_days_until_birthday("", reference)
-
-        self.assertIsNone(result)
-
-    def test_new_year_edge_case(self) -> None:
-        reference = date(2025, 1, 1)
-        birthday_str = "31-12-1995"
-
-        result = calculate_days_until_birthday(birthday_str, reference)
-
-        expected = (date(2025, 12, 31) - reference).days
-        self.assertEqual(result, expected)
-        self.assertEqual(result, 364)
-
-    def test_calculate_days_until_birthday_leap_logic(self) -> None:
-        bday_str = "29-02-2000"
-
-        ref_date = date(2025, 1, 1)
-        days = calculate_days_until_birthday(bday_str, ref_date)
-        self.assertEqual(days, 58)
-        ref_date_leap = date(2024, 1, 1)
-        days_leap = calculate_days_until_birthday(bday_str, ref_date_leap)
-        self.assertEqual(days_leap, 59)
+    def test_ambiguous_midnight_uses_first_occurrence(self) -> None:
+        # Clocks in Havana fall back from 01:00 to 00:00 on this date.
+        start = day_start(date(2026, 11, 1), ZoneInfo("America/Havana"))
+        self.assertEqual(start, datetime(2026, 11, 1, 4, tzinfo=UTC))
 
 
 class TestFormatBirthdayDate(unittest.TestCase):
     def test_format_valid_date(self) -> None:
-        birthday_str = "15-03-1990"
+        birthday = date(1990, 3, 15)
 
-        result = format_birthday_date(birthday_str)
+        result = format_birthday_date(birthday)
 
         self.assertEqual(result, "15 марта")
 
     def test_format_single_digit_day(self) -> None:
-        birthday_str = "01-05-2000"
+        birthday = date(2000, 5, 1)
 
-        result = format_birthday_date(birthday_str)
+        result = format_birthday_date(birthday)
 
         self.assertEqual(result, "1 мая")
 
@@ -148,30 +88,14 @@ class TestFormatBirthdayDate(unittest.TestCase):
 
         for month, month_name in expected_months.items():
             with self.subTest(month=month):
-                birthday_str = f"15-{month}-2000"
-                result = format_birthday_date(birthday_str)
+                birthday = date(2000, int(month), 15)
+                result = format_birthday_date(birthday)
                 self.assertEqual(result, f"15 {month_name}")
 
-    def test_format_invalid_date(self) -> None:
-        test_cases = [
-            "32-01-2000",
-            "01-13-2000",
-            "29-02-2023",
-            "not-a-date",
-            "2000-12-12",
-            "12/12/2000",
-            "",
-        ]
-
-        for birthday_str in test_cases:
-            with self.subTest(birthday_str=birthday_str):
-                result = format_birthday_date(birthday_str)
-                self.assertIsNone(result)
-
     def test_format_leap_year_date(self) -> None:
-        birthday_str = "29-02-2000"
+        birthday = date(2000, 2, 29)
 
-        result = format_birthday_date(birthday_str)
+        result = format_birthday_date(birthday)
 
         self.assertEqual(result, "29 февраля")
 
