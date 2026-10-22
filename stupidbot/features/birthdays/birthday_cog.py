@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, override
 
 import discord
@@ -23,6 +23,7 @@ from stupidbot.features.birthdays.presentation import (
 )
 from stupidbot.features.birthdays.repository import BirthdayRepository
 from stupidbot.features.birthdays.views import ConfirmDeleteView
+from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.i18n.catalog import catalog
 from stupidbot.i18n.discord import interaction_context
 
@@ -35,10 +36,15 @@ logger = logging.getLogger(__name__)
 class BirthdayCog(BaseCog):
     """Manage saved birthdays and own the periodic role and delivery checks."""
 
-    def __init__(self, bot: commands.Bot, manager: BirthdayRepository) -> None:
+    def __init__(
+        self,
+        bot: commands.Bot,
+        manager: BirthdayRepository,
+        preferences: PreferencesRepository,
+    ) -> None:
         super().__init__(bot)
         self.manager = manager
-        self.delivery = BirthdayDeliveryService(bot, manager)
+        self.delivery = BirthdayDeliveryService(bot, manager, preferences)
 
     @property
     def runtime_health(self) -> ComponentHealth:
@@ -69,7 +75,7 @@ class BirthdayCog(BaseCog):
     @tasks.loop(seconds=config.BIRTHDAY_CHECK_INTERVAL)
     async def birthday_timer(self) -> None:
         """Check registered birthdays and deliver due congratulations."""
-        today = date.today()
+        now = datetime.now(UTC)
         try:
             guild_ids = await self.manager.get_all_guild_ids()
         except SQLAlchemyError:
@@ -77,7 +83,7 @@ class BirthdayCog(BaseCog):
             return
         for guild_id in guild_ids:
             try:
-                await self.delivery.process_guild(guild_id, today)
+                await self.delivery.process_guild(guild_id, now)
             except Exception:
                 logger.exception("Failed to process birthdays for guild %s", guild_id)
 
@@ -288,4 +294,6 @@ class BirthdayCog(BaseCog):
 
 async def setup(bot: "StupidBot") -> None:
     """Register the birthday cog."""
-    await bot.add_cog(BirthdayCog(bot, bot.birthday_repository))
+    await bot.add_cog(
+        BirthdayCog(bot, bot.birthday_repository, bot.preferences_repository)
+    )

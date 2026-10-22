@@ -155,7 +155,9 @@ class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         admin = AdminCog(self.bot, self.bot.block_manager)
-        birthdays = BirthdayCog(self.bot, self.bot.birthday_repository)
+        birthdays = BirthdayCog(
+            self.bot, self.bot.birthday_repository, self.bot.preferences_repository
+        )
         profiles = VoiceProfileCog(self.bot)
         self.blocked.return_value = False
         for command, option_name in (
@@ -258,7 +260,9 @@ class TestDiscordAuthorizationDispatch(unittest.IsolatedAsyncioTestCase):
         self._assert_denied_once()
 
     async def test_rejected_ack_does_not_check_access_or_mutate_birthday(self) -> None:
-        cog = BirthdayCog(self.bot, self.bot.birthday_repository)
+        cog = BirthdayCog(
+            self.bot, self.bot.birthday_repository, self.bot.preferences_repository
+        )
         self.bot.tree.add_command(cog.set_birthday)
         self.item.command = cog.set_birthday
         self.item.data = {

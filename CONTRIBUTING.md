@@ -82,7 +82,9 @@ Command metadata follows Discord's client locale. Message bodies use the
 selected user/guild override, then that audience's Discord locale, then Russian.
 Gateway DM messages have no locale, so they use the personal override or Russian.
 The single bot-wide uptime presence stays Russian because Discord provides no
-per-guild audience for it. Birthday scheduling still uses the host calendar.
+per-guild audience for it. Birthday scheduling resolves each member's local date
+with the same timezone inheritance as profiles; the stored birthday stays a
+calendar date and the delivery key stays that local date.
 
 ## Full Check
 

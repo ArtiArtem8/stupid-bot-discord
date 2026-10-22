@@ -58,6 +58,16 @@ class BirthdayUser:
         today_str = format_storage_date(today)
         return today_str in self.was_congrats
 
+    def is_due(self, today: date) -> bool:
+        """Return whether ``today`` is an uncongratulated celebration day.
+
+        ``today`` is the member's local calendar date. Feb. 29 handling follows
+        :func:`.dates.is_birthday_today`.
+        """
+        return is_birthday_today(
+            self.birthday, today
+        ) and not self.was_congratulated_today(today)
+
     def add_congratulation(self, congratulation_date: date) -> None:
         date_str = format_storage_date(congratulation_date)
         if date_str not in self.was_congrats:
@@ -80,19 +90,6 @@ class BirthdayGuildConfig:
 
     def get_user(self, user_id: int) -> BirthdayUser | None:
         return self.users.get(user_id)
-
-    def get_birthdays_today(self, today: date) -> list[BirthdayUser]:
-        """Return users due for a congratulation on ``today``.
-
-        Already-congratulated users are excluded. Feb. 29 handling follows
-        :func:`.dates.is_birthday_today`.
-        """
-        return [
-            user
-            for user in self.users.values()
-            if is_birthday_today(user.birthday, today)
-            and not user.was_congratulated_today(today)
-        ]
 
     def upcoming_birthdays(self, reference_date: date) -> list[UpcomingBirthday]:
         """Return numeric rows in the original stable birthday order."""

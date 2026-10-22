@@ -70,22 +70,14 @@ class TestBirthdayGuildConfig(unittest.TestCase):
 
         self.assertEqual(entries[0]["name"], "DiscordNick")
 
-    def test_get_birthdays_today(self) -> None:
-        config = BirthdayGuildConfig(1, "Test", 999)
-
+    def test_due_excludes_other_dates_and_congratulated_users(self) -> None:
         today = date(2025, 5, 15)
+        done = BirthdayUser(3, "Done", "15-05-1990")
+        done.add_congratulation(today)
 
-        u1 = BirthdayUser(1, "BdayBoy", "15-05-1990")
-        u2 = BirthdayUser(2, "NotToday", "16-05-1990")
-        u3 = BirthdayUser(3, "Done", "15-05-1990")
-        u3.add_congratulation(today)
-
-        config.users = {1: u1, 2: u2, 3: u3}
-
-        results = config.get_birthdays_today(today)
-
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].user_id, 1)
+        self.assertTrue(BirthdayUser(1, "BdayBoy", "15-05-1990").is_due(today))
+        self.assertFalse(BirthdayUser(2, "NotToday", "16-05-1990").is_due(today))
+        self.assertFalse(done.is_due(today))
 
     def test_leap_year_birthday_handling(self) -> None:
         config = BirthdayGuildConfig(1, "Test", 999)
@@ -111,48 +103,9 @@ class TestBirthdayGuildConfig(unittest.TestCase):
         self.assertEqual(len(entries_2028), 1)
         self.assertEqual(entries_2028[0]["days_until"], 59)
 
-    def test_get_birthdays_today_leap_year(self) -> None:
-        config = BirthdayGuildConfig(1, "Test", 999)
+    def test_leap_day_is_due_on_feb_28_only_in_non_leap_years(self) -> None:
         leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
-        config.users = {1: leap_user}
 
-        leap_day = date(2024, 2, 29)
-        matches = config.get_birthdays_today(leap_day)
-        self.assertEqual(len(matches), 1)
-        self.assertEqual(matches[0].name, "LeapBaby")
-
-        non_leap_day = date(2025, 2, 28)
-        matches_strict = config.get_birthdays_today(non_leap_day)
-        self.assertEqual(len(matches_strict), 1)
-
-    def test_leap_year_birthday_handling_feb28_non_leap(self) -> None:
-        config = BirthdayGuildConfig(1, "Test", 999)
-
-        leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
-        config.users = {1: leap_user}
-
-        today_non_leap = date(2025, 2, 28)
-
-        matches = config.get_birthdays_today(today_non_leap)
-        self.assertEqual(len(matches), 1)
-        self.assertEqual(matches[0].name, "LeapBaby")
-
-    def test_leap_year_birthday_handling_feb28_leap(self) -> None:
-        config = BirthdayGuildConfig(1, "Test", 999)
-        leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
-        config.users = {1: leap_user}
-
-        today_leap_28 = date(2024, 2, 28)
-
-        matches = config.get_birthdays_today(today_leap_28)
-        self.assertEqual(len(matches), 0)
-
-    def test_leap_year_birthday_handling_feb29_leap(self) -> None:
-        config = BirthdayGuildConfig(1, "Test", 999)
-        leap_user = BirthdayUser(1, "LeapBaby", "29-02-2000")
-        config.users = {1: leap_user}
-
-        today_leap_29 = date(2024, 2, 29)
-
-        matches = config.get_birthdays_today(today_leap_29)
-        self.assertEqual(len(matches), 1)
+        self.assertTrue(leap_user.is_due(date(2024, 2, 29)))
+        self.assertFalse(leap_user.is_due(date(2024, 2, 28)))
+        self.assertTrue(leap_user.is_due(date(2025, 2, 28)))

@@ -3,9 +3,10 @@
 import asyncio
 import logging
 import secrets
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import discord
 from discord.errors import Forbidden, HTTPException
@@ -22,8 +23,10 @@ from stupidbot.features.birthdays.models import (
 )
 from stupidbot.features.birthdays.presentation import BIRTHDAY_WISHES
 from stupidbot.features.birthdays.repository import BirthdayRepository
+from stupidbot.features.preferences.models import PreferenceScope
+from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.i18n.catalog import catalog, pgettext_noop
-from stupidbot.i18n.discord import guild_context
+from stupidbot.i18n.discord import fallback_timezone, guild_context
 
 logger = logging.getLogger(__name__)
 
@@ -98,13 +101,23 @@ async def safe_role_edit(
 class BirthdayDeliveryService:
     """Reconcile roles and deliver versioned claims outside SQL transactions."""
 
-    def __init__(self, bot: commands.Bot, repository: BirthdayRepository) -> None:
+    def __init__(
+        self,
+        bot: commands.Bot,
+        repository: BirthdayRepository,
+        preferences: PreferencesRepository,
+    ) -> None:
         self.bot = bot
         self.repository = repository
+        self.preferences = preferences
         self._unavailable_channels: dict[int, int | None] = {}
 
-    async def process_guild(self, guild_id: int, today: date) -> None:
-        """Update roles first, then send any congratulations due on ``today``."""
+    async def process_guild(self, guild_id: int, now: datetime) -> None:
+        """Update roles first, then send congratulations due on each local date.
+
+        Each check reads the current timezones, so a changed zone applies from
+        the next check. Dates skipped by a zone change are not caught up.
+        """
         guild = self.bot.get_guild(guild_id)
         if not guild:
             return
@@ -113,12 +126,13 @@ class BirthdayDeliveryService:
         if not config:
             return
 
+        local_dates = await self._local_dates(guild_id, config, now)
         role = (
             discord.utils.get(guild.roles, id=config.birthday_role_id)
             if config.birthday_role_id
             else None
         )
-        await self._reconcile_roles(guild, config, today, role)
+        await self._reconcile_roles(guild, config, local_dates, role)
         channel = self.bot.get_channel(config.channel_id) if config.channel_id else None
         if not isinstance(channel, discord.TextChannel):
             if (
@@ -140,15 +154,37 @@ class BirthdayDeliveryService:
                 guild_id,
                 config.channel_id,
             )
-        birthday_users = config.get_birthdays_today(today)
-        for user in birthday_users:
-            await self._handle_birthday(guild, channel, user, today, config.version)
+        for user in config.users.values():
+            today = local_dates[user.user_id]
+            if user.is_due(today):
+                await self._handle_birthday(guild, channel, user, today, config.version)
+
+    async def _local_dates(
+        self, guild_id: int, config: BirthdayGuildConfig, now: datetime
+    ) -> dict[int, date]:
+        """Map members to calendar dates in their own, then the server, timezone."""
+        server = await self.preferences.get(PreferenceScope.GUILD, guild_id)
+        server_zone = (
+            fallback_timezone()
+            if server.timezone is None
+            else ZoneInfo(server.timezone)
+        )
+        local_dates: dict[int, date] = {}
+        for user_id in config.users:
+            personal = await self.preferences.get(PreferenceScope.USER, user_id)
+            zone = (
+                server_zone
+                if personal.timezone is None
+                else ZoneInfo(personal.timezone)
+            )
+            local_dates[user_id] = now.astimezone(zone).date()
+        return local_dates
 
     async def _reconcile_roles(
         self,
         guild: discord.Guild,
         config: BirthdayGuildConfig,
-        today: date,
+        local_dates: dict[int, date],
         role: discord.Role | None,
     ) -> None:
         """Reconcile role membership independently of sent congratulations."""
@@ -162,7 +198,9 @@ class BirthdayDeliveryService:
                     guild.id, user_id, config.version, user_data.version
                 ):
                     continue
-                birthday_today = is_birthday_today(user_data.birthday, today)
+                birthday_today = is_birthday_today(
+                    user_data.birthday, local_dates[user_id]
+                )
                 if birthday_today and role not in member.roles:
                     await safe_role_edit(member, role, "add")
                 elif not birthday_today and role in member.roles:

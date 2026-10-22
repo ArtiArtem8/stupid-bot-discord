@@ -16,6 +16,7 @@ from stupidbot.features.birthdays.repository import BirthdayRepository
 from stupidbot.features.member_roles.member_roles_cog import ServerMonitorCog
 from stupidbot.features.member_roles.restoration import ServerMonitoringManager
 from stupidbot.features.music.discord.music_cog import MusicCog
+from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.features.voice.discord.profile_cog import VoiceProfileCog
 from stupidbot.features.wolfram.client import WolframClient, WolframResult
 from stupidbot.features.wolfram.wolfram_cog import WolframCog
@@ -31,7 +32,7 @@ class TestCogLoopLifecycle(unittest.IsolatedAsyncioTestCase):
         bot = MagicMock()
         bot.wait_until_ready = AsyncMock()
         manager = MagicMock(spec=BirthdayRepository)
-        cog = BirthdayCog(bot, manager)
+        cog = BirthdayCog(bot, manager, MagicMock(spec=PreferencesRepository))
 
         async def guild_ids() -> list[int]:
             entered.set()
@@ -64,7 +65,11 @@ class TestCogLoopLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(cog.birthday_timer.is_running())
 
     async def test_birthday_loop_uses_cog_lifecycle(self) -> None:
-        cog = BirthdayCog(MagicMock(), MagicMock(spec=BirthdayRepository))
+        cog = BirthdayCog(
+            MagicMock(),
+            MagicMock(spec=BirthdayRepository),
+            MagicMock(spec=PreferencesRepository),
+        )
         loop = cog.birthday_timer
         self.assertIsNone(loop.get_task())
 
