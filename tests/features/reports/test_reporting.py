@@ -286,7 +286,7 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(failures), 1)
         self.assertEqual(failures[0].name, "stupidbot.features.reports.ui")
         failure_info = failures[0].exc_info
-        if failure_info is None:
+        if not failure_info:
             self.fail("Expected the original report failure traceback")
         self.assertIs(failure_info[1], error)
         self.interaction.edit_original_response.assert_awaited_once()
