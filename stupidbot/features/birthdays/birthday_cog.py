@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, override
 
 import discord
@@ -16,6 +16,7 @@ from stupidbot.discord_ui.base_cog import BaseCog
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI
 from stupidbot.features.birthdays.dates import parse_birthday
 from stupidbot.features.birthdays.delivery import BirthdayDeliveryService
+from stupidbot.features.birthdays.local_time import member_local_times
 from stupidbot.features.birthdays.messages import BirthdayMessages
 from stupidbot.features.birthdays.presentation import (
     build_birthday_list,
@@ -44,6 +45,7 @@ class BirthdayCog(BaseCog):
     ) -> None:
         super().__init__(bot)
         self.manager = manager
+        self.preferences = preferences
         self.delivery = BirthdayDeliveryService(bot, manager, preferences)
 
     @property
@@ -265,13 +267,14 @@ class BirthdayCog(BaseCog):
             )
             return
 
-        today = date.today()
-
+        local_times = await member_local_times(
+            self.preferences, guild.id, config.users, datetime.now(UTC)
+        )
         context = await interaction_context(interaction, private=ephemeral)
         entries = build_birthday_list(
             config,
             {member.id: member.display_name for member in guild.members},
-            today,
+            local_times,
             language=context.language,
         )
 

@@ -6,7 +6,6 @@ import secrets
 from datetime import date, datetime
 from typing import Literal
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 import discord
 from discord.errors import Forbidden, HTTPException
@@ -15,6 +14,7 @@ from discord.ext import commands
 from stupidbot.discord_ui.embeds import SafeEmbed
 from stupidbot.discord_ui.theme import BOT_ICON
 from stupidbot.features.birthdays.dates import is_birthday_today
+from stupidbot.features.birthdays.local_time import member_local_times
 from stupidbot.features.birthdays.messages import BirthdayMessages
 from stupidbot.features.birthdays.models import (
     BirthdayDelivery,
@@ -23,10 +23,9 @@ from stupidbot.features.birthdays.models import (
 )
 from stupidbot.features.birthdays.presentation import BIRTHDAY_WISHES
 from stupidbot.features.birthdays.repository import BirthdayRepository
-from stupidbot.features.preferences.models import PreferenceScope
 from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.i18n.catalog import catalog, pgettext_noop
-from stupidbot.i18n.discord import fallback_timezone, guild_context
+from stupidbot.i18n.discord import guild_context
 
 logger = logging.getLogger(__name__)
 
@@ -126,59 +125,50 @@ class BirthdayDeliveryService:
         if not config:
             return
 
-        local_dates = await self._local_dates(guild_id, config, now)
+        local_times = await member_local_times(
+            self.preferences, guild_id, config.users, now
+        )
+        local_dates = {user_id: local.date() for user_id, local in local_times.items()}
         role = (
             discord.utils.get(guild.roles, id=config.birthday_role_id)
             if config.birthday_role_id
             else None
         )
         await self._reconcile_roles(guild, config, local_dates, role)
-        channel = self.bot.get_channel(config.channel_id) if config.channel_id else None
-        if not isinstance(channel, discord.TextChannel):
-            if (
-                guild_id not in self._unavailable_channels
-                or self._unavailable_channels[guild_id] != config.channel_id
-            ):
-                logger.warning(
-                    "Birthday notifications unavailable: guild=%s channel=%s; "
-                    "retrying each interval",
-                    guild_id,
-                    config.channel_id,
-                )
-                self._unavailable_channels[guild_id] = config.channel_id
+        channel = self._notification_channel(guild_id, config.channel_id)
+        if channel is None:
             return
-        if guild_id in self._unavailable_channels:
-            self._unavailable_channels.pop(guild_id)
-            logger.info(
-                "Birthday notification channel recovered: guild=%s channel=%s",
-                guild_id,
-                config.channel_id,
-            )
         for user in config.users.values():
             today = local_dates[user.user_id]
             if user.is_due(today):
                 await self._handle_birthday(guild, channel, user, today, config.version)
 
-    async def _local_dates(
-        self, guild_id: int, config: BirthdayGuildConfig, now: datetime
-    ) -> dict[int, date]:
-        """Map members to calendar dates in their own, then the server, timezone."""
-        server = await self.preferences.get(PreferenceScope.GUILD, guild_id)
-        server_zone = (
-            fallback_timezone()
-            if server.timezone is None
-            else ZoneInfo(server.timezone)
-        )
-        local_dates: dict[int, date] = {}
-        for user_id in config.users:
-            personal = await self.preferences.get(PreferenceScope.USER, user_id)
-            zone = (
-                server_zone
-                if personal.timezone is None
-                else ZoneInfo(personal.timezone)
+    def _notification_channel(
+        self, guild_id: int, channel_id: int | None
+    ) -> discord.TextChannel | None:
+        """Resolve the channel, logging unavailability once per configured channel."""
+        channel = self.bot.get_channel(channel_id) if channel_id else None
+        if not isinstance(channel, discord.TextChannel):
+            if (
+                guild_id not in self._unavailable_channels
+                or self._unavailable_channels[guild_id] != channel_id
+            ):
+                logger.warning(
+                    "Birthday notifications unavailable: guild=%s channel=%s; "
+                    "retrying each interval",
+                    guild_id,
+                    channel_id,
+                )
+                self._unavailable_channels[guild_id] = channel_id
+            return None
+        if guild_id in self._unavailable_channels:
+            self._unavailable_channels.pop(guild_id)
+            logger.info(
+                "Birthday notification channel recovered: guild=%s channel=%s",
+                guild_id,
+                channel_id,
             )
-            local_dates[user_id] = now.astimezone(zone).date()
-        return local_dates
+        return channel
 
     async def _reconcile_roles(
         self,

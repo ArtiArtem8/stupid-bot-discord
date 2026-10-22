@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
-from datetime import date, datetime
+from datetime import datetime
 from typing import TypedDict
 
 import discord
+from discord.utils import format_dt
 
 from stupidbot.common.text import TextPaginator, truncate_text
 from stupidbot.discord_ui.embeds import DEFAULT_LIMITS
 from stupidbot.i18n.catalog import catalog, pgettext_noop
 from stupidbot.i18n.policy import Language
 
-from .dates import DATE_FORMAT
+from .dates import DATE_FORMAT, format_storage_date
 from .messages import BirthdayMessages
 from .models import BirthdayGuildConfig
 
@@ -34,12 +35,16 @@ MONTH_NAMES = {
 
 
 class BirthdayListEntry(TypedDict):
-    """One presentation-ready birthday list row."""
+    """One presentation-ready birthday list row.
 
-    days_until: int
+    ``starts_at`` is ``None`` while the member's local celebration is in
+    progress; otherwise it is the UTC start used for Discord's relative time.
+    """
+
     date: str
     name: str
     user_id: int
+    starts_at: datetime | None
 
 
 def format_birthday_date(
@@ -72,23 +77,29 @@ def format_birthday_date(
 def build_birthday_list(
     config: BirthdayGuildConfig,
     display_names: Mapping[int, str],
-    reference_date: date,
+    local_times: Mapping[int, datetime],
     *,
     language: Language = Language.RU,
 ) -> list[BirthdayListEntry]:
-    """Format upcoming birthdays, using saved names when display names are absent."""
+    """Format upcoming celebrations, using saved names when display names are absent.
+
+    Dates name the celebration day, so Feb. 29 birthdays show Feb. 28 in
+    non-leap years.
+    """
     entries: list[BirthdayListEntry] = []
-    for occurrence in config.upcoming_birthdays(reference_date):
+    for occurrence in config.upcoming_birthdays(local_times):
         user = config.users[occurrence.user_id]
-        date_text = format_birthday_date(user.birthday, language=language)
+        date_text = format_birthday_date(
+            format_storage_date(occurrence.celebration), language=language
+        )
         if date_text is None:
             continue
         entries.append(
             {
-                "days_until": occurrence.days_until,
                 "date": date_text,
                 "name": display_names.get(occurrence.user_id, user.name),
                 "user_id": occurrence.user_id,
+                "starts_at": None if occurrence.today else occurrence.starts_at,
             }
         )
     return entries
@@ -122,18 +133,21 @@ def create_birthday_list_embed(
 
     lines: list[str] = []
     for i, entry in enumerate(entries, 1):
-        days_until = entry["days_until"]
-        days_text = (
+        starts_at = entry["starts_at"]
+        # Discord renders the countdown for each viewer; the date stays text
+        # because a timestamp date would follow the viewer's timezone.
+        when = (
             messages.catalog.pgettext("ui", "today")
-            if days_until == 0
-            else messages.days_until(days=days_until)
+            if starts_at is None
+            else format_dt(starts_at, "R")
         )
-
         safe_date = truncate_text(entry["date"], width=32)
-        safe_name = truncate_text(entry["name"], width=128)
-
-        line = f"{i}. **{safe_date}** - {safe_name} ({days_text})"
-        lines.append(truncate_text(line, width=max_field_length, mode="end"))
+        prefix = f"{i}. **{safe_date}** — "
+        suffix = f" · {when}"
+        # Cut only the name so the timestamp markup is never split.
+        name_width = min(128, max_field_length - len(prefix) - len(suffix))
+        safe_name = truncate_text(entry["name"], width=max(name_width, 1))
+        lines.append(f"{prefix}{safe_name}{suffix}")
 
     paginator = TextPaginator(
         lines,

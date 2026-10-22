@@ -1,5 +1,6 @@
 """Commit settings edits and optional reminder allowances in the shared database."""
 
+from collections.abc import Collection
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -48,6 +49,26 @@ class PreferencesRepository:
         table = user_preferences if scope is PreferenceScope.USER else guild_preferences
         async with self._database.transaction() as connection:
             return await _read_preferences(connection, table, subject_id)
+
+    async def user_timezones(self, user_ids: Collection[int]) -> dict[int, str]:
+        """Return personal timezone overrides in one read.
+
+        Users without an override are absent and inherit the caller's fallback.
+        """
+        async with self._database.transaction() as connection:
+            rows = await connection.execute(
+                select(
+                    user_preferences.c.subject_id, user_preferences.c.timezone
+                ).where(
+                    user_preferences.c.subject_id.in_(user_ids),
+                    user_preferences.c.timezone.is_not(None),
+                )
+            )
+            return {
+                subject_id: timezone
+                for subject_id, timezone in rows
+                if timezone is not None
+            }
 
     async def save(
         self, scope: PreferenceScope, subject_id: int, proposed: Preferences

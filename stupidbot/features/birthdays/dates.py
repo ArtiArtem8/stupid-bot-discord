@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime, time, tzinfo
 
 DATE_FORMAT = "%d-%m-%Y"
 
@@ -43,36 +43,26 @@ def is_birthday_today(birthday_str: str, today: date) -> bool:
         return False
 
 
-def calculate_days_until_birthday(
-    birthday_str: str, reference_date: date
-) -> int | None:
-    """Calculate days until the next birthday from a reference date.
+def next_celebration(birthday: date, today: date) -> date:
+    """Return the first celebration date on or after ``today``.
 
-    Feb. 29 birthdays are treated as Feb. 28 in non-leap years. The birth year
-    does not affect the calculation.
-
-    Args:
-        birthday_str: Stored birthday in :data:`DATE_FORMAT`.
-        reference_date: Calendar date from which to count.
-
-    Returns:
-        Days until the next celebration, including zero for ``reference_date``,
-        or ``None`` for an empty or malformed birthday.
+    Feb. 29 birthdays are celebrated on Feb. 28 in non-leap years. The birth
+    year does not affect the result.
     """
-    if not birthday_str:
-        return None
+    occurrence = _get_safe_birthday(today.year, birthday)
+    if occurrence < today:
+        occurrence = _get_safe_birthday(today.year + 1, birthday)
+    return occurrence
 
-    try:
-        birthday_original = datetime.strptime(birthday_str, DATE_FORMAT).date()
-        this_year_birthday = _get_safe_birthday(reference_date.year, birthday_original)
-        if this_year_birthday >= reference_date:
-            return (this_year_birthday - reference_date).days
-        next_year_birthday = _get_safe_birthday(
-            reference_date.year + 1, birthday_original
-        )
-        return (next_year_birthday - reference_date).days
-    except ValueError:
-        return None
+
+def day_start(day: date, zone: tzinfo) -> datetime:
+    """Return the first existing moment of ``day`` in ``zone`` as UTC.
+
+    ``zoneinfo`` resolves a midnight skipped by a clock change (``fold=0``)
+    to the moment the day begins and an ambiguous midnight to its first
+    occurrence.
+    """
+    return datetime.combine(day, time(), tzinfo=zone).astimezone(UTC)
 
 
 def parse_birthday(date_str: str) -> str:

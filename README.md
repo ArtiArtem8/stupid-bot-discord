@@ -121,7 +121,10 @@ by default. Congratulations follow the member's local date: their
 `/customize-me` timezone, otherwise the server timezone, then
 `VOICE_PROFILE_TIMEZONE`. A timezone change applies from the next check; the
 same birthday is never congratulated twice, and dates skipped by the change are
-not caught up.
+not caught up. The list shows birthdays in progress as "today", then counts down
+to the start of each member's local birthday; Discord renders that countdown in
+the viewer's client language. In non-leap years, Feb. 29 birthdays are listed
+and celebrated on Feb. 28.
 
 | Also included | Commands and behavior |
 | --- | --- |

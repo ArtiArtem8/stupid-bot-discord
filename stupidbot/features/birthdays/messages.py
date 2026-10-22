@@ -1,4 +1,4 @@
-"""Translate birthday dates, countdowns and delivery feedback."""
+"""Translate birthday dates, list labels and delivery feedback."""
 
 from dataclasses import dataclass
 
@@ -27,9 +27,6 @@ class BirthdayMessages:
         return self.catalog.pgettext("total", "Total birthdays: {count:d}").format(
             count=count
         )
-
-    def days_until(self, *, days: int) -> str:
-        return self.catalog.pgettext("days_until", "in {days:d} d.").format(days=days)
 
     def page(self, *, page: int) -> str:
         return self.catalog.pgettext(

@@ -303,11 +303,6 @@ msgctxt "saved"
 msgid "Your birthday has been saved: {date}"
 msgstr "Ваш день рождения записан: {date}"
 
-#, python-brace-format
-msgctxt "days_until"
-msgid "in {days:d} d."
-msgstr "через {days:d} д."
-
 msgctxt "ui"
 msgid "today"
 msgstr "сегодня"

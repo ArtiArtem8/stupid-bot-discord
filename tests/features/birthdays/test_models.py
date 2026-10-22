@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date
+from datetime import UTC, date, datetime
 
 from stupidbot.features.birthdays.models import BirthdayGuildConfig, BirthdayUser
 from stupidbot.features.birthdays.presentation import build_birthday_list
@@ -28,6 +28,6 @@ class TestBirthdayGuildConfig(unittest.TestCase):
     def test_sorted_birthday_list_falls_back_to_stored_name(self) -> None:
         cfg = BirthdayGuildConfig(guild_id=1, server_name="S", channel_id=1)
         cfg.users[10] = BirthdayUser(10, "StoredName", "02-01-2000", [])
-        entries = build_birthday_list(cfg, {}, date(2025, 1, 1))
+        entries = build_birthday_list(cfg, {}, {10: datetime(2025, 1, 1, tzinfo=UTC)})
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["name"], "StoredName")

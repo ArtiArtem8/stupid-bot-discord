@@ -41,6 +41,18 @@ class PreferencesRepositoryTests(IsolatedAsyncioTestCase):
             await self.repository.get(PreferenceScope.GUILD, 10), Preferences()
         )
 
+    async def test_user_timezones_returns_only_personal_overrides(self) -> None:
+        await self.repository.save(self.scope, 10, Preferences(None, "Europe/Moscow"))
+        await self.repository.save(self.scope, 11, Preferences(Language.EN))
+        await self.repository.save(
+            PreferenceScope.GUILD, 12, Preferences(None, "Asia/Seoul")
+        )
+
+        self.assertEqual(
+            await self.repository.user_timezones([10, 11, 12, 13]),
+            {10: "Europe/Moscow"},
+        )
+
     async def test_two_editors_have_one_committed_winner(self) -> None:
         async def save(language: Language) -> Preferences | PreferenceConflictError:
             try:

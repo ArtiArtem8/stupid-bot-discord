@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
 from stupidbot.discord_ui.feedback import FeedbackUI
+from stupidbot.features.birthdays import birthday_cog as birthday_cog_module
 from stupidbot.features.birthdays import delivery as birthday_module
 from stupidbot.features.birthdays.birthday_cog import BirthdayCog
 from stupidbot.features.birthdays.models import (
@@ -105,6 +106,7 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self.manager.release_delivery = AsyncMock()
         preferences = MagicMock(spec=PreferencesRepository)
         preferences.get = AsyncMock(return_value=Preferences(timezone="UTC"))
+        preferences.user_timezones = AsyncMock(return_value={})
         self.cog = BirthdayCog(self.bot, self.manager, preferences)
 
         async def add(role: discord.Role, **_kwargs: object) -> None:
@@ -270,6 +272,32 @@ class TestBirthdayDeliveryRecovery(unittest.IsolatedAsyncioTestCase):
         self.channel.send.assert_not_awaited()
         await self._check(self.cog, 15)
         self.channel.send.assert_awaited_once()
+
+    async def test_list_uses_member_timezone_like_delivery(self) -> None:
+        await self._set_timezone(PreferenceScope.GUILD, 42, "Asia/Seoul")
+        await self._set_timezone(PreferenceScope.USER, 10, "Europe/Moscow")
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = self.guild
+        self.guild.members = []
+        self.guild.name = "Guild"
+        moscow_start = datetime(2026, 10, 5, 21, tzinfo=UTC)
+        clock = MagicMock(wraps=datetime)
+        clock.now.return_value = datetime(2026, 10, 5, 20, tzinfo=UTC)
+
+        with (
+            patch.object(FeedbackUI, "send", new_callable=AsyncMock) as feedback,
+            patch.object(birthday_cog_module, "datetime", clock),
+        ):
+            await self.cog.list_birthdays._do_call(interaction, {"ephemeral": True})
+
+        response = feedback.await_args
+        if response is None:
+            self.fail("The birthday list did not produce a response")
+        embed: discord.Embed = response.kwargs["embed"]
+        self.assertIn(
+            f"— User · <t:{int(moscow_start.timestamp())}:R>",
+            embed.fields[0].value or "",
+        )
 
     async def test_timezone_change_does_not_repeat_same_birthday(self) -> None:
         await self._set_timezone(PreferenceScope.USER, 10, "Asia/Seoul")
