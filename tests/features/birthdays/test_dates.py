@@ -57,16 +57,16 @@ class TestDayStart(unittest.TestCase):
 
 class TestFormatBirthdayDate(unittest.TestCase):
     def test_format_valid_date(self) -> None:
-        birthday_str = "15-03-1990"
+        birthday = date(1990, 3, 15)
 
-        result = format_birthday_date(birthday_str)
+        result = format_birthday_date(birthday)
 
         self.assertEqual(result, "15 марта")
 
     def test_format_single_digit_day(self) -> None:
-        birthday_str = "01-05-2000"
+        birthday = date(2000, 5, 1)
 
-        result = format_birthday_date(birthday_str)
+        result = format_birthday_date(birthday)
 
         self.assertEqual(result, "1 мая")
 
@@ -88,30 +88,14 @@ class TestFormatBirthdayDate(unittest.TestCase):
 
         for month, month_name in expected_months.items():
             with self.subTest(month=month):
-                birthday_str = f"15-{month}-2000"
-                result = format_birthday_date(birthday_str)
+                birthday = date(2000, int(month), 15)
+                result = format_birthday_date(birthday)
                 self.assertEqual(result, f"15 {month_name}")
 
-    def test_format_invalid_date(self) -> None:
-        test_cases = [
-            "32-01-2000",
-            "01-13-2000",
-            "29-02-2023",
-            "not-a-date",
-            "2000-12-12",
-            "12/12/2000",
-            "",
-        ]
-
-        for birthday_str in test_cases:
-            with self.subTest(birthday_str=birthday_str):
-                result = format_birthday_date(birthday_str)
-                self.assertIsNone(result)
-
     def test_format_leap_year_date(self) -> None:
-        birthday_str = "29-02-2000"
+        birthday = date(2000, 2, 29)
 
-        result = format_birthday_date(birthday_str)
+        result = format_birthday_date(birthday)
 
         self.assertEqual(result, "29 февраля")
 

@@ -51,6 +51,16 @@ class TestBirthdayHelpers(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(line.endswith(f" · <t:{int(START.timestamp())}:R>"))
         self.assertIn("...", line)
 
+    def test_field_too_narrow_for_date_and_timestamp_omits_whole_row(self) -> None:
+        entries: list[BirthdayListEntry] = [
+            {"date": "7 октября", "name": "User", "user_id": 1, "starts_at": START}
+        ]
+        for width in (0, 1, 20, 30):
+            with self.subTest(width=width):
+                embed = create_birthday_list_embed("g", entries, max_field_length=width)
+                self.assertEqual(embed.fields, [])
+                self.assertIn("1", embed.footer.text or "")
+
     def test_small_years_round_trip_with_four_digits(self) -> None:
         for year in (1, 999, 1000):
             with self.subTest(year=year):

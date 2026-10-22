@@ -19,8 +19,10 @@ async def member_local_times(
 
     A personal override wins; otherwise the server override, then the
     installation fallback applies. Read failures propagate, so callers never
-    act on a guessed calendar.
+    act on a guessed calendar. Reject naive input before reading preferences.
     """
+    if now.utcoffset() is None:
+        raise ValueError("Birthday checks require a timezone-aware instant")
     server = await preferences.get(PreferenceScope.GUILD, guild_id)
     server_zone = (
         fallback_timezone() if server.timezone is None else ZoneInfo(server.timezone)

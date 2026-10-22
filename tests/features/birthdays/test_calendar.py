@@ -106,6 +106,47 @@ class TestBirthdayGuildConfig(unittest.TestCase):
         self.assertEqual(entries[1]["starts_at"], datetime(2026, 10, 5, 21, tzinfo=UTC))
         self.assertEqual(entries[1]["date"], "6 октября")
 
+    def test_future_birthdays_sort_by_utc_instead_of_calendar_date(self) -> None:
+        config = BirthdayGuildConfig(1, "Test", 999)
+        config.users = {
+            1: BirthdayUser(1, "Moscow", "07-10-2000"),
+            2: BirthdayUser(2, "West", "06-10-2000"),
+            3: BirthdayUser(3, "East", "07-10-2000"),
+            4: BirthdayUser(4, "Seoul", "07-10-2000"),
+        }
+        entries = _list(
+            config,
+            datetime(2026, 10, 5, tzinfo=UTC),
+            {
+                1: MOSCOW,
+                2: ZoneInfo("Etc/GMT+12"),
+                3: ZoneInfo("Pacific/Kiritimati"),
+                4: SEOUL,
+            },
+        )
+        self.assertEqual(
+            [entry["name"] for entry in entries], ["East", "West", "Seoul", "Moscow"]
+        )
+
+    def test_equal_future_starts_keep_saved_member_order(self) -> None:
+        config = BirthdayGuildConfig(1, "Test", 999)
+        config.users = {
+            2: BirthdayUser(2, "First", "06-10-2000"),
+            1: BirthdayUser(1, "Second", "06-10-2000"),
+        }
+        entries = _list(config, datetime(2026, 10, 5, tzinfo=UTC))
+        self.assertEqual([entry["user_id"] for entry in entries], [2, 1])
+
+    def test_invalid_and_cleared_birthdays_are_omitted(self) -> None:
+        config = BirthdayGuildConfig(1, "Test", 999)
+        config.users = {
+            1: BirthdayUser(1, "Invalid", "32-01-2000"),
+            2: BirthdayUser(2, "Cleared", ""),
+            3: BirthdayUser(3, "Valid", "06-10-2000"),
+        }
+        entries = _list(config, datetime(2026, 10, 5, tzinfo=UTC))
+        self.assertEqual([entry["user_id"] for entry in entries], [3])
+
     def test_finished_local_birthday_counts_toward_next_year(self) -> None:
         config = BirthdayGuildConfig(1, "Test", 999)
         config.users = {1: BirthdayUser(1, "Seoul", "06-10-2000")}

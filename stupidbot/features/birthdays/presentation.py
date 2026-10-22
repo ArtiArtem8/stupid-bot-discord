@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
-from datetime import datetime
+from datetime import date, datetime
 from typing import TypedDict
 
 import discord
@@ -14,7 +14,6 @@ from stupidbot.discord_ui.embeds import DEFAULT_LIMITS
 from stupidbot.i18n.catalog import catalog, pgettext_noop
 from stupidbot.i18n.policy import Language
 
-from .dates import DATE_FORMAT, format_storage_date
 from .messages import BirthdayMessages
 from .models import BirthdayGuildConfig
 
@@ -47,26 +46,8 @@ class BirthdayListEntry(TypedDict):
     starts_at: datetime | None
 
 
-def format_birthday_date(
-    birthday_str: str, *, language: Language = Language.RU
-) -> str | None:
-    """Format a stored birthday using the selected language.
-
-    Args:
-        birthday_str: Stored birthday in :data:`DATE_FORMAT`.
-        language: Language for the month name and date order.
-
-    Returns:
-        A phrase such as ``"15 марта"``, or ``None`` for an empty, malformed,
-        or unsupported value.
-    """
-    if not birthday_str:
-        return None
-
-    try:
-        birthday = datetime.strptime(birthday_str, DATE_FORMAT).date()
-    except ValueError:
-        return None
+def format_birthday_date(birthday: date, *, language: Language = Language.RU) -> str:
+    """Format a celebration's day and month in the selected language."""
     messages = BirthdayMessages(catalog("birthdays", language))
     return messages.date(
         day=birthday.day,
@@ -89,11 +70,7 @@ def build_birthday_list(
     entries: list[BirthdayListEntry] = []
     for occurrence in config.upcoming_birthdays(local_times):
         user = config.users[occurrence.user_id]
-        date_text = format_birthday_date(
-            format_storage_date(occurrence.celebration), language=language
-        )
-        if date_text is None:
-            continue
+        date_text = format_birthday_date(occurrence.celebration, language=language)
         entries.append(
             {
                 "date": date_text,
@@ -103,6 +80,30 @@ def build_birthday_list(
             }
         )
     return entries
+
+
+def _format_birthday_row(
+    entry: BirthdayListEntry,
+    position: int,
+    messages: BirthdayMessages,
+    max_length: int,
+) -> str | None:
+    """Keep the date and countdown whole, omitting rows that cannot fit them."""
+    starts_at = entry["starts_at"]
+    # A timestamp date would follow the viewer's timezone, not the celebrant's.
+    when = (
+        messages.catalog.pgettext("ui", "today")
+        if starts_at is None
+        else format_dt(starts_at, "R")
+    )
+    safe_date = truncate_text(entry["date"], width=32)
+    prefix = f"{position}. **{safe_date}** — "
+    suffix = f" · {when}"
+    name_width = min(128, max_length - len(prefix) - len(suffix))
+    if name_width < 1:
+        return None
+    safe_name = truncate_text(entry["name"], width=name_width)
+    return f"{prefix}{safe_name}{suffix}"
 
 
 def create_birthday_list_embed(
@@ -115,7 +116,8 @@ def create_birthday_list_embed(
     """List birthdays within Discord's embed and field limits.
 
     ``max_field_length`` limits characters per field. Entries that exceed the
-    remaining embed budget are omitted; the footer still counts all entries.
+    remaining embed budget are omitted, as are rows whose date and countdown
+    cannot fit the field. The footer still counts all entries.
     """
     messages = BirthdayMessages(catalog("birthdays", language))
     title = truncate_text(messages.title(guild=guild_name), width=DEFAULT_LIMITS.title)
@@ -133,21 +135,9 @@ def create_birthday_list_embed(
 
     lines: list[str] = []
     for i, entry in enumerate(entries, 1):
-        starts_at = entry["starts_at"]
-        # Discord renders the countdown for each viewer; the date stays text
-        # because a timestamp date would follow the viewer's timezone.
-        when = (
-            messages.catalog.pgettext("ui", "today")
-            if starts_at is None
-            else format_dt(starts_at, "R")
-        )
-        safe_date = truncate_text(entry["date"], width=32)
-        prefix = f"{i}. **{safe_date}** — "
-        suffix = f" · {when}"
-        # Cut only the name so the timestamp markup is never split.
-        name_width = min(128, max_field_length - len(prefix) - len(suffix))
-        safe_name = truncate_text(entry["name"], width=max(name_width, 1))
-        lines.append(f"{prefix}{safe_name}{suffix}")
+        line = _format_birthday_row(entry, i, messages, max_field_length)
+        if line is not None:
+            lines.append(line)
 
     paginator = TextPaginator(
         lines,

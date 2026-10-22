@@ -10,10 +10,12 @@ import discord
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
+from stupidbot import settings
 from stupidbot.discord_ui.feedback import FeedbackUI
 from stupidbot.features.birthdays import birthday_cog as birthday_cog_module
 from stupidbot.features.birthdays import delivery as birthday_module
 from stupidbot.features.birthdays.birthday_cog import BirthdayCog
+from stupidbot.features.birthdays.local_time import member_local_times
 from stupidbot.features.birthdays.models import (
     BirthdayDelivery,
     BirthdayGuildConfig,
@@ -298,6 +300,36 @@ class TestBirthdayDeliveryRecovery(unittest.IsolatedAsyncioTestCase):
             f"— User · <t:{int(moscow_start.timestamp())}:R>",
             embed.fields[0].value or "",
         )
+
+    async def test_installation_timezone_applies_without_overrides(self) -> None:
+        with patch.object(settings, "VOICE_PROFILE_TIMEZONE", "Europe/Moscow"):
+            local_times = await member_local_times(
+                self.preferences, 42, [10], datetime(2026, 10, 5, 21, tzinfo=UTC)
+            )
+            self.assertEqual(local_times[10].date(), date(2026, 10, 6))
+            await self._check(self.cog, 20)
+            self.channel.send.assert_not_awaited()
+            await self._check(self.cog, 21)
+            self.channel.send.assert_awaited_once()
+
+    async def test_timezone_read_failure_prevents_send_and_next_check_retries(
+        self,
+    ) -> None:
+        await self._set_timezone(PreferenceScope.USER, 10, "Asia/Seoul")
+        with patch.object(
+            self.preferences, "user_timezones", side_effect=RuntimeError("read failed")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "read failed"):
+                await self._check(self.cog, 15)
+        self.channel.send.assert_not_awaited()
+        await self._check(self.cog, 15)
+        self.channel.send.assert_awaited_once()
+
+    async def test_local_time_resolution_rejects_naive_instant(self) -> None:
+        with self.assertRaisesRegex(ValueError, "timezone-aware"):
+            await member_local_times(
+                self.preferences, 42, [10], datetime(2026, 10, 5, 21)
+            )
 
     async def test_timezone_change_does_not_repeat_same_birthday(self) -> None:
         await self._set_timezone(PreferenceScope.USER, 10, "Asia/Seoul")
