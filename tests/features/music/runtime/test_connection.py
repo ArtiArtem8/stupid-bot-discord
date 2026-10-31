@@ -1772,7 +1772,7 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
             host=server.host,
             port=port,
             label="deadline-test",
-            password="",
+            password=self.id(),
             client=client,
             session=session,
         )
