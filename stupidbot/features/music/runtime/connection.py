@@ -182,7 +182,8 @@ class ConnectionManager:
                 secure=config.LAVALINK_SECURE,
             )
             try:
-                await self.pool.add_node(node, player_cls=MusicPlayer)
+                async with asyncio.timeout(config.LAVALINK_CONNECT_TIMEOUT):
+                    await self.pool.add_node(node, player_cls=MusicPlayer)
                 self._last_connect_error = None
                 self._next_connect_retry_at = 0.0
                 logger.info("Mafic node pool initialized successfully")
