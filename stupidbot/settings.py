@@ -55,7 +55,6 @@ DISCONNECT_TIMER_THRESHOLD = 3600  # seconds (1 hour)
 BIRTHDAY_CHECK_INTERVAL = 300  # seconds (5 minutes)
 
 # Music
-LAVALINK_CONNECT_TIMEOUT = 10.0  # seconds for one initialization attempt
 MUSIC_AUTO_LEAVE_CHECK_INTERVAL = 60  # seconds (1 minute)
 MUSIC_AUTO_LEAVE_TIMEOUT = 900  # seconds (15 minutes)
 MUSIC_DEFAULT_VOLUME = 10  # percentage (10%)

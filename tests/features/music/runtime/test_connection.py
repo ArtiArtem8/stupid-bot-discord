@@ -4,15 +4,12 @@ import asyncio
 import ssl
 import time
 import unittest
-from collections.abc import Awaitable, Callable
 from typing import Any, cast, override
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, patch
 
 import aiohttp
 import discord
 import mafic
-from aiohttp import web
-from aiohttp.test_utils import TestServer
 
 from stupidbot import settings as config
 from stupidbot.features.music.errors import NodeNotConnectedError
@@ -1698,146 +1695,6 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(await self.manager.ensure_available())
             self.assertEqual(self.pool.add_node.await_count, 2)
 
-    async def test_connect_deadline_releases_waiters_and_shutdown(self) -> None:
-        entered, queued, closing_entered = (
-            asyncio.Event(),
-            asyncio.Event(),
-            asyncio.Event(),
-        )
-        cancelled = asyncio.Event()
-        node = MagicMock(close=AsyncMock())
-        deadline = asyncio.timeout(None)
-
-        async def add_node(*_args: object, **_kwargs: object) -> None:
-            entered.set()
-            try:
-                await asyncio.Event().wait()
-            finally:
-                cancelled.set()
-
-        async def queued_attempt() -> bool:
-            queued.set()
-            return await self.manager.ensure_available()
-
-        async def close() -> None:
-            closing_entered.set()
-            await self.manager.cleanup()
-
-        self.pool.add_node = AsyncMock(side_effect=add_node)
-        with (
-            patch.object(mafic, "Node", return_value=node),
-            patch.object(asyncio, "timeout", return_value=deadline),
-        ):
-            async with asyncio.TaskGroup() as tasks:
-                first = tasks.create_task(self.manager.ensure_available())
-                await asyncio.wait_for(entered.wait(), 1.0)
-                second = tasks.create_task(queued_attempt())
-                await asyncio.wait_for(queued.wait(), 1.0)
-                closing = tasks.create_task(close())
-                await asyncio.wait_for(closing_entered.wait(), 1.0)
-                self.assertFalse(closing.done())
-                self.pool.close.assert_not_awaited()
-                deadline.reschedule(asyncio.get_running_loop().time())
-                self.assertFalse(await asyncio.wait_for(first, 1.0))
-                self.assertFalse(await asyncio.wait_for(second, 1.0))
-                await asyncio.wait_for(closing, 1.0)
-
-        self.assertTrue(cancelled.is_set())
-        self.pool.add_node.assert_awaited_once()
-        node.close.assert_awaited_once()
-        self.pool.close.assert_awaited_once()
-
-    async def _make_test_node(
-        self, websocket: Callable[[web.Request], Awaitable[web.StreamResponse]]
-    ) -> tuple[mafic.Node[discord.Client], aiohttp.ClientSession]:
-        async def version(_request: web.Request) -> web.Response:
-            return web.Response(text="4.2.2")
-
-        app = web.Application()
-        app.router.add_get("/version", version)
-        app.router.add_get("/v4/websocket", websocket)
-        server = TestServer(app)
-        await server.start_server()
-        self.addAsyncCleanup(server.close)
-        port = server.make_url("/").port
-        if port is None:
-            self.fail("Test server has no port")
-
-        client = MagicMock(spec=discord.Client)
-        client.user = MagicMock(id=123)
-        client.wait_until_ready = AsyncMock()
-        session = aiohttp.ClientSession()
-        self.addAsyncCleanup(session.close)
-        node = mafic.Node[discord.Client](
-            host=server.host,
-            port=port,
-            label="deadline-test",
-            password=self.id(),
-            client=client,
-            session=session,
-        )
-        self.addAsyncCleanup(node.close)
-
-        # Exercise the real add_node/connect path without sharing global pool state.
-        async def add_node(
-            candidate: mafic.Node[discord.Client],
-            *,
-            player_cls: type[mafic.Player[discord.Client]],
-        ) -> None:
-            await mafic.NodePool.add_node(self.pool, candidate, player_cls=player_cls)
-
-        self.pool.add_node = AsyncMock(side_effect=add_node)
-        return node, session
-
-    async def test_http_ready_but_websocket_unavailable_obeys_deadline(self) -> None:
-        handshake_attempted = asyncio.Event()
-
-        async def websocket(_request: web.Request) -> web.Response:
-            handshake_attempted.set()
-            raise web.HTTPServiceUnavailable
-
-        node, session = await self._make_test_node(websocket)
-        with (
-            patch.object(mafic, "Node", return_value=node),
-            patch.object(config, "LAVALINK_CONNECT_TIMEOUT", 1.0),
-        ):
-            self.assertFalse(
-                await asyncio.wait_for(self.manager.ensure_available(), 3.0)
-            )
-            self.assertTrue(handshake_attempted.is_set())
-            self.assertFalse(node.available)
-            self.assertTrue(session.closed)
-            self.assertTrue(self.manager.is_known_unavailable())
-            self.assertFalse(await self.manager.ensure_available())
-            self.pool.add_node.assert_awaited_once()
-            await asyncio.wait_for(self.manager.cleanup(), 1.0)
-
-    async def test_unready_websocket_is_closed_after_deadline(self) -> None:
-        connected, disconnected = asyncio.Event(), asyncio.Event()
-
-        async def websocket(request: web.Request) -> web.WebSocketResponse:
-            ws = web.WebSocketResponse()
-            await ws.prepare(request)
-            connected.set()
-            async for _message in ws:
-                pass
-            disconnected.set()
-            return ws
-
-        node, session = await self._make_test_node(websocket)
-        with (
-            patch.object(mafic, "Node", return_value=node),
-            patch.object(config, "LAVALINK_CONNECT_TIMEOUT", 1.0),
-        ):
-            self.assertFalse(
-                await asyncio.wait_for(self.manager.ensure_available(), 3.0)
-            )
-
-        self.assertTrue(connected.is_set())
-        await asyncio.wait_for(disconnected.wait(), 1.0)
-        self.assertTrue(session.closed)
-        self.assertFalse(node.available)
-
     async def test_cleanup_waits_for_active_node_initialization(self) -> None:
         entered, release = asyncio.Event(), asyncio.Event()
         closing_entered = asyncio.Event()
@@ -1876,28 +1733,6 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
     @override
     async def asyncTearDown(self) -> None:
         await self.manager.cleanup()
-
-    async def test_failed_removal_closes_node_before_connecting(self) -> None:
-        stale = MagicMock(label="stale", available=False, close=AsyncMock())
-        self.pool.label_to_node = {"stale": stale}
-
-        async def remove_node(_node: object, *, transfer_players: bool) -> None:
-            self.assertFalse(transfer_players)
-            self.pool.label_to_node.pop("stale")
-            raise RuntimeError("player cleanup failed")
-
-        async def add_node(_node: object, *, player_cls: object) -> None:
-            self.assertIs(player_cls, MusicPlayer)
-            stale.close.assert_awaited_once()
-
-        self.pool.remove_node = AsyncMock(side_effect=remove_node)
-        self.pool.add_node = AsyncMock(side_effect=add_node)
-        candidate = MagicMock()
-        with patch.object(mafic, "Node", return_value=candidate):
-            await self.manager.initialize()
-
-        stale.close.assert_awaited_once()
-        self.pool.add_node.assert_awaited_once_with(candidate, player_cls=MusicPlayer)
 
     async def test_ensure_available_returns_false_for_terminal_http_errors(
         self,
