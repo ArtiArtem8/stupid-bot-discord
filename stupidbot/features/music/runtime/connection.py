@@ -182,7 +182,8 @@ class ConnectionManager:
                 secure=config.LAVALINK_SECURE,
             )
             try:
-                await self.pool.add_node(node, player_cls=MusicPlayer)
+                async with asyncio.timeout(config.LAVALINK_CONNECT_TIMEOUT):
+                    await self.pool.add_node(node, player_cls=MusicPlayer)
                 self._last_connect_error = None
                 self._next_connect_retry_at = 0.0
                 logger.info("Mafic node pool initialized successfully")
@@ -202,11 +203,8 @@ class ConnectionManager:
                     type(exc).__name__,
                 )
                 raise NodeNotConnectedError(MUSIC_SERVICE_UNAVAILABLE_MESSAGE) from exc
-            except asyncio.CancelledError:
+            except (Exception, asyncio.CancelledError):
                 # add_node registers only after connect, so pool.close cannot own this.
-                await self._close_failed_node(node)
-                raise
-            except Exception:
                 await self._close_failed_node(node)
                 raise
 
@@ -523,8 +521,6 @@ class ConnectionManager:
                 await asyncio.sleep(
                     retry_in if retry_in > 0 else config.LAVALINK_CONNECT_RETRY_DELAY
                 )
-        except asyncio.CancelledError:
-            raise
         except Exception:
             logger.exception("Unexpected lazy Lavalink connection failure")
 
@@ -571,15 +567,9 @@ class ConnectionManager:
         await self._close_failed_node(node)
 
     async def _cleanup_unavailable_nodes(self) -> None:
-        """Close unusable Mafic nodes left behind by a failed connection attempt."""
-        nodes = list(self.pool.label_to_node.values())
-        for node in nodes:
-            if node.available:
-                continue
-            try:
-                await self.pool.remove_node(node, transfer_players=False)
-            except Exception:
-                logger.debug("Failed to cleanup unavailable Mafic node", exc_info=True)
+        for node in tuple(self.pool.label_to_node.values()):
+            if not node.available:
+                await self._remove_or_close_node(node)
 
     def get_player(
         self,
