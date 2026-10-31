@@ -268,7 +268,7 @@ wheels = [
 [[package]]
 name = "mafic"
 version = "2.11.0"
-source = { git = "https://github.com/ArtiArtem8/mafic.git?rev=c57b5c4cdad0f7b2f675fd5a2b726b4dbee616c9#c57b5c4cdad0f7b2f675fd5a2b726b4dbee616c9" }
+source = { git = "https://github.com/ArtiArtem8/mafic.git?rev=765c740b0459672c3728c7db5d1ebe1a5d3ab79f#765c740b0459672c3728c7db5d1ebe1a5d3ab79f" }
 dependencies = [
     { name = "aiohttp" },
     { name = "yarl" },
@@ -649,7 +649,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.16" },
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "discord-py", extras = ["voice"], specifier = ">=2.7.1" },
-    { name = "mafic", git = "https://github.com/ArtiArtem8/mafic.git?rev=c57b5c4cdad0f7b2f675fd5a2b726b4dbee616c9" },
+    { name = "mafic", git = "https://github.com/ArtiArtem8/mafic.git?rev=765c740b0459672c3728c7db5d1ebe1a5d3ab79f" },
     { name = "pillow", specifier = ">=13.0.0" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "rapidfuzz", specifier = ">=3.14.1" },
