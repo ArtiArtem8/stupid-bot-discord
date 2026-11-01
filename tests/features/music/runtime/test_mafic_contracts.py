@@ -80,13 +80,20 @@ class TestMaficComposition(unittest.IsolatedAsyncioTestCase):
         self.player = MusicPlayer(self.bot, self.channel)
         self.guild.voice_client = self.player
         self.bot.get_guild.return_value = self.guild
-        self.source = MagicMock(spec=mafic.Node, available=False, version=4)
-        self.target = MagicMock(spec=mafic.Node, available=True, version=4)
+        self.source = MagicMock(
+            spec=mafic.Node, available=False, version=4, label="source"
+        )
+        self.target = MagicMock(
+            spec=mafic.Node, available=True, version=4, label="target"
+        )
         self.player._node = self.source
         self.player.set_state(player_payload({}))
         self.source.players = [self.player]
         self.connection = ConnectionManager(self.bot)
-        self.connection.pool = MagicMock(nodes=[self.source, self.target])
+        self.connection.pool = MagicMock(
+            nodes=[self.source, self.target],
+            label_to_node={"source": self.source},
+        )
         self.connection._mark_node_unavailable_locked = AsyncMock()
         self.local_cleanup = AsyncMock()
         self.connection._cleanup_voice_client_locally = self.local_cleanup

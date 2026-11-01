@@ -407,6 +407,10 @@ class ConnectionManager:
         """Return whether the event's node is ready and still registered."""
         return node.available and self._pool_contains_node(node)
 
+    def _node_event_is_stale(self, node: mafic.Node[discord.Client]) -> bool:
+        """Return whether the event belongs to a node replaced by a ready one."""
+        return not self._pool_contains_node(node) and self.has_ready_node()
+
     async def handle_node_unavailable(
         self, node: mafic.Node[discord.Client]
     ) -> set[int]:
@@ -414,9 +418,10 @@ class ConnectionManager:
 
         An event whose node reconnected before this handler took ownership is
         ignored, including when recovery happens while waiting for the lock.
+        Events from a node already replaced by a ready node are ignored too.
         """
-        if self._node_is_recovered(node):
-            logger.debug("Ignoring recovered Lavalink node event: %s", node.label)
+        if self._node_is_recovered(node) or self._node_event_is_stale(node):
+            logger.debug("Ignoring stale Lavalink node event: %s", node.label)
             return set()
 
         players = tuple(node.players)
@@ -440,7 +445,7 @@ class ConnectionManager:
         removed = False
         try:
             async with self._init_lock:
-                if self._node_is_recovered(node):
+                if self._node_is_recovered(node) or self._node_event_is_stale(node):
                     logger.debug(
                         "Ignoring stale node_unavailable after wait: %s",
                         node.label,
@@ -607,6 +612,39 @@ class ConnectionManager:
         await self.stop_connecting()
         await self.pool.close()
 
+    async def _await_owned_cleanup(self, task: asyncio.Task[None]) -> None:
+        """Wait for cleanup owned by this attempt despite repeated cancellation.
+
+        The caller re-raises its captured cancellation after the owned task
+        finishes. A second cancellation must not strand teardown or release the
+        initialization lock early.
+        """
+        cancelled: asyncio.CancelledError | None = None
+        while True:
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError as exc:
+                cancelled = exc
+                if task.done():
+                    break
+            except Exception:
+                break
+            else:
+                break
+
+        if cancelled is not None:
+            raise cancelled
+
+    async def _finish_failed_removal(
+        self,
+        node: mafic.Node[discord.Client],
+        removal: asyncio.Task[None],
+    ) -> None:
+        await self._abort_node_http(node)
+        with contextlib.suppress(Exception):
+            await removal
+        await self._close_failed_node(node)
+
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:
         """Remove one unavailable node, aborting a stalled teardown.
 
@@ -624,28 +662,21 @@ class ConnectionManager:
         try:
             async with asyncio.timeout(config.LAVALINK_CLEANUP_TIMEOUT):
                 await asyncio.shield(removal)
+            return
         except TimeoutError:
             logger.warning(
                 "Timed out removing unavailable Lavalink node %s; closing it",
                 node.label,
             )
-            # Closing the node aborts its HTTP session, which releases player
-            # teardown waiting on a stalled Lavalink request.
-            await self._close_failed_node(node)
-            with contextlib.suppress(Exception):
-                await removal
         except asyncio.CancelledError:
-            await self._abort_node_http(node)
-            try:
-                with contextlib.suppress(Exception):
-                    await asyncio.shield(removal)
-            finally:
-                # A failed teardown may have skipped Mafic's own close step.
-                await self._close_failed_node(node)
+            cleanup = asyncio.create_task(self._finish_failed_removal(node, removal))
+            await self._await_owned_cleanup(cleanup)
             raise
         except Exception:
             logger.debug("Failed to remove unavailable Mafic node", exc_info=True)
-            await self._close_failed_node(node)
+
+        cleanup = asyncio.create_task(self._finish_failed_removal(node, removal))
+        await self._await_owned_cleanup(cleanup)
 
     async def _cleanup_unavailable_nodes(self) -> None:
         for node in tuple(self.pool.label_to_node.values()):
