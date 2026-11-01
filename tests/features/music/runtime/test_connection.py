@@ -1,10 +1,11 @@
 """Tests for music connection manager behavior."""
 
 import asyncio
+import contextlib
 import ssl
 import time
 import unittest
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine
 from typing import Any, cast, override
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, patch
 
@@ -26,6 +27,7 @@ from stupidbot.features.music.runtime.connection import (
     ConnectionManager,
     _AvailabilityResult,
 )
+from stupidbot.features.music.runtime.voice_lifecycle import VoiceLifecycleHandlers
 
 
 class _FakeMusicPlayer:
@@ -55,6 +57,48 @@ class _FakeMusicPlayer:
 
 def _as_music_player(player: _FakeMusicPlayer) -> MusicPlayer:
     return cast(MusicPlayer, cast(object, player))
+
+
+class _DispatchBot:
+    """Minimal commands.Bot surface used by Discord/Mafic event dispatch."""
+
+    def __init__(self) -> None:
+        self.user = MagicMock(id=123456789)
+        self._connection = MagicMock()
+        self._connection._remove_voice_client = MagicMock()
+        self.listeners: dict[str, list[Callable[..., Coroutine[Any, Any, None]]]] = {}
+        self.tasks: set[asyncio.Task[None]] = set()
+
+    async def wait_until_ready(self) -> None:
+        return None
+
+    def is_closed(self) -> bool:
+        return False
+
+    def add_listener(
+        self, func: Callable[..., Coroutine[Any, Any, None]], name: str
+    ) -> None:
+        self.listeners.setdefault(name, []).append(func)
+
+    def remove_listener(
+        self, func: Callable[..., Coroutine[Any, Any, None]], name: str
+    ) -> None:
+        with contextlib.suppress(ValueError):
+            self.listeners.get(name, []).remove(func)
+
+    def dispatch(self, event: str, *args: object) -> None:
+        for func in tuple(self.listeners.get(f"on_{event}", ())):
+            task = asyncio.create_task(func(*args))
+            self.tasks.add(task)
+            task.add_done_callback(self.tasks.discard)
+
+
+class _ZeroBackoff:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    def delay(self) -> float:
+        return 0.0
 
 
 class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
@@ -1614,6 +1658,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.bot.get_guild.return_value = guild
         mock_pool = MagicMock()
         mock_pool.nodes = [old_node, target]
+        mock_pool.label_to_node = {"old": old_node}
+        mock_pool.remove_node = AsyncMock(
+            side_effect=lambda *_args, **_kwargs: mock_pool.label_to_node.pop("old")
+        )
         self.manager.pool = mock_pool
         old_node.players = [player]
 
@@ -1622,15 +1670,41 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             player.assigned_node = target
 
         player.transfer_to = AsyncMock(side_effect=transfer)
-        self.manager.mark_node_unavailable = AsyncMock()
         self.manager._cleanup_voice_client_locally = AsyncMock()
 
         invalidated = await self.manager.handle_node_unavailable(old_node)
 
         self.assertEqual(invalidated, set())
         player.transfer_to.assert_awaited_once_with(target)
-        self.manager.mark_node_unavailable.assert_awaited_once_with(old_node)
+        mock_pool.remove_node.assert_awaited_once_with(old_node, transfer_players=False)
         self.manager._cleanup_voice_client_locally.assert_not_awaited()
+        await self.manager.stop_connecting()
+
+    async def test_recovered_node_after_lock_wait_preserves_player(self) -> None:
+        node = MagicMock(label="old", available=False)
+        guild = MagicMock(id=123)
+        player = _FakeMusicPlayer(guild, node)
+        guild.voice_client = player
+        self.bot.get_guild.return_value = guild
+        mock_pool = MagicMock()
+        mock_pool.nodes = [node]
+        mock_pool.label_to_node = {}
+        mock_pool.remove_node = AsyncMock()
+        self.manager.pool = mock_pool
+        node.players = [player]
+
+        async with self.manager._init_lock:
+            handling = asyncio.create_task(self.manager.handle_node_unavailable(node))
+            await asyncio.sleep(0)
+            node.available = True
+            mock_pool.label_to_node = {"old": node}
+
+        invalidated = await handling
+
+        self.assertEqual(invalidated, set())
+        self.assertFalse(player.is_stale)
+        mock_pool.remove_node.assert_not_awaited()
+        await self.manager.stop_connecting()
 
     async def test_failed_node_transfer_invalidates_only_affected_player(self) -> None:
         old_node = MagicMock(label="old", available=False)
@@ -1651,7 +1725,6 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.manager.pool = mock_pool
         old_node.players = [affected]
         affected.transfer_to = AsyncMock(side_effect=TimeoutError)
-        self.manager.mark_node_unavailable = AsyncMock()
         self.manager._cleanup_voice_client_locally = AsyncMock()
 
         invalidated = await self.manager.handle_node_unavailable(old_node)
@@ -1662,6 +1735,280 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.manager._cleanup_voice_client_locally.assert_awaited_once_with(
             affected_guild, affected
         )
+        await self.manager.stop_connecting()
+
+
+class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
+    @override
+    async def asyncSetUp(self) -> None:
+        mafic.NodePool.label_to_node.clear()
+        self.bot = _DispatchBot()
+        self.manager = ConnectionManager(cast(Any, self.bot))
+        self.handlers = VoiceLifecycleHandlers(
+            cast(Any, self.bot),
+            self.manager,
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+        )
+        cast(Any, self.handlers.ui.controller).destroy_for_guild = AsyncMock()
+        self.handlers.setup()
+        self.server: TestServer | None = None
+        self.websocket_attempts = 0
+        self.connections: list[web.WebSocketResponse] = []
+        self.reject_connections = False
+        self.delay_ready = False
+        self.close_first = True
+        self.ready_release = asyncio.Event()
+        self.second_connected = asyncio.Event()
+
+    @override
+    async def asyncTearDown(self) -> None:
+        self.ready_release.set()
+        await self.handlers.cleanup()
+        await self.manager.cleanup()
+        if self.server is not None:
+            await self.server.close()
+        mafic.NodePool.label_to_node.clear()
+
+    async def _websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
+        self.websocket_attempts += 1
+        if self.reject_connections:
+            raise web.HTTPServiceUnavailable
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        if self.close_first and self.websocket_attempts == 1:
+            await ws.close()
+            return ws
+        self.second_connected.set()
+        if self.delay_ready:
+            await self.ready_release.wait()
+        await ws.send_json({"op": "ready", "resumed": True, "sessionId": "s2"})
+        self.connections.append(ws)
+        async for _message in ws:
+            pass
+        return ws
+
+    async def _start_server(
+        self,
+        *,
+        close_first: bool = True,
+        delete_player: Callable[[web.Request], Awaitable[web.StreamResponse]]
+        | None = None,
+    ) -> int:
+        async def version(_request: web.Request) -> web.Response:
+            return web.Response(text="4.2.2")
+
+        async def players(_request: web.Request) -> web.Response:
+            return web.json_response([])
+
+        self.close_first = close_first
+        app = web.Application()
+        app.router.add_get("/version", version)
+        app.router.add_get("/v4/websocket", self._websocket_handler)
+        app.router.add_get("/v4/sessions/s2/players", players)
+        if delete_player is not None:
+            app.router.add_delete("/v4/sessions/s2/players/{guild_id}", delete_player)
+        self.server = TestServer(app)
+        await self.server.start_server()
+        port = self.server.make_url("/").port
+        if port is None:
+            self.fail("Test server has no port")
+        return port
+
+    @contextlib.asynccontextmanager
+    async def _lavalink_config(self, port: int) -> AsyncGenerator[None]:
+        server = self.server
+        if server is None:
+            self.fail("Test server is not running")
+        with (
+            patch.object(config, "LAVALINK_HOST", server.host),
+            patch.object(config, "LAVALINK_PORT", port),
+            patch.object(config, "LAVALINK_PASSWORD", "test-password"),
+            patch.object(config, "LAVALINK_NODE_LABEL", "MAIN"),
+            patch.object(config, "LAVALINK_SECURE", False),
+            patch.object(config, "LAVALINK_CONNECT_TIMEOUT", 10.0),
+            patch.object(mafic.node, "ExponentialBackoff", _ZeroBackoff),
+        ):
+            yield
+
+    async def _wait_for_dispatch(self) -> None:
+        while self.bot.tasks:
+            await asyncio.gather(*tuple(self.bot.tasks), return_exceptions=True)
+
+    async def _wait_until(
+        self, predicate: Callable[[], bool], *, timeout: float = 2.0
+    ) -> None:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while not predicate():
+            if asyncio.get_running_loop().time() >= deadline:
+                self.fail("Condition was not met before the deadline")
+            await asyncio.sleep(0.01)
+
+    def _attach_player(
+        self, node: mafic.Node[discord.Client]
+    ) -> mafic.Player[discord.Client]:
+        guild = MagicMock(id=123)
+        channel = MagicMock(spec=discord.VoiceChannel, id=10)
+        channel.guild = guild
+        channel._get_voice_client_key.return_value = (guild.id, 0)
+        player = mafic.Player(cast(Any, self.bot), channel, node=node)
+        guild.voice_client = player
+        node.add_player(guild.id, player)
+        return player
+
+    async def test_stale_unavailable_does_not_remove_recovered_node(self) -> None:
+        port = await self._start_server()
+        async with self._lavalink_config(port):
+            await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            await self._wait_for_dispatch()
+
+        self.assertTrue(node.available)
+        self.assertTrue(self.manager.has_ready_node())
+        self.assertIs(self.manager.pool.label_to_node.get("MAIN"), node)
+        self.assertIsNone(self.manager._last_connect_error)
+        self.assertEqual(self.handlers._unavailable_node_labels, set())
+        self.assertEqual(self.websocket_attempts, 2)
+
+    async def test_repeated_disconnect_after_recovery_still_removes_node(
+        self,
+    ) -> None:
+        port = await self._start_server()
+        async with self._lavalink_config(port):
+            await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            await self._wait_for_dispatch()
+            self.assertTrue(self.connections)
+
+            self.reject_connections = True
+            await self.connections[-1].close()
+            await self._wait_until(lambda: not self.manager.pool.label_to_node)
+
+        self.assertFalse(node.available)
+        self.assertEqual(self.manager.pool.label_to_node, {})
+
+    async def test_shutdown_during_connect_drains_and_closes_node(self) -> None:
+        self.delay_ready = True
+        port = await self._start_server()
+        async with self._lavalink_config(port):
+            initializing = asyncio.create_task(self.manager.initialize())
+            await asyncio.wait_for(self.second_connected.wait(), 2.0)
+            closing = asyncio.create_task(self.manager.cleanup())
+            await asyncio.sleep(0)
+            self.assertFalse(closing.done())
+
+            self.ready_release.set()
+            await asyncio.wait_for(initializing, 2.0)
+            await asyncio.wait_for(closing, 2.0)
+
+        self.assertFalse(self.manager._init_lock.locked())
+        self.assertFalse(self.manager.has_ready_node())
+        self.assertTrue(
+            all(not node.available for node in self.manager.pool.label_to_node.values())
+        )
+
+    async def test_stale_player_cleanup_is_bounded_by_cleanup_timeout(
+        self,
+    ) -> None:
+        delete_started = asyncio.Event()
+        delete_release = asyncio.Event()
+
+        async def delete_player(_request: web.Request) -> web.Response:
+            delete_started.set()
+            await delete_release.wait()
+            return web.Response(status=204)
+
+        port = await self._start_server(close_first=False, delete_player=delete_player)
+        async with self._lavalink_config(port):
+            await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            self._attach_player(node)
+            node._mark_unavailable()
+
+            with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.1):
+                initializing = asyncio.create_task(self.manager.initialize())
+                try:
+                    await asyncio.wait_for(delete_started.wait(), 2.0)
+                    await asyncio.wait_for(initializing, 2.0)
+                finally:
+                    delete_release.set()
+
+            replacement = self.manager.pool.label_to_node.get("MAIN")
+            self.assertIsNotNone(replacement)
+            self.assertIsNot(replacement, node)
+            self.assertTrue(self.manager.has_ready_node())
+
+    async def test_failed_player_cleanup_does_not_block_replacement(self) -> None:
+        port = await self._start_server(close_first=False)
+        async with self._lavalink_config(port):
+            await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            player = self._attach_player(node)
+            player.guild.change_voice_state = AsyncMock(
+                side_effect=RuntimeError("voice teardown failed")
+            )
+            node._mark_unavailable()
+
+            await asyncio.wait_for(self.manager.initialize(), 2.0)
+
+            replacement = self.manager.pool.label_to_node.get("MAIN")
+            self.assertIsNotNone(replacement)
+            self.assertIsNot(replacement, node)
+            self.assertTrue(self.manager.has_ready_node())
+
+    async def test_cancelled_initialization_releases_lock_after_cleanup(
+        self,
+    ) -> None:
+        delete_started = asyncio.Event()
+        delete_release = asyncio.Event()
+
+        async def delete_player(_request: web.Request) -> web.Response:
+            delete_started.set()
+            await delete_release.wait()
+            return web.Response(status=204)
+
+        port = await self._start_server(close_first=False, delete_player=delete_player)
+        async with self._lavalink_config(port):
+            await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            self._attach_player(node)
+            node._mark_unavailable()
+
+            initializing = asyncio.create_task(self.manager.initialize())
+            try:
+                await asyncio.wait_for(delete_started.wait(), 2.0)
+                initializing.cancel()
+                await asyncio.sleep(0.05)
+                self.assertFalse(initializing.done())
+            finally:
+                delete_release.set()
+
+            with self.assertRaises(asyncio.CancelledError):
+                await initializing
+            self.assertFalse(self.manager._init_lock.locked())
+            self.assertFalse(node.available)
+
+    async def test_cancelled_availability_waiter_keeps_initialization(
+        self,
+    ) -> None:
+        self.delay_ready = True
+        port = await self._start_server()
+        async with self._lavalink_config(port):
+            initializing = asyncio.create_task(self.manager.initialize())
+            await asyncio.wait_for(self.second_connected.wait(), 2.0)
+            waiter = asyncio.create_task(self.manager.ensure_available())
+            await asyncio.sleep(0)
+            waiter.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await waiter
+            self.assertFalse(initializing.done())
+
+            self.ready_release.set()
+            await asyncio.wait_for(initializing, 2.0)
+
+        self.assertFalse(self.manager._init_lock.locked())
+        self.assertTrue(self.manager.has_ready_node())
 
 
 class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):

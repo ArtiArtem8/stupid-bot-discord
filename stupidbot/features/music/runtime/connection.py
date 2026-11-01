@@ -318,18 +318,24 @@ class ConnectionManager:
     ) -> None:
         """Remove stale node resources and retry if no ready node remains."""
         async with self._init_lock:
-            self._last_connect_error = "Lavalink node became unavailable"
-            self._next_connect_retry_at = (
-                time.monotonic() + config.LAVALINK_CONNECT_RETRY_DELAY
-            )
-
-            if node is not None:
-                await self._remove_or_close_node(node)
-
-            await self._cleanup_unavailable_nodes()
+            await self._mark_node_unavailable_locked(node)
 
         # Removing a Mafic node also cancels its websocket reconnect task.
         self.start_lazy_connect()
+
+    async def _mark_node_unavailable_locked(
+        self, node: mafic.Node[discord.Client] | None = None
+    ) -> None:
+        """Update unavailable state while the caller holds ``_init_lock``."""
+        self._last_connect_error = "Lavalink node became unavailable"
+        self._next_connect_retry_at = (
+            time.monotonic() + config.LAVALINK_CONNECT_RETRY_DELAY
+        )
+
+        if node is not None:
+            await self._remove_or_close_node(node)
+
+        await self._cleanup_unavailable_nodes()
 
     async def invalidate_player(
         self,
@@ -380,10 +386,22 @@ class ConnectionManager:
                     candidate,
                 )
 
+    def _node_is_recovered(self, node: mafic.Node[discord.Client]) -> bool:
+        """Return whether the event's node is ready and still registered."""
+        return node.available and self._pool_contains_node(node)
+
     async def handle_node_unavailable(
         self, node: mafic.Node[discord.Client]
     ) -> set[int]:
-        """Transfer players to a ready node or invalidate only failed guilds."""
+        """Transfer players to a ready node or invalidate only failed guilds.
+
+        An event whose node reconnected before this handler took ownership is
+        ignored, including when recovery happens while waiting for the lock.
+        """
+        if self._node_is_recovered(node):
+            logger.debug("Ignoring recovered Lavalink node event: %s", node.label)
+            return set()
+
         players = tuple(node.players)
         target = next(
             (
@@ -393,19 +411,35 @@ class ConnectionManager:
             ),
             None,
         )
-        invalidated: list[MusicPlayer] = []
-
+        remaining: list[MusicPlayer] = []
         for player in players:
             if not self.is_current_player(player):
                 continue
             if target is not None and await self._transfer_or_release(player, target):
                 continue
-            player.mark_stale()
-            invalidated.append(player)
+            remaining.append(player)
 
+        invalidated: list[MusicPlayer] = []
+        removed = False
         try:
-            await self.mark_node_unavailable(node)
+            async with self._init_lock:
+                if self._node_is_recovered(node):
+                    logger.debug(
+                        "Ignoring stale node_unavailable after wait: %s",
+                        node.label,
+                    )
+                    return set()
+
+                invalidated = [
+                    player for player in remaining if self.is_current_player(player)
+                ]
+                for player in invalidated:
+                    player.mark_stale()
+                await self._mark_node_unavailable_locked(node)
+                removed = True
         finally:
+            if removed:
+                self.start_lazy_connect()
             await self._cleanup_failed_node_players(node, invalidated)
 
         return {player.guild.id for player in invalidated}
@@ -557,14 +591,43 @@ class ConnectionManager:
         await self.pool.close()
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:
+        """Remove one unavailable node, aborting a stalled teardown.
+
+        Mafic removes the node from the pool before destroying its players, so a
+        stalled HTTP request would otherwise hold the initialization lock for the
+        full client timeout.
+        """
+        if not self._pool_contains_node(node):
+            await self._close_failed_node(node)
+            return
+
+        removal = asyncio.create_task(
+            self.pool.remove_node(node, transfer_players=False)
+        )
         try:
-            if self._pool_contains_node(node):
-                await self.pool.remove_node(node, transfer_players=False)
-                return
+            async with asyncio.timeout(config.LAVALINK_CLEANUP_TIMEOUT):
+                await asyncio.shield(removal)
+        except TimeoutError:
+            logger.warning(
+                "Timed out removing unavailable Lavalink node %s; closing it",
+                node.label,
+            )
+            # Closing the node aborts its HTTP session, which releases player
+            # teardown waiting on a stalled Lavalink request.
+            await self._close_failed_node(node)
+            with contextlib.suppress(Exception):
+                await removal
+        except asyncio.CancelledError:
+            try:
+                with contextlib.suppress(Exception):
+                    await asyncio.shield(removal)
+            finally:
+                # A failed teardown may have skipped Mafic's own close step.
+                await self._close_failed_node(node)
+            raise
         except Exception:
             logger.debug("Failed to remove unavailable Mafic node", exc_info=True)
-
-        await self._close_failed_node(node)
+            await self._close_failed_node(node)
 
     async def _cleanup_unavailable_nodes(self) -> None:
         for node in tuple(self.pool.label_to_node.values()):

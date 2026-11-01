@@ -87,7 +87,7 @@ class TestMaficComposition(unittest.IsolatedAsyncioTestCase):
         self.source.players = [self.player]
         self.connection = ConnectionManager(self.bot)
         self.connection.pool = MagicMock(nodes=[self.source, self.target])
-        self.connection.mark_node_unavailable = AsyncMock()
+        self.connection._mark_node_unavailable_locked = AsyncMock()
         self.local_cleanup = AsyncMock()
         self.connection._cleanup_voice_client_locally = self.local_cleanup
 
