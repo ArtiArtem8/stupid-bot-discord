@@ -208,7 +208,24 @@ class ConnectionManager:
                 await self._close_failed_node(node)
                 raise
 
+    async def _abort_node_http(self, node: mafic.Node[discord.Client]) -> None:
+        """Close Mafic's REST session before ``Node.close`` waits on reconnect.
+
+        Pinned Mafic cancels and awaits its connect task before closing the
+        session. That task can be inside ``sync_players()``, where player
+        teardown waits on the same HTTP request. Closing the session first makes
+        those requests fail instead of deadlocking the close path.
+        """
+        session = getattr(node, "_Node__session", None)
+        if not isinstance(session, aiohttp.ClientSession) or session.closed:
+            return
+        try:
+            await session.close()
+        except Exception:
+            logger.debug("Failed to abort Mafic node HTTP session", exc_info=True)
+
     async def _close_failed_node(self, node: mafic.Node[discord.Client]) -> None:
+        await self._abort_node_http(node)
         try:
             await node.close()
         except Exception:
@@ -618,6 +635,7 @@ class ConnectionManager:
             with contextlib.suppress(Exception):
                 await removal
         except asyncio.CancelledError:
+            await self._abort_node_http(node)
             try:
                 with contextlib.suppress(Exception):
                     await asyncio.shield(removal)

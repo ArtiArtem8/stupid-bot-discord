@@ -1957,6 +1957,80 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             self.assertIsNot(replacement, node)
             self.assertTrue(self.manager.has_ready_node())
 
+    async def test_shutdown_cancels_lazy_cleanup_within_budget(self) -> None:
+        delete_started = asyncio.Event()
+        delete_release = asyncio.Event()
+
+        async def delete_player(_request: web.Request) -> web.Response:
+            delete_started.set()
+            await delete_release.wait()
+            return web.Response(status=204)
+
+        port = await self._start_server(close_first=False, delete_player=delete_player)
+        async with self._lavalink_config(port):
+            await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            self._attach_player(node)
+            node._mark_unavailable()
+
+            with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05):
+                self.manager.start_lazy_connect()
+                await asyncio.wait_for(delete_started.wait(), 2.0)
+                shutdown = asyncio.create_task(self.manager.cleanup())
+                try:
+                    await asyncio.wait_for(shutdown, 1.0)
+                finally:
+                    # The server must not release the request for this assertion.
+                    delete_release.set()
+
+            self.assertFalse(self.manager._init_lock.locked())
+            self.assertIsNone(self.manager._lazy_connect_task)
+            self.assertFalse(self.manager.has_ready_node())
+
+    async def test_removal_aborts_reconnect_sync_teardown(self) -> None:
+        delete_started = asyncio.Event()
+        delete_release = asyncio.Event()
+
+        async def delete_player(_request: web.Request) -> web.Response:
+            delete_started.set()
+            await delete_release.wait()
+            return web.Response(status=204)
+
+        port = await self._start_server(close_first=False, delete_player=delete_player)
+        async with self._lavalink_config(port):
+            await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            self._attach_player(node)
+            await self.handlers.cleanup()
+            ws = node._ws
+            if ws is None:
+                self.fail("Node websocket is not connected")
+            await ws.close()
+
+            await asyncio.wait_for(delete_started.wait(), 2.0)
+            connect_task = node._connect_task
+            if connect_task is None:
+                self.fail("Node reconnect did not start")
+            self.assertFalse(connect_task.done())
+
+            try:
+                with (
+                    patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
+                    self.assertLogs(connection_module.logger, level="WARNING") as logs,
+                ):
+                    await asyncio.wait_for(
+                        self.manager._remove_or_close_node(node), 1.0
+                    )
+            finally:
+                delete_release.set()
+
+            self.assertTrue(
+                any("Timed out removing" in message for message in logs.output)
+            )
+            self.assertIsNone(node._connect_task)
+            self.assertFalse(node.available)
+            self.assertNotIn("MAIN", self.manager.pool.label_to_node)
+
     async def test_cancelled_initialization_releases_lock_after_cleanup(
         self,
     ) -> None:
