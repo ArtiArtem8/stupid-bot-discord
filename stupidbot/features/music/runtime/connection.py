@@ -344,10 +344,11 @@ class ConnectionManager:
         self, node: mafic.Node[discord.Client] | None = None
     ) -> None:
         """Update unavailable state while the caller holds ``_init_lock``."""
-        self._last_connect_error = "Lavalink node became unavailable"
-        self._next_connect_retry_at = (
-            time.monotonic() + config.LAVALINK_CONNECT_RETRY_DELAY
-        )
+        if not self.has_ready_node():
+            self._last_connect_error = "Lavalink node became unavailable"
+            self._next_connect_retry_at = (
+                time.monotonic() + config.LAVALINK_CONNECT_RETRY_DELAY
+            )
 
         if node is not None:
             await self._remove_or_close_node(node)
@@ -408,8 +409,15 @@ class ConnectionManager:
         return node.available and self._pool_contains_node(node)
 
     def _node_event_is_stale(self, node: mafic.Node[discord.Client]) -> bool:
-        """Return whether the event belongs to a node replaced by a ready one."""
-        return not self._pool_contains_node(node) and self.has_ready_node()
+        """Return whether the event belongs to a replaced, player-free node."""
+        if self._pool_contains_node(node) or not self.has_ready_node():
+            return False
+        return not any(
+            isinstance(player, MusicPlayer)
+            and self.get_player_node(player) is node
+            and self.is_current_player(player)
+            for player in node.players
+        )
 
     async def handle_node_unavailable(
         self, node: mafic.Node[discord.Client]
@@ -635,6 +643,23 @@ class ConnectionManager:
         if cancelled is not None:
             raise cancelled
 
+    async def _drain_node_players(self, node: mafic.Node[discord.Client]) -> None:
+        """Finish player teardown left pending by Mafic's failing gather."""
+        players = tuple(node.players)
+        if not players:
+            return
+        results = await asyncio.gather(
+            *(player.disconnect(force=True) for player in players),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, BaseException):
+                logger.debug(
+                    "Failed to finish remaining player teardown on %s",
+                    node.label,
+                    exc_info=(type(result), result, result.__traceback__),
+                )
+
     async def _finish_failed_removal(
         self,
         node: mafic.Node[discord.Client],
@@ -643,6 +668,7 @@ class ConnectionManager:
         await self._abort_node_http(node)
         with contextlib.suppress(Exception):
             await removal
+        await self._drain_node_players(node)
         await self._close_failed_node(node)
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:

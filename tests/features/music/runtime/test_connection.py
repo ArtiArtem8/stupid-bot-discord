@@ -1708,6 +1708,65 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool.remove_node.assert_not_awaited()
         await self.manager.stop_connecting()
 
+    async def test_replaced_node_event_still_invalidates_current_player(self) -> None:
+        old_node = MagicMock(label="old", available=False, close=AsyncMock())
+        target = MagicMock(label="ready", available=True)
+        guild = MagicMock(id=123)
+        player = _FakeMusicPlayer(guild, old_node)
+        guild.voice_client = player
+        self.bot.get_guild.return_value = guild
+        old_node.players = [player]
+        mock_pool = MagicMock()
+        mock_pool.nodes = [target]
+        mock_pool.label_to_node = {"ready": target}
+        self.manager.pool = mock_pool
+        player.transfer_to = AsyncMock(side_effect=TimeoutError)
+        self.manager._cleanup_voice_client_locally = AsyncMock()
+
+        invalidated = await self.manager.handle_node_unavailable(old_node)
+
+        self.assertEqual(invalidated, {123})
+        self.assertTrue(player.is_stale)
+        old_node.close.assert_awaited_once()
+        self.assertIsNone(self.manager._last_connect_error)
+        self.assertEqual(self.manager._next_connect_retry_at, 0.0)
+        await self.manager.stop_connecting()
+
+    async def test_failed_multi_player_removal_waits_for_pending_teardown(
+        self,
+    ) -> None:
+        node = MagicMock(label="old", available=False, close=AsyncMock())
+        first = MagicMock(spec=MusicPlayer, assigned_node=node)
+        second = MagicMock(spec=MusicPlayer, assigned_node=node)
+        node.players = [first, second]
+        first.disconnect = AsyncMock()
+        pending_started, pending_release = asyncio.Event(), asyncio.Event()
+
+        async def pending_disconnect(*, force: bool) -> None:
+            self.assertTrue(force)
+            pending_started.set()
+            await pending_release.wait()
+
+        second.disconnect = AsyncMock(side_effect=pending_disconnect)
+        mock_pool = MagicMock()
+        mock_pool.label_to_node = {"old": node}
+        mock_pool.remove_node = AsyncMock(
+            side_effect=RuntimeError("first player teardown failed")
+        )
+        self.manager.pool = mock_pool
+
+        removing = asyncio.create_task(self.manager._remove_or_close_node(node))
+        try:
+            await asyncio.wait_for(pending_started.wait(), 1.0)
+            self.assertFalse(removing.done())
+        finally:
+            pending_release.set()
+
+        await asyncio.wait_for(removing, 1.0)
+        first.disconnect.assert_awaited_once_with(force=True)
+        second.disconnect.assert_awaited_once_with(force=True)
+        node.close.assert_awaited_once()
+
     async def test_failed_node_transfer_invalidates_only_affected_player(self) -> None:
         old_node = MagicMock(label="old", available=False)
         target = MagicMock(label="target", available=True)

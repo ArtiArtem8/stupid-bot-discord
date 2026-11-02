@@ -270,6 +270,10 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.bot.get_guild.return_value = player.guild
         target = MagicMock(label="ready", available=True)
         pool = MagicMock(nodes=[unavailable, target], close=AsyncMock())
+        pool.label_to_node = {
+            "unavailable": unavailable,
+            "ready": target,
+        }
         pool.close.side_effect = pool_closed.set
         with patch.object(mafic, "NodePool", return_value=pool):
             connection = ConnectionManager(self.bot)
