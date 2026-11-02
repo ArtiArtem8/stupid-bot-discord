@@ -688,21 +688,34 @@ class ConnectionManager:
                     exc_info=(type(result), result, result.__traceback__),
                 )
 
-    async def _remove_detached_node(
-        self,
-        node: mafic.Node[discord.Client],
-        players: Sequence[mafic.Player[discord.Client]],
-    ) -> None:
-        await self._drain_node_players(players, node)
-        await self.pool.remove_node(node, transfer_players=False)
+    async def _quiesce_node(self, node: mafic.Node[discord.Client]) -> None:
+        """Stop websocket/reconnect work while keeping HTTP for player teardown."""
+        try:
+            await node._disconnect()  # pyright: ignore[reportPrivateUsage]
+        except Exception:
+            logger.debug("Failed to quiesce Lavalink node", exc_info=True)
 
-    async def _finish_removed_node(
+    async def _cleanup_node(
         self,
         node: mafic.Node[discord.Client],
         players: Sequence[mafic.Player[discord.Client]],
+        *,
+        remove_from_pool: bool,
     ) -> None:
+        await self._quiesce_node(node)
+        restored = tuple(node.players)
+        for player in restored:
+            node.remove_player(player.guild.id)
+        known = {id(player) for player in players}
+        players = (
+            *players,
+            *(player for player in restored if id(player) not in known),
+        )
         await self._drain_node_players(players, node)
-        await self._close_failed_node(node)
+        if remove_from_pool and self._pool_contains_node(node):
+            await self.pool.remove_node(node, transfer_players=False)
+        else:
+            await self._close_failed_node(node)
 
     async def _finish_failed_cleanup(
         self,
@@ -710,9 +723,10 @@ class ConnectionManager:
         cleanup: asyncio.Task[None],
     ) -> None:
         await self._abort_node_http(node)
-        with contextlib.suppress(Exception):
+        try:
             await cleanup
-        await self._close_failed_node(node)
+        except BaseException:
+            await self._close_failed_node(node)
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:
         """Remove one unavailable node, aborting a stalled teardown.
@@ -722,15 +736,18 @@ class ConnectionManager:
         and cannot provide that guarantee.
         """
         players = tuple(node.players)
+        remove_from_pool = self._pool_contains_node(node)
+        node._mark_unavailable()  # pyright: ignore[reportPrivateUsage]
         for player in players:
             node.remove_player(player.guild.id)
 
-        if not self._pool_contains_node(node):
-            cleanup = asyncio.create_task(self._finish_removed_node(node, players))
-            await self._await_owned_cleanup(cleanup)
-            return
-
-        cleanup = asyncio.create_task(self._remove_detached_node(node, players))
+        cleanup = asyncio.create_task(
+            self._cleanup_node(
+                node,
+                players,
+                remove_from_pool=remove_from_pool,
+            )
+        )
         try:
             async with asyncio.timeout(config.LAVALINK_CLEANUP_TIMEOUT):
                 await asyncio.shield(cleanup)

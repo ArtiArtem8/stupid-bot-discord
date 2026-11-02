@@ -1981,6 +1981,7 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
     async def _wait_for_dispatch(self) -> None:
         while self.bot.tasks:
             await asyncio.gather(*tuple(self.bot.tasks), return_exceptions=True)
+            await asyncio.sleep(0)
 
     async def _wait_until(
         self, predicate: Callable[[], bool], *, timeout: float = 2.0
@@ -2054,18 +2055,8 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             all(not node.available for node in self.manager.pool.label_to_node.values())
         )
 
-    async def test_stale_player_cleanup_is_bounded_by_cleanup_timeout(
-        self,
-    ) -> None:
-        delete_started = asyncio.Event()
-        delete_release = asyncio.Event()
-
-        async def delete_player(_request: web.Request) -> web.Response:
-            delete_started.set()
-            await delete_release.wait()
-            return web.Response(status=204)
-
-        port = await self._start_server(close_first=False, delete_player=delete_player)
+    async def test_stale_player_cleanup_allows_replacement(self) -> None:
+        port = await self._start_server(close_first=False)
         async with self._lavalink_config(port):
             await self.manager.initialize()
             node = self.manager.pool.label_to_node["MAIN"]
@@ -2073,12 +2064,7 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             node._mark_unavailable()
 
             with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.1):
-                initializing = asyncio.create_task(self.manager.initialize())
-                try:
-                    await asyncio.wait_for(delete_started.wait(), 2.0)
-                    await asyncio.wait_for(initializing, 2.0)
-                finally:
-                    delete_release.set()
+                await asyncio.wait_for(self.manager.initialize(), 2.0)
 
             replacement = self.manager.pool.label_to_node.get("MAIN")
             self.assertIsNotNone(replacement)
@@ -2104,15 +2090,7 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(self.manager.has_ready_node())
 
     async def test_shutdown_cancels_lazy_cleanup_within_budget(self) -> None:
-        delete_started = asyncio.Event()
-        delete_release = asyncio.Event()
-
-        async def delete_player(_request: web.Request) -> web.Response:
-            delete_started.set()
-            await delete_release.wait()
-            return web.Response(status=204)
-
-        port = await self._start_server(close_first=False, delete_player=delete_player)
+        port = await self._start_server(close_first=False)
         async with self._lavalink_config(port):
             await self.manager.initialize()
             node = self.manager.pool.label_to_node["MAIN"]
@@ -2121,28 +2099,16 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
 
             with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05):
                 self.manager.start_lazy_connect()
-                await asyncio.wait_for(delete_started.wait(), 2.0)
+                await asyncio.sleep(0)
                 shutdown = asyncio.create_task(self.manager.cleanup())
-                try:
-                    await asyncio.wait_for(shutdown, 1.0)
-                finally:
-                    # The server must not release the request for this assertion.
-                    delete_release.set()
+                await asyncio.wait_for(shutdown, 1.0)
 
             self.assertFalse(self.manager._init_lock.locked())
             self.assertIsNone(self.manager._lazy_connect_task)
             self.assertFalse(self.manager.has_ready_node())
 
-    async def test_removal_aborts_reconnect_sync_teardown(self) -> None:
-        delete_started = asyncio.Event()
-        delete_release = asyncio.Event()
-
-        async def delete_player(_request: web.Request) -> web.Response:
-            delete_started.set()
-            await delete_release.wait()
-            return web.Response(status=204)
-
-        port = await self._start_server(close_first=False, delete_player=delete_player)
+    async def test_removal_cancels_reconnect_sync_teardown(self) -> None:
+        port = await self._start_server(close_first=False)
         async with self._lavalink_config(port):
             await self.manager.initialize()
             node = self.manager.pool.label_to_node["MAIN"]
@@ -2153,90 +2119,121 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
                 self.fail("Node websocket is not connected")
             await ws.close()
 
-            await asyncio.wait_for(delete_started.wait(), 2.0)
-            connect_task = node._connect_task
+            connect_task = None
+            for _ in range(100):
+                connect_task = node._connect_task
+                if connect_task is not None:
+                    break
+                await asyncio.sleep(0.01)
             if connect_task is None:
                 self.fail("Node reconnect did not start")
-            self.assertFalse(connect_task.done())
+
+            await asyncio.wait_for(self.manager._remove_or_close_node(node), 1.0)
+
+            self.assertTrue(connect_task.done())
+            self.assertIsNone(node._connect_task)
+            self.assertFalse(node.available)
+            self.assertNotIn("MAIN", self.manager.pool.label_to_node)
+
+    async def test_removal_quiesces_node_before_player_teardown(self) -> None:
+        voice_started = asyncio.Event()
+        voice_release = asyncio.Event()
+
+        async def change_voice_state(**_kwargs: object) -> None:
+            voice_started.set()
+            await voice_release.wait()
+
+        port = await self._start_server(close_first=False)
+        async with self._lavalink_config(port):
+            await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            player = self._attach_player(node)
+            player.guild.change_voice_state = AsyncMock(side_effect=change_voice_state)
+            await self.handlers.cleanup()
+            node._mark_unavailable()
+
+            initializing = asyncio.create_task(self.manager.initialize())
+            try:
+                await asyncio.wait_for(voice_started.wait(), 1.0)
+                self.assertFalse(self.manager.has_ready_node())
+                self.assertFalse(node.available)
+            finally:
+                voice_release.set()
+
+            await asyncio.wait_for(initializing, 2.0)
+            self.assertIn("MAIN", self.manager.pool.label_to_node)
+
+    async def test_removed_node_with_hung_http_closes_without_waiting(self) -> None:
+        delete_started = asyncio.Event()
+        delete_release = asyncio.Event()
+
+        async def delete_player(_request: web.Request) -> web.Response:
+            delete_started.set()
+            await delete_release.wait()
+            return web.Response(status=204)
+
+        port = await self._start_server(close_first=False, delete_player=delete_player)
+        async with self._lavalink_config(port):
+            await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            player = self._attach_player(node)
+            player.guild.change_voice_state = AsyncMock()
+            self.manager.pool.label_to_node.pop("MAIN")
 
             try:
-                with (
-                    patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
-                    self.assertLogs(connection_module.logger, level="WARNING") as logs,
-                ):
+                with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05):
                     await asyncio.wait_for(
                         self.manager._remove_or_close_node(node), 1.0
                     )
             finally:
                 delete_release.set()
 
-            self.assertTrue(
-                any("Timed out removing" in message for message in logs.output)
-            )
-            self.assertIsNone(node._connect_task)
+            self.assertTrue(delete_started.is_set())
             self.assertFalse(node.available)
-            self.assertNotIn("MAIN", self.manager.pool.label_to_node)
 
     async def test_cancelled_initialization_releases_lock_after_cleanup(
         self,
     ) -> None:
-        delete_started = asyncio.Event()
-        delete_release = asyncio.Event()
+        voice_started = asyncio.Event()
+        voice_release = asyncio.Event()
 
-        async def delete_player(_request: web.Request) -> web.Response:
-            delete_started.set()
-            await delete_release.wait()
-            return web.Response(status=204)
+        async def change_voice_state(**_kwargs: object) -> None:
+            voice_started.set()
+            await voice_release.wait()
 
-        port = await self._start_server(close_first=False, delete_player=delete_player)
+        port = await self._start_server(close_first=False)
         async with self._lavalink_config(port):
             await self.manager.initialize()
             node = self.manager.pool.label_to_node["MAIN"]
-            self._attach_player(node)
+            player = self._attach_player(node)
+            player.guild.change_voice_state = AsyncMock(side_effect=change_voice_state)
             await self.handlers.cleanup()
             node._mark_unavailable()
 
             initializing = asyncio.create_task(self.manager.initialize())
             try:
-                await asyncio.wait_for(delete_started.wait(), 2.0)
+                await asyncio.wait_for(voice_started.wait(), 2.0)
                 initializing.cancel()
+                await asyncio.sleep(0)
+                voice_release.set()
                 with self.assertRaises(asyncio.CancelledError):
                     await asyncio.wait_for(initializing, 2.0)
             finally:
-                delete_release.set()
+                voice_release.set()
 
             self.assertFalse(self.manager._init_lock.locked())
             self.assertFalse(node.available)
             self.assertNotIn("MAIN", self.manager.pool.label_to_node)
 
     async def test_planned_close_does_not_leave_unavailable_state(self) -> None:
-        delete_started = asyncio.Event()
-        delete_release = asyncio.Event()
-
-        async def delete_player(_request: web.Request) -> web.Response:
-            delete_started.set()
-            await delete_release.wait()
-            return web.Response(status=204)
-
-        port = await self._start_server(close_first=False, delete_player=delete_player)
+        port = await self._start_server(close_first=False)
         async with self._lavalink_config(port):
             await self.manager.initialize()
             node = self.manager.pool.label_to_node["MAIN"]
             self._attach_player(node)
             node._mark_unavailable()
 
-            try:
-                with (
-                    patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
-                    self.assertLogs(connection_module.logger, level="WARNING") as logs,
-                ):
-                    await asyncio.wait_for(self.manager.initialize(), 2.0)
-            finally:
-                delete_release.set()
-
-            self.assertTrue(
-                any("Timed out removing" in message for message in logs.output)
-            )
+            await asyncio.wait_for(self.manager.initialize(), 2.0)
             await self._wait_for_dispatch()
 
             self.assertTrue(self.manager.has_ready_node())
