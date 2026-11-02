@@ -643,9 +643,12 @@ class ConnectionManager:
         if cancelled is not None:
             raise cancelled
 
-    async def _drain_node_players(self, node: mafic.Node[discord.Client]) -> None:
+    async def _drain_node_players(
+        self,
+        players: Sequence[mafic.Player[discord.Client]],
+        node: mafic.Node[discord.Client],
+    ) -> None:
         """Finish player teardown left pending by Mafic's failing gather."""
-        players = tuple(node.players)
         if not players:
             return
         results = await asyncio.gather(
@@ -664,11 +667,12 @@ class ConnectionManager:
         self,
         node: mafic.Node[discord.Client],
         removal: asyncio.Task[None],
+        players: Sequence[mafic.Player[discord.Client]],
     ) -> None:
         await self._abort_node_http(node)
         with contextlib.suppress(Exception):
             await removal
-        await self._drain_node_players(node)
+        await self._drain_node_players(players, node)
         await self._close_failed_node(node)
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:
@@ -678,7 +682,10 @@ class ConnectionManager:
         stalled HTTP request would otherwise hold the initialization lock for the
         full client timeout.
         """
+        players = tuple(node.players)
         if not self._pool_contains_node(node):
+            await self._abort_node_http(node)
+            await self._drain_node_players(players, node)
             await self._close_failed_node(node)
             return
 
@@ -695,13 +702,17 @@ class ConnectionManager:
                 node.label,
             )
         except asyncio.CancelledError:
-            cleanup = asyncio.create_task(self._finish_failed_removal(node, removal))
+            cleanup = asyncio.create_task(
+                self._finish_failed_removal(node, removal, players)
+            )
             await self._await_owned_cleanup(cleanup)
             raise
         except Exception:
             logger.debug("Failed to remove unavailable Mafic node", exc_info=True)
 
-        cleanup = asyncio.create_task(self._finish_failed_removal(node, removal))
+        cleanup = asyncio.create_task(
+            self._finish_failed_removal(node, removal, players)
+        )
         await self._await_owned_cleanup(cleanup)
 
     async def _cleanup_unavailable_nodes(self) -> None:

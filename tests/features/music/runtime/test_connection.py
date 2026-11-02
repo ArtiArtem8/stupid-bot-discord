@@ -1721,6 +1721,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool.label_to_node = {"ready": target}
         self.manager.pool = mock_pool
         player.transfer_to = AsyncMock(side_effect=TimeoutError)
+        cast(Any, player).disconnect = AsyncMock()
         self.manager._cleanup_voice_client_locally = AsyncMock()
 
         invalidated = await self.manager.handle_node_unavailable(old_node)
