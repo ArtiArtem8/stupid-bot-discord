@@ -43,6 +43,7 @@ class _FakeMusicPlayer:
         self._is_stale = False
         self.connected = connected
         self.channel = MagicMock()
+        self._disconnect_task: asyncio.Task[None] | None = None
 
     @property
     def is_stale(self) -> bool:
@@ -53,6 +54,10 @@ class _FakeMusicPlayer:
 
     async def transfer_to(self, node: object) -> None:
         self.assigned_node = node
+
+    async def disconnect(self, *, force: bool = False) -> None:
+        _ = force
+        return None
 
 
 def _as_music_player(player: _FakeMusicPlayer) -> MusicPlayer:
@@ -1737,9 +1742,13 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         node = MagicMock(label="old", available=False, close=AsyncMock())
-        first = MagicMock(spec=MusicPlayer, assigned_node=node)
-        second = MagicMock(spec=MusicPlayer, assigned_node=node)
+        first = _FakeMusicPlayer(MagicMock(id=1), node)
+        second = _FakeMusicPlayer(MagicMock(id=2), node)
         node.players = [first, second]
+        first.guild.voice_client = first
+        second.guild.voice_client = second
+        cast(Any, first)._disconnect_task = None
+        cast(Any, second)._disconnect_task = None
         first.disconnect = AsyncMock()
         pending_started, pending_release = asyncio.Event(), asyncio.Event()
 
@@ -1766,6 +1775,79 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(removing, 1.0)
         first.disconnect.assert_awaited_once_with(force=True)
         second.disconnect.assert_awaited_once_with(force=True)
+        node.close.assert_awaited_once()
+
+    async def test_drain_skips_replaced_and_transferred_players(self) -> None:
+        node = MagicMock(label="old")
+        replacement = MagicMock(label="ready")
+        replaced_guild = MagicMock(id=1)
+        replaced = _FakeMusicPlayer(replaced_guild, node)
+        replaced_guild.voice_client = MagicMock()
+        transferred_guild = MagicMock(id=2)
+        transferred = _FakeMusicPlayer(transferred_guild, replacement)
+        transferred_guild.voice_client = transferred
+        replaced_disconnect = AsyncMock()
+        transferred_disconnect = AsyncMock()
+        replaced.disconnect = replaced_disconnect
+        transferred.disconnect = transferred_disconnect
+
+        await self.manager._drain_node_players(cast(Any, (replaced, transferred)), node)
+
+        replaced_disconnect.assert_not_awaited()
+        transferred_disconnect.assert_not_awaited()
+
+    async def test_drain_waits_for_started_teardown_without_restarting(self) -> None:
+        node = MagicMock(label="old")
+        player = _FakeMusicPlayer(MagicMock(id=1), None)
+        started, release = asyncio.Event(), asyncio.Event()
+
+        async def pending_teardown() -> None:
+            started.set()
+            await release.wait()
+
+        task = asyncio.create_task(pending_teardown())
+        cast(Any, player)._disconnect_task = task
+        player_disconnect = AsyncMock()
+        player.disconnect = player_disconnect
+
+        draining = asyncio.create_task(
+            self.manager._drain_node_players(cast(Any, (player,)), node)
+        )
+        try:
+            await asyncio.wait_for(started.wait(), 1.0)
+            self.assertFalse(draining.done())
+        finally:
+            release.set()
+
+        await asyncio.wait_for(draining, 1.0)
+        player_disconnect.assert_not_awaited()
+
+    async def test_cancelled_close_of_removed_node_still_closes(self) -> None:
+        node = MagicMock(label="old", available=False, close=AsyncMock())
+        player = _FakeMusicPlayer(MagicMock(id=1), node)
+        player.guild.voice_client = player
+        node.players = [player]
+        cast(Any, player)._disconnect_task = None
+        started, release = asyncio.Event(), asyncio.Event()
+
+        async def pending_disconnect(*, force: bool) -> None:
+            self.assertTrue(force)
+            started.set()
+            await release.wait()
+
+        player.disconnect = AsyncMock(side_effect=pending_disconnect)
+        self.manager.pool = MagicMock(nodes=[], label_to_node={})
+
+        closing = asyncio.create_task(self.manager._remove_or_close_node(node))
+        try:
+            await asyncio.wait_for(started.wait(), 1.0)
+            closing.cancel()
+            await asyncio.sleep(0)
+        finally:
+            release.set()
+
+        with self.assertRaises(asyncio.CancelledError):
+            await asyncio.wait_for(closing, 1.0)
         node.close.assert_awaited_once()
 
     async def test_failed_node_transfer_invalidates_only_affected_player(self) -> None:
@@ -2111,6 +2193,7 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             await self.manager.initialize()
             node = self.manager.pool.label_to_node["MAIN"]
             self._attach_player(node)
+            await self.handlers.cleanup()
             node._mark_unavailable()
 
             initializing = asyncio.create_task(self.manager.initialize())

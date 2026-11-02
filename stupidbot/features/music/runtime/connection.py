@@ -643,6 +643,31 @@ class ConnectionManager:
         if cancelled is not None:
             raise cancelled
 
+    async def _finish_player_teardown(
+        self,
+        player: mafic.Player[discord.Client],
+        node: mafic.Node[discord.Client],
+    ) -> None:
+        """Wait for started teardown or start one only for a still-owned player."""
+        task = getattr(player, "_disconnect_task", None)
+        if isinstance(task, asyncio.Task):
+            with contextlib.suppress(Exception):
+                await asyncio.shield(task)
+            return
+
+        if player.assigned_node is not node:
+            return
+        if player.guild.voice_client is not player:
+            return
+        try:
+            await player.disconnect(force=True)
+        except Exception:
+            logger.debug(
+                "Failed to disconnect player left on unavailable node %s",
+                node.label,
+                exc_info=True,
+            )
+
     async def _drain_node_players(
         self,
         players: Sequence[mafic.Player[discord.Client]],
@@ -652,7 +677,7 @@ class ConnectionManager:
         if not players:
             return
         results = await asyncio.gather(
-            *(player.disconnect(force=True) for player in players),
+            *(self._finish_player_teardown(player, node) for player in players),
             return_exceptions=True,
         )
         for result in results:
@@ -663,38 +688,52 @@ class ConnectionManager:
                     exc_info=(type(result), result, result.__traceback__),
                 )
 
-    async def _finish_failed_removal(
+    async def _remove_detached_node(
         self,
         node: mafic.Node[discord.Client],
-        removal: asyncio.Task[None],
         players: Sequence[mafic.Player[discord.Client]],
+    ) -> None:
+        await self._drain_node_players(players, node)
+        await self.pool.remove_node(node, transfer_players=False)
+
+    async def _finish_removed_node(
+        self,
+        node: mafic.Node[discord.Client],
+        players: Sequence[mafic.Player[discord.Client]],
+    ) -> None:
+        await self._drain_node_players(players, node)
+        await self._close_failed_node(node)
+
+    async def _finish_failed_cleanup(
+        self,
+        node: mafic.Node[discord.Client],
+        cleanup: asyncio.Task[None],
     ) -> None:
         await self._abort_node_http(node)
         with contextlib.suppress(Exception):
-            await removal
-        await self._drain_node_players(players, node)
+            await cleanup
         await self._close_failed_node(node)
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:
         """Remove one unavailable node, aborting a stalled teardown.
 
-        Mafic removes the node from the pool before destroying its players, so a
-        stalled HTTP request would otherwise hold the initialization lock for the
-        full client timeout.
+        Players are detached before Mafic removes the node so this manager owns
+        every player teardown. Mafic's gather stops at the first player failure
+        and cannot provide that guarantee.
         """
         players = tuple(node.players)
+        for player in players:
+            node.remove_player(player.guild.id)
+
         if not self._pool_contains_node(node):
-            await self._abort_node_http(node)
-            await self._drain_node_players(players, node)
-            await self._close_failed_node(node)
+            cleanup = asyncio.create_task(self._finish_removed_node(node, players))
+            await self._await_owned_cleanup(cleanup)
             return
 
-        removal = asyncio.create_task(
-            self.pool.remove_node(node, transfer_players=False)
-        )
+        cleanup = asyncio.create_task(self._remove_detached_node(node, players))
         try:
             async with asyncio.timeout(config.LAVALINK_CLEANUP_TIMEOUT):
-                await asyncio.shield(removal)
+                await asyncio.shield(cleanup)
             return
         except TimeoutError:
             logger.warning(
@@ -702,18 +741,14 @@ class ConnectionManager:
                 node.label,
             )
         except asyncio.CancelledError:
-            cleanup = asyncio.create_task(
-                self._finish_failed_removal(node, removal, players)
-            )
-            await self._await_owned_cleanup(cleanup)
+            finish = asyncio.create_task(self._finish_failed_cleanup(node, cleanup))
+            await self._await_owned_cleanup(finish)
             raise
         except Exception:
             logger.debug("Failed to remove unavailable Mafic node", exc_info=True)
 
-        cleanup = asyncio.create_task(
-            self._finish_failed_removal(node, removal, players)
-        )
-        await self._await_owned_cleanup(cleanup)
+        finish = asyncio.create_task(self._finish_failed_cleanup(node, cleanup))
+        await self._await_owned_cleanup(finish)
 
     async def _cleanup_unavailable_nodes(self) -> None:
         for node in tuple(self.pool.label_to_node.values()):
