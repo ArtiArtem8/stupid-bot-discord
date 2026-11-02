@@ -689,11 +689,20 @@ class ConnectionManager:
                 )
 
     async def _quiesce_node(self, node: mafic.Node[discord.Client]) -> None:
-        """Stop websocket/reconnect work while keeping HTTP for player teardown."""
+        """Stop websocket work and any in-flight reconnect before teardown."""
+        node._mark_unavailable()  # pyright: ignore[reportPrivateUsage]
+        connect_task = getattr(node, "_connect_task", None)
+        if isinstance(connect_task, asyncio.Task):
+            connect_task.cancel()
         try:
             await node._disconnect()  # pyright: ignore[reportPrivateUsage]
         except Exception:
             logger.debug("Failed to quiesce Lavalink node", exc_info=True)
+        if isinstance(connect_task, asyncio.Task) and not connect_task.done():
+            # A cancelled reconnect can be waiting on sync_players HTTP.
+            await self._abort_node_http(node)
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await connect_task
 
     async def _cleanup_node(
         self,

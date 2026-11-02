@@ -2090,7 +2090,15 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(self.manager.has_ready_node())
 
     async def test_shutdown_cancels_lazy_cleanup_within_budget(self) -> None:
-        port = await self._start_server(close_first=False)
+        delete_started = asyncio.Event()
+        delete_release = asyncio.Event()
+
+        async def delete_player(_request: web.Request) -> web.Response:
+            delete_started.set()
+            await delete_release.wait()
+            return web.Response(status=204)
+
+        port = await self._start_server(close_first=False, delete_player=delete_player)
         async with self._lavalink_config(port):
             await self.manager.initialize()
             node = self.manager.pool.label_to_node["MAIN"]
@@ -2099,20 +2107,30 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
 
             with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05):
                 self.manager.start_lazy_connect()
-                await asyncio.sleep(0)
+                await asyncio.wait_for(delete_started.wait(), 2.0)
                 shutdown = asyncio.create_task(self.manager.cleanup())
-                await asyncio.wait_for(shutdown, 1.0)
+                try:
+                    await asyncio.wait_for(shutdown, 1.0)
+                finally:
+                    delete_release.set()
 
             self.assertFalse(self.manager._init_lock.locked())
             self.assertIsNone(self.manager._lazy_connect_task)
             self.assertFalse(self.manager.has_ready_node())
 
     async def test_removal_cancels_reconnect_sync_teardown(self) -> None:
+        voice_started, voice_release = asyncio.Event(), asyncio.Event()
+
+        async def change_voice_state(**_kwargs: object) -> None:
+            voice_started.set()
+            await voice_release.wait()
+
         port = await self._start_server(close_first=False)
         async with self._lavalink_config(port):
             await self.manager.initialize()
             node = self.manager.pool.label_to_node["MAIN"]
-            self._attach_player(node)
+            player = self._attach_player(node)
+            player.guild.change_voice_state = AsyncMock(side_effect=change_voice_state)
             await self.handlers.cleanup()
             ws = node._ws
             if ws is None:
@@ -2128,11 +2146,16 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             if connect_task is None:
                 self.fail("Node reconnect did not start")
 
-            await asyncio.wait_for(self.manager._remove_or_close_node(node), 1.0)
+            removing = asyncio.create_task(self.manager._remove_or_close_node(node))
+            try:
+                await asyncio.wait_for(voice_started.wait(), 1.0)
+                self.assertTrue(connect_task.done())
+                self.assertIsNone(node._connect_task)
+                self.assertFalse(node.available)
+            finally:
+                voice_release.set()
 
-            self.assertTrue(connect_task.done())
-            self.assertIsNone(node._connect_task)
-            self.assertFalse(node.available)
+            await asyncio.wait_for(removing, 1.0)
             self.assertNotIn("MAIN", self.manager.pool.label_to_node)
 
     async def test_removal_quiesces_node_before_player_teardown(self) -> None:
