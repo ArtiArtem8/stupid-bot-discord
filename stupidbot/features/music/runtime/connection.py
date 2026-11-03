@@ -180,6 +180,10 @@ class ConnectionManager:
                 label=config.LAVALINK_NODE_LABEL,
                 client=self.bot,
                 secure=config.LAVALINK_SECURE,
+                # One guild shares a single remote-effect lane, so a hung
+                # REST request also delays that guild leave. aiohttp would
+                # otherwise keep the lane for its default 300 seconds.
+                http_timeout=aiohttp.ClientTimeout(total=config.LAVALINK_HTTP_TIMEOUT),
             )
             try:
                 async with asyncio.timeout(config.LAVALINK_CONNECT_TIMEOUT):
@@ -673,7 +677,7 @@ class ConnectionManager:
         players: Sequence[mafic.Player[discord.Client]],
         node: mafic.Node[discord.Client],
     ) -> None:
-        """Finish player teardown left pending by Mafic's failing gather."""
+        """Wait for teardown that pool removal left running, never start a second."""
         if not players:
             return
         results = await asyncio.gather(
@@ -741,8 +745,9 @@ class ConnectionManager:
         """Remove one unavailable node, aborting a stalled teardown.
 
         Players are detached before Mafic removes the node so this manager owns
-        every player teardown. Mafic's gather stops at the first player failure
-        and cannot provide that guarantee.
+        every player teardown inside its own cleanup deadline. Mafic removal is
+        all-settled but unbounded, so a stalled player would otherwise outlive
+        ``LAVALINK_CLEANUP_TIMEOUT``.
         """
         players = tuple(node.players)
         remove_from_pool = self._pool_contains_node(node)
