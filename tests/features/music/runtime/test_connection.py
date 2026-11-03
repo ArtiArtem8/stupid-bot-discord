@@ -14,6 +14,7 @@ import discord
 import mafic
 from aiohttp import web
 from aiohttp.test_utils import TestServer
+from mafic.utils.tasks import await_owned
 
 from stupidbot import settings as config
 from stupidbot.features.music.errors import NodeNotConnectedError
@@ -28,6 +29,10 @@ from stupidbot.features.music.runtime.connection import (
     _AvailabilityResult,
 )
 from stupidbot.features.music.runtime.voice_lifecycle import VoiceLifecycleHandlers
+
+_CreateSession = Callable[
+    [mafic.Node[discord.Client]], Coroutine[Any, Any, aiohttp.ClientSession]
+]
 
 
 class _FakeMusicPlayer:
@@ -58,6 +63,17 @@ class _FakeMusicPlayer:
     async def disconnect(self, *, force: bool = False) -> None:
         _ = force
         return None
+
+    @property
+    def disconnect_started(self) -> bool:
+        return self._disconnect_task is not None
+
+    async def wait_for_disconnect(self) -> None:
+        task = self._disconnect_task
+        if task is not None:
+            # Same helper Mafic uses: a caller cancellation surfaces only
+            # after the owned teardown settles.
+            await await_owned(task)
 
 
 def _as_music_player(player: _FakeMusicPlayer) -> MusicPlayer:
@@ -2413,8 +2429,19 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
         self.pool.close.assert_awaited_once()
 
     async def _make_test_node(
-        self, websocket: Callable[[web.Request], Awaitable[web.StreamResponse]]
-    ) -> tuple[mafic.Node[discord.Client], aiohttp.ClientSession]:
+        self,
+        websocket: Callable[[web.Request], Awaitable[web.StreamResponse]],
+        *,
+        own_session: bool = True,
+    ) -> mafic.Node[discord.Client]:
+        """Build a node against a local test server.
+
+        Production leaves the HTTP session to Mafic, so ``own_session`` is the
+        default. The caller-supplied variant documents that Mafic never closes
+        a session it does not own. ``self._sessions`` exposes whichever session
+        the node used so a test can assert who closed it.
+        """
+
         async def version(_request: web.Request) -> web.Response:
             return web.Response(text="4.2.2")
 
@@ -2431,16 +2458,39 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
         client = MagicMock(spec=discord.Client)
         client.user = MagicMock(id=123)
         client.wait_until_ready = AsyncMock()
-        session = aiohttp.ClientSession()
-        self.addAsyncCleanup(session.close)
-        node = mafic.Node[discord.Client](
-            host=server.host,
-            port=port,
-            label="deadline-test",
-            password=self.id(),
-            client=client,
-            session=session,
-        )
+        self._sessions: list[aiohttp.ClientSession] = []
+        if own_session:
+            original_create_session = cast(_CreateSession, mafic.Node._create_session)
+
+            async def create_session(
+                candidate: mafic.Node[discord.Client],
+            ) -> aiohttp.ClientSession:
+                session = await original_create_session(candidate)
+                self._sessions.append(session)
+                return session
+
+            patcher = patch.object(mafic.Node, "_create_session", create_session)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+            node = mafic.Node[discord.Client](
+                host=server.host,
+                port=port,
+                label="deadline-test",
+                password=self.id(),
+                client=client,
+            )
+        else:
+            session = aiohttp.ClientSession()
+            self.addAsyncCleanup(session.close)
+            self._sessions.append(session)
+            node = mafic.Node[discord.Client](
+                host=server.host,
+                port=port,
+                label="deadline-test",
+                password=self.id(),
+                client=client,
+                session=session,
+            )
         self.addAsyncCleanup(node.close)
 
         # Exercise the real add_node/connect path without sharing global pool state.
@@ -2452,7 +2502,7 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
             await mafic.NodePool.add_node(self.pool, candidate, player_cls=player_cls)
 
         self.pool.add_node = AsyncMock(side_effect=add_node)
-        return node, session
+        return node
 
     async def test_http_ready_but_websocket_unavailable_obeys_deadline(self) -> None:
         handshake_attempted = asyncio.Event()
@@ -2461,7 +2511,7 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
             handshake_attempted.set()
             raise web.HTTPServiceUnavailable
 
-        node, session = await self._make_test_node(websocket)
+        node = await self._make_test_node(websocket)
         with (
             patch.object(mafic, "Node", return_value=node),
             patch.object(config, "LAVALINK_CONNECT_TIMEOUT", 1.0),
@@ -2471,7 +2521,8 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(handshake_attempted.is_set())
             self.assertFalse(node.available)
-            self.assertTrue(session.closed)
+            self.assertEqual(len(self._sessions), 1)
+            self.assertTrue(self._sessions[0].closed)
             self.assertTrue(self.manager.is_known_unavailable())
             self.assertFalse(await self.manager.ensure_available())
             self.pool.add_node.assert_awaited_once()
@@ -2489,7 +2540,7 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
             disconnected.set()
             return ws
 
-        node, session = await self._make_test_node(websocket)
+        node = await self._make_test_node(websocket)
         with (
             patch.object(mafic, "Node", return_value=node),
             patch.object(config, "LAVALINK_CONNECT_TIMEOUT", 1.0),
@@ -2500,8 +2551,28 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(connected.is_set())
         await asyncio.wait_for(disconnected.wait(), 1.0)
-        self.assertTrue(session.closed)
+        self.assertEqual(len(self._sessions), 1)
+        self.assertTrue(self._sessions[0].closed)
         self.assertFalse(node.available)
+
+    async def test_caller_supplied_session_is_left_open(self) -> None:
+        """Neither side closes a session Mafic does not own."""
+
+        async def websocket(_request: web.Request) -> web.Response:
+            raise web.HTTPServiceUnavailable
+
+        node = await self._make_test_node(websocket, own_session=False)
+        with (
+            patch.object(mafic, "Node", return_value=node),
+            patch.object(config, "LAVALINK_CONNECT_TIMEOUT", 1.0),
+        ):
+            self.assertFalse(
+                await asyncio.wait_for(self.manager.ensure_available(), 3.0)
+            )
+
+        self.assertEqual(len(self._sessions), 1)
+        self.assertFalse(self._sessions[0].closed)
+        await asyncio.wait_for(self.manager.cleanup(), 1.0)
 
     async def test_cleanup_waits_for_active_node_initialization(self) -> None:
         entered, release = asyncio.Event(), asyncio.Event()

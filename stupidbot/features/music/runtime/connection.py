@@ -229,7 +229,8 @@ class ConnectionManager:
             logger.debug("Failed to abort Mafic node HTTP session", exc_info=True)
 
     async def _close_failed_node(self, node: mafic.Node[discord.Client]) -> None:
-        await self._abort_node_http(node)
+        # The node owns its HTTP session here, and Node.close() aborts that
+        # session before joining a reconnect.
         try:
             await node.close()
         except Exception:
@@ -653,10 +654,9 @@ class ConnectionManager:
         node: mafic.Node[discord.Client],
     ) -> None:
         """Wait for started teardown or start one only for a still-owned player."""
-        task = getattr(player, "_disconnect_task", None)
-        if isinstance(task, asyncio.Task):
+        if player.disconnect_started:
             with contextlib.suppress(Exception):
-                await asyncio.shield(task)
+                await player.wait_for_disconnect()
             return
 
         if player.assigned_node is not node:
