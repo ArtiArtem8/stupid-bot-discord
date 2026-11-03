@@ -97,17 +97,17 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             guild.voice_client = replacement
             return replacement
 
-        original_destroy_for_guild = controllers.destroy_for_guild
+        original_skip = old.skip
 
-        async def destroy_for_guild(*args: object, **kwargs: object) -> object:
-            # Hold only the skip reaction: leave also destroys a controller
-            # and must not wait on this barrier. The discriminator relies on
-            # leave not passing expected_player; the bounded wait below turns
-            # a future self-deadlock into a TimeoutError instead of a hang.
-            if kwargs.get("expected_player") is old:
-                entered.set()
-                await release.wait()
-            return await original_destroy_for_guild(*args, **kwargs)
+        async def skip(
+            *, expected: PlaybackAttempt | None = None
+        ) -> tuple[PlaybackAttempt | None, PlaybackAttempt | None]:
+            # Hold the state the skip returned with, after its remote request
+            # completed. Leave never calls skip, so it cannot hit this barrier.
+            result = await original_skip(expected=expected)
+            entered.set()
+            await release.wait()
+            return result
 
         node.update = AsyncMock(side_effect=update)
         voice_channel.connect = AsyncMock(side_effect=connect)
@@ -116,11 +116,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             patch.object(old, "cleanup", side_effect=detach),
             patch.object(replacement, "fetch_tracks", return_value=[track]),
             patch.object(controllers, "_safe_delete_message", new=AsyncMock()),
-            patch.object(
-                controllers,
-                "destroy_for_guild",
-                new=AsyncMock(side_effect=destroy_for_guild),
-            ),
+            patch.object(old, "skip", new=skip),
         ):
             skipping = asyncio.create_task(self.service.skip(123))
             try:
