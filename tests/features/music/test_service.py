@@ -85,10 +85,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             original_cleanup()
             guild.voice_client = None
 
-        async def update(**kwargs: object) -> dict[str, object]:
-            if kwargs.get("track") is queued.track:
-                entered.set()
-                await release.wait()
+        async def update(**_kwargs: object) -> dict[str, object]:
             return {
                 "track": None,
                 "volume": 80,
@@ -100,6 +97,18 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             guild.voice_client = replacement
             return replacement
 
+        original_destroy_for_guild = controllers.destroy_for_guild
+
+        async def destroy_for_guild(*args: object, **kwargs: object) -> object:
+            # Hold only the skip reaction: leave also destroys a controller
+            # and must not wait on this barrier. The discriminator relies on
+            # leave not passing expected_player; the bounded wait below turns
+            # a future self-deadlock into a TimeoutError instead of a hang.
+            if kwargs.get("expected_player") is old:
+                entered.set()
+                await release.wait()
+            return await original_destroy_for_guild(*args, **kwargs)
+
         node.update = AsyncMock(side_effect=update)
         voice_channel.connect = AsyncMock(side_effect=connect)
         track = make_track("replacement", length=60_000)
@@ -107,11 +116,18 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             patch.object(old, "cleanup", side_effect=detach),
             patch.object(replacement, "fetch_tracks", return_value=[track]),
             patch.object(controllers, "_safe_delete_message", new=AsyncMock()),
+            patch.object(
+                controllers,
+                "destroy_for_guild",
+                new=AsyncMock(side_effect=destroy_for_guild),
+            ),
         ):
             skipping = asyncio.create_task(self.service.skip(123))
             try:
                 await asyncio.wait_for(entered.wait(), 5)
-                self.assertTrue((await self.service.leave(guild)).is_success)
+                self.assertTrue(
+                    (await asyncio.wait_for(self.service.leave(guild), 5)).is_success
+                )
                 self.assertFalse(connection.is_current_player(old))
                 self.assertFalse(skipping.done())
                 played = await self.service.play(guild, voice_channel, "new", 42, 456)
