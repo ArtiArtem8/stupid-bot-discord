@@ -1915,7 +1915,38 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             )
         )
 
+    async def test_cleanup_outliving_grace_stays_owned(self) -> None:
+        """A cleanup that misses the grace period is left owned and logged."""
+        node = MagicMock(label="old", available=False, close=AsyncMock())
+        self.manager.pool = MagicMock(nodes=[], label_to_node={})
+        started, release = asyncio.Event(), asyncio.Event()
+
+        async def stuck_cleanup(*_args: object, **_kwargs: object) -> None:
+            started.set()
+            await release.wait()
+
+        with (
+            patch.object(self.manager, "_cleanup_node", side_effect=stuck_cleanup),
+            patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
+            patch.object(config, "LAVALINK_CLEANUP_GRACE", 0.05),
+            self.assertLogs(connection_module.logger, level="WARNING") as captured,
+        ):
+            removing = asyncio.create_task(self.manager._remove_or_close_node(node))
+            await asyncio.wait_for(started.wait(), 1.0)
+            await asyncio.wait_for(removing, 2.0)
+
+        # The caller is no longer blocked, the node is closed and the
+        # still-running cleanup stays owned by its own task.
+        node.close.assert_awaited_once()
+        messages = [record.getMessage() for record in captured.records]
+        self.assertTrue(
+            any("still running after escalation" in message for message in messages),
+            messages,
+        )
+        release.set()
+
     async def test_failed_node_transfer_invalidates_only_affected_player(self) -> None:
+        """A failed transfer invalidates only the player it touched."""
         old_node = MagicMock(label="old", available=False)
         target = MagicMock(label="target", available=True)
         affected_guild = MagicMock(id=123)
