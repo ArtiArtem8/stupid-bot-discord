@@ -1838,6 +1838,26 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(draining, 1.0)
         player_disconnect.assert_not_awaited()
 
+    async def test_failed_started_teardown_is_logged_and_other_players_finish(
+        self,
+    ) -> None:
+        node = MagicMock(label="old")
+        failed = MagicMock(spec=mafic.Player, disconnect_started=True)
+        failed.wait_for_disconnect = AsyncMock(side_effect=RuntimeError("failed"))
+        current = MagicMock(spec=mafic.Player, disconnect_started=False)
+        current.assigned_node = node
+        current.guild = MagicMock()
+        current.guild.voice_client = current
+        current.disconnect = AsyncMock()
+
+        with self.assertLogs(connection_module.logger, level="DEBUG") as captured:
+            await self.manager._drain_node_players((failed, current), node)
+
+        failed.wait_for_disconnect.assert_awaited_once()
+        current.disconnect.assert_awaited_once_with(force=True)
+        self.assertEqual(len(captured.records), 1)
+        self.assertIsNotNone(captured.records[0].exc_info)
+
     async def test_cancelled_close_of_removed_node_still_closes(self) -> None:
         node = MagicMock(label="old", available=False, close=AsyncMock())
         player = _FakeMusicPlayer(MagicMock(id=1), node)
@@ -2133,6 +2153,31 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(self.manager._init_lock.locked())
             self.assertIsNone(self.manager._lazy_connect_task)
             self.assertFalse(self.manager.has_ready_node())
+
+    async def test_lavalink_rest_request_obeys_configured_timeout(self) -> None:
+        request_started, release = asyncio.Event(), asyncio.Event()
+
+        async def delete_player(_request: web.Request) -> web.Response:
+            request_started.set()
+            await release.wait()
+            return web.Response(status=204)
+
+        port = await self._start_server(close_first=False, delete_player=delete_player)
+        async with self._lavalink_config(port):
+            with patch.object(config, "LAVALINK_HTTP_TIMEOUT", 1.0):
+                await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            request = asyncio.create_task(node.destroy(123))
+            try:
+                await asyncio.wait_for(request_started.wait(), 3.0)
+                done, _ = await asyncio.wait({request}, timeout=5.0)
+                self.assertIn(request, done)
+                with self.assertRaises(TimeoutError):
+                    await request
+            finally:
+                release.set()
+                if not request.done():
+                    await request
 
     async def test_removal_cancels_reconnect_sync_teardown(self) -> None:
         voice_started, voice_release = asyncio.Event(), asyncio.Event()
