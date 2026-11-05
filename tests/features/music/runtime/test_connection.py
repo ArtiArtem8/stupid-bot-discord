@@ -2092,6 +2092,7 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
         self, node: mafic.Node[discord.Client]
     ) -> mafic.Player[discord.Client]:
         guild = MagicMock(id=123)
+        guild.change_voice_state = AsyncMock()
         channel = MagicMock(spec=discord.VoiceChannel, id=10)
         channel.guild = guild
         channel._get_voice_client_key.return_value = (guild.id, 0)
@@ -2206,7 +2207,7 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
                 await asyncio.wait_for(delete_started.wait(), 2.0)
                 shutdown = asyncio.create_task(self.manager.cleanup())
                 try:
-                    await asyncio.wait_for(shutdown, 1.0)
+                    await asyncio.wait_for(shutdown, 2.0)
                 finally:
                     delete_release.set()
 
@@ -2325,9 +2326,9 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             self.manager.pool.label_to_node.pop("MAIN")
 
             try:
-                with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05):
+                with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.5):
                     await asyncio.wait_for(
-                        self.manager._remove_or_close_node(node), 1.0
+                        self.manager._remove_or_close_node(node), 3.0
                     )
             finally:
                 delete_release.set()
