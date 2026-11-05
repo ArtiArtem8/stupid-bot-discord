@@ -80,9 +80,6 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
         )
         self.node._version = 4
         self.node._available = True
-        self.enterContext(
-            patch.object(mafic.NodePool, "_nodes", {self.node.label: self.node})
-        )
         self.enterContext(patch.object(mafic.Node, "destroy", new=AsyncMock()))
         self.playback_requested = asyncio.Event()
         self.playback_cancelled = asyncio.Event()
@@ -106,6 +103,7 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
             )
         )
         self.components = create_music_components(self.bot, self.volumes)
+        self.components.connection.pool._nodes[self.node.label] = self.node
         self.addAsyncCleanup(self.components.controllers.cleanup)
         self.addAsyncCleanup(self.components.service.cleanup)
         result = await self.components.service.play(

@@ -212,24 +212,9 @@ class ConnectionManager:
                 await self._close_failed_node(node)
                 raise
 
-    async def _abort_node_http(self, node: mafic.Node[discord.Client]) -> None:
-        """Abort the internally owned REST session to unblock player teardown.
-
-        Production creates the node without an external session. The cleanup
-        deadline may expire while a player or reconnect is waiting on HTTP,
-        before this manager can reach ``Node.close()``.
-        """
-        session = getattr(node, "_Node__session", None)
-        if not isinstance(session, aiohttp.ClientSession) or session.closed:
-            return
-        try:
-            await session.close()
-        except Exception:
-            logger.debug("Failed to abort Mafic node HTTP session", exc_info=True)
-
     async def _close_failed_node(self, node: mafic.Node[discord.Client]) -> None:
-        # The node owns its HTTP session here, and Node.close() aborts that
-        # session before joining a reconnect.
+        # The node owns its HTTP session, and Node.close() aborts that session
+        # before joining a reconnect.
         try:
             await node.close()
         except Exception:
@@ -690,79 +675,73 @@ class ConnectionManager:
                     exc_info=(type(result), result, result.__traceback__),
                 )
 
-    async def _quiesce_node(self, node: mafic.Node[discord.Client]) -> None:
-        """Stop websocket work and any in-flight reconnect before teardown."""
-        node._mark_unavailable()  # pyright: ignore[reportPrivateUsage]
-        connect_task = getattr(node, "_connect_task", None)
-        if isinstance(connect_task, asyncio.Task):
-            connect_task.cancel()
-        try:
-            await node._disconnect()  # pyright: ignore[reportPrivateUsage]
-        except Exception:
-            logger.debug("Failed to quiesce Lavalink node", exc_info=True)
-        if isinstance(connect_task, asyncio.Task) and not connect_task.done():
-            # A cancelled reconnect can be waiting on sync_players HTTP.
-            await self._abort_node_http(node)
-            with contextlib.suppress(Exception, asyncio.CancelledError):
-                await connect_task
-
     async def _cleanup_node(
         self,
         node: mafic.Node[discord.Client],
-        players: Sequence[mafic.Player[discord.Client]],
         *,
         remove_from_pool: bool,
     ) -> None:
-        await self._quiesce_node(node)
-        restored = tuple(node.players)
-        for player in restored:
-            node.remove_player(player.guild.id)
-        known = {id(player) for player in players}
-        players = (
-            *players,
-            *(player for player in restored if id(player) not in known),
-        )
-        await self._drain_node_players(players, node)
+        """Stop the transport, then let its owner finish player teardown."""
         if remove_from_pool and self._pool_contains_node(node):
+            # Mafic removes the node: it quiesces the transport, snapshots
+            # players afterwards and owns their teardown and the final close.
             await self.pool.remove_node(node, transfer_players=False)
-        else:
-            await self._close_failed_node(node)
+            return
+        await node.quiesce()
+        await self._drain_node_players(tuple(node.players), node)
+        await self._close_failed_node(node)
 
     async def _finish_failed_cleanup(
         self,
         node: mafic.Node[discord.Client],
         cleanup: asyncio.Task[None],
     ) -> None:
-        await self._abort_node_http(node)
+        """Escalate a stalled cleanup without taking over its ownership.
+
+        Closing the node aborts the REST session a stalled request waits on,
+        which is the only supported way to unblock it. The cleanup keeps
+        running: it is awaited for a bounded grace period, and a late result
+        is logged instead of blocking the caller indefinitely.
+        """
+        await self._close_failed_node(node)
         try:
-            await cleanup
-        except BaseException:
+            async with asyncio.timeout(config.LAVALINK_CLEANUP_GRACE):
+                await asyncio.shield(cleanup)
+        except TimeoutError:
+            cleanup.add_done_callback(self._log_late_cleanup)
+            logger.warning(
+                "Cleanup of Lavalink node %s is still running after "
+                "escalation; it stays owned by its task",
+                node.label,
+            )
+        except Exception:
             logger.debug(
-                "Failed to finish Lavalink node cleanup for %s",
+                "Escalated cleanup of Lavalink node %s failed",
                 node.label,
                 exc_info=True,
             )
-            await self._close_failed_node(node)
+
+    @staticmethod
+    def _log_late_cleanup(cleanup: asyncio.Task[None]) -> None:
+        """Consume the outcome of a cleanup that outlived its caller."""
+        if cleanup.cancelled():
+            return
+        error = cleanup.exception()
+        if error is not None:
+            logger.warning(
+                "Escalated Lavalink cleanup failed after its caller returned",
+                exc_info=(type(error), error, error.__traceback__),
+            )
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:
-        """Remove one unavailable node, aborting a stalled teardown.
+        """Remove one unavailable node within the cleanup deadline.
 
-        Players are detached before Mafic removes the node so this manager owns
-        every player teardown. If cleanup exceeds ``LAVALINK_CLEANUP_TIMEOUT``,
-        the HTTP session is aborted before waiting for teardown to finish.
+        Mafic owns quiescing and player teardown; this manager owns the
+        deadline and the escalation that aborts a stalled REST request.
         """
-        players = tuple(node.players)
         remove_from_pool = self._pool_contains_node(node)
-        node._mark_unavailable()  # pyright: ignore[reportPrivateUsage]
-        for player in players:
-            node.remove_player(player.guild.id)
-
         cleanup = asyncio.create_task(
-            self._cleanup_node(
-                node,
-                players,
-                remove_from_pool=remove_from_pool,
-            )
+            self._cleanup_node(node, remove_from_pool=remove_from_pool)
         )
         try:
             async with asyncio.timeout(config.LAVALINK_CLEANUP_TIMEOUT):
@@ -772,12 +751,14 @@ class ConnectionManager:
             finish = asyncio.create_task(self._finish_failed_cleanup(node, cleanup))
             await self._await_owned_cleanup(finish)
             raise
-        except Exception as exc:
-            if isinstance(exc, TimeoutError):
-                logger.warning(
-                    "Timed out removing unavailable Lavalink node %s; closing it",
-                    node.label,
-                )
+        except TimeoutError:
+            logger.warning(
+                "Timed out removing unavailable Lavalink node %s; closing it",
+                node.label,
+            )
+        except Exception:
+            # The escalation below reports this same failure with its traceback.
+            logger.debug("Removal of unavailable Mafic node %s failed", node.label)
 
         finish = asyncio.create_task(self._finish_failed_cleanup(node, cleanup))
         await self._await_owned_cleanup(finish)

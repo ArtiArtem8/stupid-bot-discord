@@ -1754,44 +1754,31 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.manager._next_connect_retry_at, 0.0)
         await self.manager.stop_connecting()
 
-    async def test_failed_multi_player_removal_waits_for_pending_teardown(
-        self,
-    ) -> None:
+    async def test_failed_pool_removal_escalates_to_close(self) -> None:
+        """A pool removal failure is awaited, then escalated to a close."""
         node = MagicMock(label="old", available=False, close=AsyncMock())
-        first = _FakeMusicPlayer(MagicMock(id=1), node)
-        second = _FakeMusicPlayer(MagicMock(id=2), node)
-        node.players = [first, second]
-        first.guild.voice_client = first
-        second.guild.voice_client = second
-        cast(Any, first)._disconnect_task = None
-        cast(Any, second)._disconnect_task = None
-        first.disconnect = AsyncMock()
-        pending_started, pending_release = asyncio.Event(), asyncio.Event()
+        started, release = asyncio.Event(), asyncio.Event()
 
-        async def pending_disconnect(*, force: bool) -> None:
-            self.assertTrue(force)
-            pending_started.set()
-            await pending_release.wait()
+        async def remove_node(_node: object, *, transfer_players: bool) -> None:
+            self.assertFalse(transfer_players)
+            started.set()
+            await release.wait()
+            raise RuntimeError("player teardown failed")
 
-        second.disconnect = AsyncMock(side_effect=pending_disconnect)
-        mock_pool = MagicMock()
-        mock_pool.label_to_node = {"old": node}
-        mock_pool.remove_node = AsyncMock(
-            side_effect=RuntimeError("first player teardown failed")
+        mock_pool = MagicMock(
+            label_to_node={"old": node},
+            remove_node=AsyncMock(side_effect=remove_node),
         )
         self.manager.pool = mock_pool
 
         removing = asyncio.create_task(self.manager._remove_or_close_node(node))
-        try:
-            await asyncio.wait_for(pending_started.wait(), 1.0)
-            self.assertFalse(removing.done())
-        finally:
-            pending_release.set()
+        await asyncio.wait_for(started.wait(), 1.0)
+        self.assertFalse(removing.done())
+        release.set()
+        await asyncio.wait_for(removing, 2.0)
 
-        await asyncio.wait_for(removing, 1.0)
-        first.disconnect.assert_awaited_once_with(force=True)
-        second.disconnect.assert_awaited_once_with(force=True)
-        node.close.assert_awaited_once()
+        mock_pool.remove_node.assert_awaited_once_with(node, transfer_players=False)
+        node.close.assert_awaited()
 
     async def test_drain_skips_replaced_and_transferred_players(self) -> None:
         node = MagicMock(label="old")
@@ -1860,6 +1847,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancelled_close_of_removed_node_still_closes(self) -> None:
         node = MagicMock(label="old", available=False, close=AsyncMock())
+        node.quiesce = AsyncMock()
         player = _FakeMusicPlayer(MagicMock(id=1), node)
         player.guild.voice_client = player
         node.players = [player]
@@ -1884,7 +1872,8 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(asyncio.CancelledError):
             await asyncio.wait_for(closing, 1.0)
-        node.close.assert_awaited_once()
+        # Escalation and the finishing cleanup may both close; close is idempotent.
+        self.assertGreaterEqual(node.close.await_count, 1)
 
     async def test_cleanup_failure_after_timeout_is_logged_and_node_closed(
         self,
@@ -1899,12 +1888,12 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             await release.wait()
             raise RuntimeError("cleanup failed")
 
-        async def abort_http(_node: object) -> None:
+        async def close_node(_node: object) -> None:
             aborted.set()
 
         with (
             patch.object(self.manager, "_cleanup_node", side_effect=fail_cleanup),
-            patch.object(self.manager, "_abort_node_http", side_effect=abort_http),
+            patch.object(self.manager, "_close_failed_node", side_effect=close_node),
             patch.object(asyncio, "timeout", return_value=deadline),
             self.assertLogs(connection_module.logger, level="DEBUG") as captured,
         ):
@@ -1917,10 +1906,10 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
                 release.set()
             await asyncio.wait_for(removing, 1.0)
 
-        node.close.assert_awaited_once()
+        self.assertTrue(aborted.is_set())
         self.assertTrue(
             any(
-                record.getMessage() == "Failed to finish Lavalink node cleanup for old"
+                record.getMessage() == "Escalated cleanup of Lavalink node old failed"
                 and record.exc_info is not None
                 for record in captured.records
             )
@@ -2577,6 +2566,9 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 session=session,
             )
         self.addAsyncCleanup(node.close)
+        # The manager pool is a stub, but the real add_node validates the
+        # owner: make the stub claim this node's client.
+        self.pool._client = client
 
         # Exercise the real add_node/connect path without sharing global pool state.
         async def add_node(
@@ -2720,7 +2712,7 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
         ):
             await self.manager.initialize()
 
-        stale.close.assert_awaited_once()
+        stale.close.assert_awaited()
         self.pool.add_node.assert_awaited_once_with(candidate, player_cls=MusicPlayer)
         failures = [
             record

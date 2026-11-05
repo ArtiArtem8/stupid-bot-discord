@@ -58,6 +58,7 @@ BIRTHDAY_CHECK_INTERVAL = 300  # seconds (5 minutes)
 LAVALINK_CONNECT_TIMEOUT = 10.0  # seconds for one initialization attempt
 LAVALINK_CLEANUP_TIMEOUT = 10.0  # seconds before aborting stalled node HTTP
 LAVALINK_HTTP_TIMEOUT = 10.0  # seconds bound for one Lavalink REST request
+LAVALINK_CLEANUP_GRACE = 5.0  # seconds to wait after escalating a stalled cleanup
 MUSIC_AUTO_LEAVE_CHECK_INTERVAL = 60  # seconds (1 minute)
 MUSIC_AUTO_LEAVE_TIMEOUT = 900  # seconds (15 minutes)
 MUSIC_DEFAULT_VOLUME = 10  # percentage (10%)

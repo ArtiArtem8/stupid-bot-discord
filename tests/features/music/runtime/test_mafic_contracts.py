@@ -314,8 +314,8 @@ class TestMaficFailureCleanup(unittest.IsolatedAsyncioTestCase):
             "source": self.source,
             "target": self.target,
         }
-        self.enterContext(patch.object(mafic.NodePool, "_nodes", nodes))
         self.connection = ConnectionManager(self.bot)
+        self.connection.pool._nodes.update(nodes)
         self.destroy = AsyncMock()
 
         async def destroy(node: mafic.Node[discord.Client], *, guild_id: int) -> None:
