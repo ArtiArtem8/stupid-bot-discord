@@ -147,6 +147,7 @@ class CoreMusicService:
         Use ``guild.voice_client`` because ``connection.get_player()`` hides stale
         players that still need to be disconnected.
         """
+        was_recovering = self.voice_lifecycle.is_healing(guild.id)
         async with self.voice_lifecycle.leaving(guild.id):
             await self.connection.cancel_recovery(guild.id)
             raw_voice_client = guild.voice_client
@@ -161,6 +162,12 @@ class CoreMusicService:
                 raw_voice_client.clear_queue()
 
             if raw_voice_client is None:
+                if was_recovering:
+                    return MusicResult(
+                        MusicResultStatus.SUCCESS,
+                        "Disconnected",
+                        reason=MusicResultReason.DISCONNECTED,
+                    )
                 return MusicResult(
                     MusicResultStatus.FAILURE,
                     "Not connected",
