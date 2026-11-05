@@ -58,6 +58,7 @@ from stupidbot.features.music.results import (
     VoiceCheckResult,
     VoiceJoinResult,
 )
+from stupidbot.features.music.runtime.connection import prepare_music_pool
 from stupidbot.features.music.runtime.session import MusicSession
 from stupidbot.i18n.catalog import catalog
 from stupidbot.i18n.discord import error_context, guild_context, interaction_context
@@ -838,4 +839,5 @@ class MusicCog(BaseCog):
 
 async def setup(bot: "StupidBot") -> None:
     """Register the music cog."""
+    await prepare_music_pool(bot)
     await bot.add_cog(MusicCog(bot, bot.volume_repository))

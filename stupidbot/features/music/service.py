@@ -759,9 +759,10 @@ class CoreMusicService:
                 if guild.voice_client:
                     await self.leave(guild)
         finally:
-            await self.connection.cleanup()
+            pool_closed = await self.connection.cleanup()
             self._initialized = False
-        logger.info("CoreMusicService cleaned up.")
+        if pool_closed:
+            logger.info("CoreMusicService cleaned up.")
 
 
 def player_fail_result(

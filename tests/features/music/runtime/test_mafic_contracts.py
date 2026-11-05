@@ -277,7 +277,7 @@ class TestMaficComposition(unittest.IsolatedAsyncioTestCase):
 
 class TestMaficFailureCleanup(unittest.IsolatedAsyncioTestCase):
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         self.bot = MagicMock(spec=commands.Bot)
         self.bot.is_closed.return_value = False
         self.guild = MagicMock(spec=discord.Guild, id=1)
@@ -310,12 +310,10 @@ class TestMaficFailureCleanup(unittest.IsolatedAsyncioTestCase):
         self.player._node = self.source
         self.player.set_state(player_payload({}))
         self.source.add_player(1, self.player)
-        nodes: dict[str, mafic.Node[discord.Client]] = {
-            "source": self.source,
-            "target": self.target,
-        }
         self.connection = ConnectionManager(self.bot)
-        self.connection.pool._nodes.update(nodes)
+        with patch.object(mafic.Node, "connect", new=AsyncMock()):
+            await self.connection.pool.add_node(self.source)
+            await self.connection.pool.add_node(self.target)
         self.destroy = AsyncMock()
 
         async def destroy(node: mafic.Node[discord.Client], *, guild_id: int) -> None:

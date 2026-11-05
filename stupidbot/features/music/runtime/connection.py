@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from functools import partial
 from typing import TypeGuard
+from weakref import WeakSet
 
 import aiohttp
 import discord
@@ -33,6 +34,76 @@ logger = logging.getLogger(__name__)
 
 # Escalated teardown can outlive the music cog that started it.
 _pending_node_tasks: set[asyncio.Task[None]] = set()
+_closing_music_pools: WeakSet[mafic.NodePool[discord.Client]] = WeakSet()
+_pool_close_tasks: dict[mafic.NodePool[discord.Client], asyncio.Task[None]] = {}
+
+
+def _log_late_cleanup(label: str, cleanup: asyncio.Task[None]) -> None:
+    if cleanup.cancelled():
+        return
+    error = cleanup.exception()
+    if error is not None:
+        logger.warning(
+            "Late Lavalink cleanup failed resource=%s error=%s",
+            label,
+            type(error).__name__,
+        )
+        logger.debug(
+            "Late Lavalink cleanup traceback resource=%s",
+            label,
+            exc_info=(type(error), error, error.__traceback__),
+        )
+
+
+def _retain_cleanup(task: asyncio.Task[None], label: str) -> None:
+    if task in _pending_node_tasks:
+        return
+    _pending_node_tasks.add(task)
+    task.add_done_callback(_pending_node_tasks.discard)
+    task.add_done_callback(partial(_log_late_cleanup, label))
+
+
+async def _close_pool(pool: mafic.NodePool[discord.Client]) -> bool:
+    """Bound the caller's wait without cancelling the pool's owned close."""
+    closing = _pool_close_tasks.get(pool)
+    if closing is None:
+        closing = asyncio.create_task(pool.close())
+        _pool_close_tasks[pool] = closing
+        closing.add_done_callback(partial(_forget_pool_close, pool))
+    try:
+        done, _ = await asyncio.wait(
+            (closing,), timeout=config.LAVALINK_CLEANUP_TIMEOUT
+        )
+    except asyncio.CancelledError:
+        _retain_cleanup(closing, "pool")
+        raise
+    if not done:
+        _retain_cleanup(closing, "pool")
+        logger.warning("Lavalink node pool is still closing; its client remains bound")
+        return False
+    await closing
+    return True
+
+
+def _forget_pool_close(
+    pool: mafic.NodePool[discord.Client], task: asyncio.Task[None]
+) -> None:
+    if _pool_close_tasks.get(pool) is task:
+        del _pool_close_tasks[pool]
+
+
+async def prepare_music_pool(bot: commands.Bot) -> None:
+    """Wait for a previous music pool to close before constructing a new owner.
+
+    Only a pool whose music owner has started shutdown may be closed here.
+    """
+    pool = mafic.pool_for(bot)
+    if pool is None:
+        return
+    if bot.get_cog("MusicCog") is not None or pool not in _closing_music_pools:
+        raise mafic.NodePoolAlreadyBound("A music node pool is still active")
+    if not await _close_pool(pool):
+        raise TimeoutError("The previous music node pool is still closing")
 
 
 class _AvailabilityResult(Enum):
@@ -613,10 +684,11 @@ class ConnectionManager:
         async with self._init_lock:
             pass
 
-    async def cleanup(self) -> None:
-        """Drain connection work before closing Mafic resources."""
+    async def cleanup(self) -> bool:
+        """Drain connection work and report whether the pool finished closing."""
         await self.stop_connecting()
-        await self.pool.close()
+        _closing_music_pools.add(self.pool)
+        return await _close_pool(self.pool)
 
     async def _await_owned_cleanup(self, task: asyncio.Task[None]) -> None:
         """Wait for the escalation period despite repeated cancellation.
@@ -718,31 +790,11 @@ class ConnectionManager:
                 )
         if pending:
             for task in pending:
-                _pending_node_tasks.add(task)
-                task.add_done_callback(_pending_node_tasks.discard)
-                task.add_done_callback(partial(self._log_late_cleanup, node.label))
+                _retain_cleanup(task, node.label)
             logger.warning(
                 "Cleanup or close of Lavalink node %s is still running after "
                 "escalation",
                 node.label,
-            )
-
-    @staticmethod
-    def _log_late_cleanup(label: str, cleanup: asyncio.Task[None]) -> None:
-        """Consume the outcome of a cleanup that outlived its caller."""
-        if cleanup.cancelled():
-            return
-        error = cleanup.exception()
-        if error is not None:
-            logger.warning(
-                "Late Lavalink node cleanup failed node=%s error=%s",
-                label,
-                type(error).__name__,
-            )
-            logger.debug(
-                "Late Lavalink node cleanup traceback node=%s",
-                label,
-                exc_info=(type(error), error, error.__traceback__),
             )
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:

@@ -1927,8 +1927,13 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         node = MagicMock(label="old", available=False, close=AsyncMock())
         self.manager.pool = MagicMock(nodes=[], label_to_node={})
         started, release, reported = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        cleanup_tasks: list[asyncio.Task[None]] = []
 
         async def stuck_cleanup(*_args: object, **_kwargs: object) -> None:
+            task = asyncio.current_task()
+            if task is None:
+                self.fail("Cleanup is not running in a task")
+            cleanup_tasks.append(task)
             started.set()
             await release.wait()
             raise RuntimeError("late cleanup failure")
@@ -1945,8 +1950,8 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
                 await asyncio.wait_for(removing, 2.0)
 
                 node.close.assert_awaited_once()
-                self.assertEqual(len(connection_module._pending_node_tasks), 1)
-                (cleanup,) = connection_module._pending_node_tasks
+                (cleanup,) = cleanup_tasks
+                self.assertIn(cleanup, connection_module._pending_node_tasks)
                 cleanup.add_done_callback(lambda _task: reported.set())
                 messages = [record.getMessage() for record in captured.records]
                 self.assertTrue(
@@ -1963,7 +1968,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
                 record
                 for record in captured.records
                 if record.getMessage()
-                == "Late Lavalink node cleanup failed node=old error=RuntimeError"
+                == "Late Lavalink cleanup failed resource=old error=RuntimeError"
             ]
             self.assertEqual(len(warnings), 1)
             self.assertIsNone(warnings[0].exc_info)
@@ -1980,9 +1985,14 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             started: asyncio.Event,
             release: asyncio.Event,
             finished: asyncio.Event,
+            owners: list[asyncio.Task[None]],
             *_args: object,
             **_kwargs: object,
         ) -> None:
+            task = asyncio.current_task()
+            if task is None:
+                self.fail("Cleanup is not running in a task")
+            owners.append(task)
             started.set()
             await release.wait()
             finished.set()
@@ -1995,13 +2005,15 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
                     asyncio.Event(),
                 )
                 cleanup_finished, close_finished = asyncio.Event(), asyncio.Event()
+                owners: list[asyncio.Task[None]] = []
+                reported = [asyncio.Event(), asyncio.Event()]
 
                 node = MagicMock(
                     label="old",
                     available=False,
                     close=AsyncMock(
                         side_effect=partial(
-                            stall, close_started, release, close_finished
+                            stall, close_started, release, close_finished, owners
                         )
                     ),
                 )
@@ -2011,7 +2023,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
                         self.manager,
                         "_cleanup_node",
                         side_effect=partial(
-                            stall, cleanup_started, release, cleanup_finished
+                            stall, cleanup_started, release, cleanup_finished, owners
                         ),
                     ),
                     patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
@@ -2031,16 +2043,33 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
                                 await asyncio.wait_for(removing, 2.0)
                         else:
                             await asyncio.wait_for(removing, 2.0)
-                        self.assertEqual(len(connection_module._pending_node_tasks), 2)
+                        self.assertEqual(len(owners), 2)
+                        self.assertTrue(
+                            set(owners).issubset(connection_module._pending_node_tasks)
+                        )
+                        for task, event in zip(owners, reported, strict=True):
+                            task.add_done_callback(
+                                lambda _task, ready=event: ready.set()
+                            )
                     finally:
                         release.set()
                     await asyncio.wait_for(cleanup_finished.wait(), 1.0)
                     await asyncio.wait_for(close_finished.wait(), 1.0)
+                    for event in reported:
+                        await asyncio.wait_for(event.wait(), 1.0)
+                    self.assertTrue(
+                        set(owners).isdisjoint(connection_module._pending_node_tasks)
+                    )
 
     async def test_late_cleanup_survives_manager_disposal(self) -> None:
         started = asyncio.Event()
+        cleanup_tasks: list[asyncio.Task[None]] = []
 
         async def stalled_cleanup(*_args: object, **_kwargs: object) -> None:
+            task = asyncio.current_task()
+            if task is None:
+                self.fail("Cleanup is not running in a task")
+            cleanup_tasks.append(task)
             started.set()
             await asyncio.Event().wait()
 
@@ -2056,9 +2085,11 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(started.wait(), 1.0)
             await asyncio.wait_for(removing, 2.0)
 
-        (cleanup,) = connection_module._pending_node_tasks
+        (cleanup,) = cleanup_tasks
+        self.assertIn(cleanup, connection_module._pending_node_tasks)
         task_ref = weakref.ref(cleanup)
         manager_ref = weakref.ref(manager)
+        cleanup_tasks.clear()
         del cleanup, manager
         gc.collect()
         self.assertIsNone(manager_ref())
@@ -2107,7 +2138,6 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.bot = _DispatchBot()
         self.manager = ConnectionManager(cast(Any, self.bot))
-        self.manager.pool.label_to_node.clear()
         self.handlers = VoiceLifecycleHandlers(
             cast(Any, self.bot),
             self.manager,
@@ -2133,7 +2163,6 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
         await self.manager.cleanup()
         if self.server is not None:
             await self.server.close()
-        self.manager.pool.label_to_node.clear()
 
     async def _websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
         self.websocket_attempts += 1
@@ -2337,6 +2366,55 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(self.manager._lazy_connect_task)
             self.assertFalse(self.manager.has_ready_node())
 
+    async def test_shutdown_after_cleanup_deadline_remains_bounded(self) -> None:
+        delete_started, delete_release, close_started = (
+            asyncio.Event(),
+            asyncio.Event(),
+            asyncio.Event(),
+        )
+
+        async def delete_player(_request: web.Request) -> web.Response:
+            delete_started.set()
+            await delete_release.wait()
+            return web.Response(status=204)
+
+        port = await self._start_server(close_first=False, delete_player=delete_player)
+        async with self._lavalink_config(port):
+            await self.manager.initialize()
+            node = self.manager.pool.label_to_node["MAIN"]
+            self._attach_player(node)
+            node._mark_unavailable()
+            close_node = self.manager._close_failed_node
+            deadline = asyncio.timeout(None)
+
+            async def observe_close(old_node: mafic.Node[discord.Client]) -> None:
+                close_started.set()
+                await close_node(old_node)
+
+            with (
+                patch.object(asyncio, "timeout", return_value=deadline),
+                patch.object(
+                    self.manager, "_close_failed_node", side_effect=observe_close
+                ),
+                self.assertLogs(connection_module.logger, level="WARNING") as captured,
+            ):
+                self.manager.start_lazy_connect()
+                try:
+                    await asyncio.wait_for(delete_started.wait(), 2)
+                    deadline.reschedule(asyncio.get_running_loop().time())
+                    await asyncio.wait_for(close_started.wait(), 2)
+                    await asyncio.wait_for(self.manager.cleanup(), 2)
+                finally:
+                    delete_release.set()
+
+            self.assertTrue(
+                any(
+                    "Timed out removing unavailable Lavalink node" in line
+                    for line in captured.output
+                )
+            )
+            self.assertFalse(self.manager.has_ready_node())
+
     async def test_lavalink_rest_request_obeys_configured_timeout(self) -> None:
         request_started, release = asyncio.Event(), asyncio.Event()
 
@@ -2443,9 +2521,11 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
         async with self._lavalink_config(port):
             await self.manager.initialize()
             node = self.manager.pool.label_to_node["MAIN"]
+            await self.handlers.cleanup()
+            await self.manager.pool.remove_node(node, transfer_players=False)
+            await node.connect(player_cls=MusicPlayer)
             player = self._attach_player(node)
             player.guild.change_voice_state = AsyncMock()
-            self.manager.pool.label_to_node.pop("MAIN")
 
             try:
                 with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.5):

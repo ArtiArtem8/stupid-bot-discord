@@ -103,7 +103,8 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
             )
         )
         self.components = create_music_components(self.bot, self.volumes)
-        self.components.connection.pool._nodes[self.node.label] = self.node
+        with patch.object(mafic.Node, "connect", new=AsyncMock()):
+            await self.components.connection.pool.add_node(self.node)
         self.addAsyncCleanup(self.components.controllers.cleanup)
         self.addAsyncCleanup(self.components.service.cleanup)
         result = await self.components.service.play(
