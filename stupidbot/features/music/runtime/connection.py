@@ -449,9 +449,9 @@ class ConnectionManager:
     ) -> set[int]:
         """Transfer players to a ready node or invalidate only failed guilds.
 
-        An event whose node reconnected before this handler took ownership is
-        ignored, including when recovery happens while waiting for the lock.
-        Events from a node already replaced by a ready node are ignored too.
+        Recovery before the lock prevents invalidation and node cleanup, but a
+        transfer already started may finish. Events from a replaced node with
+        no current players are ignored while another node is ready.
         """
         if self._node_is_recovered(node) or self._node_event_is_stale(node):
             logger.debug("Ignoring stale Lavalink node event: %s", node.label)
@@ -737,6 +737,11 @@ class ConnectionManager:
         try:
             await cleanup
         except BaseException:
+            logger.debug(
+                "Failed to finish Lavalink node cleanup for %s",
+                node.label,
+                exc_info=True,
+            )
             await self._close_failed_node(node)
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:
@@ -763,17 +768,16 @@ class ConnectionManager:
             async with asyncio.timeout(config.LAVALINK_CLEANUP_TIMEOUT):
                 await asyncio.shield(cleanup)
             return
-        except TimeoutError:
-            logger.warning(
-                "Timed out removing unavailable Lavalink node %s; closing it",
-                node.label,
-            )
         except asyncio.CancelledError:
             finish = asyncio.create_task(self._finish_failed_cleanup(node, cleanup))
             await self._await_owned_cleanup(finish)
             raise
-        except Exception:
-            logger.debug("Failed to remove unavailable Mafic node", exc_info=True)
+        except Exception as exc:
+            if isinstance(exc, TimeoutError):
+                logger.warning(
+                    "Timed out removing unavailable Lavalink node %s; closing it",
+                    node.label,
+                )
 
         finish = asyncio.create_task(self._finish_failed_cleanup(node, cleanup))
         await self._await_owned_cleanup(finish)

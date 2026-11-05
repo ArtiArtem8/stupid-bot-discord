@@ -1886,6 +1886,46 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(closing, 1.0)
         node.close.assert_awaited_once()
 
+    async def test_cleanup_failure_after_timeout_is_logged_and_node_closed(
+        self,
+    ) -> None:
+        node = MagicMock(label="old", available=False, close=AsyncMock())
+        self.manager.pool = MagicMock(nodes=[], label_to_node={})
+        started, aborted, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        deadline = asyncio.timeout(None)
+
+        async def fail_cleanup(*_args: object, **_kwargs: object) -> None:
+            started.set()
+            await release.wait()
+            raise RuntimeError("cleanup failed")
+
+        async def abort_http(_node: object) -> None:
+            aborted.set()
+
+        with (
+            patch.object(self.manager, "_cleanup_node", side_effect=fail_cleanup),
+            patch.object(self.manager, "_abort_node_http", side_effect=abort_http),
+            patch.object(asyncio, "timeout", return_value=deadline),
+            self.assertLogs(connection_module.logger, level="DEBUG") as captured,
+        ):
+            removing = asyncio.create_task(self.manager._remove_or_close_node(node))
+            try:
+                await asyncio.wait_for(started.wait(), 1.0)
+                deadline.reschedule(asyncio.get_running_loop().time())
+                await asyncio.wait_for(aborted.wait(), 1.0)
+            finally:
+                release.set()
+            await asyncio.wait_for(removing, 1.0)
+
+        node.close.assert_awaited_once()
+        self.assertTrue(
+            any(
+                record.getMessage() == "Failed to finish Lavalink node cleanup for old"
+                and record.exc_info is not None
+                for record in captured.records
+            )
+        )
+
     async def test_failed_node_transfer_invalidates_only_affected_player(self) -> None:
         old_node = MagicMock(label="old", available=False)
         target = MagicMock(label="target", available=True)
@@ -2674,11 +2714,20 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
         self.pool.remove_node = AsyncMock(side_effect=remove_node)
         self.pool.add_node = AsyncMock(side_effect=add_node)
         candidate = MagicMock()
-        with patch.object(mafic, "Node", return_value=candidate):
+        with (
+            patch.object(mafic, "Node", return_value=candidate),
+            self.assertLogs(connection_module.logger, level="DEBUG") as captured,
+        ):
             await self.manager.initialize()
 
         stale.close.assert_awaited_once()
         self.pool.add_node.assert_awaited_once_with(candidate, player_cls=MusicPlayer)
+        failures = [
+            record
+            for record in captured.records
+            if record.exc_info and str(record.exc_info[1]) == "player cleanup failed"
+        ]
+        self.assertEqual(len(failures), 1)
 
     async def test_ensure_available_returns_false_for_terminal_http_errors(
         self,
