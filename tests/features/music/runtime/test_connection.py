@@ -2,10 +2,13 @@
 
 import asyncio
 import contextlib
+import gc
 import ssl
 import time
 import unittest
+import weakref
 from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine
+from functools import partial
 from typing import Any, cast, override
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, patch
 
@@ -1755,7 +1758,6 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         await self.manager.stop_connecting()
 
     async def test_failed_pool_removal_escalates_to_close(self) -> None:
-        """A pool removal failure is awaited, then escalated to a close."""
         node = MagicMock(label="old", available=False, close=AsyncMock())
         started, release = asyncio.Event(), asyncio.Event()
 
@@ -1772,9 +1774,11 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         self.manager.pool = mock_pool
 
         removing = asyncio.create_task(self.manager._remove_or_close_node(node))
-        await asyncio.wait_for(started.wait(), 1.0)
-        self.assertFalse(removing.done())
-        release.set()
+        try:
+            await asyncio.wait_for(started.wait(), 1.0)
+            self.assertFalse(removing.done())
+        finally:
+            release.set()
         await asyncio.wait_for(removing, 2.0)
 
         mock_pool.remove_node.assert_awaited_once_with(node, transfer_players=False)
@@ -1880,7 +1884,11 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         node = MagicMock(label="old", available=False, close=AsyncMock())
         self.manager.pool = MagicMock(nodes=[], label_to_node={})
-        started, aborted, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        started, close_started, release = (
+            asyncio.Event(),
+            asyncio.Event(),
+            asyncio.Event(),
+        )
         deadline = asyncio.timeout(None)
 
         async def fail_cleanup(*_args: object, **_kwargs: object) -> None:
@@ -1889,7 +1897,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             raise RuntimeError("cleanup failed")
 
         async def close_node(_node: object) -> None:
-            aborted.set()
+            close_started.set()
 
         with (
             patch.object(self.manager, "_cleanup_node", side_effect=fail_cleanup),
@@ -1901,12 +1909,12 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             try:
                 await asyncio.wait_for(started.wait(), 1.0)
                 deadline.reschedule(asyncio.get_running_loop().time())
-                await asyncio.wait_for(aborted.wait(), 1.0)
+                await asyncio.wait_for(close_started.wait(), 1.0)
             finally:
                 release.set()
             await asyncio.wait_for(removing, 1.0)
 
-        self.assertTrue(aborted.is_set())
+        self.assertTrue(close_started.is_set())
         self.assertTrue(
             any(
                 record.getMessage() == "Escalated cleanup of Lavalink node old failed"
@@ -1915,38 +1923,152 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-    async def test_cleanup_outliving_grace_stays_owned(self) -> None:
-        """A cleanup that misses the grace period is left owned and logged."""
+    async def test_late_cleanup_failure_is_owned_and_logged(self) -> None:
         node = MagicMock(label="old", available=False, close=AsyncMock())
         self.manager.pool = MagicMock(nodes=[], label_to_node={})
-        started, release = asyncio.Event(), asyncio.Event()
+        started, release, reported = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
         async def stuck_cleanup(*_args: object, **_kwargs: object) -> None:
             started.set()
             await release.wait()
+            raise RuntimeError("late cleanup failure")
 
         with (
             patch.object(self.manager, "_cleanup_node", side_effect=stuck_cleanup),
             patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
             patch.object(config, "LAVALINK_CLEANUP_GRACE", 0.05),
-            self.assertLogs(connection_module.logger, level="WARNING") as captured,
+            self.assertLogs(connection_module.logger, level="DEBUG") as captured,
         ):
-            removing = asyncio.create_task(self.manager._remove_or_close_node(node))
+            try:
+                removing = asyncio.create_task(self.manager._remove_or_close_node(node))
+                await asyncio.wait_for(started.wait(), 1.0)
+                await asyncio.wait_for(removing, 2.0)
+
+                node.close.assert_awaited_once()
+                self.assertEqual(len(connection_module._pending_node_tasks), 1)
+                (cleanup,) = connection_module._pending_node_tasks
+                cleanup.add_done_callback(lambda _task: reported.set())
+                messages = [record.getMessage() for record in captured.records]
+                self.assertTrue(
+                    any(
+                        "still running after escalation" in message
+                        for message in messages
+                    ),
+                    messages,
+                )
+            finally:
+                release.set()
+            await asyncio.wait_for(reported.wait(), 1.0)
+            warnings = [
+                record
+                for record in captured.records
+                if record.getMessage()
+                == "Late Lavalink node cleanup failed node=old error=RuntimeError"
+            ]
+            self.assertEqual(len(warnings), 1)
+            self.assertIsNone(warnings[0].exc_info)
+            self.assertTrue(
+                any(
+                    record.exc_info
+                    and str(record.exc_info[1]) == "late cleanup failure"
+                    for record in captured.records
+                )
+            )
+
+    async def test_stalled_close_is_bounded_with_or_without_cancellation(self) -> None:
+        async def stall(
+            started: asyncio.Event,
+            release: asyncio.Event,
+            finished: asyncio.Event,
+            *_args: object,
+            **_kwargs: object,
+        ) -> None:
+            started.set()
+            await release.wait()
+            finished.set()
+
+        for cancel in (False, True):
+            with self.subTest(cancel=cancel):
+                cleanup_started, close_started, release = (
+                    asyncio.Event(),
+                    asyncio.Event(),
+                    asyncio.Event(),
+                )
+                cleanup_finished, close_finished = asyncio.Event(), asyncio.Event()
+
+                node = MagicMock(
+                    label="old",
+                    available=False,
+                    close=AsyncMock(
+                        side_effect=partial(
+                            stall, close_started, release, close_finished
+                        )
+                    ),
+                )
+                self.manager.pool = MagicMock(nodes=[], label_to_node={})
+                with (
+                    patch.object(
+                        self.manager,
+                        "_cleanup_node",
+                        side_effect=partial(
+                            stall, cleanup_started, release, cleanup_finished
+                        ),
+                    ),
+                    patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
+                    patch.object(config, "LAVALINK_CLEANUP_GRACE", 0.05),
+                ):
+                    try:
+                        removing = asyncio.create_task(
+                            self.manager._remove_or_close_node(node)
+                        )
+                        await asyncio.wait_for(cleanup_started.wait(), 1.0)
+                        if cancel:
+                            removing.cancel()
+                        await asyncio.wait_for(close_started.wait(), 1.0)
+                        if cancel:
+                            removing.cancel()
+                            with self.assertRaises(asyncio.CancelledError):
+                                await asyncio.wait_for(removing, 2.0)
+                        else:
+                            await asyncio.wait_for(removing, 2.0)
+                        self.assertEqual(len(connection_module._pending_node_tasks), 2)
+                    finally:
+                        release.set()
+                    await asyncio.wait_for(cleanup_finished.wait(), 1.0)
+                    await asyncio.wait_for(close_finished.wait(), 1.0)
+
+    async def test_late_cleanup_survives_manager_disposal(self) -> None:
+        started = asyncio.Event()
+
+        async def stalled_cleanup(*_args: object, **_kwargs: object) -> None:
+            started.set()
+            await asyncio.Event().wait()
+
+        manager = ConnectionManager(MagicMock())
+        manager.pool = MagicMock(nodes=[], label_to_node={})
+        node = MagicMock(label="old", available=False, close=AsyncMock())
+        with (
+            patch.object(manager, "_cleanup_node", side_effect=stalled_cleanup),
+            patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
+            patch.object(config, "LAVALINK_CLEANUP_GRACE", 0.05),
+        ):
+            removing = asyncio.create_task(manager._remove_or_close_node(node))
             await asyncio.wait_for(started.wait(), 1.0)
             await asyncio.wait_for(removing, 2.0)
 
-        # The caller is no longer blocked, the node is closed and the
-        # still-running cleanup stays owned by its own task.
-        node.close.assert_awaited_once()
-        messages = [record.getMessage() for record in captured.records]
-        self.assertTrue(
-            any("still running after escalation" in message for message in messages),
-            messages,
-        )
-        release.set()
+        (cleanup,) = connection_module._pending_node_tasks
+        task_ref = weakref.ref(cleanup)
+        manager_ref = weakref.ref(manager)
+        del cleanup, manager
+        gc.collect()
+        self.assertIsNone(manager_ref())
+        cleanup = task_ref()
+        if cleanup is None:
+            self.fail("Late cleanup was collected before it finished")
+        cleanup.cancel()
+        await asyncio.gather(cleanup, return_exceptions=True)
 
     async def test_failed_node_transfer_invalidates_only_affected_player(self) -> None:
-        """A failed transfer invalidates only the player it touched."""
         old_node = MagicMock(label="old", available=False)
         target = MagicMock(label="target", available=True)
         affected_guild = MagicMock(id=123)
@@ -2202,12 +2324,12 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             self._attach_player(node)
             node._mark_unavailable()
 
-            with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05):
+            with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 10.0):
                 self.manager.start_lazy_connect()
-                await asyncio.wait_for(delete_started.wait(), 2.0)
+                await asyncio.wait_for(delete_started.wait(), 5.0)
                 shutdown = asyncio.create_task(self.manager.cleanup())
                 try:
-                    await asyncio.wait_for(shutdown, 2.0)
+                    await asyncio.wait_for(shutdown, 5.0)
                 finally:
                     delete_release.set()
 

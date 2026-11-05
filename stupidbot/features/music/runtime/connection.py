@@ -7,6 +7,7 @@ import time
 from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
+from functools import partial
 from typing import TypeGuard
 
 import aiohttp
@@ -29,6 +30,9 @@ from stupidbot.features.music.results import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Escalated teardown can outlive the music cog that started it.
+_pending_node_tasks: set[asyncio.Task[None]] = set()
 
 
 class _AvailabilityResult(Enum):
@@ -615,11 +619,9 @@ class ConnectionManager:
         await self.pool.close()
 
     async def _await_owned_cleanup(self, task: asyncio.Task[None]) -> None:
-        """Wait for cleanup owned by this attempt despite repeated cancellation.
+        """Wait for the escalation period despite repeated cancellation.
 
-        The caller re-raises its captured cancellation after the owned task
-        finishes. A second cancellation must not strand teardown or release the
-        initialization lock early.
+        The caller re-raises its captured cancellation after escalation finishes.
         """
         cancelled: asyncio.CancelledError | None = None
         while True:
@@ -630,6 +632,7 @@ class ConnectionManager:
                 if task.done():
                     break
             except Exception:
+                logger.exception("Lavalink cleanup escalation failed")
                 break
             else:
                 break
@@ -660,7 +663,7 @@ class ConnectionManager:
         players: Sequence[mafic.Player[discord.Client]],
         node: mafic.Node[discord.Client],
     ) -> None:
-        """Finish player teardowns before removing the node from the pool."""
+        """Finish player teardowns for a node outside the pool."""
         if not players:
             return
         results = await asyncio.gather(
@@ -681,7 +684,7 @@ class ConnectionManager:
         *,
         remove_from_pool: bool,
     ) -> None:
-        """Stop the transport, then let its owner finish player teardown."""
+        """Quiesce the node and finish teardown through its current owner."""
         if remove_from_pool and self._pool_contains_node(node):
             # Mafic removes the node: it quiesces the transport, snapshots
             # players afterwards and owns their teardown and the final close.
@@ -698,43 +701,52 @@ class ConnectionManager:
     ) -> None:
         """Escalate a stalled cleanup without taking over its ownership.
 
-        Closing the node aborts the REST session a stalled request waits on,
-        which is the only supported way to unblock it. The cleanup keeps
-        running: it is awaited for a bounded grace period, and a late result
-        is logged instead of blocking the caller indefinitely.
+        Closing the node aborts its owned REST session. Both close and cleanup
+        share the grace period; unfinished tasks stay referenced until done.
         """
-        await self._close_failed_node(node)
-        try:
-            async with asyncio.timeout(config.LAVALINK_CLEANUP_GRACE):
-                await asyncio.shield(cleanup)
-        except TimeoutError:
-            cleanup.add_done_callback(self._log_late_cleanup)
+        close = asyncio.create_task(self._close_failed_node(node))
+        done, pending = await asyncio.wait(
+            (close, cleanup), timeout=config.LAVALINK_CLEANUP_GRACE
+        )
+        if cleanup in done and not cleanup.cancelled():
+            error = cleanup.exception()
+            if error is not None:
+                logger.debug(
+                    "Escalated cleanup of Lavalink node %s failed",
+                    node.label,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+        if pending:
+            for task in pending:
+                _pending_node_tasks.add(task)
+                task.add_done_callback(_pending_node_tasks.discard)
+                task.add_done_callback(partial(self._log_late_cleanup, node.label))
             logger.warning(
-                "Cleanup of Lavalink node %s is still running after "
-                "escalation; it stays owned by its task",
+                "Cleanup or close of Lavalink node %s is still running after "
+                "escalation",
                 node.label,
-            )
-        except Exception:
-            logger.debug(
-                "Escalated cleanup of Lavalink node %s failed",
-                node.label,
-                exc_info=True,
             )
 
     @staticmethod
-    def _log_late_cleanup(cleanup: asyncio.Task[None]) -> None:
+    def _log_late_cleanup(label: str, cleanup: asyncio.Task[None]) -> None:
         """Consume the outcome of a cleanup that outlived its caller."""
         if cleanup.cancelled():
             return
         error = cleanup.exception()
         if error is not None:
             logger.warning(
-                "Escalated Lavalink cleanup failed after its caller returned",
+                "Late Lavalink node cleanup failed node=%s error=%s",
+                label,
+                type(error).__name__,
+            )
+            logger.debug(
+                "Late Lavalink node cleanup traceback node=%s",
+                label,
                 exc_info=(type(error), error, error.__traceback__),
             )
 
     async def _remove_or_close_node(self, node: mafic.Node[discord.Client]) -> None:
-        """Remove one unavailable node within the cleanup deadline.
+        """Remove one unavailable node, escalating after the cleanup deadline.
 
         Mafic owns quiescing and player teardown; this manager owns the
         deadline and the escalation that aborts a stalled REST request.
