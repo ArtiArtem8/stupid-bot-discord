@@ -3,7 +3,7 @@
 import asyncio
 import unittest
 from typing import override
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import discord
 
@@ -724,7 +724,9 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
         self.connection.handle_node_unavailable.return_value = {123}
         await self.handlers.on_node_unavailable(node)
 
-        self.connection.handle_node_unavailable.assert_awaited_once_with(node)
+        self.connection.handle_node_unavailable.assert_awaited_once_with(
+            node, before_invalidation=ANY
+        )
         self.ui.controller.destroy_for_guild.assert_awaited_once_with(
             123,
             ControllerDestroyReason.PLAYER_ERROR,
@@ -747,7 +749,9 @@ class TestVoiceLifecycleHandlers(unittest.IsolatedAsyncioTestCase):
 
         await self.handlers.on_node_unavailable(node_a)
 
-        self.connection.handle_node_unavailable.assert_awaited_once_with(node_a)
+        self.connection.handle_node_unavailable.assert_awaited_once_with(
+            node_a, before_invalidation=ANY
+        )
         self.assertFalse(player_b.is_stale)
         self.ui.controller.destroy_for_guild.assert_awaited_once_with(
             1,

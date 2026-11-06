@@ -532,7 +532,8 @@ class SessionHealer(HealerProtocol):
                 if snapshot is None:
                     return False
                 await removed.wait()
-                await self._wait_for_ready_node(ready)
+                if not await self._wait_for_ready_node(ready):
+                    return False
                 if player.guild.voice_client is player:
                     await self._hard_disconnect(player)
                 if player.guild.voice_client is not None:
@@ -544,15 +545,15 @@ class SessionHealer(HealerProtocol):
         finally:
             captured.set()
 
-    async def _wait_for_ready_node(self, ready: asyncio.Event) -> None:
-        while True:
-            await ready.wait()
+    async def _wait_for_ready_node(self, ready: asyncio.Event) -> bool:
+        while await self.connection.wait_for_node_or_retry_end(ready):
             try:
                 await self.connection.initialize()
             except NodeNotConnectedError:
                 ready.clear()
             else:
-                return
+                return True
+        return False
 
     async def _seal_and_snapshot(
         self,

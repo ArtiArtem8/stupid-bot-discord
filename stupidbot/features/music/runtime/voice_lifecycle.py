@@ -147,10 +147,24 @@ class VoiceLifecycleHandlers:
         self, node: mafic.Node[discord.Client], players: Sequence[MusicPlayer]
     ) -> None:
         removed = asyncio.Event()
-        recoveries = self._start_node_recoveries(node, players, removed)
+        recoveries: list[tuple[asyncio.Task[object], asyncio.Event]] = []
+        if not self.connection.has_ready_node():
+            self._node_ready.clear()
+            recoveries = self._start_node_recoveries(node, players, removed)
+
+        async def capture_failed_transfers(failed: Sequence[MusicPlayer]) -> None:
+            if not failed:
+                return
+            if not self.connection.has_ready_node():
+                self._node_ready.clear()
+            started = self._start_node_recoveries(node, failed, removed)
+            await self._wait_for_node_snapshots(node, started)
+
         try:
             await self._wait_for_node_snapshots(node, recoveries)
-            invalidated = await self.connection.handle_node_unavailable(node)
+            invalidated = await self.connection.handle_node_unavailable(
+                node, before_invalidation=capture_failed_transfers
+            )
             affected = [
                 player
                 for player in players
@@ -185,9 +199,6 @@ class VoiceLifecycleHandlers:
         players: Sequence[MusicPlayer],
         removed: asyncio.Event,
     ) -> list[tuple[asyncio.Task[object], asyncio.Event]]:
-        if self.connection.has_ready_node():
-            return []
-        self._node_ready.clear()
         started: list[tuple[asyncio.Task[object], asyncio.Event]] = []
         for player in players:
             guild_id = player.guild.id

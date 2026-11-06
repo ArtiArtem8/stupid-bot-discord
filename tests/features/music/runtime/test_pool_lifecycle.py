@@ -4,12 +4,14 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import discord
 import mafic
 from discord.ext import commands
 
 from stupidbot import settings as config
 from stupidbot.features.music.discord.music_cog import MusicCog
+from stupidbot.features.music.errors import NodeNotConnectedError
 from stupidbot.features.music.repository import VolumeStore
 from stupidbot.features.music.runtime import connection as connection_module
 from stupidbot.features.music.runtime.connection import (
@@ -19,6 +21,322 @@ from stupidbot.features.music.runtime.connection import (
 
 
 class TestPoolLifecycle(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_bootstrap_closes_unregistered_node(self) -> None:
+        bot = MagicMock(spec=commands.Bot)
+        manager = ConnectionManager(bot)
+        created: list[mafic.Node[discord.Client]] = []
+        closed: list[mafic.Node[discord.Client]] = []
+
+        async def connect(node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            created.append(node)
+            raise aiohttp.ClientConnectionError("offline")
+
+        async def close(node: mafic.Node[discord.Client]) -> None:
+            closed.append(node)
+
+        try:
+            with (
+                patch.object(mafic.Node, "connect", connect),
+                patch.object(mafic.Node, "close", close),
+                self.assertRaises(NodeNotConnectedError),
+            ):
+                await manager.initialize()
+            self.assertEqual(closed, created)
+            self.assertEqual(len(created), 1)
+            self.assertNotIn(created[0], manager.pool.managed_nodes)
+        finally:
+            await manager.cleanup()
+
+    async def test_failed_bootstrap_close_remains_owned_by_pool(self) -> None:
+        bot = MagicMock(spec=commands.Bot)
+        manager = ConnectionManager(bot)
+        created: list[mafic.Node[discord.Client]] = []
+        closed: list[mafic.Node[discord.Client]] = []
+
+        async def connect(node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            created.append(node)
+            raise aiohttp.ClientConnectionError("offline")
+
+        async def close(node: mafic.Node[discord.Client]) -> None:
+            closed.append(node)
+            if len(closed) == 1:
+                raise RuntimeError("close failed")
+
+        with (
+            patch.object(mafic.Node, "connect", connect),
+            patch.object(mafic.Node, "close", close),
+        ):
+            try:
+                with self.assertRaises(NodeNotConnectedError):
+                    await manager.initialize()
+                self.assertEqual(len(created), 1)
+                self.assertIn(created[0], manager.pool.failed_nodes)
+                self.assertIn(created[0], manager.pool.managed_nodes)
+            finally:
+                await manager.cleanup()
+                if created and len(closed) == 1:
+                    await created[0].close()
+
+        self.assertEqual(len(closed), 2)
+        self.assertIsNone(mafic.pool_for(bot))
+
+    async def test_cancelled_bootstrap_keeps_failed_close_owned(self) -> None:
+        bot = MagicMock(spec=commands.Bot)
+        manager = ConnectionManager(bot)
+        connecting = asyncio.Event()
+        created: list[mafic.Node[discord.Client]] = []
+        closed: list[mafic.Node[discord.Client]] = []
+
+        async def connect(node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            created.append(node)
+            connecting.set()
+            await asyncio.Event().wait()
+
+        async def close(node: mafic.Node[discord.Client]) -> None:
+            closed.append(node)
+            if len(closed) == 1:
+                raise RuntimeError("close failed")
+
+        with (
+            patch.object(mafic.Node, "connect", connect),
+            patch.object(mafic.Node, "close", close),
+        ):
+            try:
+                initializing = asyncio.create_task(manager.initialize())
+                await asyncio.wait_for(connecting.wait(), 2)
+                initializing.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await asyncio.wait_for(initializing, 2)
+                self.assertIn(created[0], manager.pool.failed_nodes)
+            finally:
+                await manager.cleanup()
+                if created and len(closed) == 1:
+                    await created[0].close()
+
+        self.assertEqual(len(closed), 2)
+
+    async def test_failed_bootstrap_cleanup_is_retried_before_connecting(self) -> None:
+        bot = MagicMock(spec=commands.Bot)
+        manager = ConnectionManager(bot)
+        connected = asyncio.Event()
+        created: list[mafic.Node[discord.Client]] = []
+        closed: list[mafic.Node[discord.Client]] = []
+
+        async def connect(node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            created.append(node)
+            if len(created) == 1:
+                raise aiohttp.ClientConnectionError("offline")
+            self.assertGreaterEqual(len(closed), 2)
+            node._available = True
+            connected.set()
+
+        async def close(node: mafic.Node[discord.Client]) -> None:
+            closed.append(node)
+            if len(closed) == 1:
+                raise RuntimeError("close failed")
+
+        with (
+            patch.object(config, "LAVALINK_CONNECT_RETRY_DELAY", 0.0),
+            patch.object(mafic.Node, "connect", connect),
+            patch.object(mafic.Node, "close", close),
+        ):
+            try:
+                manager.start_lazy_connect()
+                retry = manager._lazy_connect_task
+                if retry is None:
+                    self.fail("Automatic retry was not started")
+                await asyncio.wait_for(connected.wait(), 2)
+                await asyncio.wait_for(retry, 2)
+                self.assertEqual(len(created), 2)
+                self.assertIsNot(created[0], created[1])
+                self.assertNotIn(created[0], manager.pool.managed_nodes)
+                self.assertFalse(manager.pool.failed_nodes)
+                self.assertIs(
+                    manager.pool.label_to_node[config.LAVALINK_NODE_LABEL], created[1]
+                )
+            finally:
+                await manager.cleanup()
+
+    async def test_cancelled_node_removal_retries_without_reusing_old_node(
+        self,
+    ) -> None:
+        bot = MagicMock(spec=commands.Bot)
+        manager = ConnectionManager(bot)
+        old = MagicMock(
+            spec=mafic.Node,
+            label=config.LAVALINK_NODE_LABEL,
+            available=False,
+            client=bot,
+            players=(),
+        )
+        old.connect = AsyncMock()
+        old.quiesce = AsyncMock(side_effect=asyncio.CancelledError())
+        old.close = AsyncMock()
+        await manager.pool.add_node(old)
+        connected = asyncio.Event()
+        replacements: list[mafic.Node[discord.Client]] = []
+
+        async def connect(node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            self.assertGreaterEqual(old.close.await_count, 1)
+            self.assertNotIn(old, manager.pool.managed_nodes)
+            node._available = True
+            replacements.append(node)
+            connected.set()
+
+        try:
+            with (
+                patch.object(config, "LAVALINK_CONNECT_RETRY_DELAY", 0.0),
+                patch.object(mafic.Node, "connect", connect),
+            ):
+                with self.assertRaises(asyncio.CancelledError):
+                    await manager.handle_node_unavailable(old)
+                await asyncio.wait_for(connected.wait(), 2)
+                retry = manager._lazy_connect_task
+                if retry is None:
+                    self.fail("Automatic retry was not started")
+                await asyncio.wait_for(retry, 2)
+            self.assertEqual(len(replacements), 1)
+            self.assertIsNot(replacements[0], old)
+            self.assertIs(manager.pool.label_to_node[old.label], replacements[0])
+        finally:
+            await manager.cleanup()
+
+    async def test_failed_node_cleanup_finishes_before_automatic_replacement(
+        self,
+    ) -> None:
+        bot = MagicMock(spec=commands.Bot)
+        manager = ConnectionManager(bot)
+        old = MagicMock(
+            spec=mafic.Node,
+            label=config.LAVALINK_NODE_LABEL,
+            available=False,
+            client=bot,
+            players=(),
+        )
+        old.connect = AsyncMock()
+        old.quiesce = AsyncMock(side_effect=[RuntimeError("quiesce failed"), None])
+        closing, release, connected = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        close_attempts = 0
+        replacements: list[mafic.Node[discord.Client]] = []
+
+        async def close_old() -> None:
+            nonlocal close_attempts
+            close_attempts += 1
+            if close_attempts <= 2:
+                raise RuntimeError("close failed")
+            closing.set()
+            await release.wait()
+
+        async def connect(node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            node._available = True
+            replacements.append(node)
+            connected.set()
+
+        old.close = AsyncMock(side_effect=close_old)
+        await manager.pool.add_node(old)
+        cleanup_started = asyncio.create_task(closing.wait())
+        replacement_started = asyncio.create_task(connected.wait())
+        handling: asyncio.Task[set[int]] | None = None
+        try:
+            with (
+                patch.object(config, "LAVALINK_CONNECT_RETRY_DELAY", 0.0),
+                patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 5.0),
+                patch.object(mafic.Node, "connect", connect),
+            ):
+                handling = asyncio.create_task(manager.handle_node_unavailable(old))
+                done, _ = await asyncio.wait(
+                    (cleanup_started, replacement_started),
+                    timeout=2,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                self.assertIn(cleanup_started, done)
+                self.assertFalse(replacement_started.done())
+                release.set()
+                await asyncio.wait_for(handling, 2)
+                await asyncio.wait_for(replacement_started, 2)
+                retry = manager._lazy_connect_task
+                if retry is None:
+                    self.fail("Automatic retry was not started")
+                await asyncio.wait_for(retry, 2)
+
+            self.assertEqual(len(replacements), 1)
+            self.assertIsNot(replacements[0], old)
+            self.assertNotIn(old, manager.pool.managed_nodes)
+            self.assertIs(manager.pool.label_to_node[old.label], replacements[0])
+        finally:
+            release.set()
+            for task in (cleanup_started, replacement_started):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(
+                cleanup_started, replacement_started, return_exceptions=True
+            )
+            if handling is not None:
+                await asyncio.gather(handling, return_exceptions=True)
+            await manager.cleanup()
+
+    async def test_pending_node_cleanup_delays_automatic_replacement(self) -> None:
+        bot = MagicMock(spec=commands.Bot)
+        manager = ConnectionManager(bot)
+        old = MagicMock(
+            spec=mafic.Node,
+            label=config.LAVALINK_NODE_LABEL,
+            available=False,
+            client=bot,
+            players=(),
+        )
+        old.connect = AsyncMock()
+        old.close = AsyncMock()
+        started, release, attempted, connected = (
+            asyncio.Event(),
+            asyncio.Event(),
+            asyncio.Event(),
+            asyncio.Event(),
+        )
+
+        async def quiesce() -> None:
+            started.set()
+            await release.wait()
+
+        async def connect(node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            node._available = True
+            connected.set()
+
+        initialize = manager.initialize
+
+        async def observe_retry() -> None:
+            try:
+                await initialize()
+            finally:
+                attempted.set()
+
+        old.quiesce = AsyncMock(side_effect=quiesce)
+        await manager.pool.add_node(old)
+        try:
+            with (
+                patch.object(config, "LAVALINK_CONNECT_RETRY_DELAY", 0.01),
+                patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
+                patch.object(config, "LAVALINK_CLEANUP_GRACE", 0.05),
+                patch.object(mafic.Node, "connect", connect),
+                patch.object(manager, "initialize", side_effect=observe_retry),
+            ):
+                handling = asyncio.create_task(manager.handle_node_unavailable(old))
+                await asyncio.wait_for(started.wait(), 2)
+                await asyncio.wait_for(handling, 2)
+                await asyncio.wait_for(attempted.wait(), 2)
+                self.assertIn(old, manager.pool.managed_nodes)
+                self.assertFalse(connected.is_set())
+                release.set()
+                await asyncio.wait_for(connected.wait(), 2)
+                retry = manager._lazy_connect_task
+                if retry is None:
+                    self.fail("Automatic retry was not started")
+                await asyncio.wait_for(retry, 2)
+                self.assertNotIn(old, manager.pool.managed_nodes)
+        finally:
+            release.set()
+            await manager.cleanup()
+
     async def test_music_cog_can_be_loaded_again_after_close(self) -> None:
         bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
         volumes = MagicMock(spec=VolumeStore)

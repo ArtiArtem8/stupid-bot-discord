@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Literal, override
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import discord
 import mafic
 from discord.ext import commands
@@ -176,11 +177,13 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
             self.fail("Expected a usable voice player")
         return player
 
-    async def _add_replacement_node(self) -> mafic.Node[discord.Client]:
+    async def _add_replacement_node(
+        self, *, label: str = "recovery"
+    ) -> mafic.Node[discord.Client]:
         node = mafic.Node[discord.Client](
             host="localhost",
             port=2333,
-            label="recovery",
+            label=label,
             password=self.id(),
             client=self.bot,
         )
@@ -468,6 +471,213 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertIs(self.components.state.get_session(1), session)
         self.assertIs(self.node.get_player(1), restored)
 
+    async def test_failed_transfer_to_ready_node_restores_session(self) -> None:
+        current = self.original.current_entry
+        queued = self.original.queue_snapshot()
+        source = self.node
+        target = await self._add_replacement_node(label="ready")
+        await self.components.voice_lifecycle.on_node_ready(target)
+
+        source._available = False
+        with patch.object(self.original, "transfer_to", side_effect=RuntimeError):
+            await asyncio.wait_for(
+                self.components.voice_lifecycle.on_node_unavailable(source), 5
+            )
+
+        healing = self.components.voice_lifecycle._healing_tasks.get(1)
+        if healing is None:
+            self.fail("Failed transfer did not start recovery")
+        await asyncio.wait_for(asyncio.shield(healing), 10)
+
+        restored = self._current_player()
+        self.assertIsNot(restored, self.original)
+        self.assertIs(restored.assigned_node, target)
+        self.assertEqual(restored.current_entry, current)
+        self.assertEqual(restored.queue_snapshot(), queued)
+
+    async def test_successful_transfer_keeps_the_original_player(self) -> None:
+        current = self.original.current_entry
+        queued = self.original.queue_snapshot()
+        source = self.node
+        target = await self._add_replacement_node(label="ready")
+
+        async def transfer(_target: mafic.Node[discord.Client]) -> None:
+            source.discard_player(self.original)
+            target.add_player(1, self.original)
+            self.original._node = target
+
+        source._available = False
+        with patch.object(self.original, "transfer_to", side_effect=transfer):
+            await asyncio.wait_for(
+                self.components.voice_lifecycle.on_node_unavailable(source), 5
+            )
+
+        self.assertIs(self.guild.voice_client, self.original)
+        self.assertIs(self.original.assigned_node, target)
+        self.assertEqual(self.original.current_entry, current)
+        self.assertEqual(self.original.queue_snapshot(), queued)
+        self.assertFalse(self.components.voice_lifecycle.is_healing(1))
+
+    async def test_leave_during_failed_transfer_snapshot_prevents_restore(self) -> None:
+        source = self.node
+        await self._add_replacement_node(label="ready")
+        started = asyncio.Event()
+
+        async def volume(*, guild_id: int) -> int:
+            self.assertEqual(guild_id, 1)
+            started.set()
+            await asyncio.Event().wait()
+            return 37
+
+        source._available = False
+        with (
+            patch.object(self.original, "transfer_to", side_effect=RuntimeError),
+            patch.object(self.volumes, "get_volume", side_effect=volume),
+        ):
+            unavailable = asyncio.create_task(
+                self.components.voice_lifecycle.on_node_unavailable(source)
+            )
+            await asyncio.wait_for(started.wait(), 5)
+            result = await asyncio.wait_for(
+                self.components.service.leave(self.guild), 5
+            )
+            await asyncio.wait_for(unavailable, 5)
+
+        self.assertTrue(result.is_success)
+        self.assertIsNone(self.guild.voice_client)
+        self.assertFalse(self.components.voice_lifecycle.is_healing(1))
+        self.assertIsNone(self.components.state.get_session(1))
+
+    async def test_terminal_node_failure_finishes_waiting_recovery(self) -> None:
+        connecting, release = asyncio.Event(), asyncio.Event()
+        old = self.node
+        old._available = False
+
+        async def connect(_node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            connecting.set()
+            await release.wait()
+            raise mafic.HTTPUnauthorized("invalid credentials")
+
+        try:
+            with (
+                patch.object(config, "LAVALINK_CONNECT_RETRY_DELAY", 0.0),
+                patch.object(mafic.Node, "connect", connect),
+            ):
+                await asyncio.wait_for(
+                    self.components.voice_lifecycle.on_node_unavailable(old), 5
+                )
+                await asyncio.wait_for(connecting.wait(), 2)
+                healing = self.components.voice_lifecycle._healing_tasks[1]
+                finished = asyncio.Event()
+                healing.add_done_callback(lambda _task: finished.set())
+                release.set()
+                await asyncio.wait_for(finished.wait(), 2)
+                self.assertFalse(self.components.voice_lifecycle.is_healing(1))
+                self.assertFalse(self.components.connection.is_recovering(1))
+        finally:
+            release.set()
+            await self.components.service.leave(self.guild)
+
+    async def test_transient_node_failure_waits_and_recovers_automatically(
+        self,
+    ) -> None:
+        current = self.original.current_entry
+        queued = self.original.queue_snapshot()
+        connecting, release = asyncio.Event(), asyncio.Event()
+        attempts = 0
+        old = self.node
+        old._available = False
+
+        async def connect(node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise aiohttp.ClientConnectionError("offline")
+            connecting.set()
+            await release.wait()
+            node._version = 4
+            node._available = True
+            self.node = node
+            await self.components.voice_lifecycle.on_node_ready(node)
+
+        with (
+            patch.object(config, "LAVALINK_CONNECT_RETRY_DELAY", 0.0),
+            patch.object(mafic.Node, "connect", connect),
+        ):
+            try:
+                await asyncio.wait_for(
+                    self.components.voice_lifecycle.on_node_unavailable(old), 5
+                )
+                await asyncio.wait_for(connecting.wait(), 2)
+                healing = self.components.voice_lifecycle._healing_tasks[1]
+                self.assertFalse(healing.done())
+                release.set()
+                await asyncio.wait_for(asyncio.shield(healing), 10)
+
+                restored = self._current_player()
+                self.assertIsNot(restored, self.original)
+                self.assertEqual(restored.current_entry, current)
+                self.assertEqual(restored.queue_snapshot(), queued)
+                self.assertGreaterEqual(attempts, 2)
+            finally:
+                release.set()
+                await self.components.service.cleanup()
+
+    async def test_leave_cancels_recovery_during_transient_connection(self) -> None:
+        connecting = asyncio.Event()
+        old = self.node
+        old._available = False
+
+        async def connect(_node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            connecting.set()
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(config, "LAVALINK_CONNECT_RETRY_DELAY", 0.0),
+            patch.object(mafic.Node, "connect", connect),
+        ):
+            try:
+                await asyncio.wait_for(
+                    self.components.voice_lifecycle.on_node_unavailable(old), 5
+                )
+                await asyncio.wait_for(connecting.wait(), 2)
+                healing = self.components.voice_lifecycle._healing_tasks[1]
+                result = await asyncio.wait_for(
+                    self.components.service.leave(self.guild), 5
+                )
+                self.assertTrue(result.is_success)
+                self.assertTrue(healing.done())
+                self.assertFalse(self.components.voice_lifecycle.is_healing(1))
+            finally:
+                await self.components.service.cleanup()
+
+    async def test_shutdown_cancels_recovery_during_transient_connection(self) -> None:
+        connecting = asyncio.Event()
+        old = self.node
+        old._available = False
+
+        async def connect(_node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            connecting.set()
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(config, "LAVALINK_CONNECT_RETRY_DELAY", 0.0),
+            patch.object(mafic.Node, "connect", connect),
+        ):
+            await asyncio.wait_for(
+                self.components.voice_lifecycle.on_node_unavailable(old), 5
+            )
+            await asyncio.wait_for(connecting.wait(), 2)
+            healing = self.components.voice_lifecycle._healing_tasks[1]
+            retry = self.components.connection._lazy_connect_task
+            await asyncio.wait_for(self.components.service.cleanup(), 5)
+
+        self.assertTrue(healing.done())
+        self.assertIsNotNone(retry)
+        if retry is not None:
+            self.assertTrue(retry.done())
+        self.assertIsNone(mafic.pool_for(self.bot))
+
     async def test_leave_during_node_outage_cancels_recovery(self) -> None:
         self.node._available = False
         with patch.object(self.components.connection, "start_lazy_connect"):
@@ -533,6 +743,78 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
         replacement = await self._add_replacement_node()
         await self.components.voice_lifecycle.on_node_ready(replacement)
         await asyncio.wait_for(asyncio.shield(recovery_task), 10)
+
+        restored = self._current_player()
+        self.assertIsNot(restored, self.original)
+        self.assertEqual(restored.current_entry, current)
+        self.assertEqual(restored.queue_snapshot(), queued)
+
+    async def test_cancelled_quiesce_recovers_without_manual_replacement(self) -> None:
+        await self._assert_cleanup_failure_recovers("cancel")
+
+    async def test_failed_quiesce_recovers_without_manual_replacement(self) -> None:
+        await self._assert_cleanup_failure_recovers("quiesce")
+
+    async def test_failed_remove_recovers_without_manual_replacement(self) -> None:
+        await self._assert_cleanup_failure_recovers("remove")
+
+    async def _assert_cleanup_failure_recovers(
+        self, failure: Literal["cancel", "quiesce", "remove"]
+    ) -> None:
+        current = self.original.current_entry
+        queued = self.original.queue_snapshot()
+        old = self.node
+        old._available = False
+        connected = asyncio.Event()
+        quiesce = mafic.Node[discord.Client].quiesce
+        remove_node = mafic.NodePool[discord.Client].remove_node
+        failed_remove = False
+
+        async def fail_quiesce(node: mafic.Node[discord.Client]) -> None:
+            if node is old and failure == "cancel":
+                raise asyncio.CancelledError
+            if node is old and failure == "quiesce":
+                raise RuntimeError("quiesce failed")
+            await quiesce(node)
+
+        async def fail_remove(
+            pool: mafic.NodePool[discord.Client],
+            node: mafic.Node[discord.Client] | str,
+            *,
+            transfer_players: bool = True,
+        ) -> None:
+            nonlocal failed_remove
+            if node is old and failure == "remove" and not failed_remove:
+                failed_remove = True
+                raise RuntimeError("remove failed")
+            await remove_node(pool, node, transfer_players=transfer_players)
+
+        async def connect(node: mafic.Node[discord.Client], **_kwargs: object) -> None:
+            self.assertNotIn(old, self.components.connection.pool.managed_nodes)
+            node._version = 4
+            node._available = True
+            self.node = node
+            connected.set()
+            await self.components.voice_lifecycle.on_node_ready(node)
+
+        with (
+            patch.object(config, "LAVALINK_CONNECT_RETRY_DELAY", 0.0),
+            patch.object(mafic.Node, "quiesce", fail_quiesce),
+            patch.object(mafic.NodePool, "remove_node", fail_remove),
+            patch.object(mafic.Node, "connect", connect),
+        ):
+            if failure == "cancel":
+                with self.assertRaises(asyncio.CancelledError):
+                    await asyncio.wait_for(
+                        self.components.voice_lifecycle.on_node_unavailable(old), 5
+                    )
+            else:
+                await asyncio.wait_for(
+                    self.components.voice_lifecycle.on_node_unavailable(old), 5
+                )
+            healing = self.components.voice_lifecycle._healing_tasks[1]
+            await asyncio.wait_for(connected.wait(), 2)
+            await asyncio.wait_for(asyncio.shield(healing), 10)
 
         restored = self._current_player()
         self.assertIsNot(restored, self.original)
