@@ -409,8 +409,10 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
         self.item.data = {"name": "leave", "type": 1, "options": []}
         self.item.guild.voice_client = None
         self.get_player.return_value = None
-        self.service.voice_lifecycle.is_healing.return_value = True
-        self.service.voice_lifecycle.recovery_channel.return_value = self.channel
+        self.service.voice_lifecycle.is_healing = MagicMock(return_value=True)
+        self.service.voice_lifecycle.recovery_channel = MagicMock(
+            return_value=self.channel
+        )
 
         await self.bot.tree._call(self.item)
 
@@ -425,8 +427,10 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
         self.item.data = {"name": "leave", "type": 1, "options": []}
         self.item.guild.voice_client = None
         self.get_player.return_value = None
-        self.service.voice_lifecycle.is_healing.return_value = True
-        self.service.voice_lifecycle.recovery_channel.return_value = self.channel
+        self.service.voice_lifecycle.is_healing = MagicMock(return_value=True)
+        self.service.voice_lifecycle.recovery_channel = MagicMock(
+            return_value=self.channel
+        )
 
         await self.bot.tree._call(self.item)
 

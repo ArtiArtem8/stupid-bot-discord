@@ -124,6 +124,8 @@ class TestPoolLifecycle(unittest.IsolatedAsyncioTestCase):
                 self.assertIs(mafic.pool_for(bot), manager.pool)
                 pool_close = connection_module._pool_close_tasks[manager.pool]
                 self.assertIn(pool_close, connection_module._pending_node_tasks)
+                reported = asyncio.Event()
+                pool_close.add_done_callback(lambda _task: reported.set())
                 self.assertFalse(await manager.cleanup())
                 self.assertIs(
                     connection_module._pool_close_tasks[manager.pool], pool_close
@@ -132,6 +134,7 @@ class TestPoolLifecycle(unittest.IsolatedAsyncioTestCase):
                     ConnectionManager(bot)
                 release.set()
                 self.assertTrue(await asyncio.wait_for(manager.cleanup(), 2))
+                await asyncio.wait_for(reported.wait(), 2)
                 self.assertNotIn(manager.pool, connection_module._pool_close_tasks)
                 self.assertNotIn(pool_close, connection_module._pending_node_tasks)
                 self.assertIsNone(mafic.pool_for(bot))
