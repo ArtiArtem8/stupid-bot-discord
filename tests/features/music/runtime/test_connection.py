@@ -1745,7 +1745,7 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         mock_pool.label_to_node = {"ready": target}
         self.manager.pool = mock_pool
         player.transfer_to = AsyncMock(side_effect=TimeoutError)
-        cast(Any, player).disconnect = AsyncMock()
+        player.disconnect = AsyncMock()
         self.manager._cleanup_voice_client_locally = AsyncMock()
 
         invalidated = await self.manager.handle_node_unavailable(old_node)
@@ -1798,7 +1798,9 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         replaced.disconnect = replaced_disconnect
         transferred.disconnect = transferred_disconnect
 
-        await self.manager._drain_node_players(cast(Any, (replaced, transferred)), node)
+        await self.manager._drain_node_players(
+            (_as_music_player(replaced), _as_music_player(transferred)), node
+        )
 
         replaced_disconnect.assert_not_awaited()
         transferred_disconnect.assert_not_awaited()
@@ -1813,12 +1815,12 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
             await release.wait()
 
         task = asyncio.create_task(pending_teardown())
-        cast(Any, player)._disconnect_task = task
+        player._disconnect_task = task
         player_disconnect = AsyncMock()
         player.disconnect = player_disconnect
 
         draining = asyncio.create_task(
-            self.manager._drain_node_players(cast(Any, (player,)), node)
+            self.manager._drain_node_players((_as_music_player(player),), node)
         )
         try:
             await asyncio.wait_for(started.wait(), 1.0)
@@ -1855,7 +1857,6 @@ class TestConnectionManager(unittest.IsolatedAsyncioTestCase):
         player = _FakeMusicPlayer(MagicMock(id=1), node)
         player.guild.voice_client = player
         node.players = [player]
-        cast(Any, player)._disconnect_task = None
         started, release = asyncio.Event(), asyncio.Event()
 
         async def pending_disconnect(*, force: bool) -> None:
@@ -2138,14 +2139,15 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.bot = _DispatchBot()
         self.manager = ConnectionManager(cast(Any, self.bot))
+        ui = MagicMock()
+        ui.controller.destroy_for_guild = AsyncMock()
         self.handlers = VoiceLifecycleHandlers(
             cast(Any, self.bot),
             self.manager,
             MagicMock(),
-            MagicMock(),
+            ui,
             MagicMock(),
         )
-        cast(Any, self.handlers.ui.controller).destroy_for_guild = AsyncMock()
         self.handlers.setup()
         self.server: TestServer | None = None
         self.websocket_attempts = 0
