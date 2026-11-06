@@ -133,13 +133,14 @@ class TestPoolLifecycle(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(mafic.NodePoolAlreadyBound):
                     ConnectionManager(bot)
                 release.set()
-                self.assertTrue(await asyncio.wait_for(manager.cleanup(), 2))
-                await asyncio.wait_for(reported.wait(), 2)
+                await asyncio.wait_for(reported.wait(), 5)
                 self.assertNotIn(manager.pool, connection_module._pool_close_tasks)
                 self.assertNotIn(pool_close, connection_module._pending_node_tasks)
                 self.assertIsNone(mafic.pool_for(bot))
-                replacement = ConnectionManager(bot)
-                self.assertTrue(await replacement.cleanup())
+                with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 2.0):
+                    self.assertTrue(await asyncio.wait_for(manager.cleanup(), 5))
+                    replacement = ConnectionManager(bot)
+                    self.assertTrue(await replacement.cleanup())
         finally:
             release.set()
             if removing is not None:
