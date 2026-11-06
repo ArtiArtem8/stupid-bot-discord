@@ -67,6 +67,9 @@ listening ends. Controllers appear for tracks longer than 45 seconds, excluding
 live streams. Music requires Lavalink, with sources such as YouTube, SoundCloud
 and Yandex Music depending on its configuration and plugins. Other features
 remain available while Lavalink is unreachable.
+If Lavalink disconnects, the bot attempts to restore the current session and
+queue when it returns. Listeners in the original voice channel and server
+managers can cancel that recovery with `/leave`.
 
 Playback controls require joining the bot's voice channel. The requester can
 skip their own currently playing track from outside voice; Manage Server allows
