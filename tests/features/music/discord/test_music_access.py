@@ -403,6 +403,36 @@ class TestRegisteredMusicPermissions(unittest.IsolatedAsyncioTestCase):
         self.leave.assert_awaited_once_with(self.item.guild)
         self.assertFalse(self.item.command_failed)
 
+    async def test_listener_can_cancel_recovery_after_bot_disconnects(self) -> None:
+        self.item.user = _member(11, 20)
+        self.item.command = self.cog.leave
+        self.item.data = {"name": "leave", "type": 1, "options": []}
+        self.item.guild.voice_client = None
+        self.get_player.return_value = None
+        self.service.voice_lifecycle.is_healing.return_value = True
+        self.service.voice_lifecycle.recovery_channel.return_value = self.channel
+
+        await self.bot.tree._call(self.item)
+
+        self.leave.assert_awaited_once_with(self.item.guild)
+        self.assertFalse(self.item.command_failed)
+
+    async def test_other_channel_cannot_cancel_disconnected_session_recovery(
+        self,
+    ) -> None:
+        self.item.user = _member(11, 30)
+        self.item.command = self.cog.leave
+        self.item.data = {"name": "leave", "type": 1, "options": []}
+        self.item.guild.voice_client = None
+        self.get_player.return_value = None
+        self.service.voice_lifecycle.is_healing.return_value = True
+        self.service.voice_lifecycle.recovery_channel.return_value = self.channel
+
+        await self.bot.tree._call(self.item)
+
+        self.leave.assert_not_awaited()
+        self.assertTrue(self.item.command_failed)
+
     async def test_registered_reads_remain_available_outside_voice(self) -> None:
         no_options: list[ApplicationCommandInteractionDataOption] = []
         public_queue: list[ApplicationCommandInteractionDataOption] = [

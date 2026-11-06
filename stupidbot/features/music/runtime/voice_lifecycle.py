@@ -44,6 +44,7 @@ class VoiceLifecycleHandlers:
         self.ui = ui_orchestrator
         self.healer = healer
         self._healing_tasks: dict[int, asyncio.Task[object]] = {}
+        self._node_recovery_players: dict[int, MusicPlayer] = {}
         self._node_ready = asyncio.Event()
         self._leaving_guilds: dict[int, int] = {}
         self._recent_voice_transitions: dict[int, float] = {}
@@ -98,6 +99,7 @@ class VoiceLifecycleHandlers:
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         self._healing_tasks.clear()
+        self._node_recovery_players.clear()
         self._active_recovery_tasks.clear()
         self._voice_transition_validation_tasks.clear()
         self._transition_heal_players.clear()
@@ -200,6 +202,7 @@ class VoiceLifecycleHandlers:
                 self._recover_node_player(player, node, captured, removed)
             )
             self._healing_tasks[guild_id] = task
+            self._node_recovery_players[guild_id] = player
             self._active_recovery_tasks.add(task)
             task.add_done_callback(self._active_recovery_tasks.discard)
             task.add_done_callback(
@@ -214,6 +217,7 @@ class VoiceLifecycleHandlers:
         captured.set()
         if self._healing_tasks.get(guild_id) is task:
             self._healing_tasks.pop(guild_id, None)
+            self._node_recovery_players.pop(guild_id, None)
 
     async def _recover_node_player(
         self,
@@ -504,6 +508,11 @@ class VoiceLifecycleHandlers:
     def is_healing(self, guild_id: int) -> bool:
         """Return whether reconstructive recovery owns this guild."""
         return guild_id in self._healing_tasks
+
+    def recovery_channel(self, guild_id: int) -> discord.abc.Connectable | None:
+        """Return the disconnected session's channel while node recovery owns it."""
+        player = self._node_recovery_players.get(guild_id)
+        return player.channel if player is not None else None
 
     async def _handle_bot_voice_state_update(
         self,

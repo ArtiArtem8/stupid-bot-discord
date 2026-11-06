@@ -454,6 +454,7 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
             )
         self.assertIsNone(self.guild.voice_client)
         self.assertTrue(self.components.voice_lifecycle.is_healing(1))
+        self.assertIs(self.components.voice_lifecycle.recovery_channel(1), self.channel)
         recovery_task = self.components.voice_lifecycle._healing_tasks[1]
 
         replacement = await self._add_replacement_node()
@@ -478,6 +479,7 @@ class TestComposedSessionRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.is_success)
         self.assertTrue(recovery_task.done())
         self.assertFalse(self.components.voice_lifecycle.is_healing(1))
+        self.assertIsNone(self.components.voice_lifecycle.recovery_channel(1))
 
         replacement = await self._add_replacement_node()
         await self.components.voice_lifecycle.on_node_ready(replacement)

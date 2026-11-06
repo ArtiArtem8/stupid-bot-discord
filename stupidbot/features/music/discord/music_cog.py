@@ -143,6 +143,15 @@ class MusicCog(BaseCog):
         )
         voice_client = interaction.guild.voice_client if interaction.guild else None
         channel = voice_client.channel if voice_client is not None else None
+        if (
+            channel is None
+            and interaction.guild_id is not None
+            and interaction.command is not None
+            and interaction.command.name == "leave"
+        ):
+            channel = self.service.voice_lifecycle.recovery_channel(
+                interaction.guild_id
+            )
         await require_music_access(
             interaction,
             channel,
