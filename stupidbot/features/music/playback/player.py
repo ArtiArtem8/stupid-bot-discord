@@ -132,10 +132,20 @@ class MusicPlayer(mafic.Player[discord.Client]):
         """Mark this player as no longer safe for reuse."""
         self._is_stale = True
 
-    async def seal_for_recovery(self) -> None:
+    async def seal_for_recovery(
+        self, *, unavailable_node: mafic.Node[discord.Client] | None = None
+    ) -> bool:
         """Finish an accepted transition, then freeze the snapshot source."""
         async with self._transition_lock:
+            if unavailable_node is not None and (
+                self.assigned_node is not unavailable_node
+                or unavailable_node.available
+                or self._is_stale
+                or self.guild.voice_client is not self
+            ):
+                return False
             self._is_stale = True
+            return True
 
     def clear_queue(self) -> None:
         self.queue.clear()

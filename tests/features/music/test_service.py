@@ -85,10 +85,7 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             original_cleanup()
             guild.voice_client = None
 
-        async def update(**kwargs: object) -> dict[str, object]:
-            if kwargs.get("track") is queued.track:
-                entered.set()
-                await release.wait()
+        async def update(**_kwargs: object) -> dict[str, object]:
             return {
                 "track": None,
                 "volume": 80,
@@ -100,6 +97,18 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             guild.voice_client = replacement
             return replacement
 
+        original_skip = old.skip
+
+        async def skip(
+            *, expected: PlaybackAttempt | None = None
+        ) -> tuple[PlaybackAttempt | None, PlaybackAttempt | None]:
+            # Hold the state the skip returned with, after its remote request
+            # completed. Leave never calls skip, so it cannot hit this barrier.
+            result = await original_skip(expected=expected)
+            entered.set()
+            await release.wait()
+            return result
+
         node.update = AsyncMock(side_effect=update)
         voice_channel.connect = AsyncMock(side_effect=connect)
         track = make_track("replacement", length=60_000)
@@ -107,11 +116,14 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
             patch.object(old, "cleanup", side_effect=detach),
             patch.object(replacement, "fetch_tracks", return_value=[track]),
             patch.object(controllers, "_safe_delete_message", new=AsyncMock()),
+            patch.object(old, "skip", new=skip),
         ):
             skipping = asyncio.create_task(self.service.skip(123))
             try:
                 await asyncio.wait_for(entered.wait(), 5)
-                self.assertTrue((await self.service.leave(guild)).is_success)
+                self.assertTrue(
+                    (await asyncio.wait_for(self.service.leave(guild), 5)).is_success
+                )
                 self.assertFalse(connection.is_current_player(old))
                 self.assertFalse(skipping.done())
                 played = await self.service.play(guild, voice_channel, "new", 42, 456)
@@ -270,6 +282,10 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.bot.get_guild.return_value = player.guild
         target = MagicMock(label="ready", available=True)
         pool = MagicMock(nodes=[unavailable, target], close=AsyncMock())
+        pool.label_to_node = {
+            "unavailable": unavailable,
+            "ready": target,
+        }
         pool.close.side_effect = pool_closed.set
         with patch.object(mafic, "NodePool", return_value=pool):
             connection = ConnectionManager(self.bot)

@@ -22,7 +22,10 @@ from discord.ext import commands
 
 from stupidbot.features.music.contracts import HealerProtocol
 from stupidbot.features.music.discord.controller_delivery import UIOrchestrator
-from stupidbot.features.music.errors import EXPECTED_LAVALINK_IO_ERRORS
+from stupidbot.features.music.errors import (
+    EXPECTED_LAVALINK_IO_ERRORS,
+    NodeNotConnectedError,
+)
 from stupidbot.features.music.playback.models import (
     PLAYBACK_USER_DATA_KEY,
     PlaybackAttempt,
@@ -501,25 +504,63 @@ class SessionHealer(HealerProtocol):
 
             try:
                 snapshot = await self._seal_and_snapshot(player)
+                if snapshot is None:
+                    return False
                 await self._hard_disconnect(player)
 
                 await asyncio.sleep(2.0)
-
-                restored = await self._restore_session(snapshot)
-                if not restored:
-                    logger.warning(
-                        "Session heal did not restore playback for guild %s",
-                        guild_id,
-                    )
-                    return False
-
-                logger.info("Session healed successfully for guild %s", guild_id)
-                return True
+                return await self._restore_and_report(snapshot)
             except Exception:
                 logger.exception("Failed to heal session for %s", guild_id)
                 return False
 
-    async def _seal_and_snapshot(self, player: MusicPlayer) -> PlayerStateSnapshot:
+    @override
+    async def recover_node_loss(
+        self,
+        player: MusicPlayer,
+        node: mafic.Node[discord.Client],
+        captured: asyncio.Event,
+        removed: asyncio.Event,
+        ready: asyncio.Event,
+    ) -> bool:
+        """Keep one session owned while its failed node is replaced."""
+        guild_id = player.guild.id
+        try:
+            async with self._locks[guild_id], self.connection.recovery(guild_id):
+                snapshot = await self._seal_and_snapshot(player, unavailable_node=node)
+                captured.set()
+                if snapshot is None:
+                    return False
+                await removed.wait()
+                if not await self._wait_for_ready_node(ready):
+                    return False
+                if player.guild.voice_client is player:
+                    await self._hard_disconnect(player)
+                if player.guild.voice_client is not None:
+                    return False
+                return await self._restore_and_report(snapshot)
+        except Exception:
+            logger.exception("Failed to heal session for %s", guild_id)
+            return False
+        finally:
+            captured.set()
+
+    async def _wait_for_ready_node(self, ready: asyncio.Event) -> bool:
+        while await self.connection.wait_for_node_or_retry_end(ready):
+            try:
+                await self.connection.initialize()
+            except NodeNotConnectedError:
+                ready.clear()
+            else:
+                return True
+        return False
+
+    async def _seal_and_snapshot(
+        self,
+        player: MusicPlayer,
+        *,
+        unavailable_node: mafic.Node[discord.Client] | None = None,
+    ) -> PlayerStateSnapshot | None:
         """Read prerequisites, then freeze transitions and capture restorable state."""
         volume = await self.volume_repo.get_volume(guild_id=player.guild.id)
         voice_channel_id = _get_voice_channel_id(player.channel)
@@ -529,7 +570,8 @@ class SessionHealer(HealerProtocol):
         if not voice_channel_id:
             raise ValueError("Cannot snapshot: Player has no active voice channel")
 
-        await player.seal_for_recovery()
+        if not await player.seal_for_recovery(unavailable_node=unavailable_node):
+            return None
 
         return PlayerStateSnapshot(
             guild_id=player.guild.id,
@@ -546,6 +588,16 @@ class SessionHealer(HealerProtocol):
     async def _hard_disconnect(self, player: MusicPlayer) -> None:
         """Disconnect through ConnectionManager and clean up stale voice state."""
         await self.connection.disconnect(player.guild, force=True)
+
+    async def _restore_and_report(self, snapshot: PlayerStateSnapshot) -> bool:
+        restored = await self._restore_session(snapshot)
+        if restored:
+            logger.info("Session healed successfully for guild %s", snapshot.guild_id)
+        else:
+            logger.warning(
+                "Session heal did not restore playback for guild %s", snapshot.guild_id
+            )
+        return restored
 
     async def _restore_session(self, snapshot: PlayerStateSnapshot) -> bool:
         """Rebuild the player from the snapshot using ConnectionManager safeguards."""

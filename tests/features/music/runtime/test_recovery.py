@@ -87,6 +87,8 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
         with patch("mafic.player.monotonic", return_value=30.0):
             snapshot = await healer._seal_and_snapshot(player)
         self.assertTrue(player.is_stale)
+        if snapshot is None:
+            self.fail("Expected a snapshot")
         self.assertEqual(snapshot.position, 1000)
 
     async def test_failed_snapshot_prerequisite_does_not_seal_player(self) -> None:
@@ -136,6 +138,8 @@ class TestSessionHealer(unittest.IsolatedAsyncioTestCase):
                 player.queue.append(queued)
             snapshot = await capturing
         self.assertTrue(player.is_stale)
+        if snapshot is None:
+            self.fail("Expected a snapshot")
         self.assertEqual(snapshot.queue, (queued,))
         self.assertEqual(snapshot.current_entry, player.current_entry)
 

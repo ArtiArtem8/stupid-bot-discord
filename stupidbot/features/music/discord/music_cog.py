@@ -58,6 +58,7 @@ from stupidbot.features.music.results import (
     VoiceCheckResult,
     VoiceJoinResult,
 )
+from stupidbot.features.music.runtime.connection import prepare_music_pool
 from stupidbot.features.music.runtime.session import MusicSession
 from stupidbot.i18n.catalog import catalog
 from stupidbot.i18n.discord import error_context, guild_context, interaction_context
@@ -142,6 +143,15 @@ class MusicCog(BaseCog):
         )
         voice_client = interaction.guild.voice_client if interaction.guild else None
         channel = voice_client.channel if voice_client is not None else None
+        if (
+            channel is None
+            and interaction.guild_id is not None
+            and interaction.command is not None
+            and interaction.command.name == "leave"
+        ):
+            channel = self.service.voice_lifecycle.recovery_channel(
+                interaction.guild_id
+            )
         await require_music_access(
             interaction,
             channel,
@@ -838,4 +848,5 @@ class MusicCog(BaseCog):
 
 async def setup(bot: "StupidBot") -> None:
     """Register the music cog."""
+    await prepare_music_pool(bot)
     await bot.add_cog(MusicCog(bot, bot.volume_repository))

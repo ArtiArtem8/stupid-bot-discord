@@ -11,6 +11,10 @@ import discord
 from stupidbot.features.music.playback.models import Track
 
 if TYPE_CHECKING:
+    import asyncio
+
+    import mafic
+
     from stupidbot.features.music.playback.models import PlaybackAttempt
     from stupidbot.features.music.playback.player import MusicPlayer
 
@@ -50,6 +54,15 @@ class ControllerManagerProtocol(Protocol):
 
 class HealerProtocol(Protocol):
     async def capture_and_heal(self, guild_id: int) -> bool: ...
+
+    async def recover_node_loss(
+        self,
+        player: MusicPlayer,
+        node: mafic.Node[discord.Client],
+        captured: asyncio.Event,
+        removed: asyncio.Event,
+        ready: asyncio.Event,
+    ) -> bool: ...
 
 
 class ControllerDestroyReason(StrEnum):

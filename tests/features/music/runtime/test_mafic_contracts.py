@@ -80,14 +80,21 @@ class TestMaficComposition(unittest.IsolatedAsyncioTestCase):
         self.player = MusicPlayer(self.bot, self.channel)
         self.guild.voice_client = self.player
         self.bot.get_guild.return_value = self.guild
-        self.source = MagicMock(spec=mafic.Node, available=False, version=4)
-        self.target = MagicMock(spec=mafic.Node, available=True, version=4)
+        self.source = MagicMock(
+            spec=mafic.Node, available=False, version=4, label="source"
+        )
+        self.target = MagicMock(
+            spec=mafic.Node, available=True, version=4, label="target"
+        )
         self.player._node = self.source
         self.player.set_state(player_payload({}))
         self.source.players = [self.player]
         self.connection = ConnectionManager(self.bot)
-        self.connection.pool = MagicMock(nodes=[self.source, self.target])
-        self.connection.mark_node_unavailable = AsyncMock()
+        self.connection.pool = MagicMock(
+            nodes=[self.source, self.target],
+            label_to_node={"source": self.source},
+        )
+        self.connection._mark_node_unavailable_locked = AsyncMock()
         self.local_cleanup = AsyncMock()
         self.connection._cleanup_voice_client_locally = self.local_cleanup
 
@@ -270,7 +277,7 @@ class TestMaficComposition(unittest.IsolatedAsyncioTestCase):
 
 class TestMaficFailureCleanup(unittest.IsolatedAsyncioTestCase):
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         self.bot = MagicMock(spec=commands.Bot)
         self.bot.is_closed.return_value = False
         self.guild = MagicMock(spec=discord.Guild, id=1)
@@ -303,12 +310,10 @@ class TestMaficFailureCleanup(unittest.IsolatedAsyncioTestCase):
         self.player._node = self.source
         self.player.set_state(player_payload({}))
         self.source.add_player(1, self.player)
-        nodes: dict[str, mafic.Node[discord.Client]] = {
-            "source": self.source,
-            "target": self.target,
-        }
-        self.enterContext(patch.object(mafic.NodePool, "_nodes", nodes))
         self.connection = ConnectionManager(self.bot)
+        with patch.object(mafic.Node, "connect", new=AsyncMock()):
+            await self.connection.pool.add_node(self.source)
+            await self.connection.pool.add_node(self.target)
         self.destroy = AsyncMock()
 
         async def destroy(node: mafic.Node[discord.Client], *, guild_id: int) -> None:

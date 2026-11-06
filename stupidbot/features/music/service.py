@@ -147,6 +147,7 @@ class CoreMusicService:
         Use ``guild.voice_client`` because ``connection.get_player()`` hides stale
         players that still need to be disconnected.
         """
+        was_recovering = self.voice_lifecycle.is_healing(guild.id)
         async with self.voice_lifecycle.leaving(guild.id):
             await self.connection.cancel_recovery(guild.id)
             raw_voice_client = guild.voice_client
@@ -161,24 +162,22 @@ class CoreMusicService:
                 raw_voice_client.clear_queue()
 
             if raw_voice_client is None:
+                if not was_recovering:
+                    return MusicResult(
+                        MusicResultStatus.FAILURE,
+                        "Not connected",
+                        reason=MusicResultReason.NOT_CONNECTED,
+                    )
+            elif not await self.connection.disconnect(guild, force=True):
                 return MusicResult(
-                    MusicResultStatus.FAILURE,
-                    "Not connected",
-                    reason=MusicResultReason.NOT_CONNECTED,
-                )
-
-            disconnected = await self.connection.disconnect(guild, force=True)
-
-            if disconnected:
-                return MusicResult(
-                    MusicResultStatus.SUCCESS,
-                    "Disconnected",
-                    reason=MusicResultReason.DISCONNECTED,
+                    MusicResultStatus.ERROR,
+                    "Не удалось отключиться от голосового канала.",
+                    reason=MusicResultReason.DISCONNECT_FAILED,
                 )
             return MusicResult(
-                MusicResultStatus.ERROR,
-                "Не удалось отключиться от голосового канала.",
-                reason=MusicResultReason.DISCONNECT_FAILED,
+                MusicResultStatus.SUCCESS,
+                "Disconnected",
+                reason=MusicResultReason.DISCONNECTED,
             )
 
     async def play(
@@ -759,9 +758,10 @@ class CoreMusicService:
                 if guild.voice_client:
                     await self.leave(guild)
         finally:
-            await self.connection.cleanup()
+            pool_closed = await self.connection.cleanup()
             self._initialized = False
-        logger.info("CoreMusicService cleaned up.")
+        if pool_closed:
+            logger.info("CoreMusicService cleaned up.")
 
 
 def player_fail_result(

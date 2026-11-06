@@ -5,11 +5,13 @@ import contextlib
 import logging
 import time
 from collections.abc import AsyncGenerator, Sequence
+from functools import partial
 
 import discord
 import mafic
 from discord.ext import commands
 
+from stupidbot import settings as config
 from stupidbot.common.asyncio import cancel_and_wait
 from stupidbot.features.music.contracts import ControllerDestroyReason, HealerProtocol
 from stupidbot.features.music.discord.controller_delivery import UIOrchestrator
@@ -42,6 +44,8 @@ class VoiceLifecycleHandlers:
         self.ui = ui_orchestrator
         self.healer = healer
         self._healing_tasks: dict[int, asyncio.Task[object]] = {}
+        self._node_recovery_players: dict[int, MusicPlayer] = {}
+        self._node_ready = asyncio.Event()
         self._leaving_guilds: dict[int, int] = {}
         self._recent_voice_transitions: dict[int, float] = {}
         self._voice_transition_validation_tasks: dict[int, asyncio.Task[None]] = {}
@@ -95,6 +99,7 @@ class VoiceLifecycleHandlers:
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         self._healing_tasks.clear()
+        self._node_recovery_players.clear()
         self._active_recovery_tasks.clear()
         self._voice_transition_validation_tasks.clear()
         self._transition_heal_players.clear()
@@ -106,6 +111,7 @@ class VoiceLifecycleHandlers:
         if self._closing:
             return
         self._unavailable_node_labels.discard(node.label)
+        self._node_ready.set()
         logger.info("Lavalink node '%s' is ready", node.label)
 
     async def on_node_unavailable(self, node: mafic.Node[discord.Client]) -> None:
@@ -133,13 +139,113 @@ class VoiceLifecycleHandlers:
                 )
                 self._unavailable_node_labels.add(node.label)
 
-            invalidated_guild_ids = await self.connection.handle_node_unavailable(node)
-            invalidated_players = [
-                player for player in players if player.guild.id in invalidated_guild_ids
-            ]
-            await self._cleanup_after_node_unavailable(invalidated_players)
+            await self._recover_lost_node(node, players)
         finally:
             self._active_recovery_tasks.discard(task)
+
+    async def _recover_lost_node(
+        self, node: mafic.Node[discord.Client], players: Sequence[MusicPlayer]
+    ) -> None:
+        removed = asyncio.Event()
+        recoveries: list[tuple[asyncio.Task[object], asyncio.Event]] = []
+        if not self.connection.has_ready_node():
+            self._node_ready.clear()
+            recoveries = self._start_node_recoveries(node, players, removed)
+
+        async def capture_failed_transfers(failed: Sequence[MusicPlayer]) -> None:
+            if not failed:
+                return
+            if not self.connection.has_ready_node():
+                self._node_ready.clear()
+            started = self._start_node_recoveries(node, failed, removed)
+            await self._wait_for_node_snapshots(node, started)
+
+        try:
+            await self._wait_for_node_snapshots(node, recoveries)
+            invalidated = await self.connection.handle_node_unavailable(
+                node, before_invalidation=capture_failed_transfers
+            )
+            affected = [
+                player
+                for player in players
+                if player.guild.id in invalidated
+                or (player.is_stale and player.guild.id in self._healing_tasks)
+            ]
+            await self._cleanup_after_node_unavailable(affected)
+        finally:
+            removed.set()
+
+    async def _wait_for_node_snapshots(
+        self,
+        node: mafic.Node[discord.Client],
+        recoveries: Sequence[tuple[asyncio.Task[object], asyncio.Event]],
+    ) -> None:
+        if not recoveries:
+            return
+        try:
+            async with asyncio.timeout(config.LAVALINK_CLEANUP_TIMEOUT):
+                await asyncio.gather(*(event.wait() for _, event in recoveries))
+        except TimeoutError:
+            for recovery, event in recoveries:
+                if not event.is_set():
+                    recovery.cancel()
+            logger.warning(
+                "Timed out capturing sessions for unavailable node %s", node.label
+            )
+
+    def _start_node_recoveries(
+        self,
+        node: mafic.Node[discord.Client],
+        players: Sequence[MusicPlayer],
+        removed: asyncio.Event,
+    ) -> list[tuple[asyncio.Task[object], asyncio.Event]]:
+        started: list[tuple[asyncio.Task[object], asyncio.Event]] = []
+        for player in players:
+            guild_id = player.guild.id
+            if (
+                guild_id in self._leaving_guilds
+                or guild_id in self._healing_tasks
+                or not self.connection.is_current_player(player)
+            ):
+                continue
+            captured = asyncio.Event()
+            task = asyncio.create_task(
+                self._recover_node_player(player, node, captured, removed)
+            )
+            self._healing_tasks[guild_id] = task
+            self._node_recovery_players[guild_id] = player
+            self._active_recovery_tasks.add(task)
+            task.add_done_callback(self._active_recovery_tasks.discard)
+            task.add_done_callback(
+                partial(self._forget_node_recovery, guild_id, captured)
+            )
+            started.append((task, captured))
+        return started
+
+    def _forget_node_recovery(
+        self, guild_id: int, captured: asyncio.Event, task: asyncio.Task[object]
+    ) -> None:
+        captured.set()
+        if self._healing_tasks.get(guild_id) is task:
+            self._healing_tasks.pop(guild_id, None)
+            self._node_recovery_players.pop(guild_id, None)
+
+    async def _recover_node_player(
+        self,
+        player: MusicPlayer,
+        node: mafic.Node[discord.Client],
+        captured: asyncio.Event,
+        removed: asyncio.Event,
+    ) -> None:
+        guild_id = player.guild.id
+        try:
+            await self.healer.recover_node_loss(
+                player, node, captured, removed, self._node_ready
+            )
+        except Exception:
+            logger.exception("Node recovery task failed for guild %s", guild_id)
+        finally:
+            captured.set()
 
     async def _cleanup_after_node_unavailable(
         self,
@@ -413,6 +519,11 @@ class VoiceLifecycleHandlers:
     def is_healing(self, guild_id: int) -> bool:
         """Return whether reconstructive recovery owns this guild."""
         return guild_id in self._healing_tasks
+
+    def recovery_channel(self, guild_id: int) -> discord.abc.Connectable | None:
+        """Return the disconnected session's channel while node recovery owns it."""
+        player = self._node_recovery_players.get(guild_id)
+        return player.channel if player is not None else None
 
     async def _handle_bot_voice_state_update(
         self,
