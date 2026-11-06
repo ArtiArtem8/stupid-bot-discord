@@ -162,30 +162,22 @@ class CoreMusicService:
                 raw_voice_client.clear_queue()
 
             if raw_voice_client is None:
-                if was_recovering:
+                if not was_recovering:
                     return MusicResult(
-                        MusicResultStatus.SUCCESS,
-                        "Disconnected",
-                        reason=MusicResultReason.DISCONNECTED,
+                        MusicResultStatus.FAILURE,
+                        "Not connected",
+                        reason=MusicResultReason.NOT_CONNECTED,
                     )
+            elif not await self.connection.disconnect(guild, force=True):
                 return MusicResult(
-                    MusicResultStatus.FAILURE,
-                    "Not connected",
-                    reason=MusicResultReason.NOT_CONNECTED,
-                )
-
-            disconnected = await self.connection.disconnect(guild, force=True)
-
-            if disconnected:
-                return MusicResult(
-                    MusicResultStatus.SUCCESS,
-                    "Disconnected",
-                    reason=MusicResultReason.DISCONNECTED,
+                    MusicResultStatus.ERROR,
+                    "Не удалось отключиться от голосового канала.",
+                    reason=MusicResultReason.DISCONNECT_FAILED,
                 )
             return MusicResult(
-                MusicResultStatus.ERROR,
-                "Не удалось отключиться от голосового канала.",
-                reason=MusicResultReason.DISCONNECT_FAILED,
+                MusicResultStatus.SUCCESS,
+                "Disconnected",
+                reason=MusicResultReason.DISCONNECTED,
             )
 
     async def play(

@@ -509,17 +509,7 @@ class SessionHealer(HealerProtocol):
                 await self._hard_disconnect(player)
 
                 await asyncio.sleep(2.0)
-
-                restored = await self._restore_session(snapshot)
-                if not restored:
-                    logger.warning(
-                        "Session heal did not restore playback for guild %s",
-                        guild_id,
-                    )
-                    return False
-
-                logger.info("Session healed successfully for guild %s", guild_id)
-                return True
+                return await self._restore_and_report(snapshot)
             except Exception:
                 logger.exception("Failed to heal session for %s", guild_id)
                 return False
@@ -547,14 +537,7 @@ class SessionHealer(HealerProtocol):
                     await self._hard_disconnect(player)
                 if player.guild.voice_client is not None:
                     return False
-                restored = await self._restore_session(snapshot)
-                if restored:
-                    logger.info("Session healed successfully for guild %s", guild_id)
-                else:
-                    logger.warning(
-                        "Session heal did not restore playback for guild %s", guild_id
-                    )
-                return restored
+                return await self._restore_and_report(snapshot)
         except Exception:
             logger.exception("Failed to heal session for %s", guild_id)
             return False
@@ -604,6 +587,16 @@ class SessionHealer(HealerProtocol):
     async def _hard_disconnect(self, player: MusicPlayer) -> None:
         """Disconnect through ConnectionManager and clean up stale voice state."""
         await self.connection.disconnect(player.guild, force=True)
+
+    async def _restore_and_report(self, snapshot: PlayerStateSnapshot) -> bool:
+        restored = await self._restore_session(snapshot)
+        if restored:
+            logger.info("Session healed successfully for guild %s", snapshot.guild_id)
+        else:
+            logger.warning(
+                "Session heal did not restore playback for guild %s", snapshot.guild_id
+            )
+        return restored
 
     async def _restore_session(self, snapshot: PlayerStateSnapshot) -> bool:
         """Rebuild the player from the snapshot using ConnectionManager safeguards."""
