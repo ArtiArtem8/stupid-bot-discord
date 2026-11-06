@@ -36,10 +36,11 @@ logger = logging.getLogger(__name__)
 _pending_node_tasks: set[asyncio.Task[None]] = set()
 _closing_music_pools: WeakSet[mafic.NodePool[discord.Client]] = WeakSet()
 _pool_close_tasks: dict[mafic.NodePool[discord.Client], asyncio.Task[None]] = {}
+_pool_close_waiters: dict[asyncio.Task[None], int] = {}
 
 
 def _log_late_cleanup(label: str, cleanup: asyncio.Task[None]) -> None:
-    if cleanup.cancelled():
+    if cleanup.cancelled() or cleanup in _pool_close_waiters:
         return
     error = cleanup.exception()
     if error is not None:
@@ -70,19 +71,29 @@ async def _close_pool(pool: mafic.NodePool[discord.Client]) -> bool:
         closing = asyncio.create_task(pool.close())
         _pool_close_tasks[pool] = closing
         closing.add_done_callback(partial(_forget_pool_close, pool))
+    _pool_close_waiters[closing] = _pool_close_waiters.get(closing, 0) + 1
     try:
-        done, _ = await asyncio.wait(
-            (closing,), timeout=config.LAVALINK_CLEANUP_TIMEOUT
-        )
-    except asyncio.CancelledError:
-        _retain_cleanup(closing, "pool")
-        raise
-    if not done:
-        _retain_cleanup(closing, "pool")
-        logger.warning("Lavalink node pool is still closing; its client remains bound")
-        return False
-    await closing
-    return True
+        try:
+            done, _ = await asyncio.wait(
+                (closing,), timeout=config.LAVALINK_CLEANUP_TIMEOUT
+            )
+        except asyncio.CancelledError:
+            _retain_cleanup(closing, "pool")
+            raise
+        if not done:
+            _retain_cleanup(closing, "pool")
+            logger.warning(
+                "Lavalink node pool is still closing; its client remains bound"
+            )
+            return False
+        await closing
+        return True
+    finally:
+        remaining = _pool_close_waiters[closing] - 1
+        if remaining:
+            _pool_close_waiters[closing] = remaining
+        else:
+            del _pool_close_waiters[closing]
 
 
 def _forget_pool_close(

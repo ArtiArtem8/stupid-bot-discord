@@ -92,6 +92,97 @@ class TestPoolLifecycle(unittest.IsolatedAsyncioTestCase):
         finally:
             await manager.cleanup()
 
+    async def test_late_pool_failure_is_not_logged_when_another_caller_awaits_it(
+        self,
+    ) -> None:
+        bot = MagicMock(spec=commands.Bot)
+        manager = ConnectionManager(bot)
+        started, release, waiting, reported = (
+            asyncio.Event(),
+            asyncio.Event(),
+            asyncio.Event(),
+            asyncio.Event(),
+        )
+
+        async def fail_close() -> None:
+            started.set()
+            await release.wait()
+            raise RuntimeError("close failed")
+
+        node = MagicMock(spec=mafic.Node, label="old", available=False, client=bot)
+        node.connect = AsyncMock()
+        node.close = AsyncMock(side_effect=fail_close)
+        await manager.pool.add_node(node)
+        try:
+            with (
+                patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
+                self.assertLogs(connection_module.logger, level="WARNING") as logs,
+            ):
+                self.assertFalse(await manager.cleanup())
+                await asyncio.wait_for(started.wait(), 2)
+                closing = connection_module._pool_close_tasks[manager.pool]
+                closing.add_done_callback(lambda _task: reported.set())
+                original_wait = asyncio.wait
+
+                async def observe_wait(
+                    tasks: tuple[asyncio.Task[None], ...], *, timeout: float
+                ) -> tuple[set[asyncio.Task[None]], set[asyncio.Task[None]]]:
+                    waiting.set()
+                    return await original_wait(tasks, timeout=timeout)
+
+                with (
+                    patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 2),
+                    patch.object(asyncio, "wait", side_effect=observe_wait),
+                ):
+                    retry = asyncio.create_task(manager.cleanup())
+                    try:
+                        await asyncio.wait_for(waiting.wait(), 2)
+                        release.set()
+                        with self.assertRaisesRegex(RuntimeError, "close failed"):
+                            await asyncio.wait_for(retry, 5)
+                        await asyncio.wait_for(reported.wait(), 2)
+                    finally:
+                        release.set()
+                self.assertFalse(
+                    any("Late Lavalink cleanup failed" in line for line in logs.output)
+                )
+        finally:
+            release.set()
+            node.close = AsyncMock()
+            await manager.cleanup()
+
+    async def test_late_pool_failure_without_a_waiter_is_logged(self) -> None:
+        bot = MagicMock(spec=commands.Bot)
+        manager = ConnectionManager(bot)
+        release, reported = asyncio.Event(), asyncio.Event()
+
+        async def fail_close() -> None:
+            await release.wait()
+            raise RuntimeError("close failed")
+
+        node = MagicMock(spec=mafic.Node, label="old", available=False, client=bot)
+        node.connect = AsyncMock()
+        node.close = AsyncMock(side_effect=fail_close)
+        await manager.pool.add_node(node)
+        try:
+            with (
+                patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 0.05),
+                self.assertLogs(connection_module.logger, level="WARNING") as logs,
+            ):
+                self.assertFalse(await manager.cleanup())
+                closing = connection_module._pool_close_tasks[manager.pool]
+                closing.add_done_callback(lambda _task: reported.set())
+                release.set()
+                await asyncio.wait_for(reported.wait(), 2)
+                self.assertEqual(
+                    sum("Late Lavalink cleanup failed" in line for line in logs.output),
+                    1,
+                )
+        finally:
+            release.set()
+            node.close = AsyncMock()
+            await manager.cleanup()
+
     async def test_shutdown_with_pending_removal_keeps_pool_owned(self) -> None:
         bot = MagicMock(spec=commands.Bot)
         manager = ConnectionManager(bot)
