@@ -670,10 +670,16 @@ class ConnectionManager:
 
         ready_waiter = asyncio.create_task(ready.wait())
         try:
-            done, _ = await asyncio.wait(
-                (ready_waiter, retry), return_when=asyncio.FIRST_COMPLETED
-            )
-            return ready_waiter in done or self.has_ready_node()
+            while True:
+                done, _ = await asyncio.wait(
+                    (ready_waiter, retry), return_when=asyncio.FIRST_COMPLETED
+                )
+                if ready_waiter in done or ready.is_set() or self.has_ready_node():
+                    return True
+                current = self._lazy_connect_task
+                if current is None or current is retry:
+                    return False
+                retry = current
         finally:
             await cancel_and_wait(ready_waiter)
 

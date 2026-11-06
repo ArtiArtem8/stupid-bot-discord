@@ -2996,6 +2996,127 @@ class TestLavalinkBootstrap(unittest.IsolatedAsyncioTestCase):
                 )
                 self.pool.create_node.assert_awaited_once()
 
+    async def test_retry_wait_follows_replacement_until_ready(self) -> None:
+        first_started, second_started = asyncio.Event(), asyncio.Event()
+        release_first, release_second = asyncio.Event(), asyncio.Event()
+        ready, waiting = asyncio.Event(), asyncio.Event()
+        wait_for_ready = ready.wait
+        attempts = 0
+
+        async def check_availability() -> _AvailabilityResult:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                first_started.set()
+                await release_first.wait()
+            else:
+                second_started.set()
+                await release_second.wait()
+            return _AvailabilityResult.TERMINAL_FAILURE
+
+        async def observe_ready_wait() -> bool:
+            waiting.set()
+            return await wait_for_ready()
+
+        with (
+            patch.object(self.manager, "_check_availability", check_availability),
+            patch.object(ready, "wait", observe_ready_wait),
+        ):
+            self.manager.start_lazy_connect()
+            first = self.manager._lazy_connect_task
+            if first is None:
+                self.fail("First retry was not started")
+            first.add_done_callback(lambda _task: self.manager.start_lazy_connect())
+            waiter = asyncio.create_task(self.manager.wait_for_node_or_retry_end(ready))
+            try:
+                await asyncio.wait_for(first_started.wait(), 2)
+                await asyncio.wait_for(waiting.wait(), 2)
+                release_first.set()
+                await asyncio.wait_for(second_started.wait(), 2)
+                second = self.manager._lazy_connect_task
+                self.assertIsNot(second, first)
+                self.assertFalse(waiter.done())
+                ready.set()
+                self.assertTrue(await asyncio.wait_for(waiter, 2))
+                self.assertIsNotNone(second)
+                if second is not None:
+                    self.assertFalse(second.done())
+            finally:
+                release_first.set()
+                release_second.set()
+                waiter.cancel()
+                await asyncio.gather(waiter, return_exceptions=True)
+
+    async def test_retry_wait_accepts_ready_signalled_with_terminal_failure(
+        self,
+    ) -> None:
+        started, release, waiting = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        ready = asyncio.Event()
+        wait_for_ready = ready.wait
+
+        async def check_availability() -> _AvailabilityResult:
+            started.set()
+            await release.wait()
+            return _AvailabilityResult.TERMINAL_FAILURE
+
+        async def observe_ready_wait() -> bool:
+            waiting.set()
+            return await wait_for_ready()
+
+        with (
+            patch.object(self.manager, "_check_availability", check_availability),
+            patch.object(ready, "wait", observe_ready_wait),
+        ):
+            self.manager.start_lazy_connect()
+            retry = self.manager._lazy_connect_task
+            if retry is None:
+                self.fail("Retry was not started")
+            waiter = asyncio.create_task(self.manager.wait_for_node_or_retry_end(ready))
+            try:
+                await asyncio.wait_for(started.wait(), 2)
+                await asyncio.wait_for(waiting.wait(), 2)
+                retry.add_done_callback(lambda _task: ready.set())
+                release.set()
+                self.assertTrue(await asyncio.wait_for(waiter, 2))
+            finally:
+                release.set()
+                waiter.cancel()
+                await asyncio.gather(waiter, return_exceptions=True)
+
+    async def test_cancelled_retry_waiter_does_not_cancel_shared_retry(self) -> None:
+        started, release, waiting = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        ready = asyncio.Event()
+        wait_for_ready = ready.wait
+
+        async def check_availability() -> _AvailabilityResult:
+            started.set()
+            await release.wait()
+            return _AvailabilityResult.TERMINAL_FAILURE
+
+        async def observe_ready_wait() -> bool:
+            waiting.set()
+            return await wait_for_ready()
+
+        with (
+            patch.object(self.manager, "_check_availability", check_availability),
+            patch.object(ready, "wait", observe_ready_wait),
+        ):
+            self.manager.start_lazy_connect()
+            retry = self.manager._lazy_connect_task
+            if retry is None:
+                self.fail("Retry was not started")
+            waiter = asyncio.create_task(self.manager.wait_for_node_or_retry_end(ready))
+            try:
+                await asyncio.wait_for(started.wait(), 2)
+                await asyncio.wait_for(waiting.wait(), 2)
+                waiter.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await waiter
+                self.assertFalse(retry.done())
+            finally:
+                release.set()
+                await asyncio.wait_for(retry, 2)
+
     async def test_terminal_connect_errors_stop_bootstrap_without_retry(self) -> None:
         request_info = MagicMock(
             spec=aiohttp.RequestInfo, real_url="https://localhost:2333/v4/websocket"
