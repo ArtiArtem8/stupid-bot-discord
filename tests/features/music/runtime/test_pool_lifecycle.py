@@ -183,6 +183,41 @@ class TestPoolLifecycle(unittest.IsolatedAsyncioTestCase):
             node.close = AsyncMock()
             await manager.cleanup()
 
+    async def test_cancelled_pool_wait_keeps_owned_close_observable(self) -> None:
+        bot = MagicMock(spec=commands.Bot)
+        manager = ConnectionManager(bot)
+        started, release, reported = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+        async def wait_for_close() -> None:
+            started.set()
+            await release.wait()
+
+        node = MagicMock(spec=mafic.Node, label="old", available=False, client=bot)
+        node.connect = AsyncMock()
+        node.close = AsyncMock(side_effect=wait_for_close)
+        await manager.pool.add_node(node)
+        waiter: asyncio.Task[bool] | None = None
+        try:
+            with patch.object(config, "LAVALINK_CLEANUP_TIMEOUT", 10.0):
+                waiter = asyncio.create_task(manager.cleanup())
+                await asyncio.wait_for(started.wait(), 2)
+                waiter.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await asyncio.wait_for(waiter, 2)
+                closing = connection_module._pool_close_tasks[manager.pool]
+                self.assertIn(closing, connection_module._pending_node_tasks)
+                self.assertNotIn(closing, connection_module._pool_close_waiters)
+                closing.add_done_callback(lambda _task: reported.set())
+                release.set()
+                await asyncio.wait_for(reported.wait(), 5)
+                self.assertNotIn(closing, connection_module._pending_node_tasks)
+                self.assertIsNone(mafic.pool_for(bot))
+        finally:
+            release.set()
+            if waiter is not None:
+                await asyncio.gather(waiter, return_exceptions=True)
+            await manager.cleanup()
+
     async def test_shutdown_with_pending_removal_keeps_pool_owned(self) -> None:
         bot = MagicMock(spec=commands.Bot)
         manager = ConnectionManager(bot)
