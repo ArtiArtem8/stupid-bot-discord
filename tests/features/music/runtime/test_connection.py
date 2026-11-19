@@ -2172,6 +2172,8 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
         self,
         *,
         close_first: bool = True,
+        get_players: Callable[[web.Request], Awaitable[web.StreamResponse]]
+        | None = None,
         delete_player: Callable[[web.Request], Awaitable[web.StreamResponse]]
         | None = None,
     ) -> int:
@@ -2185,7 +2187,7 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
         app = web.Application()
         app.router.add_get("/version", version)
         app.router.add_get("/v4/websocket", self._websocket_handler)
-        app.router.add_get("/v4/sessions/s2/players", players)
+        app.router.add_get("/v4/sessions/s2/players", get_players or players)
         if delete_player is not None:
             app.router.add_delete("/v4/sessions/s2/players/{guild_id}", delete_player)
         self.server = TestServer(app)
@@ -2428,12 +2430,20 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
 
     async def test_removal_cancels_reconnect_sync_teardown(self) -> None:
         voice_started, voice_release = asyncio.Event(), asyncio.Event()
+        sync_started, sync_release = asyncio.Event(), asyncio.Event()
+        block_sync = False
 
         async def change_voice_state(**_kwargs: object) -> None:
             voice_started.set()
             await voice_release.wait()
 
-        port = await self._start_server(close_first=False)
+        async def get_players(_request: web.Request) -> web.Response:
+            if block_sync:
+                sync_started.set()
+                await sync_release.wait()
+            return web.json_response([])
+
+        port = await self._start_server(close_first=False, get_players=get_players)
         async with self._lavalink_config(port):
             await self.manager.initialize()
             node = self.manager.pool.label_to_node["MAIN"]
@@ -2443,27 +2453,28 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             ws = node._ws
             if ws is None:
                 self.fail("Node websocket is not connected")
-            await ws.close()
 
-            connect_task = None
-            for _ in range(100):
-                connect_task = node._connect_task
-                if connect_task is not None:
-                    break
-                await asyncio.sleep(0.01)
-            if connect_task is None:
-                self.fail("Node reconnect did not start")
-
-            removing = asyncio.create_task(self.manager._remove_or_close_node(node))
+            block_sync = True
+            removing: asyncio.Task[None] | None = None
             try:
-                await asyncio.wait_for(voice_started.wait(), 1.0)
-                self.assertTrue(connect_task.done())
+                await ws.close()
+                await asyncio.wait_for(sync_started.wait(), 2.0)
+                connect_task = node._connect_task
+                if connect_task is None:
+                    self.fail("Node reconnect did not start")
+                self.assertFalse(connect_task.done())
+
+                removing = asyncio.create_task(self.manager._remove_or_close_node(node))
+                await asyncio.wait_for(voice_started.wait(), 2.0)
+                self.assertTrue(connect_task.cancelled())
                 self.assertIsNone(node._connect_task)
                 self.assertFalse(node.available)
             finally:
                 voice_release.set()
+                sync_release.set()
+                if removing is not None:
+                    await asyncio.wait_for(removing, 2.0)
 
-            await asyncio.wait_for(removing, 1.0)
             self.assertNotIn("MAIN", self.manager.pool.label_to_node)
 
     async def test_removal_quiesces_node_before_player_teardown(self) -> None:
