@@ -1,9 +1,12 @@
 """Diagnostics remain available when storage or optional services are unavailable."""
 
 import asyncio
+import datetime as wall_clock
 import logging
 import unittest
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta, tzinfo
+from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -160,6 +163,57 @@ class TestHealthSnapshot(unittest.IsolatedAsyncioTestCase):
             with self.subTest(status=status):
                 self.assertTrue(replace(snapshot, analytics=status).degraded)
 
+    async def test_periodic_log_skips_missed_checks_after_suspend(self) -> None:
+        path, _ = await temporary_database(self)
+        bot = StupidBot(database_path=path, cog_loader=MagicMock(spec=CogLoader))
+        self.addAsyncCleanup(bot.close)
+        loop = asyncio.get_running_loop()
+        monotonic = loop.time
+        elapsed = 0
+        wall_start = datetime.now(UTC)
+        logged = asyncio.Event()
+        snapshot = healthy_snapshot()
+
+        class Clock(datetime):
+            @classmethod
+            @override
+            def now(cls, tz: tzinfo | None = None) -> datetime:
+                return (wall_start + timedelta(seconds=elapsed)).astimezone(tz)
+
+        def read_health() -> HealthSnapshot:
+            logged.set()
+            return snapshot
+
+        with (
+            patch.object(wall_clock, "datetime", Clock),
+            patch.object(loop, "time", new=lambda: monotonic() + elapsed),
+            patch.object(loop, "slow_callback_duration", float("inf")),
+            patch.object(bot, "wait_until_ready", new=AsyncMock()),
+            patch.object(bot, "health_snapshot", side_effect=read_health),
+            self.assertLogs("stupidbot.app.bot", level="INFO") as captured,
+        ):
+            bot.health_task.start()
+            try:
+                await asyncio.wait_for(logged.wait(), 3)
+                self.assertEqual(len(captured.records), 1)
+                logged.clear()
+
+                elapsed += 12 * 60 * 60
+                await asyncio.wait_for(logged.wait(), 3)
+                logged.clear()
+
+                elapsed += 270
+                before_next_check = asyncio.Event()
+                loop.call_later(0, before_next_check.set)
+                await before_next_check.wait()
+                self.assertEqual(len(captured.records), 2)
+
+                elapsed += 31
+                await asyncio.wait_for(logged.wait(), 3)
+                self.assertEqual(len(captured.records), 3)
+            finally:
+                await bot.close()
+
     async def test_periodic_log_reports_new_failures_without_latching_warning(
         self,
     ) -> None:
@@ -173,7 +227,7 @@ class TestHealthSnapshot(unittest.IsolatedAsyncioTestCase):
             self.assertLogs("stupidbot.app.bot", level="INFO") as captured,
         ):
             for _ in range(3):
-                await bot.health_task.coro(bot)
+                bot._log_health()
         self.assertEqual(
             [record.levelno for record in captured.records],
             [logging.INFO, logging.WARNING, logging.INFO],
@@ -221,11 +275,11 @@ class TestHealthSnapshot(unittest.IsolatedAsyncioTestCase):
                     ),
                     self.assertLogs("stupidbot.app.bot", level="INFO") as captured,
                 ):
-                    await bot.health_task.coro(bot)
+                    bot._log_health()
                     await journal.close()
                     self.assertIsNot(bot.create_voice_journal(), journal)
-                    await bot.health_task.coro(bot)
-                    await bot.health_task.coro(bot)
+                    bot._log_health()
+                    bot._log_health()
 
                 expected = logging.WARNING if failed or rejected else logging.INFO
                 self.assertEqual(

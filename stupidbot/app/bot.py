@@ -320,8 +320,14 @@ class StupidBot(commands.Bot):
             return
         logger.debug("Autosaved uptime: %.0f seconds", uptime)
 
-    @tasks.loop(minutes=5)
+    @tasks.loop(count=1)
     async def health_task(self) -> None:
+        # Schedule each delay from the latest report so missed checks never pile up.
+        while True:
+            self._log_health()
+            await asyncio.sleep(5 * 60)
+
+    def _log_health(self) -> None:
         snapshot = self.health_snapshot()
         failures = snapshot.failures
         new_failure = any(
