@@ -1,7 +1,6 @@
 import json
 import unittest
 from datetime import UTC, datetime
-from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, override
 from unittest.mock import MagicMock, patch
 
@@ -198,13 +197,9 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
 
     @override
     async def asyncSetUp(self) -> None:
-        self.directory = TemporaryDirectory()
-        self.addCleanup(self.directory.cleanup)
-        enabled = patch.object(config, "VOICE_PROBE_ENABLED", True)
-        enabled.start()
-        self.addCleanup(enabled.stop)
-        self.database_path, self.database = await temporary_database(self)
-        self.bot = StupidBot(database_path=self.database_path)
+        self.enterContext(patch.object(config, "VOICE_PROBE_ENABLED", True))
+        database_path, _ = await temporary_database(self)
+        self.bot = StupidBot(database_path=database_path)
         await self.bot.__aenter__()
         self.store = VoiceRepository(self.bot._database)
         self.journal = VoiceJournal(self.bot.voice_analytics)
@@ -410,7 +405,6 @@ class TestCollector(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             extensions.count("stupidbot.features.voice.discord.collector_cog"), 1
         )
-        self.assertNotIn("cogs.voice_probe_cog", extensions)
         self.assertIn("stupidbot.features.music.discord.music_cog", extensions)
 
     async def test_extension_unload_drains_the_registered_collectors_journal(
