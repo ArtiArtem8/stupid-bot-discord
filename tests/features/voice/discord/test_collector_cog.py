@@ -29,7 +29,9 @@ from stupidbot.features.voice.facts import (
 from stupidbot.features.voice.journal import VoiceJournal
 from stupidbot.features.voice.metrics.presence import presence
 from stupidbot.features.voice.repository import VoiceRepository
+from stupidbot.features.voice.runtime import VoiceAnalytics
 from stupidbot.features.voice.timeline import build_timeline
+from tests.async_clock import simulated_time
 from tests.features.voice.fixtures import START, at
 from tests.storage.fixtures import temporary_database
 
@@ -126,6 +128,62 @@ class TestNormalization(unittest.TestCase):
                 observed = _cached_state(guild, 123, state)
                 self.assertIs(observed.requested_to_speak, raised)
                 self.assertEqual(observed.requested_to_speak_at, timestamp)
+
+
+class TestHeartbeatSchedule(unittest.IsolatedAsyncioTestCase):
+    async def test_suspend_records_one_gap_and_resumes_at_normal_cadence(self) -> None:
+        _, database = await temporary_database(self)
+        store = VoiceRepository(database)
+        analytics = VoiceAnalytics(store)
+        self.addAsyncCleanup(analytics.close)
+        await analytics.start()
+        journal = VoiceJournal(analytics)
+        guild = MagicMock(spec=discord.Guild, id=1, unavailable=False)
+        guild._voice_states = {}
+        bot = MagicMock(spec=commands.Bot, guilds=[guild])
+        bot.is_ready.return_value = True
+        pause = 12 * 60 * 60 + 1
+        interval = config.VOICE_PROBE_HEARTBEAT_SECONDS
+
+        with (
+            simulated_time() as clock,
+            patch.object(config, "VOICE_PROBE_ENABLED", True),
+        ):
+            cog = VoiceCollectorCog(
+                bot,
+                journal=journal,
+                now=lambda: at(clock.elapsed),
+                monotonic=lambda: clock.elapsed,
+            )
+            await cog.cog_load()
+            try:
+                await clock.advance(0)
+                await clock.advance(pause)
+                await clock.advance(interval - 5)
+                await clock.advance(10)
+            finally:
+                await cog.cog_unload()
+
+        resumed = [
+            (record.observed_at, record.fact)
+            for record in (await store.history()).records
+            if record.observed_at >= at(pause)
+            and not isinstance(record.fact, VoiceLifecycle)
+        ]
+        self.assertEqual(
+            resumed,
+            [
+                (
+                    at(pause),
+                    ObservationGap(
+                        at(0), None, GapReason.CLOCK_DISCONTINUITY, known_bounds=False
+                    ),
+                ),
+                (at(pause), VoiceCheckpoint()),
+                (at(pause), VoiceSnapshot(())),
+                (at(pause + interval + 5), VoiceCheckpoint()),
+            ],
+        )
 
 
 class TestCollector(unittest.IsolatedAsyncioTestCase):

@@ -306,8 +306,13 @@ class StupidBot(commands.Bot):
         )
         self.uptime_manager.last_activity_str = activity_str
 
-    @tasks.loop(seconds=config.AUTOSAVE_UPTIME_INTERVAL)
+    @tasks.loop(count=1)
     async def autosave_task(self) -> None:
+        while True:
+            await self._autosave_once()
+            await asyncio.sleep(config.AUTOSAVE_UPTIME_INTERVAL)
+
+    async def _autosave_once(self) -> None:
         try:
             uptime = await self.save_state()
         except PoolTimeoutError:

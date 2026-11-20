@@ -1,12 +1,9 @@
 """Diagnostics remain available when storage or optional services are unavailable."""
 
 import asyncio
-import datetime as wall_clock
 import logging
 import unittest
 from dataclasses import replace
-from datetime import UTC, datetime, tzinfo
-from typing import Self, override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -20,6 +17,7 @@ from stupidbot.features.preferences.models import Preferences, PreferenceScope
 from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.features.voice.journal import JournalCounts
 from stupidbot.storage.database import DatabaseHealth
+from tests.async_clock import simulated_time
 from tests.storage.fixtures import temporary_database
 
 
@@ -167,49 +165,24 @@ class TestHealthSnapshot(unittest.IsolatedAsyncioTestCase):
         path, _ = await temporary_database(self)
         bot = StupidBot(database_path=path, cog_loader=MagicMock(spec=CogLoader))
         self.addAsyncCleanup(bot.close)
-        loop = asyncio.get_running_loop()
-        monotonic = loop.time
-        elapsed = 0
-        wall_start = datetime.now(UTC).timestamp()
-        logged = asyncio.Event()
         snapshot = healthy_snapshot()
 
-        class Clock(datetime):
-            @classmethod
-            @override
-            def now(cls, tz: tzinfo | None = None) -> Self:
-                return cls.fromtimestamp(wall_start + elapsed, tz)
-
-        def read_health() -> HealthSnapshot:
-            logged.set()
-            return snapshot
-
         with (
-            patch.object(wall_clock, "datetime", Clock),
-            patch.object(loop, "time", new=lambda: monotonic() + elapsed),
-            patch.object(loop, "slow_callback_duration", float("inf")),
+            simulated_time() as clock,
             patch.object(bot, "wait_until_ready", new=AsyncMock()),
-            patch.object(bot, "health_snapshot", side_effect=read_health),
+            patch.object(bot, "health_snapshot", return_value=snapshot),
             self.assertLogs("stupidbot.app.bot", level="INFO") as captured,
         ):
             bot.health_task.start()
             try:
-                await asyncio.wait_for(logged.wait(), 3)
+                await clock.advance(0)
                 self.assertEqual(len(captured.records), 1)
-                logged.clear()
 
-                elapsed += 12 * 60 * 60
-                await asyncio.wait_for(logged.wait(), 3)
-                logged.clear()
-
-                elapsed += 270
-                before_next_check = asyncio.Event()
-                loop.call_later(0, before_next_check.set)
-                await before_next_check.wait()
+                await clock.advance(12 * 60 * 60 + 1)
+                await clock.advance(295)
                 self.assertEqual(len(captured.records), 2)
 
-                elapsed += 31
-                await asyncio.wait_for(logged.wait(), 3)
+                await clock.advance(10)
                 self.assertEqual(len(captured.records), 3)
             finally:
                 await bot.close()
