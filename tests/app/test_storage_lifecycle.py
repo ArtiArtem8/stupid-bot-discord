@@ -81,13 +81,14 @@ class TestStorageLifecycle(unittest.IsolatedAsyncioTestCase):
     async def test_unprepared_or_incomplete_database_stops_before_loading_cogs(
         self,
     ) -> None:
-        for state in ("missing", "empty", "wrong-revision", "building"):
+        for state in ("missing", "empty", "wrong-revision", "building", "db.building"):
             with self.subTest(state=state):
                 path = self.directory / f"{state}.sqlite"
                 if state == "empty":
                     await run_in_thread(path.touch)
                 elif state != "missing":
                     await run_in_thread(partial(migrate, path))
+                if state in ("building", "wrong-revision"):
                     database = Database(open_engine(path))
                     try:
                         async with database.transaction() as connection:

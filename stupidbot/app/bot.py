@@ -55,8 +55,8 @@ class StupidBot(commands.Bot):
     """Own cogs, background tasks, uptime and the shared database.
 
     Startup requires a prepared database. Cogs stop before the final uptime save,
-    then database shutdown drains admitted transactions. Migrations and import
-    belong to maintenance, never startup. Do not use managers after close.
+    then database shutdown drains admitted transactions. Run migrations through
+    the maintenance CLI. Do not use managers after close.
     """
 
     def __init__(

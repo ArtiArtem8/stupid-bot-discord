@@ -1,4 +1,4 @@
-"""Redirect legacy prefix commands to visible slash-command suggestions."""
+"""Suggest visible slash commands when users type a prefix command."""
 
 import asyncio
 import logging

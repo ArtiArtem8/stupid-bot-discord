@@ -40,8 +40,8 @@ class TestVoiceModel(unittest.TestCase):
     ) -> None:
         state = VoiceStateSnapshot(1, 10, requested_to_speak_at=at(0))
         self.assertIs(state.requested_to_speak, True)
-        legacy = VoiceStateSnapshot(1, 10, requested_to_speak=True)
-        self.assertIsNone(legacy.requested_to_speak_at)
+        without_timestamp = VoiceStateSnapshot(1, 10, requested_to_speak=True)
+        self.assertIsNone(without_timestamp.requested_to_speak_at)
         with self.assertRaises(ValueError):
             VoiceStateSnapshot(
                 1, 10, requested_to_speak=False, requested_to_speak_at=at(0)
