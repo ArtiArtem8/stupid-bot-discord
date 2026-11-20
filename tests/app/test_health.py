@@ -5,8 +5,8 @@ import datetime as wall_clock
 import logging
 import unittest
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta, tzinfo
-from typing import override
+from datetime import UTC, datetime, tzinfo
+from typing import Self, override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -170,15 +170,15 @@ class TestHealthSnapshot(unittest.IsolatedAsyncioTestCase):
         loop = asyncio.get_running_loop()
         monotonic = loop.time
         elapsed = 0
-        wall_start = datetime.now(UTC)
+        wall_start = datetime.now(UTC).timestamp()
         logged = asyncio.Event()
         snapshot = healthy_snapshot()
 
         class Clock(datetime):
             @classmethod
             @override
-            def now(cls, tz: tzinfo | None = None) -> datetime:
-                return (wall_start + timedelta(seconds=elapsed)).astimezone(tz)
+            def now(cls, tz: tzinfo | None = None) -> Self:
+                return cls.fromtimestamp(wall_start + elapsed, tz)
 
         def read_health() -> HealthSnapshot:
             logged.set()
