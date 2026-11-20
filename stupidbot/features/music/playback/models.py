@@ -18,9 +18,6 @@ type Track = mafic.Track
 type Playlist = mafic.Playlist
 
 
-type SearchResult = list[Track] | Playlist | None
-
-
 type QueuePlacement = Literal["end", "next"]
 
 
