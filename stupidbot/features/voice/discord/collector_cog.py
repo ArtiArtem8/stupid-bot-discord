@@ -224,9 +224,12 @@ class VoiceCollectorCog(commands.Cog):
         if self._running:
             self._record(VoiceLifecycle(stopped=True), guild.id)
 
-    @tasks.loop(seconds=config.VOICE_PROBE_HEARTBEAT_SECONDS)
+    @tasks.loop(count=1)
     async def _heartbeat(self) -> None:
-        self._heartbeat_once()
+        # A checkpoint describes the current observation, with no backlog to replay.
+        while True:
+            self._heartbeat_once()
+            await asyncio.sleep(config.VOICE_PROBE_HEARTBEAT_SECONDS)
 
     def _heartbeat_once(self) -> None:
         moment, monotonic = self._now(), self._monotonic()

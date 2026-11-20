@@ -21,8 +21,6 @@ uv run --locked python -m stupidbot.storage --database "$localDb" migrate
 uv run --locked python -m stupidbot.storage --database "$localDb" check
 ```
 
-For offline JSON imports and one-time language seeding, see [LEGACY.md](../../LEGACY.md).
-
 ## Backup, restore and upgrades
 
 Run these commands from the repository root. They work in PowerShell and a POSIX

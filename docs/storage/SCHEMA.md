@@ -12,8 +12,8 @@ Historical labels and constrained scope copies are deliberate denormalization.
 | `guild_members` | `guild_id, user_id` | Identity/context | Retained after leave; not proof of current membership |
 | `channels` | `channel_id` | Identity | Retained; guild may be unknown/DM NULL |
 | `roles` | `role_id` | Identity | Retained scoped identity; deleted_us unknown unless observed |
-| `storage_state` | `singleton` | Publication state | One row; BUILDING becomes COMPLETE only after import verification |
-| `migration_sources` | `source_name` | Provenance | Immutable hashes/counts/formats for the imported snapshot |
+| `storage_state` | `singleton` | Database readiness | Startup requires the singleton row to be COMPLETE |
+| `migration_sources` | `source_name` | Source provenance | Immutable hashes, counts and formats |
 | `user_preferences` | `subject_id` | Personal settings | Nullable language/timezone overrides; revision fences concurrent editors |
 | `guild_preferences` | `subject_id` | Server settings | Independent public-message overrides; revision fences concurrent editors |
 | `preference_reminders` | `user_id` | Optional onboarding | Durable eligible uses, prompt count, last reservation time, dismissal and one-use token; independent of settings revision |

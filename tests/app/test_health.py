@@ -17,6 +17,7 @@ from stupidbot.features.preferences.models import Preferences, PreferenceScope
 from stupidbot.features.preferences.repository import PreferencesRepository
 from stupidbot.features.voice.journal import JournalCounts
 from stupidbot.storage.database import DatabaseHealth
+from tests.async_clock import simulated_time
 from tests.storage.fixtures import temporary_database
 
 
@@ -160,6 +161,32 @@ class TestHealthSnapshot(unittest.IsolatedAsyncioTestCase):
             with self.subTest(status=status):
                 self.assertTrue(replace(snapshot, analytics=status).degraded)
 
+    async def test_periodic_log_skips_missed_checks_after_suspend(self) -> None:
+        path, _ = await temporary_database(self)
+        bot = StupidBot(database_path=path, cog_loader=MagicMock(spec=CogLoader))
+        self.addAsyncCleanup(bot.close)
+        snapshot = healthy_snapshot()
+
+        with (
+            simulated_time() as clock,
+            patch.object(bot, "wait_until_ready", new=AsyncMock()),
+            patch.object(bot, "health_snapshot", return_value=snapshot),
+            self.assertLogs("stupidbot.app.bot", level="INFO") as captured,
+        ):
+            bot.health_task.start()
+            try:
+                await clock.advance(0)
+                self.assertEqual(len(captured.records), 1)
+
+                await clock.advance(12 * 60 * 60 + 1)
+                await clock.advance(295)
+                self.assertEqual(len(captured.records), 2)
+
+                await clock.advance(10)
+                self.assertEqual(len(captured.records), 3)
+            finally:
+                await bot.close()
+
     async def test_periodic_log_reports_new_failures_without_latching_warning(
         self,
     ) -> None:
@@ -173,7 +200,7 @@ class TestHealthSnapshot(unittest.IsolatedAsyncioTestCase):
             self.assertLogs("stupidbot.app.bot", level="INFO") as captured,
         ):
             for _ in range(3):
-                await bot.health_task.coro(bot)
+                bot._log_health()
         self.assertEqual(
             [record.levelno for record in captured.records],
             [logging.INFO, logging.WARNING, logging.INFO],
@@ -221,11 +248,11 @@ class TestHealthSnapshot(unittest.IsolatedAsyncioTestCase):
                     ),
                     self.assertLogs("stupidbot.app.bot", level="INFO") as captured,
                 ):
-                    await bot.health_task.coro(bot)
+                    bot._log_health()
                     await journal.close()
                     self.assertIsNot(bot.create_voice_journal(), journal)
-                    await bot.health_task.coro(bot)
-                    await bot.health_task.coro(bot)
+                    bot._log_health()
+                    bot._log_health()
 
                 expected = logging.WARNING if failed or rejected else logging.INFO
                 self.assertEqual(
