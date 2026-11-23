@@ -15,6 +15,7 @@ from stupidbot.discord_ui.feedback import FeedbackUI
 from stupidbot.features.birthdays import birthday_cog as birthday_cog_module
 from stupidbot.features.birthdays import delivery as birthday_module
 from stupidbot.features.birthdays.birthday_cog import BirthdayCog
+from stupidbot.features.birthdays.dates import format_storage_date
 from stupidbot.features.birthdays.local_time import member_local_times
 from stupidbot.features.birthdays.models import (
     BirthdayDelivery,
@@ -118,7 +119,7 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
             self.member.roles.remove(role)
 
         async def record(claim: BirthdayDelivery, _message_id: int) -> None:
-            self.user.add_congratulation(claim.today)
+            self.user.was_congrats.append(format_storage_date(claim.today))
 
         self.member.add_roles.side_effect = add
         self.member.remove_roles.side_effect = remove
@@ -181,7 +182,7 @@ class TestBirthdayReconciliation(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         today = date(2027, 2, 28)
-        self.user.add_congratulation(today)
+        self.user.was_congrats.append(format_storage_date(today))
         await self.cog.delivery.process_guild(42, _at_noon(today))
         self.member.add_roles.assert_awaited_once()
         self.channel.send.assert_not_awaited()

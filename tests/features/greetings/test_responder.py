@@ -16,22 +16,24 @@ class TestGreetingPrefix(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         bot = MagicMock()
-        bot.get_guild.return_value.preferred_locale = discord.Locale.american_english
+        bot.get_guild.return_value.preferred_locale = discord.Locale.korean
         cog = MessageEventsCog(bot, MagicMock())
-        message = MagicMock(content="доброе утро")
-        message.channel.send = AsyncMock()
         for answer, expected in (
-            (MORNING_ANSWERS[3], "Good morning!"),
+            (
+                MORNING_ANSWERS[3],
+                "좋은 아침이에요! 기분 좋고 활기찬 하루 보내시고, "
+                "계획한 일도 모두 잘 풀리길 바라요.",
+            ),
             (MORNING_ANSWERS[0], MORNING_ANSWERS[0]),
         ):
             with (
                 self.subTest(answer=answer),
                 patch.object(secrets, "choice", return_value=answer),
             ):
+                message = MagicMock(content="доброе утро")
+                message.channel.send = AsyncMock()
                 await cog.greetings.quest_process_message(message)
-                self.assertTrue(
-                    message.channel.send.call_args.args[0].startswith(expected)
-                )
+                message.channel.send.assert_awaited_once_with(expected)
 
     async def test_string_and_sequence_ignore_only_complete_prefixes(self) -> None:
         for prefixes in ("s!", ["s!", "bot!"]):

@@ -987,18 +987,12 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(outcome.started_attempt)
         self.assertIsNone(player.current_attempt)
 
-    async def test_force_skip_ignores_repeat_track_mode(self) -> None:
-        await self._assert_skip_mode(RepeatMode.TRACK)
-
     async def test_advance_with_empty_queue_stops_player(self) -> None:
         player = _make_player(current=make_entry("current"))
         with patch.object(mafic.Player, "stop", new=AsyncMock()) as stop_mock:
             _, started = await player.skip()
         self.assertIsNone(started)
         stop_mock.assert_awaited_once()
-
-    async def test_skip_starts_next_track(self) -> None:
-        await self._assert_skip_mode(RepeatMode.OFF)
 
     async def test_fast_finish_advances_before_delayed_replaced_event(self) -> None:
         first = make_entry("first", entry_id=1)
@@ -1132,7 +1126,7 @@ class TestMusicPlayer(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(_require_attempt(started).entry.track.identifier, "second")
 
-    async def test_skip_ignores_track_and_queue_repeat_modes(self) -> None:
+    async def test_skip_advances_in_every_repeat_mode(self) -> None:
         for mode in RepeatMode:
             with self.subTest(mode=mode):
                 await self._assert_skip_mode(mode)

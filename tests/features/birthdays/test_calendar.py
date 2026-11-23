@@ -74,11 +74,9 @@ class TestBirthdayGuildConfig(unittest.TestCase):
         self,
     ) -> None:
         config = BirthdayGuildConfig(1, "Test", 999)
-        sent = BirthdayUser(2, "Sent", "06-10-2000")
-        sent.add_congratulation(date(2026, 10, 6))
         config.users = {
             3: BirthdayUser(3, "Soon", "07-10-2000"),
-            2: sent,
+            2: BirthdayUser(2, "Sent", "06-10-2000", was_congrats=["06-10-2026"]),
             1: BirthdayUser(1, "Later", "06-10-2000"),
         }
 
@@ -167,8 +165,7 @@ class TestBirthdayGuildConfig(unittest.TestCase):
 
     def test_due_excludes_other_dates_and_congratulated_users(self) -> None:
         today = date(2025, 5, 15)
-        done = BirthdayUser(3, "Done", "15-05-1990")
-        done.add_congratulation(today)
+        done = BirthdayUser(3, "Done", "15-05-1990", was_congrats=["15-05-2025"])
 
         self.assertTrue(BirthdayUser(1, "BdayBoy", "15-05-1990").is_due(today))
         self.assertFalse(BirthdayUser(2, "NotToday", "16-05-1990").is_due(today))

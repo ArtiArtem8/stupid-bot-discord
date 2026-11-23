@@ -36,10 +36,12 @@ class TestTextUtils(unittest.TestCase):
         out = truncate_text("abcdef", 4, mode="middle")
         self.assertEqual(out, "a...")
 
-    def test_truncate_text_mode_middle_balanced(self) -> None:
-        out = truncate_text("abcdefghij", 7, mode="middle")
-        self.assertEqual(len(out), 7)
-        self.assertIn("...", out)
+    def test_truncate_text_middle_keeps_both_ends(self) -> None:
+        for width, expected in ((7, "ab...ij"), (8, "abc...ij")):
+            with self.subTest(width=width):
+                self.assertEqual(
+                    truncate_text("abcdefghij", width, mode="middle"), expected
+                )
 
     def test_truncate_sequence_max_length_le_zero(self) -> None:
         self.assertEqual(truncate_sequence(["a", "b"], 0), "")

@@ -1,4 +1,4 @@
-"""Tests for administration command error ownership."""
+"""Tests for Discord administration commands and their feedback."""
 
 from __future__ import annotations
 
@@ -8,11 +8,97 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
+from stupidbot.app.bot import StupidBot
 from stupidbot.discord_ui.pagination import BasePaginator
 from stupidbot.features.access.access_cog import AdminCog
 from stupidbot.features.access.models import BlockedUser, BlockHistoryEntry
 from stupidbot.features.access.presentation import BlockedListPages, format_blocked_user
 from stupidbot.i18n.policy import Language
+from tests.storage.fixtures import temporary_database
+
+
+class TestBlockCommandDispatch(unittest.IsolatedAsyncioTestCase):
+    async def test_registered_block_and_unblock_commit_state_and_audit(self) -> None:
+        path, database = await temporary_database(self)
+        await database.close()
+        async with StupidBot(database_path=path) as bot:
+            cog = AdminCog(bot, bot.block_manager)
+            bot.tree.add_command(cog.block)
+            bot.tree.add_command(cog.unblock)
+            interaction = MagicMock(spec=discord.Interaction)
+            interaction.client = bot
+            interaction._state = bot._connection
+            interaction.type = discord.InteractionType.application_command
+            interaction.guild_id = 42
+            interaction.guild = MagicMock(spec=discord.Guild, id=42, name="Guild")
+            interaction.user = MagicMock(spec=discord.Member, id=99)
+            interaction.permissions = discord.Permissions(administrator=True)
+            interaction.namespace = discord.app_commands.Namespace(interaction, {}, [])
+
+            async def defer(**_kwargs: object) -> None:
+                interaction.response.is_done.return_value = True
+                interaction.response.type = (
+                    discord.InteractionResponseType.deferred_channel_message
+                )
+
+            for command, is_blocked, reason in (
+                (cog.block, True, "Repeated spam"),
+                (cog.unblock, False, "Appeal accepted"),
+            ):
+                with self.subTest(command=command.name):
+                    interaction.command = command
+                    interaction.command_failed = False
+                    interaction.extras = {}
+                    interaction.response = MagicMock(spec=discord.InteractionResponse)
+                    interaction.response.is_done.return_value = False
+                    interaction.response.defer = AsyncMock(side_effect=defer)
+                    interaction.edit_original_response = AsyncMock()
+                    interaction.data = {
+                        "name": command.name,
+                        "type": 1,
+                        "options": [
+                            {"name": "user", "type": 6, "value": "31"},
+                            {"name": "reason", "type": 3, "value": reason},
+                        ],
+                        "resolved": {
+                            "users": {
+                                "31": {
+                                    "id": "31",
+                                    "username": "Target",
+                                    "discriminator": "0",
+                                    "avatar": None,
+                                }
+                            },
+                            "members": {
+                                "31": {"flags": 0, "roles": [], "joined_at": None}
+                            },
+                        },
+                    }
+
+                    await bot.tree._call(interaction)
+
+                    self.assertFalse(interaction.command_failed)
+                    interaction.response.defer.assert_awaited_once_with(
+                        thinking=True, ephemeral=True
+                    )
+                    interaction.edit_original_response.assert_awaited_once()
+                    reply = interaction.edit_original_response.await_args
+                    if reply is None:
+                        self.fail("Expected a private moderation reply")
+                    embed = reply.kwargs["embed"]
+                    if not isinstance(embed, discord.Embed):
+                        self.fail("Expected an embed in the moderation reply")
+                    self.assertIn("<@31>", embed.description or "")
+                    self.assertEqual([field.value for field in embed.fields], [reason])
+                    user = await bot.block_manager.get_user(42, 31)
+                    if user is None:
+                        self.fail("Expected a committed block history for the target")
+                    self.assertEqual(user.is_blocked, is_blocked)
+                    history = user.block_history if is_blocked else user.unblock_history
+                    self.assertEqual(
+                        [(entry.admin_id, entry.reason) for entry in history],
+                        [(99, reason)],
+                    )
 
 
 class TestBlockedPages(unittest.TestCase):
