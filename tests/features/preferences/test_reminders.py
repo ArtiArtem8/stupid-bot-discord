@@ -128,3 +128,25 @@ class ReminderTests(IsolatedAsyncioTestCase):
                     10, datetime(2026, 10, 12, tzinfo=UTC) + timedelta(days=day)
                 )
             )
+
+    async def test_default_save_invalidates_an_open_reminder(self) -> None:
+        now = datetime(2026, 10, 12, tzinfo=UTC)
+        await self.repository.reserve_prompt_if_due(10, now)
+        reservation = await self.repository.reserve_prompt_if_due(10, now)
+        if reservation is None:
+            self.fail("Expected an outstanding reminder")
+        view = ReminderView(
+            self.repository, reservation, self.context, command="/customize-me"
+        )
+        self.addCleanup(view.stop)
+
+        saved = await self.repository.save(PreferenceScope.USER, 10, Preferences())
+        await view.later(self.request)
+
+        self.assertEqual(saved, Preferences())
+        self.request.edit_original_response.assert_awaited_once_with(
+            content="This reminder has already been handled.", view=None
+        )
+        self.assertIsNone(
+            await self.repository.reserve_prompt_if_due(10, now + timedelta(days=14))
+        )

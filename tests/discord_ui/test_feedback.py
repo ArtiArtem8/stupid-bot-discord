@@ -2,11 +2,13 @@
 
 import unittest
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 from discord.ui import View
 
+from stupidbot.discord_ui import feedback
 from stupidbot.discord_ui.embeds import SafeEmbed
 from stupidbot.discord_ui.feedback import FeedbackType, FeedbackUI, ReportButtonView
 
@@ -19,21 +21,43 @@ def _await_kwargs(mock: AsyncMock) -> Mapping[str, object]:
 
 
 class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
-    async def test_full_embed_keeps_complete_delete_timer(self) -> None:
-        for embed in (
-            SafeEmbed(description="x" * 4096),
-            discord.Embed(description="x" * 4096),
+    async def test_initial_response_includes_the_complete_delete_timer(self) -> None:
+        now = datetime(2026, 10, 12, 12, tzinfo=UTC)
+        expected_timer = f"-# Удалится <t:{int(now.timestamp()) + 30}:R>"
+        for case, embed in (
+            ("generated", None),
+            ("full SafeEmbed", SafeEmbed(description="x" * 4096)),
+            ("full Discord embed", discord.Embed(description="x" * 4096)),
         ):
-            with self.subTest(embed_type=type(embed).__name__):
-                embed.set_footer(text="f" * 1904)
-                interaction = MagicMock()
+            with (
+                self.subTest(case=case),
+                patch.object(feedback, "utcnow", return_value=now),
+            ):
+                interaction = MagicMock(spec=discord.Interaction)
+                interaction.guild_id = 20
+                interaction.guild_locale = discord.Locale.russian
+                interaction.extras = {}
                 interaction.response.is_done.return_value = False
                 interaction.response.send_message = AsyncMock()
-                await FeedbackUI.send(interaction, embed=embed, delete_after=30)
-                self.assertLessEqual(len(embed), 6000)
-                self.assertIn("Удалится", embed.fields[-1].value or "")
-                self.assertTrue((embed.fields[-1].value or "").endswith(":R>"))
+
+                if embed is None:
+                    await FeedbackUI.send(
+                        interaction, description="Temporary", delete_after=30
+                    )
+                else:
+                    embed.set_footer(text="f" * 1904)
+                    await FeedbackUI.send(interaction, embed=embed, delete_after=30)
+
                 interaction.response.send_message.assert_awaited_once()
+                payload = _await_kwargs(interaction.response.send_message)
+                sent = payload["embed"]
+                if not isinstance(sent, discord.Embed):
+                    self.fail("Expected an embed in the response")
+                self.assertEqual(payload["delete_after"], 30)
+                self.assertLessEqual(len(sent), 6000)
+                self.assertEqual(
+                    [field.value for field in sent.fields], [expected_timer]
+                )
 
     def test_timer_fits_when_all_field_slots_are_used(self) -> None:
         embed = discord.Embed()
@@ -163,22 +187,6 @@ class TestFeedbackUI(unittest.IsolatedAsyncioTestCase):
 
         view = _await_kwargs(interaction.response.send_message)["view"]
         self.assertIsInstance(view, ReportButtonView)
-
-    async def test_delete_timer_field_is_added(self) -> None:
-        interaction = MagicMock()
-        interaction.response.is_done.return_value = False
-        interaction.response.send_message = AsyncMock()
-
-        await FeedbackUI.send(
-            interaction,
-            description="Temporary",
-            delete_after=30,
-        )
-
-        embed = _await_kwargs(interaction.response.send_message)["embed"]
-        if not isinstance(embed, discord.Embed):
-            self.fail("expected FeedbackUI.send to send an embed")
-        self.assertEqual(len(embed.fields), 1)
 
     async def test_deferred_ephemeral_result_edits_original_response(self) -> None:
         interaction = MagicMock()

@@ -234,6 +234,20 @@ class TestMediaCache(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await cache.get(KEY, build)).media.data, b"ok")
         await cache.aclose()
 
+    async def test_guilds_with_different_generations_both_cache_profiles(self) -> None:
+        cache = ProfileMediaCache()
+        self.addAsyncCleanup(cache.aclose)
+        first_guild = replace(KEY, generation=8)
+        second_guild = replace(KEY, guild_id=2, generation=3)
+
+        for key, image in ((first_guild, b"first"), (second_guild, b"second")):
+            with self.subTest(guild_id=key.guild_id, generation=key.generation):
+                build = AsyncMock(return_value=rendered(image))
+                profile = await cache.get(key, build)
+                self.assertEqual(profile.media.data, image)
+                self.assertIs(await cache.get(key, build), profile)
+                build.assert_awaited_once()
+
     async def test_new_generation_prevents_old_job_publication(self) -> None:
         cache = ProfileMediaCache()
         started, release = asyncio.Event(), asyncio.Event()
