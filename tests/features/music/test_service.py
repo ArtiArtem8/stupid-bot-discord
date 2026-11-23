@@ -523,6 +523,30 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, MusicResultStatus.SUCCESS)
         player.shuffle_queue.assert_awaited_once_with()
 
+    async def test_shuffle_records_session_activity_only_with_request_context(
+        self,
+    ) -> None:
+        self.connection.get_player.return_value = MagicMock(spec=MusicPlayer)
+
+        for requester, channel, expected in (
+            (456, 789, ({789: 1}, {456})),
+            (None, 789, None),
+            (456, None, None),
+        ):
+            with self.subTest(requester=requester, channel=channel):
+                state = StateManager()
+                self.service.state = state
+                result = await self.service.shuffle(123, requester, channel)
+
+                self.assertTrue(result.is_success)
+                session = state.get_session(123)
+                activity = (
+                    (session.channel_usage, session.participants)
+                    if session is not None
+                    else None
+                )
+                self.assertEqual(activity, expected)
+
     async def test_player_mutations_reject_recovery_before_missing_player(self) -> None:
         operations: tuple[
             tuple[str, Callable[[int], Awaitable[MusicResult[object]]]], ...
@@ -1133,14 +1157,6 @@ class TestCoreMusicServiceAvailability(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result.status, MusicResultStatus.FAILURE)
         self.connection.invalidate_player.assert_not_awaited()
         self.connection.invalidate_node_and_players.assert_not_awaited()
-
-    def test_record_interaction_accepts_zero_ids(self) -> None:
-        session = MagicMock()
-        self.state.get_or_create_session.return_value = session
-
-        self.service._record_interaction_if_possible(123, 0, 0)
-
-        session.record_interaction.assert_called_once_with(0, 0)
 
     async def test_no_player_command_returns_unavailable_when_known_down(self) -> None:
         result = await self.service.pause(123)

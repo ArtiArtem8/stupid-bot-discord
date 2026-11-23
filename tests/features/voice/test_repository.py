@@ -2,6 +2,7 @@
 
 import asyncio
 import unittest
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -73,9 +74,17 @@ class TestVoiceRepository(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored, facts)
         self.assertEqual(build_timeline(restored), build_timeline(facts))
         self.assertEqual(await self.store.append("one", facts), revision)
-        with self.assertRaisesRegex(ValueError, "different content"):
-            await self.store.append("one", facts[:-1])
-        self.assertEqual(await self.store.history(), snapshot)
+        changed_state = replace(state, self_mute=False)
+        changed_snapshot = replace(facts[1], fact=VoiceSnapshot((changed_state,)))
+        for change, retry in (
+            ("missing record", facts[:-1]),
+            ("changed flag", (facts[0], changed_snapshot, *facts[2:])),
+            ("reordered records", (*facts[:2], facts[3], facts[2], *facts[4:])),
+        ):
+            with self.subTest(change=change):
+                with self.assertRaisesRegex(ValueError, "different content"):
+                    await self.store.append("one", retry)
+                self.assertEqual(await self.store.history(), snapshot)
 
     async def test_revision_changes_only_for_relevant_guild_and_shared_facts(
         self,

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiohttp
 import discord
 import mafic
+from discord.ext import commands
 
 from stupidbot.features.music.contracts import (
     ControllerDestroyReason,
@@ -49,6 +50,55 @@ def _event_track(identifier: str, token: str) -> mafic.Track:
 
 
 class TestPlaybackEventHandlers(unittest.IsolatedAsyncioTestCase):
+    async def test_dispatched_track_end_starts_next_queued_track(self) -> None:
+        guild = MagicMock(spec=discord.Guild, id=123)
+        channel = MagicMock(spec=discord.VoiceChannel, guild=guild)
+        recorded = asyncio.Event()
+
+        def record_history(*_args: object) -> None:
+            recorded.set()
+
+        self.state.record_history.side_effect = record_history
+
+        async with commands.Bot(
+            command_prefix="!",
+            intents=discord.Intents(guilds=True, message_content=True),
+        ) as bot:
+            player = MusicPlayer(bot, channel)
+            self.enterContext(patch.object(player, "play", new=AsyncMock()))
+            enqueued = await player.enqueue_tracks(
+                [make_track("current"), make_track("next")], None, placement="end"
+            )
+            attempt = enqueued.started_attempt
+            if attempt is None:
+                self.fail("Expected playback to start before dispatch")
+
+            self.handlers.bot = bot
+            self.handlers.setup()
+            try:
+                bot.dispatch(
+                    "track_end",
+                    mafic.TrackEndEvent(
+                        player=player,
+                        track=_event_track("current", attempt.event_token),
+                        payload={
+                            "op": "event",
+                            "type": "TrackEndEvent",
+                            "guildId": "123",
+                            "reason": "finished",
+                        },
+                    ),
+                )
+                await asyncio.wait_for(recorded.wait(), 2.0)
+            finally:
+                await self.handlers.cleanup()
+
+        self.assertIs(player.current_entry, enqueued.entries[1])
+        self.assertEqual(player.queue.snapshot(), ())
+        self.state.record_history.assert_called_once_with(
+            123, attempt, mafic.EndReason.FINISHED
+        )
+
     async def test_cleanup_rejects_late_callbacks_and_removes_listeners_once(
         self,
     ) -> None:

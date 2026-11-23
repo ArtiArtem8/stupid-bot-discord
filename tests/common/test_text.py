@@ -117,9 +117,11 @@ class TestTextUtils(unittest.TestCase):
         p = TextPaginator(["a", "b"], page_size=1, max_length=100, separator="\n")
         self.assertEqual(p.pages, ["a", "b"])
 
-    def test_text_paginator_splits_by_max_length(self) -> None:
-        p = TextPaginator(["aa", "bb"], page_size=10, max_length=3, separator="\n")
-        self.assertEqual(p.pages, ["aa", "bb"])
+    def test_text_paginator_counts_separator_towards_the_length_limit(self) -> None:
+        for limit, expected in ((4, ["aa", "bb"]), (5, ["aa|bb"]), (6, ["aa|bb"])):
+            with self.subTest(limit=limit):
+                paginator = TextPaginator(["aa", "bb"], max_length=limit, separator="|")
+                self.assertEqual(paginator.pages, expected)
 
     def test_text_paginator_long_separator_forces_new_page(self) -> None:
         sep = "<<<SEP_IS_VERY_LONG>>>"
