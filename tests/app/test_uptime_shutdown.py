@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
+from stupidbot import settings as config
 from stupidbot.app.bot import StupidBot
 from stupidbot.app.cog_loader import CogLoader
 from stupidbot.common.asyncio import run_in_thread
@@ -18,36 +19,67 @@ from stupidbot.features.voice.facts import VoiceLifecycle, VoiceSnapshot
 from stupidbot.features.voice.repository import VoiceRepository
 from stupidbot.storage.database import Database, migrate, open_engine
 from stupidbot.storage.schema import runtime_checkpoint
+from tests.async_clock import simulated_time
 from tests.features.voice.fixtures import record
 from tests.storage.fixtures import temporary_database
 
 
 class TestUptimeShutdown(unittest.IsolatedAsyncioTestCase):
-    async def test_periodic_loop_continues_after_checkout_timeout(self) -> None:
+    async def test_autosave_skips_missed_checkpoints_after_suspend(self) -> None:
         bot = object.__new__(StupidBot)
-        saved = asyncio.Event()
-        attempts = 0
-
-        async def save() -> float:
-            nonlocal attempts
-            attempts += 1
-            if attempts == 1:
-                raise PoolTimeoutError("Pool checkout timed out")
-            saved.set()
-            return 1.0
-
         loop = bot.autosave_task
         loop.before_loop(AsyncMock())
-        loop.change_interval(seconds=0.001)
-        with patch.object(bot, "save_state", side_effect=save):
+        save = AsyncMock(return_value=1.0)
+        interval = config.AUTOSAVE_UPTIME_INTERVAL
+
+        with simulated_time() as clock, patch.object(bot, "save_state", new=save):
             task = loop.start()
             try:
-                await asyncio.wait_for(saved.wait(), timeout=2.0)
-                self.assertFalse(loop.failed())
+                await clock.advance(0)
+                save.assert_awaited_once()
+
+                await clock.advance(12 * 60 * 60 + 1)
+                await clock.advance(interval - 5)
+                self.assertEqual(save.await_count, 2)
+
+                await clock.advance(10)
+                self.assertEqual(save.await_count, 3)
             finally:
                 loop.cancel()
                 await asyncio.gather(task, return_exceptions=True)
-        self.assertGreaterEqual(attempts, 2)
+
+    async def test_autosave_retries_transient_database_errors_next_interval(
+        self,
+    ) -> None:
+        busy = sqlite3.OperationalError("database is locked")
+        busy.sqlite_errorcode = sqlite3.SQLITE_BUSY
+        errors = (
+            PoolTimeoutError("Pool checkout timed out"),
+            OperationalError("checkpoint", None, busy),
+        )
+        interval = config.AUTOSAVE_UPTIME_INTERVAL
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                bot = object.__new__(StupidBot)
+                loop = bot.autosave_task
+                loop.before_loop(AsyncMock())
+                save = AsyncMock(side_effect=(error, 1.0))
+                with (
+                    simulated_time() as clock,
+                    patch.object(bot, "save_state", new=save),
+                ):
+                    task = loop.start()
+                    try:
+                        await clock.advance(0)
+                        await clock.advance(interval - 5)
+                        save.assert_awaited_once()
+
+                        await clock.advance(10)
+                        self.assertEqual(save.await_count, 2)
+                        self.assertFalse(loop.failed())
+                    finally:
+                        loop.cancel()
+                        await asyncio.gather(task, return_exceptions=True)
 
     async def test_unclassified_checkpoint_error_still_propagates(self) -> None:
         bot = object.__new__(StupidBot)
@@ -58,34 +90,6 @@ class TestUptimeShutdown(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(OperationalError) as raised:
                 await bot.autosave_task.coro(bot)
         self.assertIs(raised.exception, error)
-
-    async def test_periodic_loop_continues_after_sqlite_busy(self) -> None:
-        bot = object.__new__(StupidBot)
-        saved = asyncio.Event()
-        busy = sqlite3.OperationalError("database is locked")
-        busy.sqlite_errorcode = sqlite3.SQLITE_BUSY
-        attempts = 0
-
-        async def save() -> float:
-            nonlocal attempts
-            attempts += 1
-            if attempts == 1:
-                raise OperationalError("checkpoint", None, busy)
-            saved.set()
-            return 1.0
-
-        loop = bot.autosave_task
-        loop.before_loop(AsyncMock())
-        loop.change_interval(seconds=0.001)
-        with patch.object(bot, "save_state", side_effect=save):
-            task = loop.start()
-            try:
-                await asyncio.wait_for(saved.wait(), timeout=2.0)
-                self.assertFalse(loop.failed())
-            finally:
-                loop.cancel()
-                await asyncio.gather(task, return_exceptions=True)
-        self.assertGreaterEqual(attempts, 2)
 
     async def test_storage_closes_after_voice_or_final_uptime_failure(self) -> None:
         for failing_step in ("voice", "uptime"):

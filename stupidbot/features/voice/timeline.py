@@ -316,8 +316,8 @@ class _GuildReplay:
             and start == record.observed_at
             and self.previous is not None
         ):
-            # Legacy drops/drift have no loss timestamp. A preceding heartbeat
-            # may itself follow the lost event, so it is not a safe lower bound.
+            # Without a loss timestamp, a preceding heartbeat may follow the loss.
+            # Use the start of the boot as the lower bound when available.
             start = min(start, self.boot_started_at or self.previous.observed_at)
         scoped = replace(gap, guild_id=self.guild_id, started_at=start)
         if scoped.ended_at is None:

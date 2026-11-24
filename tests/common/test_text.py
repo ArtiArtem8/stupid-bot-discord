@@ -36,10 +36,12 @@ class TestTextUtils(unittest.TestCase):
         out = truncate_text("abcdef", 4, mode="middle")
         self.assertEqual(out, "a...")
 
-    def test_truncate_text_mode_middle_balanced(self) -> None:
-        out = truncate_text("abcdefghij", 7, mode="middle")
-        self.assertEqual(len(out), 7)
-        self.assertIn("...", out)
+    def test_truncate_text_middle_keeps_both_ends(self) -> None:
+        for width, expected in ((7, "ab...ij"), (8, "abc...ij")):
+            with self.subTest(width=width):
+                self.assertEqual(
+                    truncate_text("abcdefghij", width, mode="middle"), expected
+                )
 
     def test_truncate_sequence_max_length_le_zero(self) -> None:
         self.assertEqual(truncate_sequence(["a", "b"], 0), "")
@@ -117,9 +119,11 @@ class TestTextUtils(unittest.TestCase):
         p = TextPaginator(["a", "b"], page_size=1, max_length=100, separator="\n")
         self.assertEqual(p.pages, ["a", "b"])
 
-    def test_text_paginator_splits_by_max_length(self) -> None:
-        p = TextPaginator(["aa", "bb"], page_size=10, max_length=3, separator="\n")
-        self.assertEqual(p.pages, ["aa", "bb"])
+    def test_text_paginator_counts_separator_towards_the_length_limit(self) -> None:
+        for limit, expected in ((4, ["aa", "bb"]), (5, ["aa|bb"]), (6, ["aa|bb"])):
+            with self.subTest(limit=limit):
+                paginator = TextPaginator(["aa", "bb"], max_length=limit, separator="|")
+                self.assertEqual(paginator.pages, expected)
 
     def test_text_paginator_long_separator_forces_new_page(self) -> None:
         sep = "<<<SEP_IS_VERY_LONG>>>"

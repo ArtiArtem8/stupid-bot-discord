@@ -104,9 +104,7 @@ in one bucket; skipped hours receive no time.
 
 ## Retention
 
-SQLite facts are retained indefinitely. See
-[imported voice records](../../LEGACY.md#imported-voice-records) for offline
-JSONL/gzip conversion.
+SQLite facts are retained indefinitely.
 
 ## Discord integration
 

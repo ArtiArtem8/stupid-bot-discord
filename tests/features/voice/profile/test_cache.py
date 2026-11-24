@@ -128,6 +128,7 @@ class TestMediaCache(unittest.IsolatedAsyncioTestCase):
 
     async def test_shared_job_survives_waiter_cancellation_and_publishes(self) -> None:
         cache = ProfileMediaCache()
+        self.addAsyncCleanup(cache.aclose)
         started, release = asyncio.Event(), asyncio.Event()
         calls = 0
 
@@ -138,17 +139,19 @@ class TestMediaCache(unittest.IsolatedAsyncioTestCase):
             await release.wait()
             return rendered(b"png")
 
-        waiter = asyncio.create_task(cache.get(KEY, build))
-        await started.wait()
-        waiter.cancel()
-        with self.assertRaises(asyncio.CancelledError):
-            await waiter
-        follower = asyncio.create_task(cache.get(KEY, build))
-        release.set()
-        self.assertEqual((await follower).media.data, b"png")
-        await cache.get(KEY, build)
+        async with asyncio.timeout(5), asyncio.TaskGroup() as tasks:
+            waiter = tasks.create_task(cache.get(KEY, build))
+            try:
+                await started.wait()
+                waiter.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await waiter
+                follower = tasks.create_task(cache.get(KEY, build))
+            finally:
+                release.set()
+            self.assertEqual((await follower).media.data, b"png")
+            await cache.get(KEY, build)
         self.assertEqual(calls, 1)
-        await cache.aclose()
 
     async def test_queue_limit_and_close_drain_admitted_work(self) -> None:
         cache = ProfileMediaCache(jobs=1)
@@ -233,6 +236,20 @@ class TestMediaCache(unittest.IsolatedAsyncioTestCase):
             await cache.get(KEY, build)
         self.assertEqual((await cache.get(KEY, build)).media.data, b"ok")
         await cache.aclose()
+
+    async def test_guilds_with_different_generations_both_cache_profiles(self) -> None:
+        cache = ProfileMediaCache()
+        self.addAsyncCleanup(cache.aclose)
+        first_guild = replace(KEY, generation=8)
+        second_guild = replace(KEY, guild_id=2, generation=3)
+
+        for key, image in ((first_guild, b"first"), (second_guild, b"second")):
+            with self.subTest(guild_id=key.guild_id, generation=key.generation):
+                build = AsyncMock(return_value=rendered(image))
+                profile = await cache.get(key, build)
+                self.assertEqual(profile.media.data, image)
+                self.assertIs(await cache.get(key, build), profile)
+                build.assert_awaited_once()
 
     async def test_new_generation_prevents_old_job_publication(self) -> None:
         cache = ProfileMediaCache()

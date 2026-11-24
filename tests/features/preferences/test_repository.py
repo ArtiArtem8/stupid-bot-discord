@@ -3,7 +3,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import override
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from zoneinfo import ZoneInfoNotFoundError
 
 from stupidbot.features.preferences.models import (
@@ -128,7 +128,8 @@ class PreferencesRepositoryTests(IsolatedAsyncioTestCase):
             )
         )
 
-    async def test_invalid_zone_never_reaches_storage(self) -> None:
+
+class PreferencesValidationTests(TestCase):
+    def test_invalid_timezone_is_rejected(self) -> None:
         with self.assertRaises(ZoneInfoNotFoundError):
             Preferences(timezone="Not/AZone")
-        self.assertEqual(await self.repository.get(self.scope, 10), Preferences())

@@ -8,7 +8,6 @@ class Color(IntEnum):
     INFO = 0xFFAE00
     WARNING = 0xFEE75C
     ERROR = 0xED4245
-    MUSIC = 0xFFAE00
 
 
 BOT_ICON = "https://icon-library.com/images/icon-for-discord/icon-for-discord-17.jpg"

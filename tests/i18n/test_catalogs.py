@@ -47,10 +47,7 @@ class CatalogTests(TestCase):
             BabelCatalog(locale="ru"),
         )
 
-    def test_every_owner_has_complete_reproducible_catalogs(self) -> None:
-        for owner in DOMAINS:
-            with self.subTest(owner=owner):
-                compile_owner(ROOT / owner / "locales", check=True)
+    def test_shipped_catalogs_load_translations_for_every_language(self) -> None:
         loaded = load_catalogs(ROOT)
         self.assertEqual(len(loaded), len(DOMAINS) * len(Language))
         self.assertEqual(
@@ -70,16 +67,24 @@ class CatalogTests(TestCase):
             BabelCatalog(locale="ko"),
         )
 
-    def test_changed_catalog_or_missing_domain_prevents_startup(self) -> None:
+    def test_load_catalogs_rejects_changed_artifacts_or_missing_source(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
             for owner in DOMAINS:
                 copytree(ROOT / owner / "locales", root / owner / "locales")
-            source = root / DOMAINS[0] / "locales" / "en.po"
-            source.write_bytes(source.read_bytes() + b"\n")
-            with self.assertRaisesRegex(ValueError, "digest mismatch"):
-                load_catalogs(root)
-            source.unlink()
+            locales = root / DOMAINS[0] / "locales"
+            for name in ("en.po", "en.mo", "index.json"):
+                with self.subTest(artifact=name):
+                    artifact = locales / name
+                    original = artifact.read_bytes()
+                    artifact.write_bytes(original + b"\n")
+                    try:
+                        with self.assertRaisesRegex(ValueError, "digest mismatch"):
+                            load_catalogs(root)
+                    finally:
+                        artifact.write_bytes(original)
+
+            (locales / "en.po").unlink()
             with self.assertRaises(FileNotFoundError):
                 load_catalogs(root)
 

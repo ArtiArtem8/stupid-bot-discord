@@ -77,11 +77,6 @@ class BirthdayUser:
             self.birthday, today
         ) and not self.was_congratulated_today(today)
 
-    def add_congratulation(self, congratulation_date: date) -> None:
-        date_str = format_storage_date(congratulation_date)
-        if date_str not in self.was_congrats:
-            self.was_congrats.append(date_str)
-
     def clear_birthday(self) -> None:
         self.birthday = ""
 

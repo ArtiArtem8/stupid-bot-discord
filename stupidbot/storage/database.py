@@ -149,12 +149,12 @@ def open_engine(path: Path) -> AsyncEngine:
 async def validate_schema(database: Database) -> None:
     """Reject unprepared or incompatible databases without running migrations.
 
-    Connection and schema errors propagate to startup. No empty database or JSON
-    fallback is allowed. Revision admission is separate from backup integrity.
+    Connection and schema errors propagate to startup.
+    Revision admission is separate from backup integrity.
     """
     path = database.engine.url.database
     if path is not None and path.endswith(".building.sqlite"):
-        raise RuntimeError("SQLite import has not been published")
+        raise RuntimeError("SQLite staging files cannot be opened")
     async with database.transaction() as connection:
         versions = await connection.scalars(
             text("SELECT version_num FROM alembic_version").columns(version_num=String)
@@ -165,7 +165,7 @@ async def validate_schema(database: Database) -> None:
             select(storage_state.c.status).where(storage_state.c.singleton == 1)
         )
         if state != "COMPLETE":
-            raise RuntimeError("SQLite import is not complete")
+            raise RuntimeError("SQLite database is not complete")
 
 
 def migrate(path: Path, revision: str = "head") -> None:

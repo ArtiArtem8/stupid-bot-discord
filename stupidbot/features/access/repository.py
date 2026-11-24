@@ -126,8 +126,7 @@ class BlockingRepository:
         """Commit a state transition, audit and changed display hint atomically.
 
         Repeating the current state does not append another logical block/unblock.
-        Legacy action lists retain their own ordinals; runtime event IDs order
-        newly committed transitions without inventing order between old lists.
+        Ordinals track each action separately. Event IDs order new transitions.
         """
         async with self._database.transaction() as connection:
             await ensure_member(connection, guild_id, user_id)

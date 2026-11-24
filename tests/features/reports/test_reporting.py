@@ -403,6 +403,54 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
         async with self.database.transaction() as connection:
             self.assertIsNotNone(await connection.scalar(select(reports.c.report_id)))
 
+    async def test_discord_notification_failure_keeps_successful_receipt(self) -> None:
+        await self.repository.set_channel(99)
+        channel = MagicMock(spec=discord.TextChannel, id=99, guild=None)
+        self.interaction.client.get_channel.return_value = channel
+
+        for status, error_type in (
+            (403, discord.Forbidden),
+            (503, discord.HTTPException),
+        ):
+            with self.subTest(status=status):
+                self.interaction.id += 1
+                self.interaction.response.is_done.return_value = False
+                self.interaction.edit_original_response = AsyncMock()
+                channel.send = AsyncMock(
+                    side_effect=error_type(
+                        MagicMock(status=status, reason="notification failed"),
+                        "remote failure details",
+                    )
+                )
+                modal = ReportModal(
+                    self.repository,
+                    context=PresentationContext(Language.RU, ZoneInfo("UTC")),
+                )
+                modal.reason._value = "a useful report"
+
+                with self.assertLogs(report_ui.__name__, level="WARNING") as logs:
+                    await modal.on_submit(self.interaction)
+
+                channel.send.assert_awaited_once()
+                self.interaction.edit_original_response.assert_awaited_once()
+                reply = self.interaction.edit_original_response.await_args
+                if reply is None:
+                    self.fail("Expected a receipt for the committed report")
+                embed = reply.kwargs["embed"]
+                self.assertEqual(embed.color.value, Color.SUCCESS)
+                async with self.database.transaction() as connection:
+                    report_ids = (
+                        await connection.scalars(
+                            select(reports.c.report_id).where(
+                                reports.c.request_key == str(self.interaction.id)
+                            )
+                        )
+                    ).all()
+                self.assertEqual(len(report_ids), 1)
+                self.assertIn(report_ids[0], embed.description)
+                self.assertIn(f"HTTP {status}", logs.output[0])
+                self.assertIn(report_ids[0], logs.output[0])
+
     async def test_modal_dispatch_keeps_postcommit_failure_feedback_safe(self) -> None:
         for failing_step in ("reply", "notification"):
             with self.subTest(failing_step=failing_step):
@@ -542,6 +590,9 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
     async def test_persistence_failure_cannot_send_success_or_notification(
         self,
     ) -> None:
+        await self.repository.set_channel(99)
+        channel = MagicMock(spec=discord.TextChannel, id=99)
+        self.interaction.client.get_channel.return_value = channel
         modal = ReportModal(
             self.repository, context=PresentationContext(Language.RU, ZoneInfo("UTC"))
         )
@@ -552,6 +603,7 @@ class TestReporting(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(OSError):
                 await modal.on_submit(self.interaction)
         self.interaction.edit_original_response.assert_not_awaited()
+        channel.send.assert_not_awaited()
 
     def test_new_report_time_is_aware(self) -> None:
         from datetime import datetime

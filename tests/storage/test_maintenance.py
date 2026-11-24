@@ -20,6 +20,33 @@ from tests.storage.fixtures import temporary_database
 
 
 class TestSQLiteMaintenance(unittest.IsolatedAsyncioTestCase):
+    async def test_backup_and_restore_preserve_existing_destinations(self) -> None:
+        path, database = await temporary_database(self)
+        await database.close()
+        source_bytes = await run_in_thread(path.read_bytes)
+
+        for command in ("backup", "restore"):
+            for same_file in (False, True):
+                with self.subTest(command=command, same_file=same_file):
+                    source = path.with_name(f"{command}-{same_file}-source.sqlite")
+                    await run_in_thread(partial(source.write_bytes, source_bytes))
+                    destination, expected = source, source_bytes
+                    if not same_file:
+                        destination = path.with_name(f"{command}-existing.sqlite")
+                        expected = b"Existing destination contents\n"
+                        await run_in_thread(partial(destination.write_bytes, expected))
+
+                    args = Arguments()
+                    args.command = command
+                    args.source = source
+                    args.destination = destination
+                    args.database = source if command == "backup" else destination
+                    with self.assertRaises(FileExistsError):
+                        await _run(args)
+                    self.assertEqual(
+                        await run_in_thread(destination.read_bytes), expected
+                    )
+
     async def test_live_backup_restores_committed_settings_and_voice_history(
         self,
     ) -> None:

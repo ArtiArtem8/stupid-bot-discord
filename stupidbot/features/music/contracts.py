@@ -71,7 +71,6 @@ class ControllerDestroyReason(StrEnum):
     TRACK_END = "track_end"
     TRACK_CHANGED = "track_changed"
     TRACK_EXCEPTION = "track_exception"
-    TRACK_STUCK = "track_stuck"
     VOICE_DISCONNECT = "voice_disconnect"
     PLAYER_ERROR = "player_error"
     MESSAGE_DELETED = "message_deleted"

@@ -67,7 +67,10 @@ class TestSafeEmbed(unittest.TestCase):
     def test_non_strict_field_name_also_fits_remaining_budget(self) -> None:
         embed = SafeEmbed(limits=EmbedLimits(max_total=10), description="d" * 8)
         embed.safe_add_field(name="n" * 10, value="v", strict=False)
-        self.assertLessEqual(len(embed), 10)
+        self.assertEqual(
+            [(field.name, field.value) for field in embed.fields], [("..", "")]
+        )
+        self.assertEqual(len(embed), 10)
 
     def test_init_truncates_title_and_description(self) -> None:
         limits = EmbedLimits(title=5, description=7)
@@ -95,12 +98,12 @@ class TestSafeEmbed(unittest.TestCase):
         self.assertIsNotNone(text)
         self.assertEqual(text, truncate_text("123456789", 5))
 
-    def test_set_footer_text_none(self) -> None:
-        limits = EmbedLimits(footer=5)
-        e = SafeEmbed(limits=limits)
+    def test_set_footer_text_none_clears_previous_text(self) -> None:
+        embed = SafeEmbed().set_footer(text="previous footer")
 
-        ret: SafeEmbed = e.set_footer(text=None, icon_url=None)
-        self.assertIs(ret, e)
+        embed.set_footer(text=None)
+
+        self.assertIsNone(embed.footer.text)
 
     def test_set_author_truncates_and_returns_self(self) -> None:
         limits = EmbedLimits(author_name=4)
@@ -263,15 +266,6 @@ class TestSafeEmbed(unittest.TestCase):
         )
         self.assertIs(ret, e)
         self.assertEqual(len(e.fields), 0)
-
-    def test_fluent_chain_is_typed(self) -> None:
-        e: SafeEmbed = (
-            SafeEmbed(title="t")
-            .set_footer(text="footer")
-            .set_author(name="author")
-            .safe_add_field(name="n", value="v", strict=True)
-        )
-        self.assertIsInstance(e, SafeEmbed)
 
     def test_add_field_pages_adds_second_page_name_suffix(self) -> None:
         limits = EmbedLimits(field_value=12, max_fields=5)

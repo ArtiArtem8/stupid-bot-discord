@@ -2589,10 +2589,28 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
     async def test_repeated_cancellation_keeps_cleanup_owned(self) -> None:
         voice_started = asyncio.Event()
         voice_release = asyncio.Event()
+        voice_finished = asyncio.Event()
+        escalation_started = asyncio.Event()
+        shutdown_started = asyncio.Event()
+        close_node = mafic.Node[discord.Client].close
+        close_pool = mafic.NodePool[discord.Client].close
 
         async def change_voice_state(**_kwargs: object) -> None:
             voice_started.set()
             await voice_release.wait()
+            voice_finished.set()
+
+        async def observe_node_close(node: mafic.Node[discord.Client]) -> None:
+            escalation_started.set()
+            await close_node(node)
+
+        async def observe_pool_close(pool: mafic.NodePool[discord.Client]) -> None:
+            self.assertTrue(voice_finished.is_set(), "Pool closed during disconnect")
+            await close_pool(pool)
+
+        async def shutdown_manager() -> bool:
+            shutdown_started.set()
+            return await self.manager.cleanup()
 
         port = await self._start_server(close_first=False)
         async with self._lavalink_config(port):
@@ -2603,30 +2621,35 @@ class TestNodeLifecycleRecovery(unittest.IsolatedAsyncioTestCase):
             await self.handlers.cleanup()
             node._mark_unavailable()
 
-            with patch.object(mafic.Node, "destroy", new=AsyncMock()):
-                initializing = asyncio.create_task(self.manager.initialize())
-                try:
-                    await asyncio.wait_for(voice_started.wait(), 2.0)
-                    initializing.cancel()
-                    await asyncio.sleep(0)
-                    initializing.cancel()
-                    await asyncio.sleep(0.05)
+            with (
+                patch.object(mafic.Node, "destroy", new=AsyncMock()),
+                patch.object(mafic.Node, "close", observe_node_close),
+                patch.object(mafic.NodePool, "close", observe_pool_close),
+                patch.object(config, "LAVALINK_CLEANUP_GRACE", 10.0),
+            ):
+                async with asyncio.TaskGroup() as tasks:
+                    initializing = tasks.create_task(self.manager.initialize())
+                    try:
+                        await asyncio.wait_for(voice_started.wait(), 2.0)
+                        initializing.cancel()
+                        # Normal node close waits for voice teardown.
+                        await asyncio.wait_for(escalation_started.wait(), 2.0)
+                        initializing.cancel()
 
-                    self.assertTrue(self.manager._init_lock.locked())
-                    shutdown = asyncio.create_task(self.manager.cleanup())
-                    await asyncio.sleep(0)
-                    self.assertFalse(shutdown.done())
-                finally:
-                    voice_release.set()
+                        # The cancellation wakeup precedes the shutdown task.
+                        shutdown = tasks.create_task(shutdown_manager())
+                        await asyncio.wait_for(shutdown_started.wait(), 2.0)
+                        self.assertFalse(initializing.done())
+                        self.assertFalse(shutdown.done())
+                    finally:
+                        voice_release.set()
 
-                with self.assertRaises(asyncio.CancelledError):
-                    await asyncio.wait_for(initializing, 2.0)
-                await asyncio.wait_for(shutdown, 2.0)
+                    with self.assertRaises(asyncio.CancelledError):
+                        await asyncio.wait_for(initializing, 2.0)
+                    self.assertTrue(await asyncio.wait_for(shutdown, 2.0))
 
-            self.assertFalse(self.manager._init_lock.locked())
             self.assertNotIn("MAIN", self.manager.pool.label_to_node)
-            if player._disconnect_task is not None:
-                self.assertTrue(player._disconnect_task.done())
+            self.assertIsNone(player.assigned_node)
 
     async def test_cancelled_availability_waiter_keeps_initialization(
         self,

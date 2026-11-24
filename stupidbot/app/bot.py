@@ -55,8 +55,8 @@ class StupidBot(commands.Bot):
     """Own cogs, background tasks, uptime and the shared database.
 
     Startup requires a prepared database. Cogs stop before the final uptime save,
-    then database shutdown drains admitted transactions. Migrations and import
-    belong to maintenance, never startup. Do not use managers after close.
+    then database shutdown drains admitted transactions. Run migrations through
+    the maintenance CLI. Do not use managers after close.
     """
 
     def __init__(
@@ -306,8 +306,13 @@ class StupidBot(commands.Bot):
         )
         self.uptime_manager.last_activity_str = activity_str
 
-    @tasks.loop(seconds=config.AUTOSAVE_UPTIME_INTERVAL)
+    @tasks.loop(count=1)
     async def autosave_task(self) -> None:
+        while True:
+            await self._autosave_once()
+            await asyncio.sleep(config.AUTOSAVE_UPTIME_INTERVAL)
+
+    async def _autosave_once(self) -> None:
         try:
             uptime = await self.save_state()
         except PoolTimeoutError:
@@ -320,8 +325,14 @@ class StupidBot(commands.Bot):
             return
         logger.debug("Autosaved uptime: %.0f seconds", uptime)
 
-    @tasks.loop(minutes=5)
+    @tasks.loop(count=1)
     async def health_task(self) -> None:
+        # Schedule each delay from the latest report so missed checks never pile up.
+        while True:
+            self._log_health()
+            await asyncio.sleep(5 * 60)
+
+    def _log_health(self) -> None:
         snapshot = self.health_snapshot()
         failures = snapshot.failures
         new_failure = any(

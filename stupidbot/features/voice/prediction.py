@@ -3,7 +3,6 @@
 from dataclasses import dataclass, replace
 from datetime import UTC, date, timedelta, tzinfo
 from fractions import Fraction
-from typing import ClassVar
 
 from stupidbot.features.voice.metrics.presence import presence
 from stupidbot.features.voice.metrics.xp import VoiceXpPolicy
@@ -27,7 +26,6 @@ class VoiceHoursEstimate:
     pace_xp_per_hour: Fraction
     evidence_hours: Fraction
     active_days: int
-    model_version: ClassVar[str] = "voice-pace-mean30-v1"
 
 
 def estimate_voice_hours(

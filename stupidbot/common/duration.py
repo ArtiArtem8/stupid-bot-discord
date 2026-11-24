@@ -140,10 +140,6 @@ class DurationUXConfig:
     )
 
     @property
-    def day_seconds(self) -> int:
-        return DAY_SECONDS
-
-    @property
     def month_seconds(self) -> int:
         """Approximate number of seconds in a configured month."""
         return int(self.month_days * DAY_SECONDS)

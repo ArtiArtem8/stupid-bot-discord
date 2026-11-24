@@ -29,8 +29,8 @@ class VoiceStateSnapshot:
 
     A known null channel is a leave. An unresolved cache channel instead has
     channel_known=False. Humans, bots and unresolved members share this model.
-    requested_to_speak_at holds the timestamp when available. Legacy raised-hand
-    booleans use requested_to_speak without a timestamp.
+    requested_to_speak records whether a hand was raised.
+    requested_to_speak_at holds the timestamp when available.
     """
 
     user_id: int
